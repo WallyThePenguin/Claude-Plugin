@@ -3,8 +3,14 @@
 -- schemas() -> the `tools` array for the Anthropic request.
 -- dispatch(name, input) -> (contentText, isError); ALWAYS returns a string + bool, never throws,
 -- so a tool_use block is never left without a tool_result (which would 400 the next request).
+--
+-- The M7 structured tools live in sibling modules that each export a `descriptors` LIST of the same
+-- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
+-- registry. Final registry: run_luau, get_tree, search, get_properties, set_property.
 
 local RunLuau = require(script.RunLuau)
+local Tree = require(script.Tree)
+local PropertiesTool = require(script.Properties)
 
 local Tools = {}
 
@@ -16,6 +22,7 @@ export type Descriptor = {
 	run: (input: any) -> (string, boolean),
 }
 
+-- run_luau stays EXACTLY as before; the structured descriptors are appended below.
 local registry: { Descriptor } = {
 	{
 		name = "run_luau",
@@ -40,6 +47,14 @@ local registry: { Descriptor } = {
 		end,
 	},
 }
+
+-- Append each module's exported descriptors in a stable order (Tree, then Properties).
+for _, descriptor in Tree.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in PropertiesTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
 
 local byName: { [string]: Descriptor } = {}
 for _, descriptor in registry do

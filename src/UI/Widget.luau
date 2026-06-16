@@ -128,9 +128,12 @@ function Widget.mount(gui: Instance, deps: Deps)
 		cancelled = false
 		result.Text = ""
 		local system = "You are a build assistant working INSIDE Roblox Studio (edit mode) at "
-			.. "PluginSecurity. Use the run_luau tool to inspect and modify the open place; address "
-			.. "instances by path (e.g. game.Workspace). Compose multiple operations per call. When "
-			.. "the task is complete, reply with a short confirmation of what you changed."
+			.. "PluginSecurity. Prefer the structured tools - get_tree and search to explore, "
+			.. "get_properties to read, set_property to change one typed property - and use run_luau "
+			.. "for anything else or multi-step work (it is a persistent REPL; compose operations to "
+			.. "minimize calls). Address instances by case-sensitive dotted path (e.g. "
+			.. "game.Workspace.Part). When the task is complete, reply with a short confirmation of "
+			.. "what you changed."
 		deps.agentLoop.start(deps.anthropic, deps.config, system, taskBox.Text, {
 			onEvent = function(event: string, data: any)
 				if event == "assistant_text" then
