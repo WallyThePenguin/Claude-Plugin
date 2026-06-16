@@ -281,6 +281,15 @@ function AgentLoop.send(
 		running = false
 		if not ok then
 			conversation:truncate(snapshot)
+			-- A compaction inside runLoop can shrink the history below `snapshot`, making the
+			-- truncate above a silent no-op; this outer failsafe has no access to runLoop's
+			-- `compacted` flag, so unconditionally ensure we still end on an assistant turn (a no-op
+			-- when truncate already restored the pre-Send, assistant-ending state).
+			local msgs = conversation.messages
+			local last = msgs[#msgs]
+			if last ~= nil and last.role ~= "assistant" then
+				conversation:appendAssistant({ { type = "text", text = "(turn interrupted)" } })
+			end
 			if cb.onEvent then
 				pcall(cb.onEvent, "error", { kind = "internal", message = tostring(err) })
 			end
