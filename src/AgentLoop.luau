@@ -108,6 +108,8 @@ local function runLoop(
 	local messages = conversation.messages
 	local tools = Tools.schemas()
 	local maxIter = config:getMaxIterations()
+	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar).
+	local toolContext = { config = config, anthropic = anthropic }
 
 	for i = 1, maxIter do
 		if cancelled() then
@@ -164,15 +166,18 @@ local function runLoop(
 			local toolResults: { any } = {}
 			for _, block in ipairs(toolUses) do
 				emit("tool_use", { name = block.name })
-				local text, isError = Tools.dispatch(block.name, block.input)
-				if text == "" then
-					text = "(no output)"
+				local content, isError = Tools.dispatch(block.name, block.input, toolContext)
+				-- content is a string (most tools) OR a tool_result blocks array (capture's image).
+				-- Keep the empty-string guard for text; pass a blocks array straight through.
+				if type(content) == "string" and content == "" then
+					content = "(no output)"
 				end
-				emit("tool_result", { name = block.name, isError = isError, text = text })
+				local display = if type(content) == "string" then content else "[image]"
+				emit("tool_result", { name = block.name, isError = isError, text = display })
 				table.insert(toolResults, {
 					type = "tool_result",
 					tool_use_id = block.id,
-					content = text,
+					content = content,
 					is_error = isError,
 				})
 			end
@@ -181,10 +186,19 @@ local function runLoop(
 		end
 	end
 
-	-- Hit the iteration cap mid-work: the history may end on a tool_result user turn, so roll back to
-	-- keep it valid and tell the user (the DataModel edits themselves persist + are undoable).
-	conversation:truncate(snapshot)
-	emit("error", { kind = "max_iterations", message = "hit the iteration cap before finishing" })
+	-- Hit the iteration cap mid-work. The last iteration ran tools, so history ends on a tool_result
+	-- user turn. Instead of truncating the whole turn (which discarded all the work + context), append
+	-- a final assistant turn: it keeps the history API-valid (must end on an assistant turn) AND
+	-- preserves everything, so the user can just say "continue" to resume with full context. The
+	-- DataModel edits were already applied and are undoable regardless. The assistant content is a
+	-- blocks array (not a bare string) so it round-trips and re-renders on session reload like a real
+	-- assistant turn.
+	local capNote = "I hit this turn's step limit ("
+		.. tostring(maxIter)
+		.. ' steps) before fully finishing. Everything I changed so far is applied — say "continue" and I\'ll pick up where I left off.'
+	table.insert(messages, { role = "assistant", content = { { type = "text", text = capNote } } })
+	emit("assistant_text", capNote)
+	emit("done", { stop = "max_iterations" })
 end
 
 local running = false

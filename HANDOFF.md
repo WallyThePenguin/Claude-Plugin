@@ -46,16 +46,16 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 - `SystemPrompt.luau` — the brain: tool policy, value-encoding scheme, scripting/GUI/rig/animation patterns, verify-and-iterate, testing model.
 - `Serialize.luau` / `Decode.luau` — Luau<->JSON tagged scheme (frozen comment block, byte-identical in both); Decode is total. `SerializeSpec.luau` is an in-Studio round-trip self-test.
 - `Logs.luau` — LogService ring buffer (captures runtime errors, incl. during playtest).
-- `Tools/init.luau` — registry + dispatch (total). Tools: `run_luau`, `get_tree`, `search`, `get_properties`, `set_property`, `get_output`, `create_instance`.
-- `Tools/RunLuau.luau` (loadstring exec, ChangeHistory in edit / direct in play), `Tools/Tree.luau`, `Tools/Properties.luau`, `Tools/Path.luau`, `Tools/PropertyCatalog.luau`, `Tools/Output.luau`, `Tools/Create.luau`.
-- `UI/Widget.luau` — chat panel: scrolling transcript, message input, New chat, History (reopen saved sessions), proxy-key row.
-- `sidecar/` — Python screenshot sidecar for VISION (built, runs on 127.0.0.1:8389, token in `sidecar/.token`). Not yet wired into a tool.
+- `Tools/init.luau` — registry + dispatch (total). Tools: `run_luau`, `get_tree`, `search`, `get_properties`, `set_property`, `get_output`, `create_instance`, `capture`. `dispatch(name,input,context)` now returns `Content = string | {blocks}` (string for most tools; an image-blocks array for `capture`) and threads a `context` ({config,anthropic}) so a tool can reach loop deps.
+- `Tools/RunLuau.luau` (loadstring exec, ChangeHistory in edit / direct in play), `Tools/Tree.luau`, `Tools/Properties.luau`, `Tools/Path.luau`, `Tools/PropertyCatalog.luau`, `Tools/Output.luau`, `Tools/Create.luau`, `Tools/Capture.luau` (GETs the sidecar, returns an Anthropic image tool_result; all failures → string error).
+- `UI/Widget.luau` — chat panel: scrolling transcript, message input, New chat, History (reopen saved sessions), proxy-key row, sidecar-token row (vision).
+- `sidecar/` — Python screenshot sidecar for VISION (built, runs on 127.0.0.1:8389, token in `sidecar/.token`). **Wired into the `capture` tool** ✅ — the plugin GETs `?b64=1`, Bearer token, and forwards the PNG as a base64 image block.
 
 ## Status: everything below is DONE, built clean, committed, and user-verified in Studio
 M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping ✅ · M3/M4 Serialize/Decode ✅
 · M5 run_luau ✅ · M6 agent loop ("create a red part" works) ✅ · M7 structured tools ✅ · M8 SystemPrompt ✅
 · M9 chat UI + session history ✅ · M12 conversation memory ✅ · M13 self-verify + playtest-aware ✅
-· create_instance (loadstring-free building) ✅. Latest commit: `git log` (most recent is create_instance).
+· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs; user not yet live-verified in Studio). Latest commit: `git log`.
 
 ## Decisions made (authoritative)
 1. **Tunnel to hecate, not a local proxy** — local/TemporalRift proxies hit the cold-start "unknown provider" bug; hecate's is always warm. Client stays base-URL configurable.
@@ -68,18 +68,17 @@ M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping
 5. Dev-only Ping/run_luau debug boxes were removed from the panel (the agent covers usage).
 
 ## What to build NEXT (in order)
-### 1. VISION — wire the `capture` tool (the immediate next task)
-The sidecar (`sidecar/`) is built and was running (token in `sidecar/.token`, serves
-`GET http://127.0.0.1:8389/screenshot?window=Roblox%20Studio&b64=1` -> base64 PNG, token-authed).
-To wire it:
-- **Config**: add `sidecarUrl` (default `http://127.0.0.1:8389`) + `sidecarToken`.
-- **`Tools/Capture.luau`**: a `capture` tool that GETs the sidecar (RequestAsync, token as `?token=` or Bearer), and returns a tool_result whose content is an **image block** `{type="image", source={type="base64", media_type="image/png", data=<b64>}}`.
-- **Tool contract change**: `Tools.dispatch` currently returns `(string, isError)` and `AgentLoop` puts `content = string`. Extend so a tool can return **structured content** (a blocks array, not just a string) — `capture` returns image blocks. Anthropic tool_result `content` accepts a string OR a blocks array. Keep all other tools returning strings.
-- **Widget**: a sidecar-token field (like the proxy key) to save into Config.
-- **SystemPrompt**: add `capture` to the tools list + a note to screenshot to verify GUIs/animations/scenes and iterate visually.
-- Register `capture` in `Tools/init.luau`. The user runs the sidecar (`sidecar/run.ps1`, `py -m pip install -r requirements.txt` first) and pastes the token.
+### ~~1. VISION — wire the `capture` tool~~ ✅ DONE
+Wired exactly as planned: `Config.sidecarUrl`/`sidecarToken`, `Tools/Capture.luau` (RequestAsync GET,
+Bearer token, `?b64=1`, returns an `{type="image",source={type="base64",media_type="image/png",data}}`
+block), the dispatch contract extended to `Content = string | {blocks}` + a `context` arg, a
+sidecar-token row in the Widget, and the `capture` tool documented in SystemPrompt. Built clean +
+adversarially reviewed (0 confirmed bugs). **Still needs the user to live-verify in Studio:** start the
+sidecar (`sidecar/run.ps1`), paste its token into the panel's "sidecar token" field + Save, then ask
+the agent to build a GUI and call `capture` — confirm it sees the screenshot. Note from review: image
+size is fine (Anthropic auto-resizes; base64 up to ~13.3MB accepted), so no downscaling needed.
 
-### 2. Client-side RELAY (experimental — attempt after vision)
+### 1. Client-side RELAY (experimental — the next task)
 Make the agent work in the Play **client** view without swapping. HTTP is server-only, so the
 agent's HTTP + build tools must run server-side, reached via a `RemoteFunction` bridge from the
 panel. **Verify the foundation FIRST** (these are unknown and may block it):
@@ -88,11 +87,16 @@ panel. **Verify the foundation FIRST** (these are unknown and may block it):
 - The relay must run HTTP + `create_instance`/`set_property`/`get_*` server-side (NOT `run_luau` — loadstring is off in play). If feasible, the panel becomes a thin client over RemoteEvents.
 If it hits a sandbox wall, fall back to the Server-view swap.
 
-### 3. Smaller cleanups
+### 2. Smaller cleanups
 - Resolve the `CreateDockWidgetPluginGui` deprecation (selene's 1 warning). Verify the current method name against create.roblox.com (the M9 plan claimed `CreateDockWidgetPluginGuiAsync`, unverified — confirm before switching).
 - `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
 
 ## Gotchas for the next session
+- **Empty JSON objects:** Roblox `HttpService:JSONEncode({})` emits `[]`, but Anthropic needs a
+  tool_use `input` to be an OBJECT. A no-arg tool call (capture / get_output with no args) decodes to
+  an empty table and round-trips to `[]` → 400 `tool_use.input: Input should be an object`. Fixed
+  generically in `Anthropic.encodeBody` (sentinel-string swap → splice back to `{}`); don't reintroduce
+  a raw `JSONEncode(body)` for the request body. Verified against the live API ([] fails, {} 200s).
 - **Windows PowerShell 5.1** (not Core): `RandomNumberGenerator.Fill` doesn't exist (use `Create().GetBytes`); no `&&`/ternary; `2>$null` not `2>/dev/null`.
 - **SSH to remote runs cmd.exe** (Windows host `desktop-d33kvr3`): Unix commands fail; quoting `--format "table {{...}}"` through PowerShell→ssh→cmd breaks — keep remote commands simple or use plain `docker ps`.
 - **Workflow subagents write files to disk** even when asked to return source only — prefer extracting from the returned schema result and writing yourself for determinism.

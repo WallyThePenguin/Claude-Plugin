@@ -66,19 +66,39 @@ function Widget.mount(gui: Instance, deps: Deps)
 	saveBtn.Position = UDim2.new(1, -54, 0, 0)
 	saveBtn.Parent = root
 
+	-- Sidecar token row (vision/capture) — mirrors the proxy-key row.
+	local tokenBox = Instance.new("TextBox")
+	tokenBox.Size = UDim2.new(1, -58, 0, 26)
+	tokenBox.Position = UDim2.fromOffset(0, 32)
+	tokenBox.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
+	tokenBox.BorderSizePixel = 0
+	tokenBox.TextColor3 = TEXT
+	tokenBox.PlaceholderText = "sidecar token (vision)"
+	tokenBox.PlaceholderColor3 = MUTED
+	tokenBox.Text = deps.config:getSidecarToken()
+	tokenBox.ClearTextOnFocus = false
+	tokenBox.TextSize = 13
+	tokenBox.Font = Enum.Font.Code
+	tokenBox.TextXAlignment = Enum.TextXAlignment.Left
+	tokenBox.Parent = root
+	local tokenSaveBtn = button("Save")
+	tokenSaveBtn.Size = UDim2.fromOffset(54, 26)
+	tokenSaveBtn.Position = UDim2.new(1, -54, 0, 32)
+	tokenSaveBtn.Parent = root
+
 	-- Control row.
 	local newBtn = button("New chat")
 	newBtn.Size = UDim2.fromOffset(76, 26)
-	newBtn.Position = UDim2.fromOffset(0, 32)
+	newBtn.Position = UDim2.fromOffset(0, 64)
 	newBtn.Parent = root
 	local histBtn = button("History")
 	histBtn.Size = UDim2.fromOffset(70, 26)
-	histBtn.Position = UDim2.fromOffset(82, 32)
+	histBtn.Position = UDim2.fromOffset(82, 64)
 	histBtn.Parent = root
 	local status = Instance.new("TextLabel")
 	status.BackgroundTransparency = 1
 	status.Size = UDim2.new(1, -158, 0, 26)
-	status.Position = UDim2.fromOffset(158, 32)
+	status.Position = UDim2.fromOffset(158, 64)
 	status.TextColor3 = MUTED
 	status.TextSize = 12
 	status.Font = Enum.Font.Gotham
@@ -87,12 +107,13 @@ function Widget.mount(gui: Instance, deps: Deps)
 	status.Text = ""
 	status.Parent = root
 
-	-- Main area (flexes between the control row at y=64 and the input row at the bottom).
+	-- Main area (flexes between the header rows ending at y=96 and the input row at the bottom).
+	local TOP = 96 -- three 26px header rows on a 32px stride: proxy-key (y0), sidecar-token (y32), control (y64).
 	local INPUT_H = 70
 	local function scroller(): ScrollingFrame
 		local sf = Instance.new("ScrollingFrame")
-		sf.Size = UDim2.new(1, 0, 1, -(64 + INPUT_H + 4))
-		sf.Position = UDim2.fromOffset(0, 64)
+		sf.Size = UDim2.new(1, 0, 1, -(TOP + INPUT_H + 4))
+		sf.Position = UDim2.fromOffset(0, TOP)
 		sf.BackgroundColor3 = Color3.fromRGB(30, 30, 33)
 		sf.BorderSizePixel = 0
 		sf.ScrollBarThickness = 6
@@ -246,6 +267,11 @@ function Widget.mount(gui: Instance, deps: Deps)
 		status.Text = if ok then "key saved" else "rejected: " .. tostring(reason)
 	end)
 
+	tokenSaveBtn.Activated:Connect(function()
+		local ok, reason = deps.config:set("sidecarToken", tokenBox.Text)
+		status.Text = if ok then "sidecar token saved" else "rejected: " .. tostring(reason)
+	end)
+
 	histBtn.Activated:Connect(function()
 		if sessionList.Visible then
 			showSessions(false)
@@ -295,7 +321,9 @@ function Widget.mount(gui: Instance, deps: Deps)
 					elseif event == "status" then
 						status.Text = tostring(data)
 					elseif event == "done" then
-						status.Text = "done"
+						status.Text = if data.stop == "max_iterations"
+							then "step limit — say 'continue'"
+							else "done"
 						taskBox.Text = ""
 						deps.sessions:save(deps.conversation, currentId)
 					elseif event == "error" then

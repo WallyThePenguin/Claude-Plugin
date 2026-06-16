@@ -41,6 +41,43 @@ function Anthropic.new(config: Config.Config): Anthropic
 	return self
 end
 
+-- Roblox's HttpService:JSONEncode emits "[]" for an EMPTY Lua table, but Anthropic requires a
+-- tool_use block's `input` to be a JSON OBJECT. A no-argument tool call (e.g. `capture` or
+-- `get_output` invoked with no args) arrives decoded as an empty table and, echoed back verbatim,
+-- would re-encode to "[]" — which the API rejects with
+-- `tool_use.input: Input should be an object`. Fix it at the encode boundary, generically for every
+-- tool: temporarily swap each empty/absent tool_use input for a sentinel STRING, JSONEncode, restore
+-- the originals (so the live conversation history is never mutated — the swap is invisible outside
+-- this synchronous call), then splice the quoted sentinel back to a literal "{}".
+-- The sentinel is plain ASCII (JSONEncode won't escape it) and distinctive enough that a verbatim
+-- collision in real content is not a practical concern.
+local EMPTY_OBJECT_SENTINEL = "@@studio_agent_empty_object_sentinel@@"
+
+local function encodeBody(body: { [string]: any }): string
+	local restores: { { block: any, old: any } } = {}
+	local messages = body.messages
+	if type(messages) == "table" then
+		for _, msg in messages do
+			if type(msg) == "table" and type(msg.content) == "table" then
+				for _, block in msg.content do
+					if type(block) == "table" and block.type == "tool_use" then
+						local input = block.input
+						if input == nil or (type(input) == "table" and next(input) == nil) then
+							table.insert(restores, { block = block, old = input })
+							block.input = EMPTY_OBJECT_SENTINEL
+						end
+					end
+				end
+			end
+		end
+	end
+	local encoded = HttpService:JSONEncode(body)
+	for _, r in restores do
+		r.block.input = r.old
+	end
+	return (string.gsub(encoded, '"' .. EMPTY_OBJECT_SENTINEL .. '"', "{}"))
+end
+
 -- One POST to {baseUrl}/v1/messages. Handles RequestAsync's bimodal failures:
 -- it RAISES on transport/HTTP-disabled (pcall), and returns Success=false on non-2xx.
 -- Never throws; never logs the proxy key.
@@ -62,7 +99,7 @@ function Anthropic.request(self: Anthropic, body: { [string]: any }): Result
 			["anthropic-version"] = "2023-06-01",
 			["content-type"] = "application/json",
 		},
-		Body = HttpService:JSONEncode(body),
+		Body = encodeBody(body),
 	}
 
 	local ok, res = pcall(function()

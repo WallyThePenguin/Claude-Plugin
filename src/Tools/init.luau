@@ -1,27 +1,37 @@
 --!strict
--- Tools registry + dispatch (M6: run_luau only; M7 adds the structured tools).
+-- Tools registry + dispatch (M6: run_luau only; M7 adds the structured tools; capture adds vision).
 -- schemas() -> the `tools` array for the Anthropic request.
--- dispatch(name, input) -> (contentText, isError); ALWAYS returns a string + bool, never throws,
--- so a tool_use block is never left without a tool_result (which would 400 the next request).
+-- dispatch(name, input, context) -> (content, isError); content is a string for most tools OR a
+-- tool_result blocks array (capture's image). Never throws, and always returns a string-or-table
+-- content, so a tool_use block is never left without a valid tool_result (which would 400 the next
+-- request). `context` carries loop deps (config/anthropic) for tools that need them.
 --
--- The M7 structured tools live in sibling modules that each export a `descriptors` LIST of the same
+-- The structured tools live in sibling modules that each export a `descriptors` LIST of the same
 -- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
--- registry. Final registry: run_luau, get_tree, search, get_properties, set_property.
+-- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
+-- create_instance, capture.
 
 local RunLuau = require(script.RunLuau)
 local Tree = require(script.Tree)
 local PropertiesTool = require(script.Properties)
 local OutputTool = require(script.Output)
 local CreateTool = require(script.Create)
+local CaptureTool = require(script.Capture)
 
 local Tools = {}
 
+-- A tool's content is USUALLY a string, but a tool may return a tool_result blocks array instead
+-- (e.g. `capture` returns an image block). Anthropic's tool_result `content` accepts either form.
+export type Content = string | { any }
+
+-- `context` carries loop-level dependencies a tool may need at run time (config, anthropic). Most
+-- tools ignore it; `capture` reads context.config for the sidecar URL + token.
 export type Descriptor = {
 	name: string,
 	description: string,
 	inputSchema: { [string]: any },
 	destructive: boolean,
-	run: (input: any) -> (string, boolean),
+	run: (input: any, context: any) -> (Content, boolean),
 }
 
 -- run_luau stays EXACTLY as before; the structured descriptors are appended below.
@@ -40,7 +50,7 @@ local registry: { Descriptor } = {
 			required = { "code" },
 		},
 		destructive = true,
-		run = function(input: any): (string, boolean)
+		run = function(input: any, _context: any): (string, boolean)
 			if type(input) ~= "table" or type(input.code) ~= "string" then
 				return "run_luau requires { code = <string> }", true
 			end
@@ -61,6 +71,9 @@ for _, descriptor in OutputTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in CreateTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in CaptureTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
@@ -88,17 +101,24 @@ function Tools.get(name: string): Descriptor?
 end
 
 -- Run one tool_use. Wraps both the handler and its failure in pcall so dispatch is total:
--- a thrown error becomes an is_error tool_result rather than aborting the loop.
-function Tools.dispatch(name: string, input: any): (string, boolean)
+-- a thrown error becomes an is_error tool_result rather than aborting the loop. `context` carries
+-- loop dependencies (config/anthropic) for tools that need them. Returns the tool's content — a
+-- string for most tools, or a blocks array for `capture` (the caller forwards it as tool_result
+-- content). Anything that is neither string nor table is coerced to a string so the tool_result is
+-- never malformed (the API rejects a missing/invalid content).
+function Tools.dispatch(name: string, input: any, context: any): (Content, boolean)
 	local descriptor = byName[name]
 	if descriptor == nil then
 		return "unknown tool: " .. tostring(name), true
 	end
-	local ok, text, isError = pcall(descriptor.run, input)
+	local ok, content, isError = pcall(descriptor.run, input, context)
 	if not ok then
-		return "tool handler error: " .. tostring(text), true
+		return "tool handler error: " .. tostring(content), true
 	end
-	return tostring(text), isError == true
+	if type(content) ~= "string" and type(content) ~= "table" then
+		return tostring(content), isError == true
+	end
+	return content, isError == true
 end
 
 return Tools

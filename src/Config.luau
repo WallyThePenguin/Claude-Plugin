@@ -15,11 +15,17 @@ local DEFAULTS = {
 	proxyKey = "",
 	model = "claude-opus-4-8",
 	maxTokens = 8192,
-	maxIterations = 20,
+	-- Step budget per Send. Vision tasks ("build, capture, adjust, capture again…") burn several
+	-- steps per iterate-cycle, so this is generous; hitting it now ends gracefully + resumable
+	-- (say "continue") rather than discarding the turn.
+	maxIterations = 40,
 	confirmDestructive = true,
 	retryMaxAttempts = 4,
 	retryBaseDelay = 1.0,
 	retryMaxDelay = 30.0,
+	-- Vision sidecar (the `capture` tool): localhost screenshot server + its auth token.
+	sidecarUrl = "http://127.0.0.1:8389",
+	sidecarToken = "",
 }
 
 -- Allowed models. Never Haiku.
@@ -106,6 +112,14 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 		if type(value) ~= "string" then
 			return false, "proxyKey must be a string"
 		end
+	elseif key == "sidecarUrl" then
+		if type(value) ~= "string" or value == "" then
+			return false, "sidecarUrl must be a non-empty string"
+		end
+	elseif key == "sidecarToken" then
+		if type(value) ~= "string" then
+			return false, "sidecarToken must be a string"
+		end
 	elseif key == "model" then
 		if type(value) ~= "string" or not isAllowedModel(value) then
 			return false, "model must be one of the allowed MODELS"
@@ -189,6 +203,16 @@ end
 
 function Config.getProxyKey(self: Config): string
 	return self:get("proxyKey") :: string
+end
+
+-- Vision sidecar getters (the `capture` tool reaches these through the dispatch context).
+
+function Config.getSidecarUrl(self: Config): string
+	return self:get("sidecarUrl") :: string
+end
+
+function Config.getSidecarToken(self: Config): string
+	return self:get("sidecarToken") :: string
 end
 
 function Config.getModel(self: Config): string
