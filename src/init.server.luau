@@ -31,14 +31,27 @@ widget.Title = "Claude Agent"
 
 local config = Config.new(plugin)
 local anthropic = Anthropic.new(config)
-Widget.mount(widget, {
+local deps = {
 	config = config,
 	anthropic = anthropic,
 	agentLoop = AgentLoop,
 	systemPrompt = SystemPrompt.build(),
 	conversation = Conversation.new(),
 	sessions = Sessions.new(plugin),
-})
+}
+
+-- Mount the panel, and re-mount if Studio clears the widget's content on an edit<->play transition
+-- (DockWidgetPluginGui can blank out across Play Solo). The conversation lives in `deps`, so a
+-- re-mount rebuilds the same chat (Widget.mount renders the conversation transcript).
+local function ensureMounted()
+	if widget:FindFirstChild("StudioAgentRoot") == nil then
+		Widget.mount(widget, deps)
+	end
+end
+ensureMounted()
+widget.ChildRemoved:Connect(function()
+	task.defer(ensureMounted)
+end)
 
 button.Click:Connect(function()
 	widget.Enabled = not widget.Enabled

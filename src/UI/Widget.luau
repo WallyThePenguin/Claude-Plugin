@@ -35,6 +35,7 @@ end
 
 function Widget.mount(gui: Instance, deps: Deps)
 	local root = Instance.new("Frame")
+	root.Name = "StudioAgentRoot"
 	root.Size = UDim2.fromScale(1, 1)
 	root.BackgroundTransparency = 1
 	root.Parent = gui
@@ -313,6 +314,10 @@ function Widget.mount(gui: Instance, deps: Deps)
 		cancelled = true
 		status.Text = "stopping after current step..."
 	end)
+
+	-- Render any existing conversation — restores the visible chat after a re-mount (e.g. across a
+	-- Studio play/edit transition that cleared the widget).
+	rebuildTranscript()
 end
 
 return Widget
