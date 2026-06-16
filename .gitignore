@@ -1,0 +1,24 @@
+# Build artifacts
+*.rbxm
+*.rbxl
+*.rbxlx.lock
+
+# Rojo / toolchain
+/sourcemap.json
+
+# Dependencies
+/node_modules/
+/Packages/
+/DevPackages/
+
+# Secrets — never commit proxy keys or OAuth tokens
+.env
+.env.local
+proxy/auth/
+proxy/data/
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
