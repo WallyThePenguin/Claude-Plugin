@@ -3,6 +3,8 @@
 -- Later milestones wire the Claude agent loop, tools, and the real UI into this.
 
 local Widget = require(script.UI.Widget)
+local Config = require(script.Config)
+local Anthropic = require(script.Anthropic)
 
 local toolbar = plugin:CreateToolbar("Claude Agent")
 -- Empty iconAssetName -> text-only button (no asset dependency for M0).
@@ -16,7 +18,9 @@ local info =
 local widget = plugin:CreateDockWidgetPluginGui("StudioAgentWidget", info)
 widget.Title = "Claude Agent"
 
-Widget.mount(widget)
+local config = Config.new(plugin)
+local anthropic = Anthropic.new(config)
+Widget.mount(widget, { config = config, anthropic = anthropic })
 
 button.Click:Connect(function()
 	widget.Enabled = not widget.Enabled
@@ -30,4 +34,4 @@ end)
 
 button:SetActive(widget.Enabled)
 
-print("[StudioAgent] M0 plugin loaded")
+print("[StudioAgent] M2 plugin loaded")
