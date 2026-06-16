@@ -32,8 +32,10 @@ local registry: { Descriptor } = {
 		},
 		destructive = true,
 		run = function(input: any): (string, boolean)
-			local code = if type(input) == "table" then input.code else nil
-			local out = RunLuau.run({ code = tostring(code) })
+			if type(input) ~= "table" or type(input.code) ~= "string" then
+				return "run_luau requires { code = <string> }", true
+			end
+			local out = RunLuau.run({ code = input.code })
 			return out.text, out.error
 		end,
 	},

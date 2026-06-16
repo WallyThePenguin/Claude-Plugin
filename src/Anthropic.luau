@@ -111,8 +111,8 @@ end
 -- system/tools omitted when nil) and send it.
 function Anthropic.sendMessage(self: Anthropic, opts: SendOpts): Result
 	local body: { [string]: any } = {
-		model = opts.model or self._config:getModel(),
-		max_tokens = opts.maxTokens or self._config:getMaxTokens(),
+		model = if opts.model ~= nil then opts.model else self._config:getModel(),
+		max_tokens = if opts.maxTokens ~= nil then opts.maxTokens else self._config:getMaxTokens(),
 		messages = opts.messages,
 	}
 	if opts.system ~= nil then
