@@ -26,6 +26,10 @@ local DEFAULTS = {
 	-- Vision sidecar (the `capture` tool): localhost screenshot server + its auth token.
 	sidecarUrl = "http://127.0.0.1:8389",
 	sidecarToken = "",
+	-- Context-window auto-compaction.
+	contextWindow = 1000000, -- model window, tokens (claude-opus-4-8)
+	compactThreshold = 0.8, -- compact when last prompt >= window * this (0 < x < 1)
+	keepRecentMessages = 6, -- verbatim tail length kept when compacting
 }
 
 -- Allowed models. Never Haiku.
@@ -173,6 +177,20 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 		if value < self:getRetryBaseDelay() then
 			return false, "retryMaxDelay must be >= retryBaseDelay"
 		end
+	elseif key == "contextWindow" then
+		if type(value) ~= "number" or value ~= value or value < 1000 then
+			return false, "contextWindow must be a number >= 1000"
+		end
+		value = math.floor(value)
+	elseif key == "compactThreshold" then
+		if type(value) ~= "number" or value ~= value or value <= 0 or value >= 1 then
+			return false, "compactThreshold must be a number in (0, 1)"
+		end
+	elseif key == "keepRecentMessages" then
+		if type(value) ~= "number" or value ~= value or value < 2 then
+			return false, "keepRecentMessages must be a number >= 2"
+		end
+		value = math.floor(value)
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -225,6 +243,18 @@ end
 
 function Config.getMaxIterations(self: Config): number
 	return self:get("maxIterations") :: number
+end
+
+function Config.getContextWindow(self: Config): number
+	return self:get("contextWindow") :: number
+end
+
+function Config.getCompactThreshold(self: Config): number
+	return self:get("compactThreshold") :: number
+end
+
+function Config.getKeepRecentMessages(self: Config): number
+	return self:get("keepRecentMessages") :: number
 end
 
 -- Forward-looking getters for the M11 retry/confirm keys. Not spec-pinned, but
