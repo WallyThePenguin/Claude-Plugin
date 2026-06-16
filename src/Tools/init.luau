@@ -12,6 +12,7 @@ local RunLuau = require(script.RunLuau)
 local Tree = require(script.Tree)
 local PropertiesTool = require(script.Properties)
 local OutputTool = require(script.Output)
+local CreateTool = require(script.Create)
 
 local Tools = {}
 
@@ -57,6 +58,9 @@ for _, descriptor in PropertiesTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in OutputTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in CreateTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
