@@ -10,6 +10,7 @@
 -- locally-installed plugin, and a shared mutable environment is the whole point (see Session.luau).
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local RunService = game:GetService("RunService")
 
 local Serialize = require(script.Parent.Parent.Serialize)
 local Session = require(script.Parent.Parent.Session)
@@ -72,13 +73,16 @@ local function execute(input: Input): Output
 	-- 3. Open the capture window BEFORE running so all print/warn during the chunk is recorded.
 	Session.beginCapture()
 
-	-- 4. Begin a ChangeHistory recording. nil means a recording is already in progress (e.g. a solo
-	--    playtest); we REFUSE to run rather than mutate the data model unrecorded. Drain+discard the
-	--    capture window we just opened so it cannot bleed into a later run.
-	local rid = ChangeHistoryService:TryBeginRecording("run_luau")
-	if rid == nil then
-		Session.takeCapture()
-		return { text = "could not begin a change recording", error = true }
+	-- 4. In EDIT mode, wrap the run in an undoable ChangeHistory recording; nil means one is already
+	--    in progress, so REFUSE rather than mutate unrecorded (drain+discard the capture first).
+	--    During a playtest (Run/Play) there is no edit-history to record into, so run directly.
+	local rid: string? = nil
+	if RunService:IsEdit() then
+		rid = ChangeHistoryService:TryBeginRecording("run_luau")
+		if rid == nil then
+			Session.takeCapture()
+			return { text = "could not begin a change recording", error = true }
+		end
 	end
 
 	-- 5. Run under xpcall with a traceback-capturing handler. level 2 makes debug.traceback walk from
@@ -89,11 +93,15 @@ local function execute(input: Input): Output
 	end))
 	local ok = results[1]
 
-	-- 6. Commit on success, Cancel (auto-undo) on error. rid is a non-nil string here.
-	ChangeHistoryService:FinishRecording(
-		rid,
-		if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-	)
+	-- 6. In edit mode, Commit on success / Cancel (auto-undo) on error. No recording during a playtest.
+	if rid ~= nil then
+		ChangeHistoryService:FinishRecording(
+			rid,
+			if ok
+				then Enum.FinishRecordingOperation.Commit
+				else Enum.FinishRecordingOperation.Cancel
+		)
+	end
 
 	-- 7. Drain the captured I/O.
 	local cap = Session.takeCapture()

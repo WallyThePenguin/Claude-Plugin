@@ -45,4 +45,4 @@ end)
 
 button:SetActive(widget.Enabled)
 
-print("[StudioAgent] M9 plugin loaded (chat UI + session history)")
+print("[StudioAgent] M13 plugin loaded (works in playtest + self-verify + get_output)")

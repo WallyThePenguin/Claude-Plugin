@@ -121,16 +121,6 @@ local function runSetProperty(input: any): (string, boolean)
 		return encodeResult({ ok = false, error = "property is read-only: " .. name }), true
 	end
 
-	-- Mutations are only valid in edit mode. RunService:IsEdit() is true only in the Studio edit
-	-- session (false during play/solo). Refuse with a clear message otherwise.
-	if not RunService:IsEdit() then
-		return encodeResult({
-			ok = false,
-			error = "set_property requires Studio edit mode (RunService:IsEdit() is false)",
-		}),
-			true
-	end
-
 	local inst, err = Path.resolve(args.path)
 	if inst == nil then
 		return encodeResult({ ok = false, error = err }), true
@@ -154,21 +144,28 @@ local function runSetProperty(input: any): (string, boolean)
 		return encodeResult({ ok = false, error = "value reference did not resolve" }), true
 	end
 
-	-- Begin the undoable recording only once we are ready to mutate. nil means a recording is already
-	-- in progress (e.g. a concurrent operation); refuse rather than mutate unrecorded.
-	local rid = ChangeHistoryService:TryBeginRecording("SetProperty " .. name)
-	if rid == nil then
-		return encodeResult({ ok = false, error = "could not begin a change recording" }), true
+	-- In EDIT mode, wrap the assignment in an undoable recording. During a playtest (Run/Play) there
+	-- is no edit-history to record into, so assign directly against the running session.
+	local rid: string? = nil
+	if RunService:IsEdit() then
+		rid = ChangeHistoryService:TryBeginRecording("SetProperty " .. name)
+		if rid == nil then
+			return encodeResult({ ok = false, error = "could not begin a change recording" }), true
+		end
 	end
 
 	local okSet, setErr = pcall(function()
 		(target :: any)[name] = decoded
 	end)
 
-	ChangeHistoryService:FinishRecording(
-		rid,
-		if okSet then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
-	)
+	if rid ~= nil then
+		ChangeHistoryService:FinishRecording(
+			rid,
+			if okSet
+				then Enum.FinishRecordingOperation.Commit
+				else Enum.FinishRecordingOperation.Cancel
+		)
+	end
 
 	if not okSet then
 		return encodeResult({ ok = false, error = tostring(setErr) }), true
@@ -212,9 +209,9 @@ Properties.descriptors = {
 	},
 	{
 		name = "set_property",
-		description = "Set one property on the instance at a case-sensitive dot path, inside an "
-			.. "undoable ChangeHistory recording. Requires Studio edit mode. Read-only names (e.g. "
-			.. "ClassName) are refused. "
+		description = "Set one property on the instance at a case-sensitive dot path. In edit mode the "
+			.. "change is wrapped in an undoable ChangeHistory recording; during a playtest it applies "
+			.. "to the running session. Read-only names (e.g. ClassName) are refused. "
 			.. STRUCTURED_VALUE_NOTE,
 		inputSchema = {
 			type = "object",
