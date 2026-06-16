@@ -17,7 +17,12 @@
 proxy/config.yaml
 proxy/auth/
 proxy/data/
+sidecar/.token
 *.key
+
+# Python
+__pycache__/
+*.pyc
 
 # OS / editor
 .DS_Store
