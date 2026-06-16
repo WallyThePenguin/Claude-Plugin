@@ -5,10 +5,10 @@
 local Widget = require(script.UI.Widget)
 local Config = require(script.Config)
 local Anthropic = require(script.Anthropic)
-local RunLuau = require(script.Tools.RunLuau)
 local AgentLoop = require(script.AgentLoop)
 local SystemPrompt = require(script.SystemPrompt)
 local Conversation = require(script.Conversation)
+local Sessions = require(script.Sessions)
 
 local toolbar = plugin:CreateToolbar("Claude Agent")
 -- Empty iconAssetName -> text-only button (no asset dependency for M0).
@@ -27,10 +27,10 @@ local anthropic = Anthropic.new(config)
 Widget.mount(widget, {
 	config = config,
 	anthropic = anthropic,
-	runLuau = RunLuau,
 	agentLoop = AgentLoop,
 	systemPrompt = SystemPrompt.build(),
 	conversation = Conversation.new(),
+	sessions = Sessions.new(plugin),
 })
 
 button.Click:Connect(function()
@@ -45,4 +45,4 @@ end)
 
 button:SetActive(widget.Enabled)
 
-print("[StudioAgent] M12 plugin loaded (conversation memory)")
+print("[StudioAgent] M9 plugin loaded (chat UI + session history)")

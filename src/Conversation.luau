@@ -68,4 +68,11 @@ function Conversation.clear(self: Conversation)
 	self.title = ""
 end
 
+-- Replace the in-memory history (used when reopening a saved session). The loop reads
+-- conversation.messages fresh at the start of each Send, so swapping the table here is safe.
+function Conversation.load(self: Conversation, title: string, messages: { any })
+	self.title = title
+	self.messages = messages
+end
+
 return Conversation
