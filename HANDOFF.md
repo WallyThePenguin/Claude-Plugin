@@ -1,0 +1,104 @@
+# Studio Agent — Session Handoff
+
+**Read this first when continuing in a fresh session.** It captures the current state, every
+decision made, and exactly what to do next. The full original design is in
+`docs/superpowers/specs/2026-06-16-studio-agent-cliproxyapi-design.md` and the implementation plan
+in `docs/superpowers/plans/2026-06-16-studio-agent-cliproxyapi-plan.md`; this file supersedes them
+where they differ (the project evolved past the original 11 milestones).
+
+## What this is
+A Roblox Studio **plugin that hosts a Claude agent loop** — "Claude Code inside Studio." It talks
+to Claude over `HttpService` and executes tools in-process at PluginSecurity. It's a working,
+multi-session chat that builds/edits the DataModel (scripting, GUIs, rigs, animation), reads and
+writes typed properties, runs and self-verifies code, and persists chat history.
+
+## Build / test loop
+```powershell
+cd C:\Users\manso\Desktop\Claude-Plugin
+.\build.ps1            # rojo build default.project.json -> StudioAgent.rbxm, copies to %LOCALAPPDATA%\Roblox\Plugins
+selene src             # 0 errors expected (1 known warning: CreateDockWidgetPluginGui deprecated)
+stylua src             # format; stylua --check src must be clean before committing
+```
+Toolchain via rokit (`rokit.toml`: rojo 7.6.1, selene 0.31.0, stylua 2.5.2). After building, the
+user reopens Studio to load the new plugin. **You cannot run Studio here** — Luau using Roblox
+datatypes/APIs can't be executed outside Studio, so the USER runs live tests and reports back; lean
+on `selene`/`stylua`/`rojo build` for static verification and on adversarial-review workflows for
+logic you can't run.
+
+## The connection (critical — see memory `studio-agent-model-connection`)
+The plugin reaches Claude through an **SSH tunnel to hecate's CLIProxyAPI** (NOT a local proxy):
+```
+plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33kvr3_ed25519)
+       -> remote 127.0.0.1:8390 -> socat container `studio-agent-fwd` on docker net hecate_hecate_net
+       -> hecate llm-proxy:8317 (CLIProxyAPI v7.1.39) -> Anthropic (Claude subscription OAuth, mrdogsog@gmail.com)
+```
+- Open the tunnel with `proxy/tunnel.ps1` (must stay running). The remote socat forwarder auto-restarts.
+- Proxy key = hecate's `CPAPI_INBOUND_KEY` (`61a47d18...`), entered in the panel's proxy-key field, stored via `plugin:SetSetting` (never in source). Model `claude-opus-4-8`, `max_tokens` 8192.
+- **Gotcha:** CLIProxyAPI returns a transient `"unknown provider for model"` (502) right after a cold start / catalog refresh, then self-heals. The loop already classifies this + Overloaded/429/5xx as retryable. The local-proxy setup in `proxy/` (config + login.ps1) is a working fallback but cold proxies hit the transient bug; hecate's is always warm.
+
+## Module map (`src/`)
+- `init.server.luau` — entry: toolbar button, dock widget, builds deps, mounts the panel (re-mounts on play-transition blanking), best-effort enables loadstring.
+- `Config.luau` — typed `SetSetting`/`GetSetting` wrapper; defaults (baseUrl 8318, opus, maxTokens 8192, **maxIterations 20**, retry knobs).
+- `Anthropic.luau` — HTTP client (`/v1/messages`, Bearer, bimodal RequestAsync error handling incl. `kind="context"` for the server-only HTTP error) + `ping`.
+- `AgentLoop.luau` — the tool loop driving a `Conversation`; transient retry + backoff; rolls back to a pre-Send snapshot on any non-clean exit so history always ends on an assistant turn.
+- `Conversation.luau` — running multi-turn message history (memory across sends) + load/clear.
+- `Sessions.luau` — persist/list/load chats via `plugin:SetSetting` (survive restarts; images stripped on save).
+- `SystemPrompt.luau` — the brain: tool policy, value-encoding scheme, scripting/GUI/rig/animation patterns, verify-and-iterate, testing model.
+- `Serialize.luau` / `Decode.luau` — Luau<->JSON tagged scheme (frozen comment block, byte-identical in both); Decode is total. `SerializeSpec.luau` is an in-Studio round-trip self-test.
+- `Logs.luau` — LogService ring buffer (captures runtime errors, incl. during playtest).
+- `Tools/init.luau` — registry + dispatch (total). Tools: `run_luau`, `get_tree`, `search`, `get_properties`, `set_property`, `get_output`, `create_instance`.
+- `Tools/RunLuau.luau` (loadstring exec, ChangeHistory in edit / direct in play), `Tools/Tree.luau`, `Tools/Properties.luau`, `Tools/Path.luau`, `Tools/PropertyCatalog.luau`, `Tools/Output.luau`, `Tools/Create.luau`.
+- `UI/Widget.luau` — chat panel: scrolling transcript, message input, New chat, History (reopen saved sessions), proxy-key row.
+- `sidecar/` — Python screenshot sidecar for VISION (built, runs on 127.0.0.1:8389, token in `sidecar/.token`). Not yet wired into a tool.
+
+## Status: everything below is DONE, built clean, committed, and user-verified in Studio
+M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping ✅ · M3/M4 Serialize/Decode ✅
+· M5 run_luau ✅ · M6 agent loop ("create a red part" works) ✅ · M7 structured tools ✅ · M8 SystemPrompt ✅
+· M9 chat UI + session history ✅ · M12 conversation memory ✅ · M13 self-verify + playtest-aware ✅
+· create_instance (loadstring-free building) ✅. Latest commit: `git log` (most recent is create_instance).
+
+## Decisions made (authoritative)
+1. **Tunnel to hecate, not a local proxy** — local/TemporalRift proxies hit the cold-start "unknown provider" bug; hecate's is always warm. Client stays base-URL configurable.
+2. **Model: `claude-opus-4-8` default**, `max_tokens` 8192 (subscription window reserves max_tokens; large values 400).
+3. **Playtest constraints (engine rules, verified empirically):**
+   - `HttpService` is **server-only** → the agent works in edit and the Play **Server view**, NOT the client view.
+   - `loadstring` is **disabled during a playtest** and `ServerScriptService.LoadStringEnabled` does not exist in this Studio version to re-enable it → `run_luau` can't build during a playtest. **`create_instance` + `set_property` + `get_*` are loadstring-free and ARE the way to build during a playtest.**
+   - Self-testing works: `RunService:Run()`/`:Stop()` from the plugin drives an in-place sim (single context, HTTP + tools work); observe via `get_output`/`get_properties`. User confirmed this works.
+4. **Client-side live operation: DECIDED to ATTEMPT a server relay LATER** (experimental). The user wants the capability (no Client/Server swapping) but accepts it's uncertain. For now, the **Server-view dropdown** is the workaround. See "Next: relay" below.
+5. Dev-only Ping/run_luau debug boxes were removed from the panel (the agent covers usage).
+
+## What to build NEXT (in order)
+### 1. VISION — wire the `capture` tool (the immediate next task)
+The sidecar (`sidecar/`) is built and was running (token in `sidecar/.token`, serves
+`GET http://127.0.0.1:8389/screenshot?window=Roblox%20Studio&b64=1` -> base64 PNG, token-authed).
+To wire it:
+- **Config**: add `sidecarUrl` (default `http://127.0.0.1:8389`) + `sidecarToken`.
+- **`Tools/Capture.luau`**: a `capture` tool that GETs the sidecar (RequestAsync, token as `?token=` or Bearer), and returns a tool_result whose content is an **image block** `{type="image", source={type="base64", media_type="image/png", data=<b64>}}`.
+- **Tool contract change**: `Tools.dispatch` currently returns `(string, isError)` and `AgentLoop` puts `content = string`. Extend so a tool can return **structured content** (a blocks array, not just a string) — `capture` returns image blocks. Anthropic tool_result `content` accepts a string OR a blocks array. Keep all other tools returning strings.
+- **Widget**: a sidecar-token field (like the proxy key) to save into Config.
+- **SystemPrompt**: add `capture` to the tools list + a note to screenshot to verify GUIs/animations/scenes and iterate visually.
+- Register `capture` in `Tools/init.luau`. The user runs the sidecar (`sidecar/run.ps1`, `py -m pip install -r requirements.txt` first) and pastes the token.
+
+### 2. Client-side RELAY (experimental — attempt after vision)
+Make the agent work in the Play **client** view without swapping. HTTP is server-only, so the
+agent's HTTP + build tools must run server-side, reached via a `RemoteFunction` bridge from the
+panel. **Verify the foundation FIRST** (these are unknown and may block it):
+- Can a plugin, in client-view Play Solo, find + `:InvokeServer()` a RemoteFunction created by a server script?
+- How does the relay server Script get into the Play Solo session without being saved to the published place? (Beware: `Archivable=false` excludes from Clone too, which may exclude it from the play session — TEST this.)
+- The relay must run HTTP + `create_instance`/`set_property`/`get_*` server-side (NOT `run_luau` — loadstring is off in play). If feasible, the panel becomes a thin client over RemoteEvents.
+If it hits a sandbox wall, fall back to the Server-view swap.
+
+### 3. Smaller cleanups
+- Resolve the `CreateDockWidgetPluginGui` deprecation (selene's 1 warning). Verify the current method name against create.roblox.com (the M9 plan claimed `CreateDockWidgetPluginGuiAsync`, unverified — confirm before switching).
+- `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
+
+## Gotchas for the next session
+- **Windows PowerShell 5.1** (not Core): `RandomNumberGenerator.Fill` doesn't exist (use `Create().GetBytes`); no `&&`/ternary; `2>$null` not `2>/dev/null`.
+- **SSH to remote runs cmd.exe** (Windows host `desktop-d33kvr3`): Unix commands fail; quoting `--format "table {{...}}"` through PowerShell→ssh→cmd breaks — keep remote commands simple or use plain `docker ps`.
+- **Workflow subagents write files to disk** even when asked to return source only — prefer extracting from the returned schema result and writing yourself for determinism.
+- LF→CRLF git warnings are benign on Windows.
+- selene judges success by "0 errors" (it exits 1 on warnings too); `loadstring`/`setfenv` are deprecated but used intentionally.
+
+## Restart the tunnel + sidecar before testing
+- Tunnel: `proxy\tunnel.ps1` (or `ssh -i ~/.ssh/d33kvr3_ed25519 -N -L 8318:127.0.0.1:8390 devel@100.119.185.111`).
+- Vision sidecar: `cd sidecar; .\run.ps1` (token printed + saved to `.token`).
