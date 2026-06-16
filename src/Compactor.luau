@@ -14,11 +14,14 @@ local Compactor = {}
 local PRUNE_NOTE = "[earlier screenshot dropped to save context]"
 
 local SUMMARY_SYSTEM = "You are compacting a long Roblox Studio build conversation so it can be "
-	.. "continued under a smaller context budget. Read the conversation and produce a CONCISE but "
-	.. "COMPLETE summary capturing: (1) the user's goal; (2) what has been built or changed, with "
-	.. "exact instance paths; (3) key decisions and constraints; (4) the current state; (5) the "
-	.. "immediate next step. The live DataModel is the source of truth for exact values — record "
-	.. "intent and paths, not every property. Output only the summary."
+	.. "continued under a smaller context budget. Produce a CONCISE but COMPLETE summary that lets "
+	.. "the agent continue the task from your summary ALONE. Capture: (1) the user's ORIGINAL request "
+	.. "and overall goal, INCLUDING every multi-step instruction and any OUTSTANDING / not-yet-done "
+	.. "step — quote the user's wording for unfinished steps so none are lost; (2) what has been built "
+	.. "or changed, with exact instance paths, and which steps are DONE vs STILL TODO; (3) key "
+	.. "decisions and constraints; (4) the current state and the immediate next step. The live "
+	.. "DataModel is the source of truth for exact values — record intent and paths, not every "
+	.. "property. Output only the summary."
 
 local SUMMARY_MAX_TOKENS = 4096
 local SUMMARY_PREFIX = "[Summary of the earlier conversation, condensed to save context:]\n"
