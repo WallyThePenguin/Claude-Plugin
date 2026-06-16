@@ -7,6 +7,8 @@
 
 local HttpService = game:GetService("HttpService")
 
+local MessageUtil = require(script.Parent.MessageUtil)
+
 local Sessions = {}
 Sessions.__index = Sessions
 
@@ -39,21 +41,6 @@ function Sessions.list(self: Sessions): { Meta }
 	return readIndex(self)
 end
 
--- Replace any image block anywhere in the messages with a text placeholder.
-local function stripImages(value: any): any
-	if type(value) ~= "table" then
-		return value
-	end
-	if value.type == "image" then
-		return { type = "text", text = "[screenshot omitted from saved history]" }
-	end
-	local out: { [any]: any } = {}
-	for k, v in pairs(value) do
-		out[k] = stripImages(v)
-	end
-	return out
-end
-
 -- Persist a conversation under `id` and move it to the front of the index. No-op for an empty chat.
 function Sessions.save(self: Sessions, conversation: any, id: string)
 	if #conversation.messages == 0 then
@@ -66,7 +53,7 @@ function Sessions.save(self: Sessions, conversation: any, id: string)
 		id = id,
 		title = title,
 		updatedAt = updatedAt,
-		messages = stripImages(conversation.messages),
+		messages = MessageUtil.stripImages(conversation.messages),
 	})
 
 	local index = readIndex(self)
