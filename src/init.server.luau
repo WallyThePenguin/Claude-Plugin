@@ -6,6 +6,7 @@ local Widget = require(script.UI.Widget)
 local Config = require(script.Config)
 local Anthropic = require(script.Anthropic)
 local RunLuau = require(script.Tools.RunLuau)
+local AgentLoop = require(script.AgentLoop)
 
 local toolbar = plugin:CreateToolbar("Claude Agent")
 -- Empty iconAssetName -> text-only button (no asset dependency for M0).
@@ -21,7 +22,12 @@ widget.Title = "Claude Agent"
 
 local config = Config.new(plugin)
 local anthropic = Anthropic.new(config)
-Widget.mount(widget, { config = config, anthropic = anthropic, runLuau = RunLuau })
+Widget.mount(widget, {
+	config = config,
+	anthropic = anthropic,
+	runLuau = RunLuau,
+	agentLoop = AgentLoop,
+})
 
 button.Click:Connect(function()
 	widget.Enabled = not widget.Enabled
@@ -35,4 +41,4 @@ end)
 
 button:SetActive(widget.Enabled)
 
-print("[StudioAgent] M2 plugin loaded")
+print("[StudioAgent] M6 plugin loaded")

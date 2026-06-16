@@ -10,6 +10,7 @@ export type Deps = {
 	config: any,
 	anthropic: any,
 	runLuau: any,
+	agentLoop: any,
 }
 
 local function makeText(parent: Instance, text: string, height: number, order: number): TextLabel
@@ -107,6 +108,63 @@ function Widget.mount(gui: Instance, deps: Deps)
 		local out = deps.runLuau.run({ code = codeBox.Text })
 		status.Text = if out.error then "run_luau error" else "run_luau ok"
 		result.Text = out.text
+	end)
+
+	makeText(root, "Agent task:", 16, 9)
+	local taskBox = Instance.new("TextBox")
+	taskBox.Size = UDim2.new(1, 0, 0, 56)
+	taskBox.MultiLine = true
+	taskBox.ClearTextOnFocus = false
+	taskBox.TextXAlignment = Enum.TextXAlignment.Left
+	taskBox.TextYAlignment = Enum.TextYAlignment.Top
+	taskBox.PlaceholderText = "create a red part at 0,5,0"
+	taskBox.LayoutOrder = 10
+	taskBox.Parent = root
+
+	local cancelled = false
+
+	local startBtn = makeButton(root, "Start agent", 11)
+	startBtn.Activated:Connect(function()
+		cancelled = false
+		result.Text = ""
+		local system = "You are a build assistant working INSIDE Roblox Studio (edit mode) at "
+			.. "PluginSecurity. Use the run_luau tool to inspect and modify the open place; address "
+			.. "instances by path (e.g. game.Workspace). Compose multiple operations per call. When "
+			.. "the task is complete, reply with a short confirmation of what you changed."
+		deps.agentLoop.start(deps.anthropic, deps.config, system, taskBox.Text, {
+			onEvent = function(event: string, data: any)
+				if event == "assistant_text" then
+					result.Text = result.Text .. "\n" .. tostring(data)
+					print("[agent] " .. tostring(data))
+				elseif event == "tool_use" then
+					status.Text = "running tool: " .. tostring(data.name)
+					print("[agent] tool_use -> " .. tostring(data.name))
+				elseif event == "tool_result" then
+					print(
+						"[agent] tool_result (error="
+							.. tostring(data.isError)
+							.. "): "
+							.. tostring(data.text)
+					)
+				elseif event == "iteration" then
+					status.Text = "iteration " .. tostring(data.n) .. "/" .. tostring(data.max)
+				elseif event == "done" then
+					status.Text = "done (" .. tostring(data.stop) .. ")"
+				elseif event == "error" then
+					status.Text = "error [" .. tostring(data.kind) .. "]"
+					result.Text = result.Text .. "\nERROR: " .. tostring(data.message)
+				end
+			end,
+			shouldCancel = function(): boolean
+				return cancelled
+			end,
+		})
+	end)
+
+	local stopBtn = makeButton(root, "Stop", 12)
+	stopBtn.Activated:Connect(function()
+		cancelled = true
+		status.Text = "stopping after current step..."
 	end)
 end
 
