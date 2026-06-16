@@ -1,0 +1,26 @@
+# CLIProxyAPI config for the local Studio Agent model proxy.
+# Mirrors Project Hecate's verified-minimal template (the fields known to boot).
+# Copy to config.yaml (gitignored) via gen-key.ps1, which injects the real inbound key.
+
+# Bind all interfaces INSIDE the container. Loopback is enforced by the compose port
+# mapping (127.0.0.1:8317:8317) — NOT by binding 127.0.0.1 here (that would break the map).
+host: ""
+port: 8317
+
+# The subscription OAuth token is written here by `-claude-login` and persists in the
+# `cliproxy-auth` named volume mounted at this path. NOT in this file, NOT in the image.
+auth-dir: "/data/cli-proxy-api"
+
+# Inbound auth: the ONLY key a caller (the plugin) presents, as `Authorization: Bearer <key>`.
+# Low-value LOCAL access key — NOT the subscription token. gen-key.ps1 replaces the placeholder.
+api-keys:
+  - "REPLACE_WITH_HEX_INBOUND_KEY"
+
+# Management / control panel off (a local single-user proxy doesn't need it).
+remote-management:
+  secret-key: ""
+  disable-control-panel: true
+
+# Log to stdout (docker logs); never to the container disk.
+logging-to-file: false
+debug: false

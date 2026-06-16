@@ -1,0 +1,24 @@
+# Local Studio Agent model proxy (CLIProxyAPI), loopback-only.
+#   1. .\gen-key.ps1     # writes config.yaml + prints the inbound key
+#   2. .\login.ps1       # one-time Claude subscription OAuth login
+#   3. docker compose up -d
+#   4. .\verify.ps1      # acceptance gate
+# Logs: docker compose logs -f   |   Stop: docker compose down
+#
+# Image pinned by digest to CLIProxyAPI v7.1.39 (the build Project Hecate verified).
+services:
+  cliproxy:
+    image: eceasy/cli-proxy-api@sha256:f204cbf810cf1140bb8cf1fd114ad05306bd78b564a3388891b12a3f18f4afe3
+    container_name: studio-agent-proxy
+    restart: unless-stopped
+    pull_policy: missing
+    command: ["./CLIProxyAPI", "-config", "/CLIProxyAPI/config.yaml"]
+    ports:
+      - "127.0.0.1:8317:8317" # loopback ONLY — never a bare 8317:8317
+    volumes:
+      - ./config.yaml:/CLIProxyAPI/config.yaml:ro
+      - cliproxy-auth:/data/cli-proxy-api
+
+volumes:
+  cliproxy-auth:
+    name: cliproxy-auth # explicit name so login.ps1's bare volume matches compose's
