@@ -11,6 +11,7 @@ export type Deps = {
 	anthropic: any,
 	runLuau: any,
 	agentLoop: any,
+	systemPrompt: string,
 }
 
 local function makeText(parent: Instance, text: string, height: number, order: number): TextLabel
@@ -127,14 +128,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 	startBtn.Activated:Connect(function()
 		cancelled = false
 		result.Text = ""
-		local system = "You are a build assistant working INSIDE Roblox Studio (edit mode) at "
-			.. "PluginSecurity. Prefer the structured tools - get_tree and search to explore, "
-			.. "get_properties to read, set_property to change one typed property - and use run_luau "
-			.. "for anything else or multi-step work (it is a persistent REPL; compose operations to "
-			.. "minimize calls). Address instances by case-sensitive dotted path (e.g. "
-			.. "game.Workspace.Part). When the task is complete, reply with a short confirmation of "
-			.. "what you changed."
-		deps.agentLoop.start(deps.anthropic, deps.config, system, taskBox.Text, {
+		deps.agentLoop.start(deps.anthropic, deps.config, deps.systemPrompt, taskBox.Text, {
 			onEvent = function(event: string, data: any)
 				if event == "assistant_text" then
 					result.Text = result.Text .. "\n" .. tostring(data)
