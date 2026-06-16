@@ -15,6 +15,8 @@
 --   * emit() (UI callback) is pcall-guarded so a throwing handler can't corrupt loop control.
 
 local Tools = require(script.Parent.Tools)
+local Compactor = require(script.Parent.Compactor)
+local MessageUtil = require(script.Parent.MessageUtil)
 
 local AgentLoop = {}
 
@@ -119,16 +121,45 @@ local function runLoop(
 		end
 		emit("iteration", { n = i, max = maxIter })
 
-		local res = sendWithRetry(
-			anthropic,
-			config,
-			{ messages = messages, tools = tools, system = systemPrompt },
-			emit,
-			cancelled
-		)
-		if not res.ok then
-			abort(res.kind, res.message)
-			return
+		-- Always-on: keep only the most recent screenshot in live context.
+		Compactor.pruneImagesKeepingLast(messages)
+		-- Proactive: if the last prompt crossed the threshold, compact before sending.
+		if Compactor.shouldCompact(conversation.lastPromptTokens, config) then
+			emit("status", "compacting context…")
+			local didCompact = Compactor.compact(anthropic, config, conversation)
+			if didCompact then
+				emit("notice", "[compacted earlier history to free context]")
+			end
+		end
+
+		-- Send, with a one-shot reactive compaction if we still overflow the window. compact()
+		-- mutates conversation.messages IN PLACE, so the `messages` local stays valid (no re-bind).
+		local res
+		local compactedReactively = false
+		while true do
+			res = sendWithRetry(
+				anthropic,
+				config,
+				{ messages = messages, tools = tools, system = systemPrompt },
+				emit,
+				cancelled
+			)
+			if res.ok then
+				break
+			end
+			if Compactor.isContextLengthError(res) and not compactedReactively then
+				compactedReactively = true
+				emit("status", "context full — compacting and retrying…")
+				if Compactor.compact(anthropic, config, conversation) then
+					emit("notice", "[compacted earlier history to free context]")
+				else
+					abort(res.kind, res.message)
+					return
+				end
+			else
+				abort(res.kind, res.message)
+				return
+			end
 		end
 
 		local data = res.data
@@ -136,6 +167,7 @@ local function runLoop(
 			abort("protocol", "response had no content array")
 			return
 		end
+		conversation.lastPromptTokens = MessageUtil.promptTokensFromUsage(data.usage)
 
 		local toolUses: { any } = {}
 		for _, block in ipairs(data.content) do
