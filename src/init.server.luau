@@ -10,6 +10,13 @@ local SystemPrompt = require(script.SystemPrompt)
 local Conversation = require(script.Conversation)
 local Sessions = require(script.Sessions)
 
+-- Enable runtime loadstring so run_luau works during a playtest too (Roblox defaults it OFF). This
+-- sets a place security property and carries into Play Solo. Comment out before publishing if you
+-- don't want loadstring enabled in your live game.
+pcall(function()
+	game:GetService("ServerScriptService").LoadStringEnabled = true
+end)
+
 local toolbar = plugin:CreateToolbar("Claude Agent")
 -- Empty iconAssetName -> text-only button (no asset dependency for M0).
 local button =
