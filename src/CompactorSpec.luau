@@ -146,6 +146,22 @@ local function buildCases(): { Case }
 		return ok, reason
 	end)
 
+	add("rebuild of a non-alternating tail is detected invalid (compact's guard)", function()
+		-- Simulate an upstream pause_turn double-assistant in the kept region.
+		local m = {
+			{ role = "user", content = "go" },
+			{ role = "assistant", content = { { type = "text", text = "A1" } } },
+			{ role = "assistant", content = { { type = "text", text = "A2" } } },
+			{
+				role = "user",
+				content = { { type = "tool_result", tool_use_id = "x", content = "r" } },
+			},
+		}
+		local rebuilt = Compactor.rebuildWithSummary(m, 2, "[summary]")
+		-- rebuilt = user(summary), A1, A2, user(tr) -> non-alternating -> must be rejected.
+		return MessageUtil.isValidHistory(rebuilt) == false
+	end)
+
 	add("isContextLengthError matches a prompt-too-long 400", function()
 		local hit = Compactor.isContextLengthError({
 			kind = "http",

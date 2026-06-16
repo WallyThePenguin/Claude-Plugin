@@ -101,10 +101,37 @@ local function runLoop(
 	local function cancelled(): boolean
 		return cb.shouldCancel ~= nil and cb.shouldCancel()
 	end
-	-- Roll the conversation back to the pre-Send state and surface why. Keeps history API-valid.
+	-- True once a compaction has rebuilt the history this Send. After that the absolute pre-Send
+	-- snapshot index is meaningless (the array is far shorter), so rollback must NOT count-truncate.
+	local compacted = false
+	-- Restore a valid resting state on a non-clean exit. Normally truncate back to the pre-Send
+	-- snapshot (which ends on the prior assistant turn). But after a compaction, instead ensure the
+	-- history ends on an assistant turn so the next user message still alternates (a stale snapshot
+	-- index would make truncate a silent no-op and leave the history ending on a user turn).
+	local function rollback()
+		if compacted then
+			local msgs = conversation.messages
+			local last = msgs[#msgs]
+			if last ~= nil and last.role ~= "assistant" then
+				conversation:appendAssistant({ { type = "text", text = "(turn interrupted)" } })
+			end
+		else
+			conversation:truncate(snapshot)
+		end
+	end
+	-- Roll the conversation back and surface why. Keeps history API-valid.
 	local function abort(kind: string, message: any)
-		conversation:truncate(snapshot)
+		rollback()
 		emit("error", { kind = kind, message = message })
+	end
+	-- Compact, mark the flag, and notify. Returns whether it actually compacted.
+	local function doCompact(): boolean
+		local ok = Compactor.compact(anthropic, config, conversation)
+		if ok then
+			compacted = true
+			emit("notice", "[compacted earlier history to free context]")
+		end
+		return ok
 	end
 
 	local messages = conversation.messages
@@ -115,7 +142,7 @@ local function runLoop(
 
 	for i = 1, maxIter do
 		if cancelled() then
-			conversation:truncate(snapshot)
+			rollback()
 			emit("done", { stop = "cancelled" })
 			return
 		end
@@ -126,10 +153,7 @@ local function runLoop(
 		-- Proactive: if the last prompt crossed the threshold, compact before sending.
 		if Compactor.shouldCompact(conversation.lastPromptTokens, config) then
 			emit("status", "compacting context…")
-			local didCompact = Compactor.compact(anthropic, config, conversation)
-			if didCompact then
-				emit("notice", "[compacted earlier history to free context]")
-			end
+			doCompact()
 		end
 
 		-- Send, with a one-shot reactive compaction if we still overflow the window. compact()
@@ -150,9 +174,7 @@ local function runLoop(
 			if Compactor.isContextLengthError(res) and not compactedReactively then
 				compactedReactively = true
 				emit("status", "context full — compacting and retrying…")
-				if Compactor.compact(anthropic, config, conversation) then
-					emit("notice", "[compacted earlier history to free context]")
-				else
+				if not doCompact() then
 					abort(res.kind, res.message)
 					return
 				end
@@ -191,7 +213,7 @@ local function runLoop(
 			end
 		else
 			if cancelled() then
-				conversation:truncate(snapshot)
+				rollback()
 				emit("done", { stop = "cancelled" })
 				return
 			end

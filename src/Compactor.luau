@@ -152,6 +152,11 @@ function Compactor.compact(anthropic: any, config: any, conversation: any): (boo
 	end
 
 	local rebuilt = Compactor.rebuildWithSummary(messages, j, summaryText)
+	-- Never install an API-invalid history. If the kept tail wasn't strictly alternating going in
+	-- (e.g. a stray pause_turn double-assistant upstream), refuse rather than ship a guaranteed 400.
+	if not MessageUtil.isValidHistory(rebuilt) then
+		return false, "rebuild would be API-invalid"
+	end
 	conversation:replaceMessages(rebuilt)
 	-- The compacted prompt is much smaller; clear the stale measurement so we don't immediately
 	-- re-trigger before the next real send measures the new size.
