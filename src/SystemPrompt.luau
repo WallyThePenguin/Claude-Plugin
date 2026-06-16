@@ -69,6 +69,7 @@ Best way to test gameplay WITHOUT those headaches — simulate IN-PLACE from edi
 - Keep run_luau snippets focused, but compose related operations into a single call.
 - Everything you do is undoable. When the task is complete, reply with a short, concrete summary of what you changed.
 - You have a bounded number of tool iterations per task — work efficiently and avoid needless round-trips.
+- For very long sessions your earlier turns may be automatically summarized to fit the context window. Don't rely on remembering every detail verbatim — re-query the DataModel (get_tree / get_properties / search) for exact current state when it matters.
 ]]
 
 -- Returns the system prompt. opts is reserved for future interpolation (e.g. model / iteration cap).

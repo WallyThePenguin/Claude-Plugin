@@ -318,6 +318,8 @@ function Widget.mount(gui: Instance, deps: Deps)
 						print("[agent] tool_result (error=" .. tostring(data.isError) .. ")")
 					elseif event == "iteration" then
 						status.Text = "step " .. tostring(data.n) .. "/" .. tostring(data.max)
+					elseif event == "notice" then
+						addRow(MUTED, tostring(data))
 					elseif event == "status" then
 						status.Text = tostring(data)
 					elseif event == "done" then
