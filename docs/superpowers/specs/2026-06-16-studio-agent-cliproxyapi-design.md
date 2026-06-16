@@ -125,8 +125,9 @@ adjusted for the proxy connection:
 - **Config** — persists via `plugin:SetSetting`/`GetSetting`:
   - `baseUrl` (default `http://127.0.0.1:8317`)
   - `proxyKey` (the Bearer inbound key; never in source)
-  - `model` (default `claude-sonnet-4-6`; `claude-opus-4-8` selectable; **never
-    Haiku** per hecate model policy for agent reasoning)
+  - `model` (default `claude-opus-4-8`; `claude-sonnet-4-6` selectable; **never
+    Haiku** per hecate model policy for agent reasoning) — opus is the default
+    because Studio is a serious dev surface that wants maximum reasoning depth
   - `maxTokens` (default `8192`)
   - `maxIterations` (loop cap)
 - **Anthropic** (HTTP client + agent loop; kept provider-agnostic internally):
@@ -151,7 +152,7 @@ Authorization: Bearer <proxyKey>
 anthropic-version: 2023-06-01
 content-type: application/json
 
-{ "model": "claude-sonnet-4-6", "max_tokens": 8192,
+{ "model": "claude-opus-4-8", "max_tokens": 8192,
   "system": "...", "tools": [...], "messages": [...] }
 ```
 
@@ -200,6 +201,8 @@ One task per implementation prompt; verify each before moving on.
   Localhost HTTP (`http://127.0.0.1:8317`) is permitted by Studio's HttpService.
 - **`max_tokens` discipline:** keep at 8192 by default; bump to 16384 only for a
   deliberately long single output. Large values 400 on the subscription window.
+  This matters more on **opus** (the default), which is heavier on the rolling
+  window than sonnet — keep requests lean and cadence modest.
 - **`loadstring`:** a locally installed (unpublished) plugin can use it; the
   Build Schematic's FiOne/vLua fallback plan still applies for `run_luau`.
 - **Key safety:** the proxy inbound key is stored via `plugin:SetSetting`, never
