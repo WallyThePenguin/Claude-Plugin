@@ -42,7 +42,9 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 - `Anthropic.luau` — HTTP client (`/v1/messages`, Bearer, bimodal RequestAsync error handling incl. `kind="context"` for the server-only HTTP error) + `ping`.
 - `AgentLoop.luau` — the tool loop driving a `Conversation`; transient retry + backoff; rolls back to a pre-Send snapshot on any non-clean exit so history always ends on an assistant turn.
 - `Conversation.luau` — running multi-turn message history (memory across sends) + load/clear.
-- `Sessions.luau` — persist/list/load chats via `plugin:SetSetting` (survive restarts; images stripped on save).
+- `Sessions.luau` — persist/list/load chats via `plugin:SetSetting` (survive restarts; images stripped on save via `MessageUtil`).
+- `MessageUtil.luau` — pure message helpers (stripImages, promptTokensFromUsage, isValidHistory) shared by Sessions + Compactor.
+- `Compactor.luau` / `CompactorSpec.luau` — context-window auto-compaction (image pruning + summarize-and-replace); the spec is an in-Studio self-test like `SerializeSpec`. `AgentLoop` prunes every iteration, compacts proactively at 80% of the window + reactively on a context-length 400, and tracks `Conversation.lastPromptTokens`.
 - `SystemPrompt.luau` — the brain: tool policy, value-encoding scheme, scripting/GUI/rig/animation patterns, verify-and-iterate, testing model.
 - `Serialize.luau` / `Decode.luau` — Luau<->JSON tagged scheme (frozen comment block, byte-identical in both); Decode is total. `SerializeSpec.luau` is an in-Studio round-trip self-test.
 - `Logs.luau` — LogService ring buffer (captures runtime errors, incl. during playtest).
@@ -55,7 +57,7 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping ✅ · M3/M4 Serialize/Decode ✅
 · M5 run_luau ✅ · M6 agent loop ("create a red part" works) ✅ · M7 structured tools ✅ · M8 SystemPrompt ✅
 · M9 chat UI + session history ✅ · M12 conversation memory ✅ · M13 self-verify + playtest-aware ✅
-· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs; user not yet live-verified in Studio). Latest commit: `git log`.
+· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs) · **CONTEXT-WINDOW auto-compaction ✅** (image pruning + summarize-and-replace; adversarial review found+fixed 2 bugs; CompactorSpec self-test). Both pending user live-verify in Studio. Latest commit: `git log`.
 
 ## Decisions made (authoritative)
 1. **Tunnel to hecate, not a local proxy** — local/TemporalRift proxies hit the cold-start "unknown provider" bug; hecate's is always warm. Client stays base-URL configurable.
@@ -78,7 +80,34 @@ sidecar (`sidecar/run.ps1`), paste its token into the panel's "sidecar token" fi
 the agent to build a GUI and call `capture` — confirm it sees the screenshot. Note from review: image
 size is fine (Anthropic auto-resizes; base64 up to ~13.3MB accepted), so no downscaling needed.
 
-### 1. Client-side RELAY (experimental — the next task)
+### ~~2. CONTEXT-WINDOW auto-compaction~~ ✅ DONE
+Keeps a long chat alive instead of dying at the 1M window. Spec:
+`docs/superpowers/specs/2026-06-16-studio-agent-context-compaction-design.md`; plan:
+`docs/superpowers/plans/2026-06-16-context-compaction.md`. Two mechanisms: always-on image pruning
+(keep only the latest screenshot — `Compactor.pruneImagesKeepingLast`) and summarize-and-replace at
+80% of the window (`Compactor.compact`: summarize older turns into one user turn, keep a verbatim
+tail, history stays API-valid). New modules `MessageUtil`/`Compactor`/`CompactorSpec`;
+`Conversation.lastPromptTokens`/`replaceMessages`; Config `contextWindow`/`compactThreshold`/
+`keepRecentMessages`. Adversarial review found + fixed 2 real bugs (compaction-aware rollback;
+validate-rebuilt-before-install). **Pending: user runs `CompactorSpec` in Studio (12 cases) + a
+long-chat live test with a lowered threshold to force a compaction.**
+
+### 3. SUBAGENTS / ultracode orchestration (feature #2 — feasibility brief done, ready to spec)
+Let the in-Studio agent fan out subagents (parallel finders/verifiers/judges, like Claude Code's
+Agent tool). The investigation (workflow `wf_696c655c-99a`, 5 agents) verdict: **feasible** —
+model-driven `dispatch_subagents` tool; the hard constraint is the single shared DataModel + one
+ChangeHistory stream → **parallel READERS / serial WRITERS**. Shape: each child is a fresh
+`Conversation` running an extracted `runConversation` body with a scoped (read-only) toolset, returning
+its terse final text as one tool_result (which also keeps heavy reads/images out of the parent's
+window). Blockers, all fixable: the module-global `running` flag guards `send()` not `runLoop`; the
+loop returns final text only via emit (use `collectText`); no toolset allowlist hook yet. Recommended
+v1 defaults: edit-mode-first, READ-ONLY children (parent does writes), cap 3–4, readers on
+`claude-sonnet-4-6` / parent+judge on opus, depth-1, concise per-child summaries. Note: a brief claim
+that `Create.luau` has an "unconditional FinishRecording" corruption bug is OVERSTATED — `FinishRecording`
+is already nil-guarded; the only real (minor) gap is that Create proceeds without a recording when it
+can't open one (unlike RunLuau/Properties which refuse). Needs its own brainstorm → spec → plan.
+
+### 4. Client-side RELAY (experimental)
 Make the agent work in the Play **client** view without swapping. HTTP is server-only, so the
 agent's HTTP + build tools must run server-side, reached via a `RemoteFunction` bridge from the
 panel. **Verify the foundation FIRST** (these are unknown and may block it):
@@ -87,11 +116,12 @@ panel. **Verify the foundation FIRST** (these are unknown and may block it):
 - The relay must run HTTP + `create_instance`/`set_property`/`get_*` server-side (NOT `run_luau` — loadstring is off in play). If feasible, the panel becomes a thin client over RemoteEvents.
 If it hits a sandbox wall, fall back to the Server-view swap.
 
-### 2. Smaller cleanups
+### 5. Smaller cleanups
 - Resolve the `CreateDockWidgetPluginGui` deprecation (selene's 1 warning). Verify the current method name against create.roblox.com (the M9 plan claimed `CreateDockWidgetPluginGuiAsync`, unverified — confirm before switching).
 - `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
 
 ## Gotchas for the next session
+- **Compaction rollback:** the abort/cancel rollback used an absolute message-count `snapshot`, but `Compactor.compact` shrinks the array — so AFTER a compaction the rollback must instead ensure the history ends on an assistant turn (the `compacted` flag + `rollback()` in `AgentLoop`), NOT count-truncate (which silently no-ops below the snapshot). `compact()` also validates the rebuilt history (`MessageUtil.isValidHistory`) before installing — a malformed kept tail → refuse, never ship a guaranteed 400.
 - **Empty JSON objects:** Roblox `HttpService:JSONEncode({})` emits `[]`, but Anthropic needs a
   tool_use `input` to be an OBJECT. A no-arg tool call (capture / get_output with no args) decodes to
   an empty table and round-trips to `[]` → 400 `tool_use.input: Input should be an object`. Fixed
