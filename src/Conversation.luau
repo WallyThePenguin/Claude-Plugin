@@ -16,12 +16,13 @@ export type Conversation = typeof(setmetatable(
 	{} :: {
 		messages: { any },
 		title: string,
+		lastPromptTokens: number,
 	},
 	Conversation
 ))
 
 function Conversation.new(): Conversation
-	return setmetatable({ messages = {}, title = "" }, Conversation)
+	return setmetatable({ messages = {}, title = "", lastPromptTokens = 0 }, Conversation)
 end
 
 -- A short title derived from the first user message (for the session list).
@@ -63,9 +64,19 @@ function Conversation.truncate(self: Conversation, n: number)
 	end
 end
 
+-- Replace the message list IN PLACE (clear + refill the same table) so existing references to
+-- `conversation.messages` (e.g. the running loop's local) stay valid after a compaction.
+function Conversation.replaceMessages(self: Conversation, new: { any })
+	table.clear(self.messages)
+	for _, m in ipairs(new) do
+		table.insert(self.messages, m)
+	end
+end
+
 function Conversation.clear(self: Conversation)
 	table.clear(self.messages)
 	self.title = ""
+	self.lastPromptTokens = 0
 end
 
 -- Replace the in-memory history (used when reopening a saved session). The loop reads
@@ -73,6 +84,7 @@ end
 function Conversation.load(self: Conversation, title: string, messages: { any })
 	self.title = title
 	self.messages = messages
+	self.lastPromptTokens = 0
 end
 
 return Conversation
