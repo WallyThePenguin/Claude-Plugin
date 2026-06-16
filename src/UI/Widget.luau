@@ -9,6 +9,7 @@ local Widget = {}
 export type Deps = {
 	config: any,
 	anthropic: any,
+	runLuau: any,
 }
 
 local function makeText(parent: Instance, text: string, height: number, order: number): TextLabel
@@ -87,6 +88,25 @@ function Widget.mount(gui: Instance, deps: Deps)
 				result.Text = tostring(res.message)
 			end
 		end)
+	end)
+
+	makeText(root, "run_luau test:", 16, 6)
+	local codeBox = Instance.new("TextBox")
+	codeBox.Size = UDim2.new(1, 0, 0, 72)
+	codeBox.MultiLine = true
+	codeBox.ClearTextOnFocus = false
+	codeBox.TextXAlignment = Enum.TextXAlignment.Left
+	codeBox.TextYAlignment = Enum.TextYAlignment.Top
+	codeBox.PlaceholderText = "local p = Instance.new('Part') p.Parent = workspace return p.Name"
+	codeBox.Text = ""
+	codeBox.LayoutOrder = 7
+	codeBox.Parent = root
+
+	local runBtn = makeButton(root, "Run", 8)
+	runBtn.Activated:Connect(function()
+		local out = deps.runLuau.run({ code = codeBox.Text })
+		status.Text = if out.error then "run_luau error" else "run_luau ok"
+		result.Text = out.text
 	end)
 end
 
