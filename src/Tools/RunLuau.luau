@@ -49,8 +49,17 @@ local function compile(code: string): (((...any) -> ...any)?, string?)
 
 	local chunk, compileErr = loadstring(code, "=run_luau")
 	if chunk == nil then
+		local msg = tostring(compileErr)
+		if string.find(string.lower(msg), "disabled", 1, true) then
+			-- loadstring is gated off at runtime (typically during a playtest).
+			return nil,
+				"run_luau needs loadstring, which is disabled here (usually during a playtest). Enable "
+					.. "ServerScriptService.LoadStringEnabled (Game Settings > Security), or work in edit "
+					.. "mode. The structured tools (get_tree/get_properties/set_property/search/get_output) "
+					.. "need no loadstring and work during a playtest."
+		end
 		-- Syntax error: loadstring returns nil plus a message. Surface it verbatim, no recording.
-		return nil, "compile error: " .. tostring(compileErr)
+		return nil, "compile error: " .. msg
 	end
 
 	return chunk :: (...any) -> ...any, nil

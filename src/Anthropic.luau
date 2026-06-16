@@ -79,6 +79,16 @@ function Anthropic.request(self: Anthropic, body: { [string]: any }): Result
 				message = "Enable 'Allow HTTP Requests' in Game Settings > Security.",
 			}
 		end
+		if string.find(string.lower(msg), "game server", 1, true) then
+			-- HttpService is server-only; in an F5 playtest the plugin is in the CLIENT context.
+			-- Not retryable — retrying in the same context won't help.
+			return {
+				ok = false,
+				kind = "context",
+				message = "HttpService is server-only. During a playtest switch Studio to the Server "
+					.. "view (the Client/Server dropdown), or use the agent in edit mode.",
+			}
+		end
 		return { ok = false, kind = "transport", message = msg }
 	end
 

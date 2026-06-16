@@ -56,10 +56,10 @@ Do NOT assume an edit or a script worked. After you build or change something, V
 You have many tool iterations per turn for exactly this — spend them confirming, not guessing.
 
 # Testing and running the game
-The plugin works in EDIT mode AND during a playtest (Run/Play): run_luau and set_property apply to whichever session is active.
-- Test pure logic yourself in edit: require a ModuleScript and call its functions, construct objects, fire signals, and assert results via run_luau — no playtest needed.
-- To exercise physics / gameplay / runtime scripts you may TRY a no-character simulation from run_luau: `game:GetService("RunService"):Run()` starts it and `:Stop()` ends it. If Studio blocks this from a plugin you will get an error — report it and ask the user to press Play instead.
-- During any playtest, runtime script errors show up in get_output — read it, fix the script, and re-test. Close the loop exactly as you would in edit.
+Drive yourself from EDIT mode — run_luau, HttpService, and all tools work there. Two Roblox limits to respect during a playtest:
+- HttpService is SERVER-ONLY. In an F5 "Play" test the plugin only works in the Studio SERVER view (the Client/Server dropdown), never the client view.
+- run_luau uses loadstring, which is DISABLED at runtime unless ServerScriptService.LoadStringEnabled is true. The STRUCTURED tools (get_tree, get_properties, set_property, search, get_output) do NOT use loadstring and work fine during a playtest.
+Best way to test gameplay WITHOUT those headaches — simulate IN-PLACE from edit: `game:GetService("RunService"):Run()` starts physics + the scene's own scripts while the plugin stays in the edit/server context (so HttpService keeps working). Then OBSERVE with get_output (errorsOnly) and get_properties — neither needs loadstring — and call `:Stop()` when done. Set the scene up with run_luau in edit BEFORE Run(). If you specifically need run_luau DURING a playtest, set ServerScriptService.LoadStringEnabled = true first (you can do that in edit).
 
 # Working rules
 - Make one coherent change at a time; after a mutation, read it back (get_properties) or re-query to confirm it took before moving on.
