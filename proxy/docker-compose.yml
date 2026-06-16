@@ -14,11 +14,14 @@ services:
     pull_policy: missing
     command: ["./CLIProxyAPI", "-config", "/CLIProxyAPI/config.yaml"]
     ports:
-      - "127.0.0.1:8317:8317" # loopback ONLY — never a bare 8317:8317
+      # Host 8318 -> container 8317. Host 8317 is taken by the TemporalRift proxy on this
+      # machine; 8318 keeps the Studio proxy fully independent. Loopback ONLY.
+      - "127.0.0.1:8318:8317"
     volumes:
       - ./config.yaml:/CLIProxyAPI/config.yaml:ro
       - cliproxy-auth:/data/cli-proxy-api
 
 volumes:
   cliproxy-auth:
-    name: cliproxy-auth # explicit name so login.ps1's bare volume matches compose's
+    name: cliproxy-auth # the volume login.ps1 created (holds the subscription token)
+    external: true # created outside compose (by login.ps1) — don't recreate, don't warn

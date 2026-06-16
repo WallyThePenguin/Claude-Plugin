@@ -10,8 +10,15 @@ if (Test-Path $config) {
 }
 
 # 32 random bytes -> 64 lowercase hex chars (no '|', which CLIProxyAPI disallows in keys).
+# Use Create().GetBytes so this works on Windows PowerShell 5.1 (.NET Framework) too —
+# the static RandomNumberGenerator.Fill is .NET Core/5+ only.
 $bytes = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+	$rng.GetBytes($bytes)
+} finally {
+	$rng.Dispose()
+}
 $key = -join ($bytes | ForEach-Object { $_.ToString("x2") })
 
 (Get-Content $example -Raw).Replace("REPLACE_WITH_HEX_INBOUND_KEY", $key) |

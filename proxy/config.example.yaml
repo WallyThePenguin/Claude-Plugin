@@ -1,14 +1,14 @@
 # CLIProxyAPI config for the local Studio Agent model proxy.
-# Mirrors Project Hecate's verified-minimal template (the fields known to boot).
-# Copy to config.yaml (gitignored) via gen-key.ps1, which injects the real inbound key.
+# Structure mirrors the verified-working TemporalRift proxy on this machine (same image,
+# same Claude subscription). Copy to config.yaml (gitignored) via gen-key.ps1, which
+# injects the real inbound key.
 
-# Bind all interfaces INSIDE the container. Loopback is enforced by the compose port
-# mapping (127.0.0.1:8317:8317) — NOT by binding 127.0.0.1 here (that would break the map).
-host: ""
+# Bind all interfaces INSIDE the container; loopback is enforced by the compose port map.
+host: "0.0.0.0"
 port: 8317
 
-# The subscription OAuth token is written here by `-claude-login` and persists in the
-# `cliproxy-auth` named volume mounted at this path. NOT in this file, NOT in the image.
+# The subscription OAuth token (from `-claude-login`) persists in the cliproxy-auth volume
+# mounted at this path. NOT in this file, NOT in the image.
 auth-dir: "/data/cli-proxy-api"
 
 # Inbound auth: the ONLY key a caller (the plugin) presents, as `Authorization: Bearer <key>`.
@@ -16,8 +16,24 @@ auth-dir: "/data/cli-proxy-api"
 api-keys:
   - "REPLACE_WITH_HEX_INBOUND_KEY"
 
+# Provider routing. Present in the working reference; a minimal config WITHOUT this returns
+# "unknown provider for model" on /v1/messages even though /v1/models lists the model.
+routing:
+  strategy: round-robin
+  session-affinity: true
+  session-affinity-ttl: 3600
+
+request-retry: 3
+max-retry-interval: 30
+
+# On subscription rolling-window limits, prefer switching rather than hard-failing.
+quota-exceeded:
+  switch-project: true
+  switch-preview-model: true
+
 # Management / control panel off (a local single-user proxy doesn't need it).
 remote-management:
+  allow-remote: false
   secret-key: ""
   disable-control-panel: true
 

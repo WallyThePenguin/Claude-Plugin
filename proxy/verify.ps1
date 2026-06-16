@@ -1,5 +1,7 @@
 # Acceptance gate for the local proxy. Uses curl.exe (NOT the PowerShell `curl` alias).
 # Reads the inbound key from config.yaml and exercises the three contract checks.
+# Host port defaults to 8318 (8317 is taken by the TemporalRift proxy on this machine).
+param([int]$Port = 8318)
 $ErrorActionPreference = "Stop"
 $config = Join-Path $PSScriptRoot "config.yaml"
 if (-not (Test-Path $config)) { throw "config.yaml not found - run .\gen-key.ps1 first." }
@@ -7,7 +9,7 @@ if (-not (Test-Path $config)) { throw "config.yaml not found - run .\gen-key.ps1
 $m = Select-String -Path $config -Pattern '^\s*-\s*"([0-9a-fA-F]{16,})"' | Select-Object -First 1
 if (-not $m) { throw "No inbound key found in config.yaml (still the placeholder? run gen-key.ps1)." }
 $key = $m.Matches[0].Groups[1].Value
-$base = "http://127.0.0.1:8317"
+$base = "http://127.0.0.1:$Port"
 
 Write-Host "1) Unauthenticated GET /v1/models (expect 401; 200 = warn: model list ungated)..."
 $code = & curl.exe -s -o NUL -w "%{http_code}" "$base/v1/models"
