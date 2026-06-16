@@ -12,6 +12,7 @@ export type Deps = {
 	runLuau: any,
 	agentLoop: any,
 	systemPrompt: string,
+	conversation: any,
 }
 
 local function makeText(parent: Instance, text: string, height: number, order: number): TextLabel
@@ -111,54 +112,82 @@ function Widget.mount(gui: Instance, deps: Deps)
 		result.Text = out.text
 	end)
 
-	makeText(root, "Agent task:", 16, 9)
+	makeText(root, "Chat (remembers the conversation):", 16, 9)
 	local taskBox = Instance.new("TextBox")
 	taskBox.Size = UDim2.new(1, 0, 0, 56)
 	taskBox.MultiLine = true
 	taskBox.ClearTextOnFocus = false
 	taskBox.TextXAlignment = Enum.TextXAlignment.Left
 	taskBox.TextYAlignment = Enum.TextYAlignment.Top
-	taskBox.PlaceholderText = "create a red part at 0,5,0"
+	taskBox.PlaceholderText = "Ask Claude to build something (follow-ups remember the chat)"
 	taskBox.LayoutOrder = 10
 	taskBox.Parent = root
 
 	local cancelled = false
 
-	local startBtn = makeButton(root, "Start agent", 11)
-	startBtn.Activated:Connect(function()
+	local function appendLine(line: string)
+		if result.Text == "" then
+			result.Text = line
+		else
+			result.Text = result.Text .. "\n" .. line
+		end
+	end
+
+	local sendBtn = makeButton(root, "Send", 11)
+	sendBtn.Activated:Connect(function()
+		local text = taskBox.Text
+		if text == "" then
+			return
+		end
 		cancelled = false
-		result.Text = ""
-		deps.agentLoop.start(deps.anthropic, deps.config, deps.systemPrompt, taskBox.Text, {
-			onEvent = function(event: string, data: any)
-				if event == "assistant_text" then
-					result.Text = result.Text .. "\n" .. tostring(data)
-					print("[agent] " .. tostring(data))
-				elseif event == "tool_use" then
-					status.Text = "running tool: " .. tostring(data.name)
-					print("[agent] tool_use -> " .. tostring(data.name))
-				elseif event == "tool_result" then
-					print(
-						"[agent] tool_result (error="
-							.. tostring(data.isError)
-							.. "): "
-							.. tostring(data.text)
-					)
-				elseif event == "iteration" then
-					status.Text = "iteration " .. tostring(data.n) .. "/" .. tostring(data.max)
-				elseif event == "done" then
-					status.Text = "done (" .. tostring(data.stop) .. ")"
-				elseif event == "error" then
-					status.Text = "error [" .. tostring(data.kind) .. "]"
-					result.Text = result.Text .. "\nERROR: " .. tostring(data.message)
-				end
-			end,
-			shouldCancel = function(): boolean
-				return cancelled
-			end,
-		})
+		appendLine("You: " .. text)
+		deps.agentLoop.send(
+			deps.anthropic,
+			deps.config,
+			deps.systemPrompt,
+			deps.conversation,
+			text,
+			{
+				onEvent = function(event: string, data: any)
+					if event == "assistant_text" then
+						appendLine("Claude: " .. tostring(data))
+						print("[agent] " .. tostring(data))
+					elseif event == "tool_use" then
+						status.Text = "running tool: " .. tostring(data.name)
+						print("[agent] tool_use -> " .. tostring(data.name))
+					elseif event == "tool_result" then
+						print(
+							"[agent] tool_result (error="
+								.. tostring(data.isError)
+								.. "): "
+								.. tostring(data.text)
+						)
+					elseif event == "iteration" then
+						status.Text = "iteration " .. tostring(data.n) .. "/" .. tostring(data.max)
+					elseif event == "done" then
+						status.Text = "done (" .. tostring(data.stop) .. ")"
+						taskBox.Text = "" -- clear input only on success; a failed turn keeps it to resend
+					elseif event == "error" then
+						status.Text = "error [" .. tostring(data.kind) .. "]"
+						appendLine("[error] " .. tostring(data.message))
+					end
+				end,
+				shouldCancel = function(): boolean
+					return cancelled
+				end,
+			}
+		)
 	end)
 
-	local stopBtn = makeButton(root, "Stop", 12)
+	local newBtn = makeButton(root, "New chat", 12)
+	newBtn.Activated:Connect(function()
+		cancelled = true
+		deps.conversation:clear()
+		result.Text = ""
+		status.Text = "new chat"
+	end)
+
+	local stopBtn = makeButton(root, "Stop", 13)
 	stopBtn.Activated:Connect(function()
 		cancelled = true
 		status.Text = "stopping after current step..."
