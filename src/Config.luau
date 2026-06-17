@@ -8,8 +8,11 @@ export type ConfigValue = string | number | boolean
 
 -- All known setting keys, with their hard defaults. M11 retry/confirm defaults
 -- are included now to avoid later schema churn.
--- baseUrl defaults to 127.0.0.1:8318 — the local end of the SSH tunnel to the
--- model proxy (see proxy/tunnel.ps1); host 8317 is taken by another local proxy.
+-- baseUrl defaults to 127.0.0.1:8318 — the local end of the SSH tunnel to hecate's CLIProxyAPI
+-- (proxy/tunnel.ps1). NOTE: every CLIProxyAPI subscription-OAuth daemon (hecate's AND a fresh local
+-- one) STRIPS the client `system` field and injects its own Claude Code prompt — verified live. So the
+-- plugin delivers its SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which
+-- passes through any such proxy. The proxy choice therefore no longer affects prompt delivery.
 local DEFAULTS = {
 	baseUrl = "http://127.0.0.1:8318",
 	proxyKey = "",

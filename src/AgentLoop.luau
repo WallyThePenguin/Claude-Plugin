@@ -93,14 +93,52 @@ local function runLoop(
 	-- `update_tasks` mutates context.taskList; `remember`/`forget` mutate context.memory).
 	local toolContext =
 		{ config = config, anthropic = anthropic, taskList = taskList, memory = memory }
-	-- Compose the effective system prompt ONCE per Send: base + the recalled cross-session memory.
-	-- Memory rides in the system prompt (not the message history), so compaction never strips it.
-	local effectiveSystem = systemPrompt
-	if memory ~= nil then
-		local block = memory:promptBlock()
-		if block ~= "" then
-			effectiveSystem = (systemPrompt or "") .. "\n\n" .. block
+
+	-- System-prompt + memory delivery (verified live): the model proxy (CLIProxyAPI subscription path)
+	-- STRIPS the client `system` field and injects its own Claude Code prompt, so neither the plugin's
+	-- SystemPrompt nor the recalled memory reach the model via `system`. MESSAGE content DOES pass
+	-- through, so we deliver both as a LEADING user/assistant pair prepended to the sent messages. The
+	-- preamble is built once per Send and is NOT stored in conversation.messages, so history,
+	-- persistence, rollback, and compaction are all unaffected. `system` is omitted from the request.
+	local function buildPreamble(): { any }
+		local instructions = systemPrompt or ""
+		if memory ~= nil then
+			local block = memory:promptBlock()
+			if block ~= "" then
+				instructions = if instructions == "" then block else instructions .. "\n\n" .. block
+			end
 		end
+		if instructions == "" then
+			return {}
+		end
+		return {
+			{
+				role = "user",
+				content = "These are your operating instructions for this entire conversation. Follow "
+					.. "them as your system prompt; the user's actual messages begin after your "
+					.. "acknowledgement.\n\n"
+					.. instructions,
+			},
+			{
+				role = "assistant",
+				content = "Understood. I'll follow these instructions throughout.",
+			},
+		}
+	end
+	local preamble = buildPreamble()
+	-- A fresh array = preamble .. live messages, rebuilt per send (messages grows across the loop).
+	local function withPreamble(): { any }
+		if #preamble == 0 then
+			return messages
+		end
+		local out: { any } = {}
+		for _, m in preamble do
+			table.insert(out, m)
+		end
+		for _, m in messages do
+			table.insert(out, m)
+		end
+		return out
 	end
 
 	for i = 1, maxIter do
@@ -127,7 +165,7 @@ local function runLoop(
 			res = Retry.sendWithRetry(
 				anthropic,
 				config,
-				{ messages = messages, tools = tools, system = effectiveSystem },
+				{ messages = withPreamble(), tools = tools },
 				emit,
 				cancelled
 			)

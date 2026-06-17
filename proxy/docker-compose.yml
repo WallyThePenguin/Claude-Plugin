@@ -14,9 +14,10 @@ services:
     pull_policy: missing
     command: ["./CLIProxyAPI", "-config", "/CLIProxyAPI/config.yaml"]
     ports:
-      # Host 8318 -> container 8317. Host 8317 is taken by the TemporalRift proxy on this
-      # machine; 8318 keeps the Studio proxy fully independent. Loopback ONLY.
-      - "127.0.0.1:8318:8317"
+      # Host 8319 -> container 8317. Host 8317 = TemporalRift proxy; 8318 = the SSH tunnel to
+      # hecate (keep it free for SSH sessions). 8319 keeps this dedicated daemon independent of
+      # both. Loopback ONLY.
+      - "127.0.0.1:8319:8317"
     volumes:
       - ./config.yaml:/CLIProxyAPI/config.yaml:ro
       - cliproxy-auth:/data/cli-proxy-api
