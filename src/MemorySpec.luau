@@ -86,6 +86,26 @@ local function buildCases(): { Case }
 		return removed == true and #after == 0
 	end)
 
+	add("normalizeEntry accepts a finite positive-integer id with text", function()
+		local e = Memory.normalizeEntry({ id = 3, text = "  ok  ", createdAt = 9 })
+		return e ~= nil and e.id == 3 and e.text == "ok" and e.createdAt == 9
+	end)
+
+	add(
+		"normalizeEntry rejects bad id (nan/inf/float/zero/negative/non-number) and empty text",
+		function()
+			local nan = 0 / 0
+			return Memory.normalizeEntry({ id = nan, text = "x" }) == nil
+				and Memory.normalizeEntry({ id = math.huge, text = "x" }) == nil
+				and Memory.normalizeEntry({ id = 1.5, text = "x" }) == nil
+				and Memory.normalizeEntry({ id = 0, text = "x" }) == nil
+				and Memory.normalizeEntry({ id = -2, text = "x" }) == nil
+				and Memory.normalizeEntry({ id = "3", text = "x" }) == nil
+				and Memory.normalizeEntry({ id = 3, text = "   " }) == nil
+				and Memory.normalizeEntry("nope") == nil
+		end
+	)
+
 	add("renderBucket formats '#id text' and handles empty", function()
 		if Memory.renderBucket({}) ~= "(none)" then
 			return false, "empty render"

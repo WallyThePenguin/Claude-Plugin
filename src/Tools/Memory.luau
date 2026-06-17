@@ -22,6 +22,11 @@ local function remember(input: any, context: any): (string, boolean)
 	if type(args.text) ~= "string" then
 		return "remember requires { text = <string>, scope? = 'game'|'global' }", true
 	end
+	-- scope is optional (defaults to game), but a PRESENT scope must be valid (don't silently coerce a
+	-- typo like 'gloabl' into the game bucket).
+	if args.scope ~= nil and args.scope ~= "game" and args.scope ~= "global" then
+		return "remember scope must be 'game' or 'global' (or omitted for 'game')", true
+	end
 	return mem:add(args.scope, args.text), false
 end
 
@@ -31,7 +36,12 @@ local function forget(input: any, context: any): (string, boolean)
 		return "forget is not available here (no memory in this context)", true
 	end
 	local args = if type(input) == "table" then input else {}
-	if args.id == nil then
+	-- scope is REQUIRED here (id namespaces overlap between buckets, so a missing/typo'd scope could
+	-- target the wrong entry), and id must be a real number.
+	if args.scope ~= "game" and args.scope ~= "global" then
+		return "forget requires scope = 'game' or 'global'", true
+	end
+	if tonumber(args.id) == nil then
 		return "forget requires { scope = 'game'|'global', id = <number> }", true
 	end
 	return mem:forget(args.scope, args.id), false

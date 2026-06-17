@@ -380,6 +380,15 @@ function Widget.mount(gui: Instance, deps: Deps)
 		updateViews()
 	end
 
+	-- Return to the transcript, closing BOTH alternate views. Used by New chat / Send / open-session so
+	-- the transcript is never left hidden behind a still-open Memory or History view (a Send would
+	-- otherwise stream the whole reply into a hidden scroller).
+	local function showTranscript()
+		sessionList.Visible = false
+		memoryList.Visible = false
+		updateViews()
+	end
+
 	local function openSession(id: string)
 		local data = deps.sessions:load(id)
 		if not data then
@@ -391,7 +400,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 		currentId = id
 		rebuildTranscript()
 		renderChecklist(deps.taskList:snapshot())
-		showSessions(false)
+		showTranscript()
 		status.Text = "opened session"
 	end
 
@@ -529,7 +538,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 		clearScroller(transcript)
 		rowOrder = 0
 		renderChecklist({})
-		showSessions(false)
+		showTranscript()
 		status.Text = "new chat"
 	end)
 
@@ -539,7 +548,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 			return
 		end
 		cancelled = false
-		showSessions(false)
+		showTranscript()
 		addRow(YOU, "You: " .. text)
 		deps.agentLoop.send(
 			deps.anthropic,

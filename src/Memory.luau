@@ -109,6 +109,32 @@ function Memory.forgetFrom(entries: { Entry }, id: any): ({ Entry }, boolean)
 	return out, removed
 end
 
+-- Validate + normalize ONE raw stored item into an Entry, or nil if it can't be a valid one. The id
+-- must be a FINITE POSITIVE INTEGER (rejects a corrupt/hand-edited blob's NaN/inf/float/zero/negative
+-- id, which would otherwise break addTo's max-id scheme or make forget match the wrong/multiple rows).
+function Memory.normalizeEntry(raw: any): Entry?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local text = Memory.normalizeText(raw.text)
+	if text == nil then
+		return nil
+	end
+	local id = raw.id
+	if
+		type(id) ~= "number"
+		or id ~= id -- NaN
+		or id == math.huge
+		or id == -math.huge
+		or id <= 0
+		or id ~= math.floor(id) -- non-integer
+	then
+		return nil
+	end
+	local createdAt = if type(raw.createdAt) == "number" then raw.createdAt else 0
+	return { id = id, text = text, createdAt = createdAt }
+end
+
 -- Render a bucket as "#<id> <text>" lines, or "(none)".
 function Memory.renderBucket(entries: { Entry }): string
 	if #entries == 0 then
@@ -145,23 +171,26 @@ local function keyFor(scope: string): string
 	return gameKey()
 end
 
--- Load a bucket's entries, re-normalizing defensively (a corrupt/old blob can't inject junk).
+-- Load a bucket's entries, re-normalizing defensively so a corrupt/old/hand-edited blob can't inject
+-- junk: each item must pass normalizeEntry (finite positive-integer id + non-empty text); duplicate
+-- ids are dropped (keep the first) so forget always targets exactly one row; and the result is bounded
+-- to MAX_ENTRIES (keep the newest) so the always-on prompt injection stays capped regardless of the
+-- stored size.
 function Memory.loadBucket(self: Memory, scope: string): { Entry }
 	local raw = self._plugin:GetSetting(keyFor(scope))
 	local out: { Entry } = {}
 	if type(raw) == "table" then
+		local seen: { [number]: boolean } = {}
 		for _, e in ipairs(raw :: { any }) do
-			if type(e) == "table" then
-				local text = Memory.normalizeText(e.text)
-				if text ~= nil and type(e.id) == "number" then
-					table.insert(out, {
-						id = e.id,
-						text = text,
-						createdAt = if type(e.createdAt) == "number" then e.createdAt else 0,
-					})
-				end
+			local entry = Memory.normalizeEntry(e)
+			if entry ~= nil and not seen[entry.id] then
+				seen[entry.id] = true
+				table.insert(out, entry)
 			end
 		end
+	end
+	while #out > MAX_ENTRIES do
+		table.remove(out, 1)
 	end
 	return out
 end
