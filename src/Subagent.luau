@@ -90,26 +90,35 @@ function Subagent.run(opts: Opts): Result
 		end
 
 		if #toolUses == 0 then
-			-- Terminal turn: the child's final text is its return value.
-			return { text = collectText(data.content), ok = true, capped = false }
-		end
-
-		local toolResults: { any } = {}
-		for _, block in ipairs(toolUses) do
-			local content, isError = Tools.dispatch(block.name, block.input, context)
-			if type(content) == "string" and content == "" then
-				content = "(no output)"
+			-- No LOCAL tool calls. A server-side tool (web_search/web_fetch) can PAUSE mid-turn with
+			-- stop_reason "pause_turn": the assistant turn carries server_tool_use (+ maybe a partial
+			-- *_tool_result) and no tool_use. Echo it and LOOP to resume (re-send) — the paused turn
+			-- often has no final text yet, so returning here would stop the child early. Any other
+			-- stop_reason is terminal. (Mirrors the parent loop's pause_turn handling in AgentLoop.)
+			if data.stop_reason == "pause_turn" then
+				table.insert(messages, { role = "assistant", content = data.content })
+				lastText = collectText(data.content)
+			else
+				return { text = collectText(data.content), ok = true, capped = false }
 			end
-			table.insert(toolResults, {
-				type = "tool_result",
-				tool_use_id = block.id,
-				content = content,
-				is_error = isError,
-			})
+		else
+			local toolResults: { any } = {}
+			for _, block in ipairs(toolUses) do
+				local content, isError = Tools.dispatch(block.name, block.input, context)
+				if type(content) == "string" and content == "" then
+					content = "(no output)"
+				end
+				table.insert(toolResults, {
+					type = "tool_result",
+					tool_use_id = block.id,
+					content = content,
+					is_error = isError,
+				})
+			end
+			table.insert(messages, { role = "assistant", content = data.content })
+			table.insert(messages, { role = "user", content = toolResults })
+			lastText = collectText(data.content)
 		end
-		table.insert(messages, { role = "assistant", content = data.content })
-		table.insert(messages, { role = "user", content = toolResults })
-		lastText = collectText(data.content)
 	end
 
 	return {
