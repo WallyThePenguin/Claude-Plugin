@@ -41,9 +41,9 @@ local DEFAULTS = {
 	writerModel = "claude-sonnet-4-6", -- focused partitioned tasks; bump to opus for accuracy
 	writerMaxParallel = 3, -- max writer children per dispatch (excess truncated + reported)
 	writerMaxIterations = 20, -- per-child step cap
-	-- Web access (web_fetch / web_search).
-	webFetchMaxChars = 20000, -- hard cap on characters returned by web_fetch
-	webSearchMaxResults = 5, -- max results returned by web_search
+	-- Web access (Anthropic SERVER-SIDE web_search/web_fetch). `max_uses` bounds calls per turn.
+	webSearchMaxUses = 5, -- max server-side web_search calls per turn
+	webFetchMaxUses = 5, -- max server-side web_fetch calls per turn
 }
 
 -- Allowed models. Never Haiku.
@@ -233,14 +233,14 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "writerMaxIterations must be >= 1"
 		end
 		value = math.floor(value)
-	elseif key == "webFetchMaxChars" then
-		if type(value) ~= "number" or value ~= value or value < 100 then
-			return false, "webFetchMaxChars must be >= 100"
+	elseif key == "webSearchMaxUses" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "webSearchMaxUses must be >= 1"
 		end
 		value = math.floor(value)
-	elseif key == "webSearchMaxResults" then
+	elseif key == "webFetchMaxUses" then
 		if type(value) ~= "number" or value ~= value or value < 1 then
-			return false, "webSearchMaxResults must be >= 1"
+			return false, "webFetchMaxUses must be >= 1"
 		end
 		value = math.floor(value)
 	end
@@ -333,12 +333,12 @@ function Config.getWriterMaxIterations(self: Config): number
 	return self:get("writerMaxIterations") :: number
 end
 
-function Config.getWebFetchMaxChars(self: Config): number
-	return self:get("webFetchMaxChars") :: number
+function Config.getWebSearchMaxUses(self: Config): number
+	return self:get("webSearchMaxUses") :: number
 end
 
-function Config.getWebSearchMaxResults(self: Config): number
-	return self:get("webSearchMaxResults") :: number
+function Config.getWebFetchMaxUses(self: Config): number
+	return self:get("webFetchMaxUses") :: number
 end
 
 -- Forward-looking getters for the M11 retry/confirm keys. Not spec-pinned, but
