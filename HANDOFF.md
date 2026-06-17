@@ -47,6 +47,7 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 - `Compactor.luau` / `CompactorSpec.luau` — context-window auto-compaction (image pruning + summarize-and-replace); the spec is an in-Studio self-test like `SerializeSpec`. `AgentLoop` prunes every iteration, compacts proactively at 80% of the window + reactively on a context-length 400, and tracks `Conversation.lastPromptTokens`.
 - `Retry.luau` — `isTransient` + `sendWithRetry` (shared by `AgentLoop` and `Subagent`).
 - `Subagent.luau` / `Tools/Subagents.luau` / `SubagentsSpec.luau` — the `dispatch_subagents` tool fans out parallel READ-ONLY children (`Subagent.run`, Sonnet, allowlisted toolset); `Tools.schemasFor`/the dispatch `allowedTools` allowlist enforce read-only + depth-1.
+- `Tools/Web.luau` / `WebSpec.luau` — `web_fetch` (any non-roblox.com URL → text; `stripHtml`/`stripTags`) + `web_search` (DuckDuckGo HTML scrape, `parseDdg`); both read-only + in the subagent allowlist.
 - `SystemPrompt.luau` — the brain: tool policy, value-encoding scheme, scripting/GUI/rig/animation patterns, verify-and-iterate, testing model.
 - `Serialize.luau` / `Decode.luau` — Luau<->JSON tagged scheme (frozen comment block, byte-identical in both); Decode is total. `SerializeSpec.luau` is an in-Studio round-trip self-test.
 - `Logs.luau` — LogService ring buffer (captures runtime errors, incl. during playtest).
@@ -59,7 +60,7 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping ✅ · M3/M4 Serialize/Decode ✅
 · M5 run_luau ✅ · M6 agent loop ("create a red part" works) ✅ · M7 structured tools ✅ · M8 SystemPrompt ✅
 · M9 chat UI + session history ✅ · M12 conversation memory ✅ · M13 self-verify + playtest-aware ✅
-· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs) · **CONTEXT-WINDOW auto-compaction ✅** (image pruning + summarize-and-replace; adversarial review found+fixed 2 bugs; CompactorSpec self-test). **Both LIVE-VERIFIED in Studio** — capture: agent built a GUI + screenshotted it; compaction: `CompactorSpec` 12/12 + a forced low-threshold run fires the `[compacted…]` notice and the chat SURVIVES the limit (a 4th fix from that run strengthened the summary prompt to keep outstanding multi-step instructions; tiny-window summaries stay somewhat lossy under extreme settings, fine at production keep=6/800k). · **SUBAGENTS (`dispatch_subagents`) ✅** (feature #2 of capability parity — parallel READ-ONLY children on Sonnet, separate `Subagent.luau` runner, `Retry.luau` shared, allowlist at dispatch blocks writers + nesting). **LIVE-VERIFIED in Studio** — `SubagentsSpec` 6/6 + a real fan-out (3 parallel children scouted Workspace/Lighting/StarterGui and the parent synthesized; nothing mutated); adversarial review 0 confirmed bugs (a join-hang was caught + fixed pre-review). Latest commit: `git log`.
+· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs) · **CONTEXT-WINDOW auto-compaction ✅** (image pruning + summarize-and-replace; adversarial review found+fixed 2 bugs; CompactorSpec self-test). **Both LIVE-VERIFIED in Studio** — capture: agent built a GUI + screenshotted it; compaction: `CompactorSpec` 12/12 + a forced low-threshold run fires the `[compacted…]` notice and the chat SURVIVES the limit (a 4th fix from that run strengthened the summary prompt to keep outstanding multi-step instructions; tiny-window summaries stay somewhat lossy under extreme settings, fine at production keep=6/800k). · **SUBAGENTS (`dispatch_subagents`) ✅** (feature #2 of capability parity — parallel READ-ONLY children on Sonnet, separate `Subagent.luau` runner, `Retry.luau` shared, allowlist at dispatch blocks writers + nesting). **LIVE-VERIFIED in Studio** — `SubagentsSpec` 6/6 + a real fan-out (3 parallel children scouted Workspace/Lighting/StarterGui and the parent synthesized; nothing mutated); adversarial review 0 confirmed bugs (a join-hang was caught + fixed pre-review). · **WEB ACCESS (`web_fetch` + `web_search`) ✅** (feature #3 — `Tools/Web.luau`: fetch any page as text / DuckDuckGo search; both read-only + in the subagent allowlist). **LIVE-VERIFIED** — `WebSpec` 6/6 + a real run (web_fetch'd example.com, web_search'd via DDG and parsed results). The live test caught two HARD Roblox HttpService limits (see gotchas): **roblox.com domains are blocked** (can't fetch create.roblox.com docs) and **the User-Agent header is forbidden** — both fixed/worked-around. Latest commit: `git log`.
 
 ## Decisions made (authoritative)
 1. **Tunnel to hecate, not a local proxy** — local/TemporalRift proxies hit the cold-start "unknown provider" bug; hecate's is always warm. Client stays base-URL configurable.
@@ -106,13 +107,12 @@ children read, so it isn't writing (quiescent). Config: `subagentModel`/`subagen
 `subagentMaxIterations`(15). Live-verified (SubagentsSpec 6/6 + a 3-child fan-out) + review 0 bugs.
 
 ### 4. CAPABILITY PARITY — remaining features (the "everything you can do, inside Roblox" vision)
-The user wants the in-Studio agent to be a full peer. Subagents (✅) was #2. Next candidates, each its
-own brainstorm→spec→plan: **(a) web access** — `web_fetch` + `web_search` tools (it has `HttpService`;
-let it actually READ the Roblox docs the prompt already points at, and search the web) — cheapest
-high-impact, the likely next build; **(b) task tracking** — a visible multi-step build checklist;
-**(c) cross-session memory** — distilled knowledge across chats (like the memory files); **(d) skills**
-— reusable build recipes. Things that DON'T map to Roblox (skip): OS/computer-use (it acts via the
-DataModel API), raw git (place version history + ChangeHistory undo).
+The user wants the in-Studio agent to be a full peer. Done: subagents (#2 ✅), web access (#3 ✅ —
+but note it can't reach roblox.com, see gotchas). Remaining candidates, each its own
+brainstorm→spec→plan: **(a) task tracking** — a visible multi-step build checklist in the panel (the
+likely next build); **(b) cross-session memory** — distilled knowledge across chats (like the memory
+files); **(c) skills** — reusable build recipes. Things that DON'T map to Roblox (skip): OS/computer-use
+(it acts via the DataModel API), raw git (place version history + ChangeHistory undo).
 
 ### 5. Client-side RELAY (experimental)
 Make the agent work in the Play **client** view without swapping. HTTP is server-only, so the
@@ -128,6 +128,7 @@ If it hits a sandbox wall, fall back to the Server-view swap.
 - `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
 
 ## Gotchas for the next session
+- **Roblox HttpService limits (found via live test, invisible to static review):** (1) it **blocks roblox.com domains** — `RequestAsync` to create.roblox.com / devforum.roblox.com fails with "not allowed to access that Roblox resource", so `web_fetch` CANNOT read the official Roblox docs (use GitHub/MDN/forums, or the agent's own knowledge). (2) it **forbids setting the `User-Agent` header** ("Header 'User-Agent' is not allowed!") — don't set it; Roblox sends its own. DuckDuckGo's html endpoint works fine with Roblox's default UA.
 - **Subagent read-only/depth-1 is an ALLOWLIST, not a destructive-flag check:** `Tools.dispatch` rejects a tool when `context.allowedTools` is set and the name isn't in it. A destructive-flag check would NOT work — `dispatch_subagents` is itself `destructive=false`, so only an allowlist (the 5 read tools) blocks both writers AND nesting. Children must always be dispatched with `allowedTools`. Also: pcall-wrap the WHOLE subagent worker (incl. `buildSubagent`) so the `while done<n` join can't hang on a throw.
 - **Compaction rollback:** the abort/cancel rollback used an absolute message-count `snapshot`, but `Compactor.compact` shrinks the array — so AFTER a compaction the rollback must instead ensure the history ends on an assistant turn (the `compacted` flag + `rollback()` in `AgentLoop`), NOT count-truncate (which silently no-ops below the snapshot). `compact()` also validates the rebuilt history (`MessageUtil.isValidHistory`) before installing — a malformed kept tail → refuse, never ship a guaranteed 400.
 - **Empty JSON objects:** Roblox `HttpService:JSONEncode({})` emits `[]`, but Anthropic needs a
