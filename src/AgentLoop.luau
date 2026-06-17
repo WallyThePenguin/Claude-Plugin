@@ -31,6 +31,7 @@ local function runLoop(
 	config: any,
 	systemPrompt: string?,
 	conversation: any,
+	taskList: any,
 	snapshot: number,
 	cb: Callbacks
 )
@@ -78,8 +79,9 @@ local function runLoop(
 	local messages = conversation.messages
 	local tools = Tools.schemas()
 	local maxIter = config:getMaxIterations()
-	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar).
-	local toolContext = { config = config, anthropic = anthropic }
+	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar;
+	-- `update_tasks` mutates context.taskList — the in-panel checklist).
+	local toolContext = { config = config, anthropic = anthropic, taskList = taskList }
 
 	for i = 1, maxIter do
 		if cancelled() then
@@ -159,6 +161,7 @@ local function runLoop(
 				return
 			end
 			local toolResults: { any } = {}
+			local tasksChanged = false
 			for _, block in ipairs(toolUses) do
 				emit("tool_use", { name = block.name })
 				local content, isError = Tools.dispatch(block.name, block.input, toolContext)
@@ -175,9 +178,16 @@ local function runLoop(
 					content = content,
 					is_error = isError,
 				})
+				if block.name == "update_tasks" then
+					tasksChanged = true
+				end
 			end
 			table.insert(messages, { role = "assistant", content = data.content })
 			table.insert(messages, { role = "user", content = toolResults })
+			-- Reflect the new checklist to the panel (the tool already mutated taskList in place).
+			if tasksChanged and taskList ~= nil then
+				emit("tasks", taskList:snapshot())
+			end
 		end
 	end
 
@@ -205,6 +215,7 @@ function AgentLoop.send(
 	config: any,
 	systemPrompt: string?,
 	conversation: any,
+	taskList: any,
 	userText: string,
 	cb: Callbacks
 )
@@ -218,7 +229,8 @@ function AgentLoop.send(
 	task.spawn(function()
 		local snapshot = conversation:count()
 		conversation:appendUserText(userText)
-		local ok, err = pcall(runLoop, anthropic, config, systemPrompt, conversation, snapshot, cb)
+		local ok, err =
+			pcall(runLoop, anthropic, config, systemPrompt, conversation, taskList, snapshot, cb)
 		running = false
 		if not ok then
 			conversation:truncate(snapshot)

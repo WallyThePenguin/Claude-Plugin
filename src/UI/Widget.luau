@@ -13,12 +13,14 @@ export type Deps = {
 	systemPrompt: string,
 	conversation: any,
 	sessions: any,
+	taskList: any,
 }
 
 local TEXT = Color3.fromRGB(225, 225, 228)
 local MUTED = Color3.fromRGB(150, 150, 155)
 local YOU = Color3.fromRGB(120, 170, 255)
 local ERR = Color3.fromRGB(255, 120, 120)
+local DONE = Color3.fromRGB(120, 190, 130)
 local BTN_BG = Color3.fromRGB(56, 56, 62)
 
 local function button(text: string): TextButton
@@ -110,6 +112,12 @@ function Widget.mount(gui: Instance, deps: Deps)
 	-- Main area (flexes between the header rows ending at y=96 and the input row at the bottom).
 	local TOP = 96 -- three 26px header rows on a 32px stride: proxy-key (y0), sidecar-token (y32), control (y64).
 	local INPUT_H = 70
+	-- Checklist (update_tasks) layout constants. The checklist is pinned at y=TOP and the transcript
+	-- reflows below it; height is derived from task count + collapsed state (no AutomaticSize race).
+	local HEADER_H = 24
+	local ROW_H = 20
+	local MAX_BODY = 140
+	local GAP = 4
 	local function scroller(): ScrollingFrame
 		local sf = Instance.new("ScrollingFrame")
 		sf.Size = UDim2.new(1, 0, 1, -(TOP + INPUT_H + 4))
@@ -135,6 +143,118 @@ function Widget.mount(gui: Instance, deps: Deps)
 	local transcript = scroller()
 	local sessionList = scroller()
 	sessionList.Visible = false
+
+	-- Checklist container (between the control row and the transcript). Hidden when empty or while the
+	-- sessions/history view is shown. Manual height; the transcript's geometry follows via layoutChecklist().
+	local checklist = Instance.new("Frame")
+	checklist.Name = "Checklist"
+	checklist.BackgroundTransparency = 1
+	checklist.Position = UDim2.fromOffset(0, TOP)
+	checklist.Size = UDim2.fromScale(1, 0) -- placeholder; layoutChecklist() sets the real height
+	checklist.Visible = false
+	checklist.Parent = root
+
+	local checklistHeader = button("Tasks")
+	checklistHeader.BackgroundColor3 = Color3.fromRGB(44, 44, 48)
+	checklistHeader.Size = UDim2.new(1, 0, 0, HEADER_H)
+	checklistHeader.Position = UDim2.fromOffset(0, 0)
+	checklistHeader.TextXAlignment = Enum.TextXAlignment.Left
+	checklistHeader.TextSize = 13
+	checklistHeader.Parent = checklist
+	local headerPad = Instance.new("UIPadding")
+	headerPad.PaddingLeft = UDim.new(0, 6)
+	headerPad.Parent = checklistHeader
+
+	local checklistBody = Instance.new("ScrollingFrame")
+	checklistBody.Name = "ChecklistBody"
+	checklistBody.BackgroundTransparency = 1
+	checklistBody.BorderSizePixel = 0
+	checklistBody.Position = UDim2.fromOffset(0, HEADER_H)
+	checklistBody.Size = UDim2.fromScale(1, 0) -- placeholder; layoutChecklist() sets the real height
+	checklistBody.ScrollBarThickness = 4
+	checklistBody.CanvasSize = UDim2.new()
+	checklistBody.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	checklistBody.Parent = checklist
+	local bodyList = Instance.new("UIListLayout")
+	bodyList.Padding = UDim.new(0, 0)
+	bodyList.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyList.Parent = checklistBody
+	local bodyPad = Instance.new("UIPadding")
+	bodyPad.PaddingLeft = UDim.new(0, 6)
+	bodyPad.Parent = checklistBody
+
+	-- Checklist state + rendering ----------------------------------------------------------------
+	local currentTasks: { any } = {}
+	local checklistCollapsed = false
+
+	local function rebuildChecklistRows()
+		for _, child in checklistBody:GetChildren() do
+			if child:IsA("TextLabel") then
+				child:Destroy()
+			end
+		end
+		for i, t in ipairs(currentTasks) do
+			local glyph, color
+			if t.status == "completed" then
+				glyph, color = "●", DONE
+			elseif t.status == "in_progress" then
+				glyph, color = "◐", YOU
+			else
+				glyph, color = "○", MUTED
+			end
+			local row = Instance.new("TextLabel")
+			row.BackgroundTransparency = 1
+			row.Size = UDim2.new(1, -8, 0, ROW_H)
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.TextYAlignment = Enum.TextYAlignment.Center
+			row.TextTruncate = Enum.TextTruncate.AtEnd
+			row.TextColor3 = color
+			row.TextSize = 13
+			row.Font = Enum.Font.Gotham
+			row.Text = glyph .. "  " .. tostring(t.content)
+			row.LayoutOrder = i
+			row.Parent = checklistBody
+		end
+	end
+
+	-- Size the checklist from task count + collapsed state and reflow the transcript below it. Hidden
+	-- when empty or while the sessions view is shown. Called on every event that can change its height.
+	local function layoutChecklist()
+		local n = #currentTasks
+		local show = n > 0 and not sessionList.Visible
+		checklist.Visible = show
+
+		local done = 0
+		for _, t in ipairs(currentTasks) do
+			if t.status == "completed" then
+				done += 1
+			end
+		end
+		local chevron = if checklistCollapsed then "▸ " else "▾ "
+		checklistHeader.Text = chevron .. "Tasks  " .. tostring(done) .. "/" .. tostring(n)
+
+		local bodyH = if checklistCollapsed then 0 else math.min(n * ROW_H, MAX_BODY)
+		checklistBody.Visible = show and not checklistCollapsed
+		checklistBody.Size = UDim2.new(1, 0, 0, bodyH)
+
+		local h = if show then HEADER_H + bodyH else 0
+		checklist.Size = UDim2.new(1, 0, 0, h)
+
+		local top = TOP + (if h > 0 then h + GAP else 0)
+		transcript.Position = UDim2.fromOffset(0, top)
+		transcript.Size = UDim2.new(1, 0, 1, -(top + INPUT_H + 4))
+	end
+
+	local function renderChecklist(tasks: { any })
+		currentTasks = tasks or {}
+		rebuildChecklistRows()
+		layoutChecklist()
+	end
+
+	checklistHeader.Activated:Connect(function()
+		checklistCollapsed = not checklistCollapsed
+		layoutChecklist()
+	end)
 
 	-- Input row (bottom).
 	local taskBox = Instance.new("TextBox")
@@ -215,6 +335,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 		sessionList.Visible = show
 		transcript.Visible = not show
 		histBtn.Text = if show then "Back" else "History"
+		layoutChecklist()
 	end
 
 	local function openSession(id: string)
@@ -224,8 +345,10 @@ function Widget.mount(gui: Instance, deps: Deps)
 			return
 		end
 		deps.conversation:load(data.title, data.messages)
+		deps.taskList:load(data.tasks)
 		currentId = id
 		rebuildTranscript()
+		renderChecklist(deps.taskList:snapshot())
 		showSessions(false)
 		status.Text = "opened session"
 	end
@@ -284,9 +407,11 @@ function Widget.mount(gui: Instance, deps: Deps)
 	newBtn.Activated:Connect(function()
 		cancelled = true
 		deps.conversation:clear()
+		deps.taskList:clear()
 		currentId = deps.sessions:newId()
 		clearScroller(transcript)
 		rowOrder = 0
+		renderChecklist({})
 		showSessions(false)
 		status.Text = "new chat"
 	end)
@@ -304,6 +429,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 			deps.config,
 			deps.systemPrompt,
 			deps.conversation,
+			deps.taskList,
 			text,
 			{
 				onEvent = function(event: string, data: any)
@@ -320,6 +446,8 @@ function Widget.mount(gui: Instance, deps: Deps)
 						status.Text = "step " .. tostring(data.n) .. "/" .. tostring(data.max)
 					elseif event == "notice" then
 						addRow(MUTED, tostring(data))
+					elseif event == "tasks" then
+						renderChecklist(data)
 					elseif event == "status" then
 						status.Text = tostring(data)
 					elseif event == "done" then
@@ -327,7 +455,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 							then "step limit — say 'continue'"
 							else "done"
 						taskBox.Text = ""
-						deps.sessions:save(deps.conversation, currentId)
+						deps.sessions:save(deps.conversation, currentId, deps.taskList:snapshot())
 					elseif event == "error" then
 						status.Text = "error [" .. tostring(data.kind) .. "]"
 						addRow(ERR, "[error] " .. tostring(data.message))
@@ -345,9 +473,11 @@ function Widget.mount(gui: Instance, deps: Deps)
 		status.Text = "stopping after current step..."
 	end)
 
-	-- Render any existing conversation — restores the visible chat after a re-mount (e.g. across a
-	-- Studio play/edit transition that cleared the widget).
+	-- Render any existing conversation + checklist — restores the visible chat after a re-mount (e.g.
+	-- across a Studio play/edit transition that cleared the widget; the conversation + taskList live in
+	-- deps, so they survive the blank).
 	rebuildTranscript()
+	renderChecklist(deps.taskList:snapshot())
 end
 
 return Widget

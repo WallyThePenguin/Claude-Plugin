@@ -42,7 +42,9 @@ function Sessions.list(self: Sessions): { Meta }
 end
 
 -- Persist a conversation under `id` and move it to the front of the index. No-op for an empty chat.
-function Sessions.save(self: Sessions, conversation: any, id: string)
+-- `tasks` is the conversation's checklist (taskList:snapshot()) — a plain JSON-safe array; defaults to
+-- empty so an older caller / empty checklist persists cleanly.
+function Sessions.save(self: Sessions, conversation: any, id: string, tasks: { any }?)
 	if #conversation.messages == 0 then
 		return
 	end
@@ -54,6 +56,7 @@ function Sessions.save(self: Sessions, conversation: any, id: string)
 		title = title,
 		updatedAt = updatedAt,
 		messages = MessageUtil.stripImages(conversation.messages),
+		tasks = tasks or {},
 	})
 
 	local index = readIndex(self)
@@ -69,13 +72,17 @@ function Sessions.save(self: Sessions, conversation: any, id: string)
 	self._plugin:SetSetting(INDEX_KEY, rebuilt)
 end
 
--- Load a saved session's title + messages (to rebuild a Conversation), or nil if missing.
-function Sessions.load(self: Sessions, id: string): { title: string, messages: { any } }?
+-- Load a saved session's title + messages + checklist (to rebuild a Conversation + TaskList), or nil
+-- if missing. `tasks` defaults to {} for sessions saved before task tracking existed.
+function Sessions.load(
+	self: Sessions,
+	id: string
+): { title: string, messages: { any }, tasks: { any } }?
 	local raw = self._plugin:GetSetting(SESSION_PREFIX .. id)
 	if type(raw) ~= "table" then
 		return nil
 	end
-	return { title = raw.title or "", messages = raw.messages or {} }
+	return { title = raw.title or "", messages = raw.messages or {}, tasks = raw.tasks or {} }
 end
 
 function Sessions.delete(self: Sessions, id: string)
