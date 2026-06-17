@@ -183,7 +183,18 @@ local function runFetch(input: any, context: any): (string, boolean)
 
 	local text = Web.stripHtml(body)
 	if #text > want then
-		text = string.sub(text, 1, want) .. "\n…[truncated]"
+		-- Back up off a partial UTF-8 char so truncation never splits a multi-byte sequence
+		-- (continuation bytes are 0x80-0xBF). string.byte returns nil past the end -> stop.
+		local cut = want
+		while cut > 0 do
+			local b = string.byte(text, cut + 1)
+			if b ~= nil and b >= 0x80 and b < 0xC0 then
+				cut -= 1
+			else
+				break
+			end
+		end
+		text = string.sub(text, 1, cut) .. "\n…[truncated]"
 	end
 	return text, false
 end
@@ -204,11 +215,11 @@ local function runSearch(input: any, context: any): (string, boolean)
 		want = math.min(math.floor(args.maxResults), cap)
 	end
 
+	-- NOTE: Roblox HttpService forbids setting the User-Agent header ("Header 'User-Agent' is not
+	-- allowed!"), so we send with Roblox's default UA. DuckDuckGo may serve or block it — web_search is
+	-- best-effort either way.
 	local url = "https://html.duckduckgo.com/html/?q=" .. HttpService:UrlEncode(query)
-	local ok, body = httpGet(url, {
-		["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-			.. "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-	})
+	local ok, body = httpGet(url)
 	if not ok then
 		return "web_search: " .. body, true
 	end
