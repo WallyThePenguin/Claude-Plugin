@@ -110,12 +110,35 @@ children read, so it isn't writing (quiescent). Config: `subagentModel`/`subagen
 
 ### 4. CAPABILITY PARITY — remaining features (the "everything you can do, inside Roblox" vision)
 The user wants the in-Studio agent to be a full peer. Done: subagents (#2 ✅), web access (#3 ✅ —
-but note it can't reach roblox.com, see gotchas), **task tracking (#4 ✅ — `update_tasks`, live-verified;
+UPGRADED 2026-06-17 to Anthropic SERVER-side web_search/web_fetch, which DO reach roblox.com — LIVE-VERIFIED; spec+plan `docs/superpowers/{specs,plans}/2026-06-17-*server-side-web-tools*`), **task tracking (#4 ✅ — `update_tasks`, live-verified;
 spec/plan dated 2026-06-17)**, **cross-session memory (#5 ✅ — `remember`/`forget`, live-verified;
 spec `docs/superpowers/specs/2026-06-17-studio-agent-cross-session-memory-design.md`, plan
 `docs/superpowers/plans/2026-06-17-cross-session-memory.md`; required the `system`→preamble delivery
 fix, see "The connection")**. Remaining: **skills** — reusable build recipes (own brainstorm→spec→plan).
 Things that DON'T map to Roblox (skip): OS/computer-use (it acts via the DataModel API), raw git.
+
+**SERVER-SIDE WEB TOOLS ✅ LIVE-VERIFIED (2026-06-17)** — `web_fetch`/`web_search` moved from client-side
+HttpService (roblox.com-blocked) to Anthropic's DIRECT server-side tools (`web_search_20250305` /
+`web_fetch_20250910`). Proven via a probe (CLIProxyAPI forwards server tools on the subscription path;
+the code-exec `_20260209` variants `too_many_requests`, so use the direct versions) and LIVE-VERIFIED in
+Studio on the hecate tunnel: the agent `web_fetch`ed create.roblox.com (metadata) + the GitHub mirror
+(full body), `web_search`ed and cited URLs, and a `dispatch_subagents` research child ran its OWN
+server-side `web_search` and cited a devforum.roblox.com URL. Spec `docs/superpowers/specs/
+2026-06-17-studio-agent-server-side-web-tools-design.md`, plan `docs/superpowers/plans/
+2026-06-17-server-side-web-tools.md`. Adversarial review (Workflow) found+fixed 1 MED bug: `Subagent.run`
+lacked the parent loop's `pause_turn` handling, so a child mid-server-tool-turn returned prematurely —
+now mirrors the parent (echo + resume). Integration was tiny because the loop already ignores
+`server_tool_use` (collects only `tool_use`) and `isValidHistory`/`pause_turn` were already compatible.
+
+**SKILLS spec + plan are WRITTEN (2026-06-17) but NOT yet implemented** — spec
+`docs/superpowers/specs/2026-06-17-studio-agent-skills-design.md` (no plan committed yet; write it next):
+built-in Roblox build recipes (leaderstats, shop-gui, r15-npc, datastore-save, parallel-zones) + Studio-
+adapted ports of Claude's process skills (brainstorm-a-build, plan-a-build, test-first, debug-
+systematically, review-my-build, gui-design-quality, create-skill, research-a-topic) + self-authored
+GLOBAL-scope skills (save_skill/delete_skill, persisted like memory). `use_skill(name, args?)` returns the
+recipe TEXT which the agent executes with existing tools (composes with dispatch_writers). Catalog rides
+the leading preamble; 3 parent-only non-destructive tools. research-a-topic is now backed by the real
+server-side web access just shipped. **NEXT: writing-plans for SKILLS, then implement.**
 
 **Delivery now consistent across all send paths (commit `4895fa4`):** `AgentLoop`, `Subagent`, and
 `Compactor` all deliver their system prompt via a leading message (`MessageUtil.withSystemPreamble`/
@@ -137,7 +160,7 @@ If it hits a sandbox wall, fall back to the Server-view swap.
 - `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
 
 ## Gotchas for the next session
-- **Roblox HttpService limits (found via live test, invisible to static review):** (1) it **blocks roblox.com domains** — `RequestAsync` to create.roblox.com / devforum.roblox.com fails with "not allowed to access that Roblox resource", so `web_fetch` CANNOT read the official Roblox docs (use GitHub/MDN/forums, or the agent's own knowledge). (2) it **forbids setting the `User-Agent` header** ("Header 'User-Agent' is not allowed!") — don't set it; Roblox sends its own. DuckDuckGo's html endpoint works fine with Roblox's default UA.
+- **Roblox HttpService limits (found via live test, invisible to static review):** (1) it **blocks roblox.com domains** — `RequestAsync` to create.roblox.com / devforum.roblox.com fails with "not allowed to access that Roblox resource", this still applies to the plugin's OWN HttpService calls (the Anthropic connection, the capture sidecar). **BUT `web_fetch`/`web_search` are NO LONGER client-side — as of 2026-06-17 they are Anthropic SERVER-side tools (`web_search_20250305`/`web_fetch_20250910`), executed on Anthropic's infra, so they DO reach create.roblox.com + the dev forum (LIVE-VERIFIED).** Caveat: create.roblox.com is a JS SPA, so a raw fetch returns mostly page metadata — use the GitHub creator-docs raw mirror (raw.githubusercontent.com/Roblox/creator-docs/...) for full doc bodies. (The client-side `Tools/Web.luau`/`WebSpec.luau` + the DDG-scrape path were DELETED.) (2) it **forbids setting the `User-Agent` header** ("Header 'User-Agent' is not allowed!") — don't set it; Roblox sends its own. DuckDuckGo's html endpoint works fine with Roblox's default UA.
 - **Subagent read-only/depth-1 is an ALLOWLIST, not a destructive-flag check:** `Tools.dispatch` rejects a tool when `context.allowedTools` is set and the name isn't in it. A destructive-flag check would NOT work — `dispatch_subagents` is itself `destructive=false`, so only an allowlist (the 5 read tools) blocks both writers AND nesting. Children must always be dispatched with `allowedTools`. Also: pcall-wrap the WHOLE subagent worker (incl. `buildSubagent`) so the `while done<n` join can't hang on a throw.
 - **Compaction rollback:** the abort/cancel rollback used an absolute message-count `snapshot`, but `Compactor.compact` shrinks the array — so AFTER a compaction the rollback must instead ensure the history ends on an assistant turn (the `compacted` flag + `rollback()` in `AgentLoop`), NOT count-truncate (which silently no-ops below the snapshot). `compact()` also validates the rebuilt history (`MessageUtil.isValidHistory`) before installing — a malformed kept tail → refuse, never ship a guaranteed 400.
 - **Task-list rollback in lockstep:** `update_tasks` mutates `deps.taskList` IN PLACE and the panel re-renders mid-turn, so on a non-clean exit the loop must restore the taskList alongside the conversation (`taskSnapshot` captured at Send start; restored in `rollback()` AND the `AgentLoop.send` outer failsafe), else the panel (and a cancel-path save) desyncs from the rolled-back history + persisted blob. The iteration-cap path does NOT roll back (keeps progress, resumable), so it keeps the checklist too. `update_tasks` is parent-only: not in the subagent `READ_ONLY` allowlist, and children's tool context carries no `taskList`.
