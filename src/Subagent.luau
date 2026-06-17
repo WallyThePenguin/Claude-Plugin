@@ -6,6 +6,7 @@
 
 local Tools = require(script.Parent.Tools)
 local Retry = require(script.Parent.Retry)
+local MessageUtil = require(script.Parent.MessageUtil)
 
 local Subagent = {}
 
@@ -48,7 +49,14 @@ function Subagent.run(opts: Opts): Result
 		anthropic = opts.anthropic,
 		allowedTools = opts.allowedTools,
 	}
-	local messages: { any } = { { role = "user", content = opts.taskPrompt } }
+	-- The model proxy strips the `system` field (see AgentLoop / HANDOFF), so the child's instructions
+	-- (SUBAGENT_BASE + role + the OUTPUT CONTRACT) are delivered as a LEADING preamble seeded into the
+	-- message history, NOT via `system`. Children are ephemeral (no compaction/persistence), so seeding
+	-- the preamble once into `messages` is fine; the loop appends after it.
+	local messages: { any } = MessageUtil.withSystemPreamble(
+		opts.systemPrompt,
+		{ { role = "user", content = opts.taskPrompt } }
+	)
 	local lastText = ""
 
 	for _ = 1, opts.maxIterations do
@@ -58,7 +66,6 @@ function Subagent.run(opts: Opts): Result
 		local res = Retry.sendWithRetry(opts.anthropic, opts.config, {
 			messages = messages,
 			tools = opts.toolSchemas,
-			system = opts.systemPrompt,
 			model = opts.model,
 		}, noop, cancelled)
 		if not res.ok then

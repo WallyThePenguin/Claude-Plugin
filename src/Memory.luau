@@ -3,11 +3,13 @@
 -- carried across every place — the user's preferences + reusable techniques) and "game" (one bucket
 -- per game.GameId — THIS place's architecture/conventions/decisions). Persisted via plugin:SetSetting
 -- (same mechanism as Config/Sessions). The agent writes via the remember/forget tools; recall is
--- always-on injection (promptBlock appended to the system prompt each Send). One instance in deps.memory.
+-- always-on (promptBlock() is folded into the leading message preamble each Send — the proxy strips
+-- the `system` field, see AgentLoop). One instance in deps.memory.
 --
 -- DURABLE: writes go straight to SetSetting and are NOT rolled back with the conversation on a
--- non-clean exit (unlike taskList). Memory rides in the SYSTEM prompt (not the message history), so
--- compaction never touches it.
+-- non-clean exit (unlike taskList). The preamble that carries memory is rebuilt per send and is NOT
+-- stored in conversation.messages, so compaction/pruning (which operate on conversation.messages)
+-- never touch memory.
 
 local Memory = {}
 Memory.__index = Memory

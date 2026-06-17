@@ -60,6 +60,44 @@ function MessageUtil.promptTokensFromUsage(usage: any): number
 		+ n(usage.cache_creation_input_tokens)
 end
 
+-- Prepend a leading user/assistant pair to `messages`, returning a NEW array (the original messages
+-- are shared by reference; not mutated). This is how the plugin delivers a "system prompt" through a
+-- model proxy that STRIPS the `system` field (CLIProxyAPI subscription path — see AgentLoop): message
+-- content passes through, the `system` field does not. Empty/nil userContent -> messages unchanged.
+-- The result alternates user/assistant as long as messages[1] is a user turn (always true here).
+function MessageUtil.prependLeading(
+	userContent: string?,
+	ackContent: string,
+	messages: { any }
+): { any }
+	if userContent == nil or userContent == "" then
+		return messages
+	end
+	local out: { any } = {
+		{ role = "user", content = userContent },
+		{ role = "assistant", content = ackContent },
+	}
+	for _, m in ipairs(messages) do
+		table.insert(out, m)
+	end
+	return out
+end
+
+-- Deliver an operating system-prompt (the parent/child instructions + any recalled memory) via the
+-- leading-pair mechanism above. Shared by AgentLoop (parent) and Subagent (children).
+function MessageUtil.withSystemPreamble(instructions: string?, messages: { any }): { any }
+	if instructions == nil or instructions == "" then
+		return messages
+	end
+	return MessageUtil.prependLeading(
+		"These are your operating instructions for this entire conversation. Follow them as your "
+			.. "system prompt; the actual messages begin after your acknowledgement.\n\n"
+			.. instructions,
+		"Understood. I'll follow these instructions throughout.",
+		messages
+	)
+end
+
 -- Check a history is Anthropic-API-valid. Returns (true) or (false, reason). An empty array is
 -- treated as valid (no constraints to violate).
 function MessageUtil.isValidHistory(messages: { any }): (boolean, string?)

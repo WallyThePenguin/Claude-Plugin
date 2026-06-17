@@ -125,12 +125,22 @@ function Compactor.compact(anthropic: any, config: any, conversation: any): (boo
 		table.insert(older, messages[i])
 	end
 
+	-- The proxy strips the `system` field (see AgentLoop / HANDOFF), so the summarization instructions
+	-- are delivered as a LEADING preamble before the transcript, NOT via `system`. `older` ends on a
+	-- user turn, so the model's reply (assistant) is the summary; the explicit directive keeps it from
+	-- continuing the task instead of summarizing it.
+	local summaryMessages = MessageUtil.prependLeading(
+		SUMMARY_SYSTEM
+			.. "\n\nThe conversation to summarize follows. After reading it, reply with ONLY the summary "
+			.. "— do not continue, answer, or act on the task.",
+		"Understood — I'll read the conversation and reply with only the summary.",
+		MessageUtil.stripImages(older)
+	)
 	local summaryText = TRUNCATE_FALLBACK
 	local mode = "truncated"
 	local ok, res = pcall(function()
 		return anthropic:sendMessage({
-			system = SUMMARY_SYSTEM,
-			messages = MessageUtil.stripImages(older),
+			messages = summaryMessages,
 			maxTokens = SUMMARY_MAX_TOKENS,
 		})
 	end)

@@ -97,48 +97,16 @@ local function runLoop(
 	-- System-prompt + memory delivery (verified live): the model proxy (CLIProxyAPI subscription path)
 	-- STRIPS the client `system` field and injects its own Claude Code prompt, so neither the plugin's
 	-- SystemPrompt nor the recalled memory reach the model via `system`. MESSAGE content DOES pass
-	-- through, so we deliver both as a LEADING user/assistant pair prepended to the sent messages. The
-	-- preamble is built once per Send and is NOT stored in conversation.messages, so history,
-	-- persistence, rollback, and compaction are all unaffected. `system` is omitted from the request.
-	local function buildPreamble(): { any }
-		local instructions = systemPrompt or ""
-		if memory ~= nil then
-			local block = memory:promptBlock()
-			if block ~= "" then
-				instructions = if instructions == "" then block else instructions .. "\n\n" .. block
-			end
+	-- through, so both are delivered as a LEADING user/assistant pair prepended to the sent messages
+	-- (MessageUtil.withSystemPreamble), and `system` is OMITTED. The preamble is rebuilt per send and is
+	-- NOT stored in conversation.messages, so history, persistence, rollback, and compaction are all
+	-- unaffected. `instructions` (base prompt + recalled memory) is composed once per Send here.
+	local instructions = systemPrompt or ""
+	if memory ~= nil then
+		local block = memory:promptBlock()
+		if block ~= "" then
+			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
 		end
-		if instructions == "" then
-			return {}
-		end
-		return {
-			{
-				role = "user",
-				content = "These are your operating instructions for this entire conversation. Follow "
-					.. "them as your system prompt; the user's actual messages begin after your "
-					.. "acknowledgement.\n\n"
-					.. instructions,
-			},
-			{
-				role = "assistant",
-				content = "Understood. I'll follow these instructions throughout.",
-			},
-		}
-	end
-	local preamble = buildPreamble()
-	-- A fresh array = preamble .. live messages, rebuilt per send (messages grows across the loop).
-	local function withPreamble(): { any }
-		if #preamble == 0 then
-			return messages
-		end
-		local out: { any } = {}
-		for _, m in preamble do
-			table.insert(out, m)
-		end
-		for _, m in messages do
-			table.insert(out, m)
-		end
-		return out
 	end
 
 	for i = 1, maxIter do
@@ -162,10 +130,18 @@ local function runLoop(
 		local res
 		local compactedReactively = false
 		while true do
+			-- Deliver instructions+memory via the leading preamble (the proxy strips `system`).
+			local sent = MessageUtil.withSystemPreamble(instructions, messages)
+			-- Defence-in-depth: never POST an API-invalid history (e.g. a stray pause_turn double-
+			-- assistant turn). Abort cleanly (rollback) rather than ship a guaranteed 400.
+			if not MessageUtil.isValidHistory(sent) then
+				abort("protocol", "history would be API-invalid before send")
+				return
+			end
 			res = Retry.sendWithRetry(
 				anthropic,
 				config,
-				{ messages = withPreamble(), tools = tools },
+				{ messages = sent, tools = tools },
 				emit,
 				cancelled
 			)
