@@ -20,7 +20,8 @@ export type Descriptor = {
 	run: (input: any, context: any) -> (string, boolean),
 }
 
-local READ_ONLY = { "get_tree", "search", "get_properties", "get_output", "capture" }
+local READ_ONLY =
+	{ "get_tree", "search", "get_properties", "get_output", "capture", "web_fetch", "web_search" }
 
 local function encodeResult(payload: { [string]: any }): string
 	local ok, encoded = pcall(function(): string

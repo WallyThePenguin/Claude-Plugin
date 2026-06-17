@@ -34,6 +34,9 @@ local DEFAULTS = {
 	subagentModel = "claude-sonnet-4-6", -- children run on the cheaper/faster model
 	subagentMaxParallel = 4, -- max children per dispatch (excess truncated + reported)
 	subagentMaxIterations = 15, -- per-child step cap
+	-- Web access (web_fetch / web_search).
+	webFetchMaxChars = 20000, -- hard cap on characters returned by web_fetch
+	webSearchMaxResults = 5, -- max results returned by web_search
 }
 
 -- Allowed models. Never Haiku.
@@ -209,6 +212,16 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "subagentMaxIterations must be >= 1"
 		end
 		value = math.floor(value)
+	elseif key == "webFetchMaxChars" then
+		if type(value) ~= "number" or value ~= value or value < 100 then
+			return false, "webFetchMaxChars must be >= 100"
+		end
+		value = math.floor(value)
+	elseif key == "webSearchMaxResults" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "webSearchMaxResults must be >= 1"
+		end
+		value = math.floor(value)
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -285,6 +298,14 @@ end
 
 function Config.getSubagentMaxIterations(self: Config): number
 	return self:get("subagentMaxIterations") :: number
+end
+
+function Config.getWebFetchMaxChars(self: Config): number
+	return self:get("webFetchMaxChars") :: number
+end
+
+function Config.getWebSearchMaxResults(self: Config): number
+	return self:get("webSearchMaxResults") :: number
 end
 
 -- Forward-looking getters for the M11 retry/confirm keys. Not spec-pinned, but
