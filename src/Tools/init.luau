@@ -17,6 +17,7 @@ local PropertiesTool = require(script.Properties)
 local OutputTool = require(script.Output)
 local CreateTool = require(script.Create)
 local CaptureTool = require(script.Capture)
+local SubagentsTool = require(script.Subagents)
 
 local Tools = {}
 
@@ -76,6 +77,9 @@ end
 for _, descriptor in CaptureTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
+for _, descriptor in SubagentsTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
 
 local byName: { [string]: Descriptor } = {}
 for _, descriptor in registry do
@@ -95,6 +99,25 @@ function Tools.schemas(): { any }
 	return out
 end
 
+-- Like schemas(), but filtered to a named subset (used to give a subagent a read-only toolset).
+function Tools.schemasFor(names: { string }): { any }
+	local want: { [string]: boolean } = {}
+	for _, n in names do
+		want[n] = true
+	end
+	local out: { any } = {}
+	for _, descriptor in registry do
+		if want[descriptor.name] then
+			table.insert(out, {
+				name = descriptor.name,
+				description = descriptor.description,
+				input_schema = descriptor.inputSchema,
+			})
+		end
+	end
+	return out
+end
+
 -- Look up a descriptor (used by M11's destructive-confirm gate).
 function Tools.get(name: string): Descriptor?
 	return byName[name]
@@ -110,6 +133,16 @@ function Tools.dispatch(name: string, input: any, context: any): (Content, boole
 	local descriptor = byName[name]
 	if descriptor == nil then
 		return "unknown tool: " .. tostring(name), true
+	end
+	-- Subagent allowlist: when a context carries `allowedTools`, a tool NOT in the set is rejected
+	-- WITHOUT running. An allowlist (not a destructive-flag check) is required because
+	-- dispatch_subagents is itself non-destructive — only an allowlist blocks both writers AND nesting.
+	if
+		type(context) == "table"
+		and type(context.allowedTools) == "table"
+		and not context.allowedTools[name]
+	then
+		return "'" .. tostring(name) .. "' is not permitted for this subagent", true
 	end
 	local ok, content, isError = pcall(descriptor.run, input, context)
 	if not ok then
