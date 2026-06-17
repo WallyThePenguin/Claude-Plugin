@@ -32,6 +32,7 @@ local function runLoop(
 	systemPrompt: string?,
 	conversation: any,
 	taskList: any,
+	memory: any,
 	snapshot: number,
 	cb: Callbacks
 )
@@ -89,8 +90,18 @@ local function runLoop(
 	local tools = Tools.schemas()
 	local maxIter = config:getMaxIterations()
 	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar;
-	-- `update_tasks` mutates context.taskList — the in-panel checklist).
-	local toolContext = { config = config, anthropic = anthropic, taskList = taskList }
+	-- `update_tasks` mutates context.taskList; `remember`/`forget` mutate context.memory).
+	local toolContext =
+		{ config = config, anthropic = anthropic, taskList = taskList, memory = memory }
+	-- Compose the effective system prompt ONCE per Send: base + the recalled cross-session memory.
+	-- Memory rides in the system prompt (not the message history), so compaction never strips it.
+	local effectiveSystem = systemPrompt
+	if memory ~= nil then
+		local block = memory:promptBlock()
+		if block ~= "" then
+			effectiveSystem = (systemPrompt or "") .. "\n\n" .. block
+		end
+	end
 
 	for i = 1, maxIter do
 		if cancelled() then
@@ -116,7 +127,7 @@ local function runLoop(
 			res = Retry.sendWithRetry(
 				anthropic,
 				config,
-				{ messages = messages, tools = tools, system = systemPrompt },
+				{ messages = messages, tools = tools, system = effectiveSystem },
 				emit,
 				cancelled
 			)
@@ -225,6 +236,7 @@ function AgentLoop.send(
 	systemPrompt: string?,
 	conversation: any,
 	taskList: any,
+	memory: any,
 	userText: string,
 	cb: Callbacks
 )
@@ -239,8 +251,17 @@ function AgentLoop.send(
 		local snapshot = conversation:count()
 		local taskSnapshot = if taskList ~= nil then taskList:snapshot() else nil
 		conversation:appendUserText(userText)
-		local ok, err =
-			pcall(runLoop, anthropic, config, systemPrompt, conversation, taskList, snapshot, cb)
+		local ok, err = pcall(
+			runLoop,
+			anthropic,
+			config,
+			systemPrompt,
+			conversation,
+			taskList,
+			memory,
+			snapshot,
+			cb
+		)
 		running = false
 		if not ok then
 			conversation:truncate(snapshot)

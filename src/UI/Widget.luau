@@ -14,6 +14,7 @@ export type Deps = {
 	conversation: any,
 	sessions: any,
 	taskList: any,
+	memory: any,
 }
 
 local TEXT = Color3.fromRGB(225, 225, 228)
@@ -97,10 +98,14 @@ function Widget.mount(gui: Instance, deps: Deps)
 	histBtn.Size = UDim2.fromOffset(70, 26)
 	histBtn.Position = UDim2.fromOffset(82, 64)
 	histBtn.Parent = root
+	local memBtn = button("Memory")
+	memBtn.Size = UDim2.fromOffset(66, 26)
+	memBtn.Position = UDim2.fromOffset(158, 64)
+	memBtn.Parent = root
 	local status = Instance.new("TextLabel")
 	status.BackgroundTransparency = 1
-	status.Size = UDim2.new(1, -158, 0, 26)
-	status.Position = UDim2.fromOffset(158, 64)
+	status.Size = UDim2.new(1, -230, 0, 26)
+	status.Position = UDim2.fromOffset(230, 64)
 	status.TextColor3 = MUTED
 	status.TextSize = 12
 	status.Font = Enum.Font.Gotham
@@ -144,6 +149,8 @@ function Widget.mount(gui: Instance, deps: Deps)
 	local transcript = scroller()
 	local sessionList = scroller()
 	sessionList.Visible = false
+	local memoryList = scroller()
+	memoryList.Visible = false
 
 	-- Checklist container (between the control row and the transcript). Hidden when empty or while the
 	-- sessions/history view is shown. Manual height; the transcript's geometry follows via layoutChecklist().
@@ -222,7 +229,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 	-- when empty or while the sessions view is shown. Called on every event that can change its height.
 	local function layoutChecklist()
 		local n = #currentTasks
-		local show = n > 0 and not sessionList.Visible
+		local show = n > 0 and not sessionList.Visible and not memoryList.Visible
 		checklist.Visible = show
 
 		local done = 0
@@ -296,7 +303,9 @@ function Widget.mount(gui: Instance, deps: Deps)
 	local rowOrder = 0
 	local function clearScroller(sf: ScrollingFrame)
 		for _, child in sf:GetChildren() do
-			if child:IsA("GuiButton") or child:IsA("TextLabel") then
+			-- Destroy any visual child (TextLabel / TextButton / Frame rows); UIListLayout / UIPadding
+			-- are not GuiObjects, so they survive.
+			if child:IsA("GuiObject") then
 				child:Destroy()
 			end
 		end
@@ -342,11 +351,33 @@ function Widget.mount(gui: Instance, deps: Deps)
 	-- Sessions -----------------------------------------------------------------------------------
 	local currentId = deps.sessions:newId()
 
+	-- Forward declaration so a memory row's ✕ callback can refresh the list (defined after refreshSessions).
+	local refreshMemory: () -> ()
+
+	-- The transcript and the two alternate views (sessions, memory) are mutually exclusive; only one
+	-- shows at a time. layoutChecklist() hides the checklist while either alternate view is up.
+	local function updateViews()
+		transcript.Visible = not (sessionList.Visible or memoryList.Visible)
+		histBtn.Text = if sessionList.Visible then "Back" else "History"
+		memBtn.Text = if memoryList.Visible then "Back" else "Memory"
+		layoutChecklist()
+	end
+
 	local function showSessions(show: boolean)
 		sessionList.Visible = show
-		transcript.Visible = not show
-		histBtn.Text = if show then "Back" else "History"
-		layoutChecklist()
+		if show then
+			memoryList.Visible = false
+		end
+		updateViews()
+	end
+
+	local function showMemory(show: boolean)
+		memoryList.Visible = show
+		if show then
+			sessionList.Visible = false
+			refreshMemory()
+		end
+		updateViews()
 	end
 
 	local function openSession(id: string)
@@ -393,6 +424,77 @@ function Widget.mount(gui: Instance, deps: Deps)
 		end
 	end
 
+	-- Memory view --------------------------------------------------------------------------------
+	local function addMemLabel(text: string, color: Color3)
+		rowOrder += 1
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.new(1, -8, 0, 0)
+		label.AutomaticSize = Enum.AutomaticSize.Y
+		label.TextWrapped = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Top
+		label.TextColor3 = color
+		label.TextSize = 12
+		label.Font = Enum.Font.GothamBold
+		label.Text = text
+		label.LayoutOrder = rowOrder
+		label.Parent = memoryList
+	end
+
+	local function addMemRow(scope: string, entry: any)
+		rowOrder += 1
+		local row = Instance.new("Frame")
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, -8, 0, 0)
+		row.AutomaticSize = Enum.AutomaticSize.Y
+		row.LayoutOrder = rowOrder
+		row.Parent = memoryList
+		local txt = Instance.new("TextLabel")
+		txt.BackgroundTransparency = 1
+		txt.Size = UDim2.new(1, -26, 0, 0)
+		txt.AutomaticSize = Enum.AutomaticSize.Y
+		txt.TextWrapped = true
+		txt.TextXAlignment = Enum.TextXAlignment.Left
+		txt.TextYAlignment = Enum.TextYAlignment.Top
+		txt.TextColor3 = TEXT
+		txt.TextSize = 13
+		txt.Font = Enum.Font.Gotham
+		txt.Text = "#" .. tostring(entry.id) .. "  " .. tostring(entry.text)
+		txt.Parent = row
+		local x = button("✕")
+		x.Size = UDim2.fromOffset(22, 22)
+		x.Position = UDim2.new(1, -22, 0, 0)
+		x.Parent = row
+		x.Activated:Connect(function()
+			deps.memory:forget(scope, entry.id)
+			refreshMemory()
+		end)
+	end
+
+	function refreshMemory()
+		clearScroller(memoryList)
+		rowOrder = 0
+		addMemLabel("GLOBAL (every place)", MUTED)
+		local g = deps.memory:list("global")
+		if #g == 0 then
+			addMemLabel("  (none)", MUTED)
+		else
+			for _, e in g do
+				addMemRow("global", e)
+			end
+		end
+		addMemLabel("THIS GAME", MUTED)
+		local gm = deps.memory:list("game")
+		if #gm == 0 then
+			addMemLabel("  (none)", MUTED)
+		else
+			for _, e in gm do
+				addMemRow("game", e)
+			end
+		end
+	end
+
 	-- Wiring -------------------------------------------------------------------------------------
 	local cancelled = false
 
@@ -413,6 +515,10 @@ function Widget.mount(gui: Instance, deps: Deps)
 			refreshSessions()
 			showSessions(true)
 		end
+	end)
+
+	memBtn.Activated:Connect(function()
+		showMemory(not memoryList.Visible)
 	end)
 
 	newBtn.Activated:Connect(function()
@@ -441,6 +547,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 			deps.systemPrompt,
 			deps.conversation,
 			deps.taskList,
+			deps.memory,
 			text,
 			{
 				onEvent = function(event: string, data: any)

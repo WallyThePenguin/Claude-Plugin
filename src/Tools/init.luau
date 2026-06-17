@@ -9,7 +9,7 @@
 -- The structured tools live in sibling modules that each export a `descriptors` LIST of the same
 -- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
--- create_instance, capture, web_fetch, web_search, dispatch_subagents, update_tasks.
+-- create_instance, capture, web_fetch, web_search, dispatch_subagents, update_tasks, remember, forget.
 
 local RunLuau = require(script.RunLuau)
 local Tree = require(script.Tree)
@@ -20,6 +20,7 @@ local CaptureTool = require(script.Capture)
 local WebTool = require(script.Web)
 local SubagentsTool = require(script.Subagents)
 local TasksTool = require(script.Tasks)
+local MemoryTool = require(script.Memory)
 
 local Tools = {}
 
@@ -86,6 +87,9 @@ for _, descriptor in SubagentsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in TasksTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in MemoryTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 

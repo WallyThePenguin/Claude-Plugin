@@ -10,6 +10,7 @@ local SystemPrompt = require(script.SystemPrompt)
 local Conversation = require(script.Conversation)
 local Sessions = require(script.Sessions)
 local TaskList = require(script.TaskList)
+local Memory = require(script.Memory)
 
 -- Best-effort: try to enable runtime loadstring (run_luau) during a playtest. The property does not
 -- exist in all Studio versions (the pcall swallows that); when loadstring can't be enabled, the
@@ -41,6 +42,7 @@ local deps = {
 	conversation = Conversation.new(),
 	sessions = Sessions.new(plugin),
 	taskList = TaskList.new(),
+	memory = Memory.new(plugin),
 }
 
 -- Mount the panel, and re-mount if Studio clears the widget's content on an edit<->play transition
