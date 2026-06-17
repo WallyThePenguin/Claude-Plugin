@@ -87,7 +87,7 @@ local function runLoop(
 	end
 
 	local messages = conversation.messages
-	local tools = Tools.schemas()
+	local tools = Tools.schemas(config)
 	local maxIter = config:getMaxIterations()
 	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar;
 	-- `update_tasks` mutates context.taskList; `remember`/`forget` mutate context.memory).
@@ -175,6 +175,16 @@ local function runLoop(
 					emit("assistant_text", block.text)
 				elseif block.type == "tool_use" then
 					table.insert(toolUses, block)
+				elseif block.type == "server_tool_use" then
+					-- Anthropic runs this server-side (web_search/web_fetch). It is NOT a local
+					-- tool_use, so it is never dispatched, and the matching *_tool_result block
+					-- already rides in this same assistant turn. Surface progress only.
+					local inp = if type(block.input) == "table" then block.input else {}
+					local detail = tostring(inp.query or inp.url or "")
+					emit(
+						"status",
+						tostring(block.name) .. (if detail ~= "" then " " .. detail else "")
+					)
 				end
 			end
 		end
