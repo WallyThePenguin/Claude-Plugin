@@ -9,8 +9,9 @@
 -- The structured tools live in sibling modules that each export a `descriptors` LIST of the same
 -- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
--- create_instance, capture, web_fetch, web_search, dispatch_subagents, update_tasks, remember, forget,
--- dispatch_writers.
+-- create_instance, capture, dispatch_subagents, update_tasks, remember, forget, dispatch_writers.
+-- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
+-- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 
 local RunLuau = require(script.RunLuau)
 local Tree = require(script.Tree)
@@ -18,7 +19,6 @@ local PropertiesTool = require(script.Properties)
 local OutputTool = require(script.Output)
 local CreateTool = require(script.Create)
 local CaptureTool = require(script.Capture)
-local WebTool = require(script.Web)
 local SubagentsTool = require(script.Subagents)
 local TasksTool = require(script.Tasks)
 local MemoryTool = require(script.Memory)
@@ -82,9 +82,6 @@ end
 for _, descriptor in CaptureTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
-for _, descriptor in WebTool.descriptors :: { Descriptor } do
-	table.insert(registry, descriptor)
-end
 for _, descriptor in SubagentsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
@@ -103,8 +100,37 @@ for _, descriptor in registry do
 	byName[descriptor.name] = descriptor
 end
 
--- The Anthropic `tools` payload: one {name, description, input_schema} per registered tool.
-function Tools.schemas(): { any }
+-- Server-side web tools: executed by ANTHROPIC, not dispatched locally (see AgentLoop). Declared as
+-- {type,name} entries with NO input_schema and NO run handler — the model emits a `server_tool_use`
+-- block and the API inserts the matching `*_tool_result` block into the same assistant turn. Use the
+-- DIRECT versions: the code-execution-backed `_20260209` variants return `too_many_requests` on the
+-- subscription path (the code-execution sandbox is quota-capped). `max_uses` bounds calls per turn.
+local SERVER_TOOL_TYPES: { [string]: string } = {
+	web_search = "web_search_20250305",
+	web_fetch = "web_fetch_20250910",
+}
+-- Deterministic emission order (tools render at prompt position 0; a stable order keeps prompt
+-- caching intact).
+local SERVER_TOOLS_ORDER = { "web_search", "web_fetch" }
+local DEFAULT_MAX_USES = 5
+
+-- Build one server-tool entry, stamping `max_uses` from config when available (else a safe default,
+-- so the web tools work even if a caller doesn't pass config).
+local function serverToolEntry(name: string, config: any): any
+	local maxUses = DEFAULT_MAX_USES
+	if config ~= nil then
+		if name == "web_search" then
+			maxUses = config:getWebSearchMaxUses()
+		elseif name == "web_fetch" then
+			maxUses = config:getWebFetchMaxUses()
+		end
+	end
+	return { type = SERVER_TOOL_TYPES[name], name = name, max_uses = maxUses }
+end
+
+-- The Anthropic `tools` payload: one {name, description, input_schema} per registered custom tool,
+-- followed by the server-side web tools (stamped with max_uses from `config` when provided).
+function Tools.schemas(config: any?): { any }
 	local out: { any } = {}
 	for _, descriptor in registry do
 		table.insert(out, {
@@ -113,11 +139,15 @@ function Tools.schemas(): { any }
 			input_schema = descriptor.inputSchema,
 		})
 	end
+	for _, name in SERVER_TOOLS_ORDER do
+		table.insert(out, serverToolEntry(name, config))
+	end
 	return out
 end
 
--- Like schemas(), but filtered to a named subset (used to give a subagent a read-only toolset).
-function Tools.schemasFor(names: { string }): { any }
+-- Like schemas(), but filtered to a named subset (used to give a subagent a read-only toolset). A
+-- requested name that is a SERVER tool (web_search/web_fetch) is emitted as its server-tool entry.
+function Tools.schemasFor(names: { string }, config: any?): { any }
 	local want: { [string]: boolean } = {}
 	for _, n in names do
 		want[n] = true
@@ -130,6 +160,11 @@ function Tools.schemasFor(names: { string }): { any }
 				description = descriptor.description,
 				input_schema = descriptor.inputSchema,
 			})
+		end
+	end
+	for _, name in SERVER_TOOLS_ORDER do
+		if want[name] then
+			table.insert(out, serverToolEntry(name, config))
 		end
 	end
 	return out
