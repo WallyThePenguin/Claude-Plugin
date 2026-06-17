@@ -45,6 +45,8 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 - `Sessions.luau` — persist/list/load chats via `plugin:SetSetting` (survive restarts; images stripped on save via `MessageUtil`).
 - `MessageUtil.luau` — pure message helpers (stripImages, promptTokensFromUsage, isValidHistory) shared by Sessions + Compactor.
 - `Compactor.luau` / `CompactorSpec.luau` — context-window auto-compaction (image pruning + summarize-and-replace); the spec is an in-Studio self-test like `SerializeSpec`. `AgentLoop` prunes every iteration, compacts proactively at 80% of the window + reactively on a context-length 400, and tracks `Conversation.lastPromptTokens`.
+- `Retry.luau` — `isTransient` + `sendWithRetry` (shared by `AgentLoop` and `Subagent`).
+- `Subagent.luau` / `Tools/Subagents.luau` / `SubagentsSpec.luau` — the `dispatch_subagents` tool fans out parallel READ-ONLY children (`Subagent.run`, Sonnet, allowlisted toolset); `Tools.schemasFor`/the dispatch `allowedTools` allowlist enforce read-only + depth-1.
 - `SystemPrompt.luau` — the brain: tool policy, value-encoding scheme, scripting/GUI/rig/animation patterns, verify-and-iterate, testing model.
 - `Serialize.luau` / `Decode.luau` — Luau<->JSON tagged scheme (frozen comment block, byte-identical in both); Decode is total. `SerializeSpec.luau` is an in-Studio round-trip self-test.
 - `Logs.luau` — LogService ring buffer (captures runtime errors, incl. during playtest).
@@ -57,7 +59,7 @@ plugin -> http://127.0.0.1:8318 -> ssh -L (devel@100.119.185.111, key ~/.ssh/d33
 M-pre connection (tunnel) ✅ · M0 toolbar ✅ · M1 Config ✅ · M2 HTTP+ping ✅ · M3/M4 Serialize/Decode ✅
 · M5 run_luau ✅ · M6 agent loop ("create a red part" works) ✅ · M7 structured tools ✅ · M8 SystemPrompt ✅
 · M9 chat UI + session history ✅ · M12 conversation memory ✅ · M13 self-verify + playtest-aware ✅
-· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs) · **CONTEXT-WINDOW auto-compaction ✅** (image pruning + summarize-and-replace; adversarial review found+fixed 2 bugs; CompactorSpec self-test). **Both LIVE-VERIFIED in Studio** — capture: agent built a GUI + screenshotted it; compaction: `CompactorSpec` 12/12 + a forced low-threshold run fires the `[compacted…]` notice and the chat SURVIVES the limit (a 4th fix from that run strengthened the summary prompt to keep outstanding multi-step instructions; tiny-window summaries stay somewhat lossy under extreme settings, fine at production keep=6/800k). Latest commit: `git log`.
+· create_instance (loadstring-free building) ✅ · **VISION `capture` tool (image tool_result) ✅** (built clean, adversarially reviewed — 0 confirmed bugs) · **CONTEXT-WINDOW auto-compaction ✅** (image pruning + summarize-and-replace; adversarial review found+fixed 2 bugs; CompactorSpec self-test). **Both LIVE-VERIFIED in Studio** — capture: agent built a GUI + screenshotted it; compaction: `CompactorSpec` 12/12 + a forced low-threshold run fires the `[compacted…]` notice and the chat SURVIVES the limit (a 4th fix from that run strengthened the summary prompt to keep outstanding multi-step instructions; tiny-window summaries stay somewhat lossy under extreme settings, fine at production keep=6/800k). · **SUBAGENTS (`dispatch_subagents`) ✅** (feature #2 of capability parity — parallel READ-ONLY children on Sonnet, separate `Subagent.luau` runner, `Retry.luau` shared, allowlist at dispatch blocks writers + nesting). **LIVE-VERIFIED in Studio** — `SubagentsSpec` 6/6 + a real fan-out (3 parallel children scouted Workspace/Lighting/StarterGui and the parent synthesized; nothing mutated); adversarial review 0 confirmed bugs (a join-hang was caught + fixed pre-review). Latest commit: `git log`.
 
 ## Decisions made (authoritative)
 1. **Tunnel to hecate, not a local proxy** — local/TemporalRift proxies hit the cold-start "unknown provider" bug; hecate's is always warm. Client stays base-URL configurable.
@@ -92,22 +94,27 @@ tail, history stays API-valid). New modules `MessageUtil`/`Compactor`/`Compactor
 validate-rebuilt-before-install). **Pending: user runs `CompactorSpec` in Studio (12 cases) + a
 long-chat live test with a lowered threshold to force a compaction.**
 
-### 3. SUBAGENTS / ultracode orchestration (feature #2 — feasibility brief done, ready to spec)
-Let the in-Studio agent fan out subagents (parallel finders/verifiers/judges, like Claude Code's
-Agent tool). The investigation (workflow `wf_696c655c-99a`, 5 agents) verdict: **feasible** —
-model-driven `dispatch_subagents` tool; the hard constraint is the single shared DataModel + one
-ChangeHistory stream → **parallel READERS / serial WRITERS**. Shape: each child is a fresh
-`Conversation` running an extracted `runConversation` body with a scoped (read-only) toolset, returning
-its terse final text as one tool_result (which also keeps heavy reads/images out of the parent's
-window). Blockers, all fixable: the module-global `running` flag guards `send()` not `runLoop`; the
-loop returns final text only via emit (use `collectText`); no toolset allowlist hook yet. Recommended
-v1 defaults: edit-mode-first, READ-ONLY children (parent does writes), cap 3–4, readers on
-`claude-sonnet-4-6` / parent+judge on opus, depth-1, concise per-child summaries. Note: a brief claim
-that `Create.luau` has an "unconditional FinishRecording" corruption bug is OVERSTATED — `FinishRecording`
-is already nil-guarded; the only real (minor) gap is that Create proceeds without a recording when it
-can't open one (unlike RunLuau/Properties which refuse). Needs its own brainstorm → spec → plan.
+### ~~3. SUBAGENTS / `dispatch_subagents`~~ ✅ DONE (feature #2 of capability parity)
+Spec `docs/superpowers/specs/2026-06-16-studio-agent-subagents-design.md`; plan
+`docs/superpowers/plans/2026-06-16-subagents.md`. Shipped: the parent calls `dispatch_subagents` →
+spawns N **read-only** children in parallel via `task.spawn`, each a `Subagent.luau` ephemeral loop on
+Sonnet with an allowlisted toolset; results return as one JSON tool_result. `Retry.luau` shares the
+retry path with the parent loop. Read-only + **depth-1** enforced by an ALLOWLIST at `Tools.dispatch`
+(`context.allowedTools`) — blocks writers AND `dispatch_subagents` (a destructive-flag check wouldn't,
+since the tool is non-destructive). The DataModel-safety story: the parent yields inside dispatch while
+children read, so it isn't writing (quiescent). Config: `subagentModel`/`subagentMaxParallel`(4)/
+`subagentMaxIterations`(15). Live-verified (SubagentsSpec 6/6 + a 3-child fan-out) + review 0 bugs.
 
-### 4. Client-side RELAY (experimental)
+### 4. CAPABILITY PARITY — remaining features (the "everything you can do, inside Roblox" vision)
+The user wants the in-Studio agent to be a full peer. Subagents (✅) was #2. Next candidates, each its
+own brainstorm→spec→plan: **(a) web access** — `web_fetch` + `web_search` tools (it has `HttpService`;
+let it actually READ the Roblox docs the prompt already points at, and search the web) — cheapest
+high-impact, the likely next build; **(b) task tracking** — a visible multi-step build checklist;
+**(c) cross-session memory** — distilled knowledge across chats (like the memory files); **(d) skills**
+— reusable build recipes. Things that DON'T map to Roblox (skip): OS/computer-use (it acts via the
+DataModel API), raw git (place version history + ChangeHistory undo).
+
+### 5. Client-side RELAY (experimental)
 Make the agent work in the Play **client** view without swapping. HTTP is server-only, so the
 agent's HTTP + build tools must run server-side, reached via a `RemoteFunction` bridge from the
 panel. **Verify the foundation FIRST** (these are unknown and may block it):
@@ -116,11 +123,12 @@ panel. **Verify the foundation FIRST** (these are unknown and may block it):
 - The relay must run HTTP + `create_instance`/`set_property`/`get_*` server-side (NOT `run_luau` — loadstring is off in play). If feasible, the panel becomes a thin client over RemoteEvents.
 If it hits a sandbox wall, fall back to the Server-view swap.
 
-### 5. Smaller cleanups
+### 6. Smaller cleanups
 - Resolve the `CreateDockWidgetPluginGui` deprecation (selene's 1 warning). Verify the current method name against create.roblox.com (the M9 plan claimed `CreateDockWidgetPluginGuiAsync`, unverified — confirm before switching).
 - `create_instance` is one-instance-per-call (10 parts = ~10 calls); consider a batch variant if bulk-in-playtest gets heavy.
 
 ## Gotchas for the next session
+- **Subagent read-only/depth-1 is an ALLOWLIST, not a destructive-flag check:** `Tools.dispatch` rejects a tool when `context.allowedTools` is set and the name isn't in it. A destructive-flag check would NOT work — `dispatch_subagents` is itself `destructive=false`, so only an allowlist (the 5 read tools) blocks both writers AND nesting. Children must always be dispatched with `allowedTools`. Also: pcall-wrap the WHOLE subagent worker (incl. `buildSubagent`) so the `while done<n` join can't hang on a throw.
 - **Compaction rollback:** the abort/cancel rollback used an absolute message-count `snapshot`, but `Compactor.compact` shrinks the array — so AFTER a compaction the rollback must instead ensure the history ends on an assistant turn (the `compacted` flag + `rollback()` in `AgentLoop`), NOT count-truncate (which silently no-ops below the snapshot). `compact()` also validates the rebuilt history (`MessageUtil.isValidHistory`) before installing — a malformed kept tail → refuse, never ship a guaranteed 400.
 - **Empty JSON objects:** Roblox `HttpService:JSONEncode({})` emits `[]`, but Anthropic needs a
   tool_use `input` to be an OBJECT. A no-arg tool call (capture / get_output with no args) decodes to
