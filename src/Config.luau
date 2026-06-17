@@ -30,6 +30,10 @@ local DEFAULTS = {
 	contextWindow = 1000000, -- model window, tokens (claude-opus-4-8)
 	compactThreshold = 0.8, -- compact when last prompt >= window * this (0 < x < 1)
 	keepRecentMessages = 6, -- verbatim tail length kept when compacting
+	-- Subagents (dispatch_subagents).
+	subagentModel = "claude-sonnet-4-6", -- children run on the cheaper/faster model
+	subagentMaxParallel = 4, -- max children per dispatch (excess truncated + reported)
+	subagentMaxIterations = 15, -- per-child step cap
 }
 
 -- Allowed models. Never Haiku.
@@ -191,6 +195,20 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "keepRecentMessages must be a number >= 2"
 		end
 		value = math.floor(value)
+	elseif key == "subagentModel" then
+		if type(value) ~= "string" or not isAllowedModel(value) then
+			return false, "subagentModel must be one of the allowed MODELS"
+		end
+	elseif key == "subagentMaxParallel" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "subagentMaxParallel must be >= 1"
+		end
+		value = math.floor(value)
+	elseif key == "subagentMaxIterations" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "subagentMaxIterations must be >= 1"
+		end
+		value = math.floor(value)
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -255,6 +273,18 @@ end
 
 function Config.getKeepRecentMessages(self: Config): number
 	return self:get("keepRecentMessages") :: number
+end
+
+function Config.getSubagentModel(self: Config): string
+	return self:get("subagentModel") :: string
+end
+
+function Config.getSubagentMaxParallel(self: Config): number
+	return self:get("subagentMaxParallel") :: number
+end
+
+function Config.getSubagentMaxIterations(self: Config): number
+	return self:get("subagentMaxIterations") :: number
 end
 
 -- Forward-looking getters for the M11 retry/confirm keys. Not spec-pinned, but
