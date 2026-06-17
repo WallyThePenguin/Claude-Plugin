@@ -79,17 +79,21 @@ local function runDispatch(input: any, context: any): (string, boolean)
 			then sub.prompt
 			else ""
 		task.spawn(function()
-			local ok, res = pcall((Subagent :: any).run, {
-				anthropic = anthropic,
-				config = config,
-				systemPrompt = SystemPrompt.buildSubagent(role),
-				taskPrompt = prompt,
-				toolSchemas = toolSchemas,
-				allowedTools = allowed,
-				model = model,
-				maxIterations = maxIter,
-				shouldCancel = shouldCancel,
-			})
+			-- The WHOLE body is pcall-wrapped (incl. buildSubagent) so `done` always increments — a
+			-- throw before `done += 1` would otherwise hang the join (`while done < n`) forever.
+			local ok, res = pcall(function()
+				return (Subagent :: any).run({
+					anthropic = anthropic,
+					config = config,
+					systemPrompt = SystemPrompt.buildSubagent(role),
+					taskPrompt = prompt,
+					toolSchemas = toolSchemas,
+					allowedTools = allowed,
+					model = model,
+					maxIterations = maxIter,
+					shouldCancel = shouldCancel,
+				})
+			end)
 			if ok and type(res) == "table" then
 				results[i] = { role = role, ok = res.ok, capped = res.capped, text = res.text }
 			else
