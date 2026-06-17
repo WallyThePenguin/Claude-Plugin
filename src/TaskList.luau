@@ -61,8 +61,10 @@ local function normalizeOne(item: any): Task?
 		return nil
 	end
 	local rawContent = item.content
-	local content = if type(rawContent) == "string" then rawContent else tostring(rawContent)
-	content = trim(content)
+	if type(rawContent) ~= "string" then
+		return nil -- missing / number / table content is not a valid task (don't coerce "nil"/"5"/...)
+	end
+	local content = trim(rawContent)
 	if content == "" then
 		return nil
 	end
@@ -103,11 +105,13 @@ function TaskList.normalize(input: any): ({ Task }, string)
 	local out: { Task } = {}
 	local dropped = 0
 	for _, item in ipairs(raw) do
-		if #out >= MAX_TASKS then
-			dropped += 1
-		else
-			local task = normalizeOne(item)
-			if task ~= nil then
+		local task = normalizeOne(item)
+		if task ~= nil then
+			-- Invalid items are dropped silently; `dropped` counts only VALID tasks lost to the cap, so
+			-- the "N dropped (cap M)" summary means exactly that (not "junk items seen after the cap").
+			if #out >= MAX_TASKS then
+				dropped += 1
+			else
 				table.insert(out, task)
 			end
 		end

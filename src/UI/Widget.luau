@@ -118,6 +118,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 	local ROW_H = 20
 	local MAX_BODY = 140
 	local GAP = 4
+	local MIN_TRANSCRIPT = 72 -- keep at least this much transcript visible even with a big checklist
 	local function scroller(): ScrollingFrame
 		local sf = Instance.new("ScrollingFrame")
 		sf.Size = UDim2.new(1, 0, 1, -(TOP + INPUT_H + 4))
@@ -234,6 +235,13 @@ function Widget.mount(gui: Instance, deps: Deps)
 		checklistHeader.Text = chevron .. "Tasks  " .. tostring(done) .. "/" .. tostring(n)
 
 		local bodyH = if checklistCollapsed then 0 else math.min(n * ROW_H, MAX_BODY)
+		-- Clamp the body so the transcript keeps a minimum visible band on a small dock (the body
+		-- scrolls). root.AbsoluteSize is 0 before the first layout pass; skip the clamp until known.
+		local contentH = root.AbsoluteSize.Y - 16 -- minus UIPadding (8 top + 8 bottom)
+		if show and not checklistCollapsed and contentH > 0 then
+			local maxBodyH = contentH - (TOP + HEADER_H + GAP + INPUT_H + 4 + MIN_TRANSCRIPT)
+			bodyH = math.clamp(bodyH, 0, math.max(0, maxBodyH))
+		end
 		checklistBody.Visible = show and not checklistCollapsed
 		checklistBody.Size = UDim2.new(1, 0, 0, bodyH)
 
@@ -255,6 +263,9 @@ function Widget.mount(gui: Instance, deps: Deps)
 		checklistCollapsed = not checklistCollapsed
 		layoutChecklist()
 	end)
+
+	-- Reflow when the dock panel is resized so the transcript/checklist split stays sane at any height.
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutChecklist)
 
 	-- Input row (bottom).
 	local taskBox = Instance.new("TextBox")

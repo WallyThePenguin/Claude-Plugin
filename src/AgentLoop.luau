@@ -46,6 +46,11 @@ local function runLoop(
 	-- True once a compaction has rebuilt the history this Send. After that the absolute pre-Send
 	-- snapshot index is meaningless (the array is far shorter), so rollback must NOT count-truncate.
 	local compacted = false
+	-- Pre-Send checklist state, restored in lockstep with the conversation on a non-clean exit. The
+	-- update_tasks tool mutates taskList IN PLACE and the panel re-renders mid-turn, but if a later
+	-- iteration fails/cancels we roll the whole turn back — so the checklist must revert too, else the
+	-- panel (and a cancel-path save) would diverge from the rolled-back conversation + persisted blob.
+	local taskSnapshot = if taskList ~= nil then taskList:snapshot() else nil
 	-- Restore a valid resting state on a non-clean exit. Normally truncate back to the pre-Send
 	-- snapshot (which ends on the prior assistant turn). But after a compaction, instead ensure the
 	-- history ends on an assistant turn so the next user message still alternates (a stale snapshot
@@ -59,6 +64,10 @@ local function runLoop(
 			end
 		else
 			conversation:truncate(snapshot)
+		end
+		if taskList ~= nil and taskSnapshot ~= nil then
+			taskList:load(taskSnapshot)
+			emit("tasks", taskList:snapshot())
 		end
 	end
 	-- Roll the conversation back and surface why. Keeps history API-valid.
@@ -228,6 +237,7 @@ function AgentLoop.send(
 	running = true
 	task.spawn(function()
 		local snapshot = conversation:count()
+		local taskSnapshot = if taskList ~= nil then taskList:snapshot() else nil
 		conversation:appendUserText(userText)
 		local ok, err =
 			pcall(runLoop, anthropic, config, systemPrompt, conversation, taskList, snapshot, cb)
@@ -242,6 +252,13 @@ function AgentLoop.send(
 			local last = msgs[#msgs]
 			if last ~= nil and last.role ~= "assistant" then
 				conversation:appendAssistant({ { type = "text", text = "(turn interrupted)" } })
+			end
+			-- Mirror the checklist back to its pre-Send state (the turn that changed it was discarded).
+			if taskList ~= nil and taskSnapshot ~= nil then
+				taskList:load(taskSnapshot)
+				if cb.onEvent then
+					pcall(cb.onEvent, "tasks", taskList:snapshot())
+				end
 			end
 			if cb.onEvent then
 				pcall(cb.onEvent, "error", { kind = "internal", message = tostring(err) })

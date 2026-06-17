@@ -50,6 +50,18 @@ local function buildCases(): { Case }
 		return #out == 1 and out[1].content == "ok"
 	end)
 
+	add("normalize drops items with missing / non-string content (no junk coercion)", function()
+		local out = TaskList.normalize({
+			tasks = {
+				{ status = "pending" }, -- missing content (must NOT become "nil")
+				{ content = 5, status = "pending" }, -- numeric content (must NOT become "5")
+				{ content = {}, status = "pending" }, -- table content (must NOT become "table: ...")
+				{ content = "ok", status = "pending" },
+			},
+		})
+		return #out == 1 and out[1].content == "ok"
+	end)
+
 	add("normalize truncates content to MAX_CONTENT codepoints", function()
 		local long = string.rep("x", TaskList.MAX_CONTENT + 50)
 		local out = TaskList.normalize({ tasks = { { content = long, status = "pending" } } })
@@ -66,6 +78,28 @@ local function buildCases(): { Case }
 			return false, "kept " .. tostring(#out)
 		end
 		return string.find(summary, "dropped", 1, true) ~= nil
+	end)
+
+	add("normalize cap-dropped counts only valid tasks, not junk past the cap", function()
+		local items = {}
+		for i = 1, TaskList.MAX_TASKS do
+			items[i] = { content = "t" .. i, status = "pending" }
+		end
+		-- Junk past the cap must NOT be reported as a cap-drop.
+		table.insert(items, "junk")
+		table.insert(items, { content = "" })
+		local out, summary = TaskList.normalize({ tasks = items })
+		return #out == TaskList.MAX_TASKS and string.find(summary, "dropped", 1, true) == nil
+	end)
+
+	add("normalize truncate counts UTF-8 codepoints, not bytes", function()
+		local long = string.rep("é", TaskList.MAX_CONTENT + 10) -- 2 bytes per codepoint
+		local out = TaskList.normalize({ tasks = { { content = long, status = "pending" } } })
+		if #out ~= 1 then
+			return false, "got " .. tostring(#out)
+		end
+		-- Exactly MAX_CONTENT codepoints kept, on a valid UTF-8 boundary.
+		return utf8.len(out[1].content) == TaskList.MAX_CONTENT
 	end)
 
 	add("normalize tolerates a bare array", function()
