@@ -71,7 +71,7 @@ local function runDispatch(input: any, context: any): (string, boolean)
 	local n = math.min(#list, cap)
 	local dropped = #list - n
 
-	local toolSchemas = (Tools :: any).schemasFor(WRITE_TOOLS)
+	local toolSchemas = (Tools :: any).schemasFor(WRITE_TOOLS, config)
 	local allowed: { [string]: boolean } = {}
 	for _, name in WRITE_TOOLS do
 		allowed[name] = true
