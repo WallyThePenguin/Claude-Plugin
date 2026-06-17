@@ -37,6 +37,10 @@ local DEFAULTS = {
 	subagentModel = "claude-sonnet-4-6", -- children run on the cheaper/faster model
 	subagentMaxParallel = 4, -- max children per dispatch (excess truncated + reported)
 	subagentMaxIterations = 15, -- per-child step cap
+	-- Parallel writers (dispatch_writers).
+	writerModel = "claude-sonnet-4-6", -- focused partitioned tasks; bump to opus for accuracy
+	writerMaxParallel = 3, -- max writer children per dispatch (excess truncated + reported)
+	writerMaxIterations = 20, -- per-child step cap
 	-- Web access (web_fetch / web_search).
 	webFetchMaxChars = 20000, -- hard cap on characters returned by web_fetch
 	webSearchMaxResults = 5, -- max results returned by web_search
@@ -215,6 +219,20 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "subagentMaxIterations must be >= 1"
 		end
 		value = math.floor(value)
+	elseif key == "writerModel" then
+		if type(value) ~= "string" or not isAllowedModel(value) then
+			return false, "writerModel must be one of the allowed MODELS"
+		end
+	elseif key == "writerMaxParallel" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "writerMaxParallel must be >= 1"
+		end
+		value = math.floor(value)
+	elseif key == "writerMaxIterations" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "writerMaxIterations must be >= 1"
+		end
+		value = math.floor(value)
 	elseif key == "webFetchMaxChars" then
 		if type(value) ~= "number" or value ~= value or value < 100 then
 			return false, "webFetchMaxChars must be >= 100"
@@ -301,6 +319,18 @@ end
 
 function Config.getSubagentMaxIterations(self: Config): number
 	return self:get("subagentMaxIterations") :: number
+end
+
+function Config.getWriterModel(self: Config): string
+	return self:get("writerModel") :: string
+end
+
+function Config.getWriterMaxParallel(self: Config): number
+	return self:get("writerMaxParallel") :: number
+end
+
+function Config.getWriterMaxIterations(self: Config): number
+	return self:get("writerMaxIterations") :: number
 end
 
 function Config.getWebFetchMaxChars(self: Config): number

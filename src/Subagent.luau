@@ -20,6 +20,7 @@ export type Opts = {
 	model: string,
 	maxIterations: number,
 	shouldCancel: (() -> boolean)?,
+	writeRegion: Instance?,
 }
 
 export type Result = { text: string, ok: boolean, capped: boolean }
@@ -48,6 +49,7 @@ function Subagent.run(opts: Opts): Result
 		config = opts.config,
 		anthropic = opts.anthropic,
 		allowedTools = opts.allowedTools,
+		writeRegion = opts.writeRegion, -- nil for read-only subagents; a region Instance for writers
 	}
 	-- The model proxy strips the `system` field (see AgentLoop / HANDOFF), so the child's instructions
 	-- (SUBAGENT_BASE + role + the OUTPUT CONTRACT) are delivered as a LEADING preamble seeded into the

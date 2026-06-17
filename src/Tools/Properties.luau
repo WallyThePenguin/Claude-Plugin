@@ -15,6 +15,7 @@ local Serialize = require(script.Parent.Parent.Serialize)
 local Decode = require(script.Parent.Parent.Decode)
 local Path = require(script.Parent.Path)
 local PropertyCatalog = require(script.Parent.PropertyCatalog)
+local RegionGuard = require(script.Parent.RegionGuard)
 
 local Properties = {}
 
@@ -24,7 +25,7 @@ export type Descriptor = {
 	description: string,
 	inputSchema: { [string]: any },
 	destructive: boolean,
-	run: (input: any) -> (string, boolean),
+	run: (input: any, context: any) -> (string, boolean),
 }
 
 -- Encode a result table into compact JSON. Total via pcall fallback.
@@ -104,7 +105,7 @@ local function isUnresolvableReference(rawValue: any, decoded: any): boolean
 end
 
 -- set_property: decode a structured JSON value and assign it under an undoable recording.
-local function runSetProperty(input: any): (string, boolean)
+local function runSetProperty(input: any, context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	if type(args.path) ~= "string" or type(args.name) ~= "string" then
 		return encodeResult({
@@ -127,6 +128,13 @@ local function runSetProperty(input: any): (string, boolean)
 	end
 	local target = inst :: Instance
 
+	-- Region guard (parallel writer): the target must be within the writer's assigned region. No-op
+	-- for the serial parent (no context.writeRegion).
+	local okRegion, regionErr = RegionGuard.check(target, context)
+	if not okRegion then
+		return encodeResult({ ok = false, error = regionErr }), true
+	end
+
 	-- Decode the structured value BEFORE opening any recording (Decode is total but may resolve to
 	-- nil; we guard with pcall regardless so nothing escapes). value is a structured JSON value such
 	-- as {"__t":"Color3","r":1,"g":0,"b":0}.
@@ -142,6 +150,20 @@ local function runSetProperty(input: any): (string, boolean)
 	-- the engine, which rejects type-mismatched nils via the pcall'd assignment below.)
 	if isUnresolvableReference(args.value, decoded) then
 		return encodeResult({ ok = false, error = "value reference did not resolve" }), true
+	end
+
+	-- Re-parent escape guard: a writer must not move an in-region instance OUT of its region. A
+	-- reference property that merely POINTS outside (ObjectValue.Value, PrimaryPart) is fine; only
+	-- Parent relocates. No-op for the serial parent (no context.writeRegion).
+	if name == "Parent" and typeof(decoded) == "Instance" then
+		local okReparent = RegionGuard.check(decoded :: Instance, context)
+		if not okReparent then
+			return encodeResult({
+				ok = false,
+				error = "re-parent outside your assigned region is not permitted",
+			}),
+				true
+		end
 	end
 
 	-- In EDIT mode, wrap the assignment in an undoable recording. During a playtest (Run/Play) there

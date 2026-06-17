@@ -12,6 +12,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 
 local Decode = require(script.Parent.Parent.Decode)
 local Path = require(script.Parent.Path)
+local RegionGuard = require(script.Parent.RegionGuard)
 
 local Create = {}
 
@@ -20,7 +21,7 @@ export type Descriptor = {
 	description: string,
 	inputSchema: { [string]: any },
 	destructive: boolean,
-	run: (input: any) -> (string, boolean),
+	run: (input: any, context: any) -> (string, boolean),
 }
 
 local function encodeResult(payload: { [string]: any }): string
@@ -33,7 +34,7 @@ local function encodeResult(payload: { [string]: any }): string
 	return '{"ok":false,"error":"result not JSON-encodable"}'
 end
 
-local function runCreate(input: any): (string, boolean)
+local function runCreate(input: any, context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	if type(args.className) ~= "string" then
 		return encodeResult({
@@ -48,6 +49,13 @@ local function runCreate(input: any): (string, boolean)
 	local parent, perr = Path.resolve(parentPath)
 	if parent == nil then
 		return encodeResult({ ok = false, error = "parent: " .. tostring(perr) }), true
+	end
+
+	-- Region guard (parallel writer): the parent must be within the writer's assigned region. No-op
+	-- for the serial parent (no context.writeRegion).
+	local okRegion, regionErr = RegionGuard.check(parent, context)
+	if not okRegion then
+		return encodeResult({ ok = false, error = regionErr }), true
 	end
 
 	-- Create the instance. Instance.new throws on an unknown/uncreatable class name.
