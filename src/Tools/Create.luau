@@ -74,6 +74,13 @@ local function runCreate(input: any, context: any): (string, boolean)
 	local rid: string? = nil
 	if RunService:IsEdit() then
 		rid = ChangeHistoryService:TryBeginRecording("Create " .. args.className)
+		-- nil means a recording is already in progress (e.g. left open by a run_luau that threw mid-
+		-- recording). Refuse rather than mutate UNRECORDED inside that other recording — mirrors
+		-- set_property / run_luau. (In a playtest IsEdit() is false, so we never reach here.)
+		if rid == nil then
+			instance:Destroy()
+			return encodeResult({ ok = false, error = "could not begin a change recording" }), true
+		end
 	end
 
 	if type(args.name) == "string" then
@@ -87,6 +94,13 @@ local function runCreate(input: any, context: any): (string, boolean)
 	local failed: { string } = {}
 	if type(args.properties) == "table" then
 		for propName, rawValue in args.properties do
+			if tostring(propName) == "Parent" then
+				-- The authoritative, region-guarded parent is args.parent (applied below). Ignore a
+				-- redundant/unguarded "Parent" in the properties map so it can't transiently parent the
+				-- new instance outside a writer's region.
+				table.insert(failed, "Parent")
+				continue
+			end
 			local okDecode, decoded = pcall(Decode.decode, rawValue)
 			if okDecode then
 				local okSet = pcall(function()

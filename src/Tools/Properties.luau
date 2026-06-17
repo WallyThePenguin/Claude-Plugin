@@ -152,15 +152,25 @@ local function runSetProperty(input: any, context: any): (string, boolean)
 		return encodeResult({ ok = false, error = "value reference did not resolve" }), true
 	end
 
-	-- Re-parent escape guard: a writer must not move an in-region instance OUT of its region. A
-	-- reference property that merely POINTS outside (ObjectValue.Value, PrimaryPart) is fine; only
-	-- Parent relocates. No-op for the serial parent (no context.writeRegion).
-	if name == "Parent" and typeof(decoded) == "Instance" then
-		local okReparent = RegionGuard.check(decoded :: Instance, context)
-		if not okReparent then
+	-- Parent guard for a confined writer: a writer must not move an in-region instance OUT of its
+	-- region (a new parent outside it) NOR orphan it (Parent = nil / non-Instance, which detaches it
+	-- from the region tree). A reference property that merely POINTS outside (ObjectValue.Value,
+	-- PrimaryPart) is fine — only Parent relocates. All no-ops for the serial parent (no writeRegion).
+	if name == "Parent" then
+		local hasRegion = type(context) == "table" and context.writeRegion ~= nil
+		if typeof(decoded) == "Instance" then
+			local okReparent = RegionGuard.check(decoded :: Instance, context)
+			if not okReparent then
+				return encodeResult({
+					ok = false,
+					error = "re-parent outside your assigned region is not permitted",
+				}),
+					true
+			end
+		elseif hasRegion then
 			return encodeResult({
 				ok = false,
-				error = "re-parent outside your assigned region is not permitted",
+				error = "Parent must be set to an instance inside your assigned region",
 			}),
 				true
 		end

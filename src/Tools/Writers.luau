@@ -81,46 +81,86 @@ local function runDispatch(input: any, context: any): (string, boolean)
 	local maxIter = config:getWriterMaxIterations()
 	local shouldCancel = if type(context) == "table" then context.shouldCancel else nil
 
-	local results: { any } = {}
-	local done = 0
+	-- Resolve + VALIDATE every region UP FRONT, before spawning any child. The feature's safety rests
+	-- on regions being specific containers AND mutually disjoint — neither can be assumed from model
+	-- input, so enforce both here and reject the WHOLE dispatch on a violation (the parent re-partitions).
+	-- Path.resolve is synchronous, so resolving here (not in the workers) introduces no yield.
+	local entries: { { path: string, region: Instance, task: string } } = {}
 	for i = 1, n do
 		local w = list[i]
 		local regionPath = if type(w) == "table" and type(w.region) == "string"
 			then w.region
 			else ""
 		local taskPrompt = if type(w) == "table" and type(w.task) == "string" then w.task else ""
+		local region, rerr = (Path :: any).resolve(regionPath)
+		if region == nil then
+			return encodeResult({
+				ok = false,
+				error = "writer " .. i .. ": region not found: " .. tostring(rerr),
+			}),
+				true
+		end
+		-- Breadth: a region must be a specific container (depth >= 2 under game) the parent created —
+		-- NOT the DataModel root or a bare top-level service, which would make the guard a no-op.
+		if region == game or region.Parent == game then
+			return encodeResult({
+				ok = false,
+				error = "writer "
+					.. i
+					.. " region '"
+					.. regionPath
+					.. "' is too broad — give each writer a specific container you created (not the "
+					.. "DataModel root or a whole service)",
+			}),
+				true
+		end
+		entries[i] = { path = regionPath, region = region, task = taskPrompt }
+	end
+	-- Disjointness: no two regions may be equal or nested (one a descendant of the other), else two
+	-- writers share a subtree and their edits logically race across HTTP yield points.
+	for a = 1, n do
+		for b = a + 1, n do
+			local ra, rb = entries[a].region, entries[b].region
+			if ra == rb or ra:IsDescendantOf(rb) or rb:IsDescendantOf(ra) then
+				return encodeResult({
+					ok = false,
+					error = "writer regions '"
+						.. entries[a].path
+						.. "' and '"
+						.. entries[b].path
+						.. "' overlap — each writer needs a DISJOINT region",
+				}),
+					true
+			end
+		end
+	end
+
+	local results: { any } = {}
+	local done = 0
+	for i = 1, n do
+		local entry = entries[i]
 		task.spawn(function()
-			-- Whole body pcall-wrapped (incl. region resolve + buildWriter + run) so `done` always
-			-- increments and the join can't hang on a throw.
+			-- Whole body pcall-wrapped so `done` always increments and the join can't hang on a throw.
 			local ok, res = pcall(function()
-				local region, rerr = (Path :: any).resolve(regionPath)
-				if region == nil then
-					return {
-						region = regionPath,
-						ok = false,
-						capped = false,
-						text = "region not found: " .. tostring(rerr),
-					}
-				end
 				local out = (Subagent :: any).run({
 					anthropic = anthropic,
 					config = config,
-					systemPrompt = SystemPrompt.buildWriter(regionPath, taskPrompt),
-					taskPrompt = taskPrompt,
+					systemPrompt = SystemPrompt.buildWriter(entry.path, entry.task),
+					taskPrompt = entry.task,
 					toolSchemas = toolSchemas,
 					allowedTools = allowed,
 					model = model,
 					maxIterations = maxIter,
 					shouldCancel = shouldCancel,
-					writeRegion = region,
+					writeRegion = entry.region,
 				})
-				return { region = regionPath, ok = out.ok, capped = out.capped, text = out.text }
+				return { region = entry.path, ok = out.ok, capped = out.capped, text = out.text }
 			end)
 			if ok and type(res) == "table" then
 				results[i] = res
 			else
 				results[i] = {
-					region = regionPath,
+					region = entry.path,
 					ok = false,
 					capped = false,
 					text = "writer error: " .. tostring(res),
