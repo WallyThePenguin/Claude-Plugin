@@ -130,15 +130,27 @@ lacked the parent loop's `pause_turn` handling, so a child mid-server-tool-turn 
 now mirrors the parent (echo + resume). Integration was tiny because the loop already ignores
 `server_tool_use` (collects only `tool_use`) and `isValidHistory`/`pause_turn` were already compatible.
 
-**SKILLS spec + plan are WRITTEN (2026-06-17) but NOT yet implemented** — spec
-`docs/superpowers/specs/2026-06-17-studio-agent-skills-design.md` (no plan committed yet; write it next):
-built-in Roblox build recipes (leaderstats, shop-gui, r15-npc, datastore-save, parallel-zones) + Studio-
-adapted ports of Claude's process skills (brainstorm-a-build, plan-a-build, test-first, debug-
-systematically, review-my-build, gui-design-quality, create-skill, research-a-topic) + self-authored
-GLOBAL-scope skills (save_skill/delete_skill, persisted like memory). `use_skill(name, args?)` returns the
-recipe TEXT which the agent executes with existing tools (composes with dispatch_writers). Catalog rides
-the leading preamble; 3 parent-only non-destructive tools. research-a-topic is now backed by the real
-server-side web access just shipped. **NEXT: writing-plans for SKILLS, then implement.**
+**SKILLS ✅ LIVE-VERIFIED (2026-06-18) — the LAST capability-parity feature; ALL parity features now
+DONE.** Spec `docs/superpowers/specs/2026-06-17-studio-agent-skills-design.md`, plan
+`docs/superpowers/plans/2026-06-18-skills.md`. Named recipes the agent invokes via `use_skill(name,
+args?)`, which returns the recipe TEXT the agent then executes with its existing tools (composes with
+dispatch_writers/update_tasks/capture). New modules: `SkillCatalog.luau` (pure: normalize/validate/
+render/catalog) + `SkillCatalogSpec.luau` (9 cases), `BuiltinRecipes.luau` (5: leaderstats, shop-gui,
+r15-npc, datastore-save, parallel-zones), `BuiltinWorkingSkills.luau` (8 Studio-adapted ports:
+brainstorm-a-build, plan-a-build, test-first, debug-systematically, review-my-build, gui-design-quality,
+create-skill, research-a-topic), `SkillStore.luau` (merges built-ins + persisted USER skills, global-
+scope, mirrors Memory), `Tools/Skills.luau` (use_skill/save_skill/delete_skill — 3 PARENT-ONLY
+non-destructive tools). The catalog rides the LEADING PREAMBLE alongside SystemPrompt+memory (proxy
+strips `system`); built-in names are RESERVED (save rejects a collision, delete refuses a built-in);
+user skills persist via `plugin:SetSetting` (`StudioAgent_skills_user`), capped 20. Widget gained a
+**Skills** viewer (built-ins read-only grouped by family + user skills with a ✕). NO Config changes (caps
+are SkillCatalog constants). Adversarial review (Workflow): 1 LOW confirmed + fixed (`normalizeName`
+re-strips a trailing dash after truncation). **LIVE-VERIFIED in Studio (hecate tunnel, fresh Baseplate):**
+`SkillCatalogSpec` 9/9; the catalog renders in the panel (all 13 built-ins, two families); `use_skill
+leaderstats {statNames:"Coins, Wins"}` loaded the recipe and the agent BUILT the LeaderstatsSetup Script
++ a playtest showed a working leaderboard with Wins+Coins; `save_skill` persisted a 'spinning-part' user
+skill (shown under YOUR SKILLS); the ✕ deleted it. **All capability-parity features are now complete.**
+Remaining roadmap: the client-side server RELAY (experimental); the CreateDockWidgetPluginGui deprecation.
 
 **Delivery now consistent across all send paths (commit `4895fa4`):** `AgentLoop`, `Subagent`, and
 `Compactor` all deliver their system prompt via a leading message (`MessageUtil.withSystemPreamble`/
