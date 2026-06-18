@@ -1,18 +1,14 @@
 --!strict
--- Capture: the `capture` vision tool. A plugin can't read viewport pixels, so it asks the local
--- screenshot sidecar (sidecar/, 127.0.0.1:8389, token-authed) for a PNG of the Studio window and
--- hands it to Claude as a base64 IMAGE block so the model can actually SEE what it built and iterate
--- visually (GUIs, scenes, rigs, animation frames).
---
--- This is the ONE tool that returns STRUCTURED content (a tool_result blocks array) instead of a
--- plain string; AgentLoop forwards the array verbatim as the tool_result `content` (Anthropic accepts
--- a string OR a blocks array). On ANY failure it falls back to a STRING error (is_error=true) so the
--- loop is never left with a tool_use lacking a usable tool_result.
---
--- The sidecar URL + token live in Config; AgentLoop injects them via the dispatch `context`
--- (context.config). Capture stays decoupled from the Config module — it only duck-types the getters.
+-- Capture: the vision tools. A plugin can't read viewport pixels, so each tool triggers
+-- CaptureService:CaptureScreenshot (which writes a full-res viewport PNG to disk) and asks the local
+-- sidecar to read the newest file(s). Three tools share CaptureCore:
+--   capture           - one shot at the current camera.
+--   capture_angles    - orbit a target: N framed angles (objects/assets/art).
+--   capture_animation - filmstrip: time-sampled frames of an animation (review a motion).
+-- These return STRUCTURED content (a tool_result blocks array of text labels + base64 images);
+-- AgentLoop forwards the array verbatim. On ANY failure they fall back to a STRING error (isError=true).
 
-local HttpService = game:GetService("HttpService")
+local CaptureCore = require(script.Parent.CaptureCore)
 
 local Capture = {}
 
@@ -24,124 +20,214 @@ export type Descriptor = {
 	run: (input: any, context: any) -> (any, boolean),
 }
 
--- Sidecar screenshot URL: ask for base64 text (b64=1) and percent-encode the window substring.
-local function buildUrl(baseUrl: string, window: string): string
-	return baseUrl .. "/screenshot?b64=1&window=" .. HttpService:UrlEncode(window)
+local function getConfig(context: any): any
+	return if type(context) == "table" then context.config else nil
 end
 
-local function runCapture(input: any, context: any): (any, boolean)
-	local config = if type(context) == "table" then context.config else nil
-	if config == nil then
-		return "capture: internal error (no config available)", true
-	end
+-- ---- capture (single) -------------------------------------------------------
 
-	local token = config:getSidecarToken()
-	if token == "" then
-		return "capture: no sidecar token is set. Start the vision sidecar (sidecar/run.ps1) and "
-			.. "paste the token it prints into the panel's 'sidecar token' field.",
+local function runSingle(_input: any, context: any): (any, boolean)
+	local since = os.time() - 2
+	if not CaptureCore.triggerCapture() then
+		return "capture: CaptureService did not produce a screenshot (ensure Studio is focused, retry).",
 			true
 	end
-
-	local args = if type(input) == "table" then input else {}
-	local window = if type(args.window) == "string" and args.window ~= ""
-		then args.window
-		else "Roblox Studio"
-
-	local baseUrl = config:getSidecarUrl()
-	local options = {
-		Url = buildUrl(baseUrl, window),
-		Method = "GET",
-		Headers = {
-			["Authorization"] = "Bearer " .. token,
-		},
-	}
-
-	-- RequestAsync is bimodal (same as Anthropic.request): it RAISES on transport / HTTP-disabled /
-	-- server-only-context, and returns Success=false on a non-2xx response.
-	local ok, res = pcall(function()
-		return HttpService:RequestAsync(options)
-	end)
-
-	if not ok then
-		local msg = string.lower(tostring(res))
-		if string.find(msg, "not enabled", 1, true) then
-			return "capture: HTTP requests are disabled. Enable 'Allow HTTP Requests' in Game "
-				.. "Settings > Security.",
-				true
-		end
-		if string.find(msg, "game server", 1, true) then
-			-- HttpService is server-only; in a client-view playtest the plugin can't reach the sidecar.
-			return "capture: HttpService is server-only — take screenshots from edit mode or the "
-				.. "Studio Server view (the Client/Server dropdown).",
-				true
-		end
-		return "capture: could not reach the vision sidecar at "
-			.. baseUrl
-			.. " — is it running? Start it with sidecar/run.ps1. ("
-			.. tostring(res)
-			.. ")",
-			true
+	CaptureCore.settle(1)
+	local blocks, err = CaptureCore.fetchCaptures(1, since, nil, getConfig(context))
+	if blocks == nil then
+		return err :: string, true
 	end
-
-	local response = res :: any
-	if not response.Success then
-		if response.StatusCode == 401 then
-			return "capture: the sidecar rejected the token (401). Re-copy the token from "
-				.. "sidecar/run.ps1 into the 'sidecar token' field and Save.",
-				true
-		end
-		return "capture: the sidecar returned HTTP "
-			.. tostring(response.StatusCode)
-			.. ": "
-			.. tostring(response.Body),
-			true
-	end
-
-	-- Strip any stray surrounding whitespace (e.g. a trailing newline) defensively — Anthropic wants
-	-- raw standard base64 and can reject the image otherwise. The sidecar emits clean base64, so this
-	-- is just a guard at the API boundary.
-	local data = (string.gsub(tostring(response.Body), "%s", ""))
-	if data == "" then
-		return "capture: the sidecar returned an empty image (try focusing Studio once and retry).",
-			true
-	end
-
-	-- Structured tool_result content: a single base64 PNG image block. AgentLoop sets this array as
-	-- the tool_result `content` so the model receives the screenshot it can look at.
-	local blocks = {
-		{
-			type = "image",
-			source = {
-				type = "base64",
-				media_type = "image/png",
-				data = data,
-			},
-		},
-	}
 	return blocks, false
 end
+
+-- ---- capture_angles (orbit) -------------------------------------------------
+
+type Shot = { yaw: number, pitch: number, label: string }
+
+local function runAngles(input: any, context: any): (any, boolean)
+	local args = if type(input) == "table" then input else {}
+	local center, size, terr = CaptureCore.resolveTarget(args.target)
+	if center == nil or size == nil then
+		return "capture_angles: " .. tostring(terr), true
+	end
+
+	local shots: { Shot } = {}
+	if type(args.presets) == "table" and #args.presets > 0 then
+		for _, name in args.presets do
+			local p = CaptureCore.PRESETS[string.lower(tostring(name))]
+			if p ~= nil then
+				table.insert(shots, { yaw = p.yaw, pitch = p.pitch, label = tostring(name) })
+			end
+		end
+		if #shots == 0 then
+			return "capture_angles: no valid presets (use front/back/left/right/top/bottom/iso).",
+				true
+		end
+	else
+		local count = if type(args.count) == "number" and args.count >= 1
+			then math.floor(args.count)
+			else 6
+		local pitch = CaptureCore.elevationPitch(args.elevation)
+		for _, yaw in CaptureCore.yawsFor(count) do
+			table.insert(shots, {
+				yaw = yaw,
+				pitch = pitch,
+				label = string.format("%d deg", math.floor(yaw + 0.5)),
+			})
+		end
+	end
+
+	local distScale = if type(args.distance) == "number" and args.distance > 0
+		then args.distance
+		else 1
+	local saved = CaptureCore.saveCamera()
+	local since = os.time() - 2
+	local triggered = 0
+	local okAll = pcall(function()
+		for _, shot in shots do
+			CaptureCore.setCamera(
+				CaptureCore.frameCFrame(
+					center :: Vector3,
+					size :: Vector3,
+					shot.yaw,
+					shot.pitch,
+					distScale
+				)
+			)
+			CaptureCore.settle(2)
+			if CaptureCore.triggerCapture() then
+				triggered += 1
+			end
+		end
+	end)
+	CaptureCore.restoreCamera(saved)
+
+	if not okAll or triggered == 0 then
+		return "capture_angles: failed to capture any angle (camera restored).", true
+	end
+	local blocks, err = CaptureCore.fetchCaptures(
+		triggered,
+		since,
+		CaptureCore.maxPxForCount(triggered),
+		getConfig(context)
+	)
+	if blocks == nil then
+		return err :: string, true
+	end
+
+	local content: { any } = {
+		{ type = "text", text = string.format("%d viewport angles of the target:", #blocks) },
+	}
+	for i, b in blocks do
+		local label = if shots[i] ~= nil then shots[i].label else tostring(i)
+		table.insert(content, {
+			type = "text",
+			text = string.format("angle %d/%d — %s", i, #blocks, label),
+		})
+		table.insert(content, b)
+	end
+	if #blocks < #shots then
+		table.insert(content, {
+			type = "text",
+			text = string.format(
+				"(note: %d of %d frames returned; if you need more, reduce the count or retry)",
+				#blocks,
+				#shots
+			),
+		})
+	end
+	return content, false
+end
+
+-- ---- capture_animation (filmstrip) -----------------------------------------
+-- Implemented in Task 7 after the edit-mode-playback feasibility spike. Until then it returns a
+-- clear, non-crashing error so the registry/relay wiring is testable now.
+
+local function runAnimation(_input: any, _context: any): (any, boolean)
+	return "capture_animation: not yet enabled (pending the edit-mode animation-playback spike).",
+		true
+end
+
+-- ---- descriptors ------------------------------------------------------------
 
 Capture.descriptors = {
 	{
 		name = "capture",
-		description = "Take a SCREENSHOT of the Roblox Studio window and SEE it — the result is "
-			.. "returned as an image you can look at. Use this to VISUALLY verify anything you build "
-			.. "that has an appearance (GUIs, scenes, rigs, animation frames): check colors, layout, "
-			.. "alignment, spacing, and framing, then adjust and capture again until it looks right. "
-			.. "Requires the local vision sidecar to be running; if it isn't, capture returns an "
-			.. "error explaining how to start it.",
+		description = "Take a SCREENSHOT of the current Studio VIEWPORT and SEE it (returned as an "
+			.. "image). Use it to visually verify anything with an appearance — GUIs, scenes, rigs, a "
+			.. "single framing — then adjust and capture again. Requires the local vision sidecar; if "
+			.. "it isn't running, returns an error explaining how to start it.",
+		inputSchema = { type = "object", properties = {} },
+		destructive = false,
+		run = runSingle,
+	},
+	{
+		name = "capture_angles",
+		description = "Capture a target from MULTIPLE camera angles in one call — give a target and a "
+			.. "count and the tool frames it and orbits automatically (you NEVER compute camera "
+			.. "CFrames). Use it to inspect/build an object, asset, or art from several sides. Inputs: "
+			.. "target (instance path; defaults to the current Studio selection), count (default 6), "
+			.. "elevation (low/eye/high or degrees), distance (zoom scale), or presets (e.g. "
+			.. "['front','left','top']) to override the even orbit. Returns the angles as labeled images.",
 		inputSchema = {
 			type = "object",
 			properties = {
-				window = {
+				target = {
 					type = "string",
-					description = "Optional window-title substring to capture "
-						.. "(default 'Roblox Studio').",
+					description = "Instance path; omit to use the selection.",
+				},
+				count = {
+					type = "number",
+					description = "Number of evenly-spaced angles (default 6).",
+				},
+				elevation = {
+					type = "string",
+					description = "low | eye | high, or a pitch in degrees as a number.",
+				},
+				distance = {
+					type = "number",
+					description = "Zoom scale of the auto-fit (default 1.0).",
+				},
+				presets = {
+					type = "array",
+					items = { type = "string" },
+					description = "Named angles (front/back/left/right/top/bottom/iso); overrides the orbit.",
 				},
 			},
 		},
 		destructive = false,
-		run = runCapture,
+		run = runAngles,
+	},
+	{
+		name = "capture_animation",
+		description = "Capture a FILMSTRIP of an animation — time-sampled frames of a rig's motion "
+			.. "from a fixed angle, so you can review whether an animation looks right end-to-end. "
+			.. "Inputs: rig (instance path), animation (asset id or KeyframeSequence path), frames "
+			.. "(default 8), startTime/endTime (seconds; defaults to the full clip), angle (a preset). "
+			.. "Returns the sampled frames as labeled images.",
+		inputSchema = {
+			type = "object",
+			properties = {
+				rig = {
+					type = "string",
+					description = "Path to the model with an Animator/Humanoid.",
+				},
+				animation = {
+					type = "string",
+					description = "Animation asset id or KeyframeSequence path.",
+				},
+				frames = { type = "number", description = "Number of time samples (default 8)." },
+				startTime = { type = "number", description = "Start time in seconds (default 0)." },
+				endTime = {
+					type = "number",
+					description = "End time in seconds (default clip length).",
+				},
+				angle = { type = "string", description = "A preset angle (front/left/iso/…)." },
+			},
+			required = { "rig", "animation" },
+		},
+		destructive = false,
+		run = runAnimation,
 	},
 } :: { Descriptor }
 
