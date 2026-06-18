@@ -9,7 +9,8 @@
 -- The structured tools live in sibling modules that each export a `descriptors` LIST of the same
 -- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
--- create_instance, capture, dispatch_subagents, update_tasks, remember, forget, dispatch_writers.
+-- create_instance, capture, dispatch_subagents, update_tasks, remember, forget, dispatch_writers,
+-- use_skill, save_skill, delete_skill.
 -- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
 -- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 
@@ -23,6 +24,7 @@ local SubagentsTool = require(script.Subagents)
 local TasksTool = require(script.Tasks)
 local MemoryTool = require(script.Memory)
 local WritersTool = require(script.Writers)
+local SkillsTool = require(script.Skills)
 
 local Tools = {}
 
@@ -92,6 +94,9 @@ for _, descriptor in MemoryTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in WritersTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in SkillsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
