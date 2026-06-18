@@ -15,12 +15,15 @@ local function buildCases(): { Case }
 		table.insert(cases, { name = name, fn = fn })
 	end
 
-	add("normalizeName slugifies and rejects empty", function()
+	add("normalizeName slugifies, rejects empty, and never leaves a trailing dash", function()
+		local overLong = SkillCatalog.normalizeName(string.rep("a", 47) .. " bc")
 		return SkillCatalog.normalizeName("Shop GUI!") == "shop-gui"
 			and SkillCatalog.normalizeName("  --R15 NPC--  ") == "r15-npc"
 			and SkillCatalog.normalizeName("") == nil
 			and SkillCatalog.normalizeName("!!!") == nil
 			and SkillCatalog.normalizeName(5) == nil
+			and overLong ~= nil
+			and string.sub(overLong, -1) ~= "-"
 	end)
 
 	add("normalizeParams drops malformed, caps count, coerces required", function()

@@ -73,7 +73,13 @@ function SkillCatalog.normalizeName(name: any): string?
 	if s == "" then
 		return nil
 	end
-	return truncate(s, MAX_NAME)
+	-- Truncate, then re-strip a trailing '-' the cut may have landed on (keeps the no-trailing-dash
+	-- contract even for an over-long slug); re-guard the empty case.
+	s = (string.gsub(truncate(s, MAX_NAME), "%-+$", ""))
+	if s == "" then
+		return nil
+	end
+	return s
 end
 
 -- Defensive: drop malformed entries, trim+truncate fields, coerce required to boolean, cap count.
