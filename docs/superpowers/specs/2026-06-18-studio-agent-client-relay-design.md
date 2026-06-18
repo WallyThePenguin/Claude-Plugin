@@ -271,6 +271,18 @@ user types in the CLIENT-copy panel → AgentLoop.send (client copy), anthropic 
   Server view; confirm `update_tasks`/`remember` still work (local); confirm Stop leaves no relay
   artifact in the edit DM; confirm the Server-view path still works (fallback parity).
 
+## Future alignment (not in scope, but keep it clean)
+
+This relay validates the pattern a planned **in-game Admin Dashboard** will reuse — talking to Claude
+in a LIVE game for anti-cheat / hacker detection / custom commands (a natural-language dev
+commandline). That is a SEPARATE, larger product (runs as in-game Scripts at game security, not a
+plugin; needs a hosted Claude endpoint, not the personal tunnel; admin-only auth +
+prompt-injection hardening; an admin/anti-cheat tool surface) and gets its own brainstorm→spec→plan.
+The only ask here: keep `Relay.luau`'s host/client split and the core engine (`AgentLoop`,
+`Anthropic`, `Tools` dispatch/allowlist/context) **deployment-agnostic** so they can be repackaged
+later. Do NOT generalize speculatively now (YAGNI) — just don't hard-couple the relay to
+PluginSecurity in ways the engine modules would inherit.
+
 ## Rollout / ordering
 1. `src/Relay.luau` (constants, `mode`, `shouldRelayTool`, `startHost`, `newClient`, `wrapAnthropic`)
    + `src/RelaySpec.luau`.
