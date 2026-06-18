@@ -5,6 +5,12 @@
 -- LIVE-verified in Studio. A plugin can't read the capture file, so the impure fetch asks the local
 -- sidecar to read the newest wob PNG(s) off disk. See the multi-capture design spec.
 
+local HttpService = game:GetService("HttpService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local CaptureService = game:GetService("CaptureService")
+local Selection = game:GetService("Selection")
+
 local CaptureCore = {}
 
 local DEFAULT_FOV = 70 -- degrees; Studio's default camera FieldOfView
@@ -76,6 +82,233 @@ function CaptureCore.elevationPitch(elevation: any): number
 		return 45
 	end
 	return 20 -- "eye" / default
+end
+
+export type CameraState = { camType: Enum.CameraType, cframe: CFrame, fov: number }?
+
+function CaptureCore.saveCamera(): CameraState
+	local cam = Workspace.CurrentCamera
+	if cam == nil then
+		return nil
+	end
+	return { camType = cam.CameraType, cframe = cam.CFrame, fov = cam.FieldOfView }
+end
+
+function CaptureCore.restoreCamera(state: CameraState)
+	local cam = Workspace.CurrentCamera
+	if cam == nil or state == nil then
+		return
+	end
+	cam.CameraType = state.camType
+	cam.CFrame = state.cframe
+	cam.FieldOfView = state.fov
+end
+
+function CaptureCore.setCamera(cframe: CFrame)
+	local cam = Workspace.CurrentCamera
+	if cam == nil then
+		return
+	end
+	cam.CameraType = Enum.CameraType.Scriptable
+	cam.CFrame = cframe
+end
+
+-- Let the viewport re-render the new camera/pose before we capture.
+function CaptureCore.settle(frames: number?)
+	for _ = 1, (frames or 2) do
+		RunService.Heartbeat:Wait()
+	end
+end
+
+-- Trigger one CaptureScreenshot and yield until the engine invokes the callback (or a timeout). We
+-- don't need the rbxtemp id — the sidecar reads the file by mtime. Returns true if the callback fired.
+function CaptureCore.triggerCapture(timeoutS: number?): boolean
+	local done = false
+	local ok = pcall(function()
+		CaptureService:CaptureScreenshot(function(_id)
+			done = true
+		end)
+	end)
+	if not ok then
+		return false
+	end
+	local deadline = os.clock() + (timeoutS or 5)
+	while not done and os.clock() < deadline do
+		RunService.Heartbeat:Wait()
+	end
+	return done
+end
+
+-- Walk a dotted/slashed instance path from `game` (e.g. "Workspace.Model.Part"). Returns nil on miss.
+local function resolvePath(path: string): Instance?
+	local node: Instance = game
+	for token in string.gmatch(path, "[^%./]+") do
+		local child = node:FindFirstChild(token)
+		if child == nil then
+			return nil
+		end
+		node = child
+	end
+	return if node == game then nil else node
+end
+
+-- Axis-aligned bounding box (center, size) over every BasePart under the given roots. nil if none.
+local function aabbOf(roots: { Instance }): (Vector3?, Vector3?)
+	local minV: Vector3? = nil
+	local maxV: Vector3? = nil
+	local function acc(part: BasePart)
+		local cf, sz = part.CFrame, part.Size
+		for _, sx in { -0.5, 0.5 } do
+			for _, sy in { -0.5, 0.5 } do
+				for _, sz2 in { -0.5, 0.5 } do
+					local p = (cf * CFrame.new(sz.X * sx, sz.Y * sy, sz.Z * sz2)).Position
+					if minV == nil or maxV == nil then
+						minV, maxV = p, p
+					else
+						minV = Vector3.new(
+							math.min(minV.X, p.X),
+							math.min(minV.Y, p.Y),
+							math.min(minV.Z, p.Z)
+						)
+						maxV = Vector3.new(
+							math.max(maxV.X, p.X),
+							math.max(maxV.Y, p.Y),
+							math.max(maxV.Z, p.Z)
+						)
+					end
+				end
+			end
+		end
+	end
+	for _, root in roots do
+		if root:IsA("BasePart") then
+			acc(root)
+		end
+		for _, d in root:GetDescendants() do
+			if d:IsA("BasePart") then
+				acc(d)
+			end
+		end
+	end
+	if minV == nil or maxV == nil then
+		return nil, nil
+	end
+	return (minV + maxV) / 2, (maxV - minV)
+end
+
+-- Resolve the target into (center, size, errString). A path string, or (nil/empty) the current
+-- Studio Selection. Unions the bounding boxes of all resolved instances' BaseParts.
+function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
+	local roots: { Instance } = {}
+	if type(target) == "string" and target ~= "" then
+		local inst = resolvePath(target)
+		if inst == nil then
+			return nil, nil, "target not found: " .. target
+		end
+		table.insert(roots, inst)
+	else
+		for _, inst in Selection:Get() do
+			table.insert(roots, inst)
+		end
+		if #roots == 0 then
+			return nil,
+				nil,
+				"nothing selected — select a part/model in Studio or pass a target path."
+		end
+	end
+	local center, size = aabbOf(roots)
+	if center == nil or size == nil then
+		return nil, nil, "target has no parts to frame (no BasePart found)."
+	end
+	return center, size, nil
+end
+
+-- Ask the sidecar for `count` newest capture PNGs created at/after `since` (epoch seconds), downscaled
+-- to maxPx when given. Returns (blocks, nil) on success — a list of base64 image blocks — or
+-- (nil, errString) on any failure (same error wording as the previous capture tool).
+function CaptureCore.fetchCaptures(
+	count: number,
+	since: number,
+	maxPx: number?,
+	config: any
+): ({ any }?, string?)
+	if config == nil then
+		return nil, "capture: internal error (no config available)"
+	end
+	local token = config:getSidecarToken()
+	if token == "" then
+		return nil,
+			"capture: no sidecar token is set. Start the vision sidecar (sidecar/run.ps1) and paste "
+				.. "the token it prints into the panel's 'sidecar token' field."
+	end
+	local url = config:getSidecarUrl()
+		.. "/captures?b64=1&count="
+		.. tostring(count)
+		.. "&since="
+		.. tostring(math.floor(since))
+	if maxPx ~= nil then
+		url ..= "&max_px=" .. tostring(maxPx)
+	end
+
+	local ok, res = pcall(function()
+		return HttpService:RequestAsync({
+			Url = url,
+			Method = "GET",
+			Headers = { ["Authorization"] = "Bearer " .. token },
+		})
+	end)
+	if not ok then
+		local msg = string.lower(tostring(res))
+		if string.find(msg, "not enabled", 1, true) then
+			return nil,
+				"capture: HTTP requests are disabled. Enable 'Allow HTTP Requests' in Game "
+					.. "Settings > Security."
+		end
+		if string.find(msg, "game server", 1, true) then
+			return nil,
+				"capture: HttpService is server-only — capture from edit mode or the Studio Server view."
+		end
+		return nil,
+			"capture: could not reach the vision sidecar at "
+				.. config:getSidecarUrl()
+				.. " — is it running? Start it with sidecar/run.ps1. ("
+				.. tostring(res)
+				.. ")"
+	end
+
+	local response = res :: any
+	if not response.Success then
+		if response.StatusCode == 401 then
+			return nil,
+				"capture: the sidecar rejected the token (401). Re-copy the token from sidecar/run.ps1."
+		end
+		return nil,
+			"capture: the sidecar returned HTTP "
+				.. tostring(response.StatusCode)
+				.. ": "
+				.. tostring(response.Body)
+	end
+
+	local okDecode, payload = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+	if not okDecode or type(payload) ~= "table" or type((payload :: any).images) ~= "table" then
+		return nil, "capture: the sidecar returned an unexpected response."
+	end
+	local blocks: { any } = {}
+	for _, b64 in (payload :: any).images do
+		local data = (string.gsub(tostring(b64), "%s", ""))
+		if data ~= "" then
+			table.insert(blocks, {
+				type = "image",
+				source = { type = "base64", media_type = "image/png", data = data },
+			})
+		end
+	end
+	if #blocks == 0 then
+		return nil, "capture: the sidecar returned no images (try focusing Studio once and retry)."
+	end
+	return blocks, nil
 end
 
 return CaptureCore
