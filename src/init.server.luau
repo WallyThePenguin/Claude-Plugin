@@ -30,7 +30,10 @@ button.ClickableWhenViewportHidden = true
 -- DockWidgetPluginGuiInfo.new(initDockState, initEnabled, overrideEnabled, w, h, minW, minH)
 local info =
 	DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 320, 480, 260, 320)
-local widget = plugin:CreateDockWidgetPluginGui("StudioAgentWidget", info)
+-- CreateDockWidgetPluginGuiAsync supersedes the deprecated CreateDockWidgetPluginGui (same args).
+-- It yields, which is fine here: plugin scripts run on their own thread, and this is the standard
+-- top-level pattern. Verified against create.roblox.com (Plugin class reference, 2026-06-18).
+local widget = plugin:CreateDockWidgetPluginGuiAsync("StudioAgentWidget", info)
 widget.Title = "Claude Agent"
 
 local config = Config.new(plugin)
