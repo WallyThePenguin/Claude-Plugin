@@ -9,8 +9,8 @@
 -- The structured tools live in sibling modules that each export a `descriptors` LIST of the same
 -- Descriptor shape; this module concatenates them after the built-in run_luau into one flat
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
--- create_instance, capture, dispatch_subagents, update_tasks, remember, forget, dispatch_writers,
--- use_skill, save_skill, delete_skill.
+-- create_instance, capture, capture_angles, capture_animation, dispatch_subagents, update_tasks,
+-- remember, forget, dispatch_writers, use_skill, save_skill, delete_skill.
 -- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
 -- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 

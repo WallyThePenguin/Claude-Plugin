@@ -28,6 +28,8 @@ local EXPECTED_RELAY = {
 	"set_property",
 	"create_instance",
 	"capture",
+	"capture_angles",
+	"capture_animation",
 	"dispatch_subagents",
 	"dispatch_writers",
 }
