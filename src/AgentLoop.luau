@@ -33,6 +33,7 @@ local function runLoop(
 	conversation: any,
 	taskList: any,
 	memory: any,
+	skills: any,
 	snapshot: number,
 	cb: Callbacks
 )
@@ -91,8 +92,13 @@ local function runLoop(
 	local maxIter = config:getMaxIterations()
 	-- Dependencies a tool may need at run time (e.g. `capture` reads context.config for the sidecar;
 	-- `update_tasks` mutates context.taskList; `remember`/`forget` mutate context.memory).
-	local toolContext =
-		{ config = config, anthropic = anthropic, taskList = taskList, memory = memory }
+	local toolContext = {
+		config = config,
+		anthropic = anthropic,
+		taskList = taskList,
+		memory = memory,
+		skills = skills,
+	}
 
 	-- System-prompt + memory delivery (verified live): the model proxy (CLIProxyAPI subscription path)
 	-- STRIPS the client `system` field and injects its own Claude Code prompt, so neither the plugin's
@@ -106,6 +112,12 @@ local function runLoop(
 		local block = memory:promptBlock()
 		if block ~= "" then
 			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
+		end
+	end
+	if skills ~= nil then
+		local cat = skills:catalogBlock()
+		if cat ~= "" then
+			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
 		end
 	end
 
@@ -261,6 +273,7 @@ function AgentLoop.send(
 	conversation: any,
 	taskList: any,
 	memory: any,
+	skills: any,
 	userText: string,
 	cb: Callbacks
 )
@@ -283,6 +296,7 @@ function AgentLoop.send(
 			conversation,
 			taskList,
 			memory,
+			skills,
 			snapshot,
 			cb
 		)
