@@ -144,7 +144,14 @@ end
 -- clear, non-crashing error so the registry/relay wiring is testable now.
 
 local function runAnimation(_input: any, _context: any): (any, boolean)
-	return "capture_animation: not yet enabled (pending the edit-mode animation-playback spike).",
+	-- Spike verdict (2026-06-18): in EDIT mode an AnimationTrack's TimePosition does NOT advance (the
+	-- animation evaluator only steps during simulation), so sampled frames would be identical.
+	-- Filmstrips therefore require a running playtest — a planned follow-up. In edit, author the
+	-- animation pose-by-pose and use `capture` between poses to review the motion.
+	return "capture_animation: animation filmstrips aren't available in edit yet — an animation's "
+		.. "TimePosition doesn't advance without a running playtest, so the frames would be "
+		.. "identical. (Playtest-mode filmstrips are a planned follow-up.) To review motion now, "
+		.. "capture pose-by-pose in edit, or run a playtest.",
 		true
 end
 
@@ -200,7 +207,8 @@ Capture.descriptors = {
 	},
 	{
 		name = "capture_animation",
-		description = "Capture a FILMSTRIP of an animation — time-sampled frames of a rig's motion "
+		description = "(Requires a running playtest — NOT available in edit mode yet.) Capture a "
+			.. "FILMSTRIP of an animation — time-sampled frames of a rig's motion "
 			.. "from a fixed angle, so you can review whether an animation looks right end-to-end. "
 			.. "Inputs: rig (instance path), animation (asset id or KeyframeSequence path), frames "
 			.. "(default 8), startTime/endTime (seconds; defaults to the full clip), angle (a preset). "
