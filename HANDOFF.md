@@ -1,5 +1,7 @@
 # Studio Agent — Session Handoff
 
+> **LATEST SESSION (2026-06-18): see [`docs/superpowers/handoffs/2026-06-18-session-handoff.md`](docs/superpowers/handoffs/2026-06-18-session-handoff.md)** — the client-view RELAY + CreateDockWidgetPluginGui deprecation shipped/live-verified; the native-screenshot investigation concluded (impossible from a plugin — sidecar required, camera control works, recommended camera+viewport-crop design); two agent-quality fixes pending (`destroy_instance` tool, spatial placement); Admin Dashboard is the next big direction. Open decisions are in that file's §6.
+
 **Read this first when continuing in a fresh session.** It captures the current state, every
 decision made, and exactly what to do next. The full original design is in
 `docs/superpowers/specs/2026-06-16-studio-agent-cliproxyapi-design.md` and the implementation plan
