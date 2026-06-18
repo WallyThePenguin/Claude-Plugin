@@ -695,7 +695,8 @@ function Widget.mount(gui: Instance, deps: Deps)
 				shouldCancel = function(): boolean
 					return cancelled
 				end,
-			}
+			},
+			deps.relay
 		)
 	end)
 

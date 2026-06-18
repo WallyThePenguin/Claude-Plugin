@@ -12,6 +12,7 @@ local Sessions = require(script.Sessions)
 local TaskList = require(script.TaskList)
 local Memory = require(script.Memory)
 local SkillStore = require(script.SkillStore)
+local Relay = require(script.Relay)
 
 -- Best-effort: try to enable runtime loadstring (run_luau) during a playtest. The property does not
 -- exist in all Studio versions (the pcall swallows that); when loadstring can't be enabled, the
@@ -49,6 +50,21 @@ local deps = {
 	memory = Memory.new(plugin),
 	skills = SkillStore.new(plugin),
 }
+
+-- Client-view relay (LIVE-VERIFIED 2026-06-18): Accurate Play Solo runs separate per-context plugin
+-- copies. In the Play SERVER copy, host the relay RemoteFunction. In the Play CLIENT copy (the panel
+-- the user sees in client view), build the relay client + swap deps.anthropic for a relay-aware one,
+-- so the loop's HTTP + DataModel/dispatch tools run server-side. In edit / Server-view: no relay.
+local relayMode = Relay.mode()
+if relayMode == "serverplay" then
+	Relay.startHost(deps)
+elseif relayMode == "clientplay" then
+	local relayClient = Relay.newClient()
+	if relayClient ~= nil then
+		deps.relay = relayClient
+		deps.anthropic = Relay.wrapAnthropic(relayClient)
+	end
+end
 
 -- Mount the panel, and re-mount if Studio clears the widget's content on an edit<->play transition
 -- (DockWidgetPluginGui can blank out across Play Solo). The conversation lives in `deps`, so a

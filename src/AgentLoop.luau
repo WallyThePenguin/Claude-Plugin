@@ -18,6 +18,7 @@ local Tools = require(script.Parent.Tools)
 local Compactor = require(script.Parent.Compactor)
 local MessageUtil = require(script.Parent.MessageUtil)
 local Retry = require(script.Parent.Retry)
+local Relay = require(script.Parent.Relay)
 
 local AgentLoop = {}
 
@@ -35,7 +36,8 @@ local function runLoop(
 	memory: any,
 	skills: any,
 	snapshot: number,
-	cb: Callbacks
+	cb: Callbacks,
+	relay: any
 )
 	local function emit(event: string, data: any)
 		if cb.onEvent then
@@ -220,7 +222,15 @@ local function runLoop(
 			local tasksChanged = false
 			for _, block in ipairs(toolUses) do
 				emit("tool_use", { name = block.name })
-				local content, isError = Tools.dispatch(block.name, block.input, toolContext)
+				-- In client-view play, relay DataModel/HTTP/dispatch tools to the server copy; run
+				-- plugin-only tools (update_tasks/remember/forget/skills) locally. No relay -> all
+				-- local (edit / Server-view play), exactly as today.
+				local content, isError
+				if relay ~= nil and Relay.shouldRelayTool(block.name) then
+					content, isError = relay.tool(block.name, block.input)
+				else
+					content, isError = Tools.dispatch(block.name, block.input, toolContext)
+				end
 				-- content is a string (most tools) OR a tool_result blocks array (capture's image).
 				-- Keep the empty-string guard for text; pass a blocks array straight through.
 				if type(content) == "string" and content == "" then
@@ -275,7 +285,8 @@ function AgentLoop.send(
 	memory: any,
 	skills: any,
 	userText: string,
-	cb: Callbacks
+	cb: Callbacks,
+	relay: any
 )
 	if running then
 		if cb.onEvent then
@@ -298,7 +309,8 @@ function AgentLoop.send(
 			memory,
 			skills,
 			snapshot,
-			cb
+			cb,
+			relay
 		)
 		running = false
 		if not ok then
