@@ -1,74 +1,78 @@
-"""Window capture for the Studio Agent vision sidecar (Windows).
+"""Disk reader for the Studio Agent vision sidecar.
 
-Uses PrintWindow(PW_RENDERFULLCONTENT), which captures a window's pixels even when it is
-occluded or not focused (the modern flag also handles hardware-accelerated content like the
-Studio viewport). Returns PNG bytes.
+Roblox writes CaptureService:CaptureScreenshot output as full-resolution viewport PNGs to
+%LOCALAPPDATA%\\Roblox\\tmp-capture-storage\\wob-<StudioPID><counter>. A plugin can't read that file
+(the path API is RobloxScript-gated), but this local helper can. We return the newest N COMPLETE PNGs
+whose mtime is >= a caller-supplied timestamp, optionally downscaling them, as PNG bytes.
 """
 
-import io
+from __future__ import annotations
 
-import win32con  # noqa: F401  (kept for clarity / future flags)
-import win32gui
-import win32ui
-from ctypes import windll
+import glob
+import io
+import os
+import time
+
 from PIL import Image
 
-PW_RENDERFULLCONTENT = 0x00000002
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+PNG_IEND = b"IEND\xaeB`\x82"  # final 8 bytes of every complete PNG
 
 
-def find_window(title_substr: str):
-    """Return the hwnd of the first visible top-level window whose title contains title_substr."""
-    needle = title_substr.lower()
-    matches = []
-
-    def _cb(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd):
-            title = win32gui.GetWindowText(hwnd)
-            if title and needle in title.lower():
-                matches.append(hwnd)
-        return True
-
-    win32gui.EnumWindows(_cb, None)
-    return matches[0] if matches else None
+def capture_dir() -> str:
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "Roblox", "tmp-capture-storage")
 
 
-def capture_window_png(title_substr: str = "Roblox Studio") -> bytes:
-    """Capture the named window and return PNG bytes. Raises on miss / zero-size window."""
-    hwnd = find_window(title_substr)
-    if not hwnd:
-        raise RuntimeError(f"no visible window matching '{title_substr}'")
+def _mtime(path: str) -> float:
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return float("-inf")
 
-    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-    width, height = right - left, bottom - top
-    if width <= 0 or height <= 0:
-        raise RuntimeError("window has zero size (minimized?)")
 
-    hwnd_dc = win32gui.GetWindowDC(hwnd)
-    mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-    save_dc = mfc_dc.CreateCompatibleDC()
-    bitmap = win32ui.CreateBitmap()
-    bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-    save_dc.SelectObject(bitmap)
+def _complete_png_bytes(path: str):
+    """Return the file's bytes iff it is a complete PNG (sig + trailing IEND), else None."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    if data[:8] == PNG_SIG and data.rstrip().endswith(PNG_IEND):
+        return data
+    return None
 
-    ok = windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), PW_RENDERFULLCONTENT)
 
-    info = bitmap.GetInfo()
-    bits = bitmap.GetBitmapBits(True)
-    image = Image.frombuffer(
-        "RGB", (info["bmWidth"], info["bmHeight"]), bits, "raw", "BGRX", 0, 1
-    )
-
-    win32gui.DeleteObject(bitmap.GetHandle())
-    save_dc.DeleteDC()
-    mfc_dc.DeleteDC()
-    win32gui.ReleaseDC(hwnd, hwnd_dc)
-
-    if ok != 1:
-        # PrintWindow returned non-1 but frequently still produced a valid frame; only fail if the
-        # image is entirely black (a real capture failure).
-        if not image.getbbox():
-            raise RuntimeError("PrintWindow produced an empty frame (try focusing Studio once)")
-
+def _downscale(data: bytes, max_px: int) -> bytes:
+    """Aspect-preserving downscale so the long edge <= max_px; returns data unchanged if already small."""
+    img = Image.open(io.BytesIO(data))
+    longest = max(img.width, img.height)
+    if longest <= max_px:
+        return data
+    scale = max_px / longest
+    resized = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))))
     out = io.BytesIO()
-    image.save(out, format="PNG")
+    resized.save(out, format="PNG")
     return out.getvalue()
+
+
+def newest_captures(count, since_ts=0.0, max_px=None, timeout_s=8.0, poll_s=0.15):
+    """Up to `count` newest COMPLETE capture PNGs with mtime >= since_ts, returned oldest-first
+    (= capture order). Polls up to timeout_s for `count` files to appear (captures may still be
+    flushing). Downscales to max_px when given. Returns fewer than `count` on timeout (a shortfall)."""
+    deadline = time.monotonic() + timeout_s
+    directory = capture_dir()
+    while True:
+        files = [f for f in glob.glob(os.path.join(directory, "wob-*")) if _mtime(f) >= since_ts]
+        files.sort(key=_mtime)  # oldest-first
+        complete = []
+        for f in files:
+            b = _complete_png_bytes(f)
+            if b is not None:
+                complete.append(b)
+        if len(complete) >= count or time.monotonic() >= deadline:
+            chosen = complete[-count:] if count > 0 else []
+            if max_px is not None:
+                chosen = [_downscale(b, max_px) for b in chosen]
+            return chosen
+        time.sleep(poll_s)
