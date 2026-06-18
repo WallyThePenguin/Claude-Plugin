@@ -108,6 +108,41 @@ function Relay.startHost(deps: any): any?
 	return remote
 end
 
+-- Interpret a raw InvokeServer outcome for the HTTP relay into an Anthropic.Result. Three cases:
+--   * ok + {kind="http", result=<Result>}  -> the server's Result, passed straight through (so a
+--     transient server-side HTTP failure still flows to Retry and is retried);
+--   * ok + {kind="error", message}          -> the relay DELIVERED but the server op threw (a bug,
+--     not transient): surface the real message as kind="relay" (Retry won't retry -> aborts cleanly);
+--   * anything else (InvokeServer threw / RF gone / malformed) -> the relay TRANSPORT is broken, so
+--     kind="context" gives the existing "switch to the Server view" guidance.
+function Relay.unwrapHttp(ok: boolean, res: any): any
+	if ok and type(res) == "table" and res.kind == "http" and type(res.result) == "table" then
+		return res.result
+	end
+	if ok and type(res) == "table" and res.kind == "error" then
+		return { ok = false, kind = "relay", message = "relay error: " .. tostring(res.message) }
+	end
+	return {
+		ok = false,
+		kind = "context",
+		message = "relay unavailable — switch Studio to the Server view (Client/Server dropdown).",
+	}
+end
+
+-- Interpret a raw InvokeServer outcome for the tool relay into (content, isError). A normal tool
+-- error already arrives as {kind="tool", isError=true} (Tools.dispatch is total) and passes through;
+-- an {kind="error"} envelope (server handler threw) surfaces the real message as an is_error result;
+-- a broken transport falls back to the "switch to the Server view" guidance.
+function Relay.unwrapTool(ok: boolean, res: any): (any, boolean)
+	if ok and type(res) == "table" and res.kind == "tool" then
+		return res.content, res.isError == true
+	end
+	if ok and type(res) == "table" and res.kind == "error" then
+		return "relay tool error: " .. tostring(res.message), true
+	end
+	return "relay unavailable — switch Studio to the Server view to run this.", true
+end
+
 -- CLIENT play copy: find the relay RF (waits up to WAIT_TIMEOUT for it to replicate). Returns a
 -- client table with `http`/`tool` (dot-called, no self), or nil if the RF never appeared (caller then
 -- leaves the real anthropic in place so the existing client-context error guides the user).
@@ -119,31 +154,20 @@ function Relay.newClient(): any?
 	local remote = rf :: RemoteFunction
 	local client = {}
 
-	-- HTTP relay -> an Anthropic.Result. On any failure, a context-kind Result mirroring
-	-- Anthropic.request's client-context error, so the loop degrades gracefully (never crashes).
+	-- HTTP relay -> an Anthropic.Result (see Relay.unwrapHttp for the success/error/transport cases).
 	function client.http(opts: any): any
 		local ok, res = pcall(function()
 			return remote:InvokeServer({ kind = "http", opts = opts })
 		end)
-		if ok and type(res) == "table" and res.kind == "http" and type(res.result) == "table" then
-			return res.result
-		end
-		return {
-			ok = false,
-			kind = "context",
-			message = "relay unavailable — switch Studio to the Server view (Client/Server dropdown).",
-		}
+		return Relay.unwrapHttp(ok, res)
 	end
 
-	-- Tool relay -> (content, isError). On failure, an is_error string telling the user to switch.
+	-- Tool relay -> (content, isError). See Relay.unwrapTool for the cases.
 	function client.tool(name: string, input: any): (any, boolean)
 		local ok, res = pcall(function()
 			return remote:InvokeServer({ kind = "tool", name = name, input = input })
 		end)
-		if ok and type(res) == "table" and res.kind == "tool" then
-			return res.content, res.isError == true
-		end
-		return "relay unavailable — switch Studio to the Server view to run this.", true
+		return Relay.unwrapTool(ok, res)
 	end
 
 	return client

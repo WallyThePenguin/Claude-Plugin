@@ -124,6 +124,69 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("unwrapHttp: success envelope passes the server Result through", function()
+		local r = Relay.unwrapHttp(
+			true,
+			{ kind = "http", result = { ok = true, data = { content = {} } } }
+		)
+		if type(r) ~= "table" or r.ok ~= true then
+			return false, "did not pass the Result through"
+		end
+		return true
+	end)
+
+	add("unwrapHttp: a transient server Result passes through (for Retry)", function()
+		local r = Relay.unwrapHttp(
+			true,
+			{ kind = "http", result = { ok = false, kind = "http", status = 503 } }
+		)
+		if r.ok ~= false or r.kind ~= "http" or r.status ~= 503 then
+			return false, "transient Result not preserved"
+		end
+		return true
+	end)
+
+	add("unwrapHttp: an error envelope surfaces the real message, non-transient", function()
+		local r = Relay.unwrapHttp(true, { kind = "error", message = "boom" })
+		if r.ok ~= false or r.kind ~= "relay" then
+			return false, "expected kind=relay, got " .. tostring(r.kind)
+		end
+		if string.find(tostring(r.message), "boom", 1, true) == nil then
+			return false, "real message lost"
+		end
+		return true
+	end)
+
+	add("unwrapHttp: a broken transport falls back to 'switch view' (context)", function()
+		local r = Relay.unwrapHttp(false, "InvokeServer failed")
+		if r.ok ~= false or r.kind ~= "context" then
+			return false, "expected kind=context, got " .. tostring(r.kind)
+		end
+		return true
+	end)
+
+	add("unwrapTool: tool envelope returns (content, isError)", function()
+		local content, isError =
+			Relay.unwrapTool(true, { kind = "tool", content = "hi", isError = false })
+		return content == "hi" and isError == false
+	end)
+
+	add("unwrapTool: a tool is_error envelope is preserved", function()
+		local content, isError =
+			Relay.unwrapTool(true, { kind = "tool", content = "bad", isError = true })
+		return content == "bad" and isError == true
+	end)
+
+	add("unwrapTool: an error envelope surfaces the real message as is_error", function()
+		local content, isError = Relay.unwrapTool(true, { kind = "error", message = "boom" })
+		return isError == true and string.find(tostring(content), "boom", 1, true) ~= nil
+	end)
+
+	add("unwrapTool: a broken transport falls back to is_error 'switch view'", function()
+		local content, isError = Relay.unwrapTool(false, nil)
+		return isError == true and string.find(tostring(content), "Server view", 1, true) ~= nil
+	end)
+
 	return cases
 end
 
