@@ -15,6 +15,7 @@ export type Deps = {
 	sessions: any,
 	taskList: any,
 	memory: any,
+	skills: any,
 }
 
 local TEXT = Color3.fromRGB(225, 225, 228)
@@ -89,23 +90,27 @@ function Widget.mount(gui: Instance, deps: Deps)
 	tokenSaveBtn.Position = UDim2.new(1, -54, 0, 32)
 	tokenSaveBtn.Parent = root
 
-	-- Control row.
+	-- Control row (compact so all four buttons fit the 260px min dock width).
 	local newBtn = button("New chat")
-	newBtn.Size = UDim2.fromOffset(76, 26)
+	newBtn.Size = UDim2.fromOffset(64, 26)
 	newBtn.Position = UDim2.fromOffset(0, 64)
 	newBtn.Parent = root
 	local histBtn = button("History")
-	histBtn.Size = UDim2.fromOffset(70, 26)
-	histBtn.Position = UDim2.fromOffset(82, 64)
+	histBtn.Size = UDim2.fromOffset(56, 26)
+	histBtn.Position = UDim2.fromOffset(68, 64)
 	histBtn.Parent = root
 	local memBtn = button("Memory")
-	memBtn.Size = UDim2.fromOffset(66, 26)
-	memBtn.Position = UDim2.fromOffset(158, 64)
+	memBtn.Size = UDim2.fromOffset(56, 26)
+	memBtn.Position = UDim2.fromOffset(128, 64)
 	memBtn.Parent = root
+	local skillsBtn = button("Skills")
+	skillsBtn.Size = UDim2.fromOffset(52, 26)
+	skillsBtn.Position = UDim2.fromOffset(188, 64)
+	skillsBtn.Parent = root
 	local status = Instance.new("TextLabel")
 	status.BackgroundTransparency = 1
-	status.Size = UDim2.new(1, -230, 0, 26)
-	status.Position = UDim2.fromOffset(230, 64)
+	status.Size = UDim2.new(1, -244, 0, 26)
+	status.Position = UDim2.fromOffset(244, 64)
 	status.TextColor3 = MUTED
 	status.TextSize = 12
 	status.Font = Enum.Font.Gotham
@@ -151,6 +156,8 @@ function Widget.mount(gui: Instance, deps: Deps)
 	sessionList.Visible = false
 	local memoryList = scroller()
 	memoryList.Visible = false
+	local skillsList = scroller()
+	skillsList.Visible = false
 
 	-- Checklist container (between the control row and the transcript). Hidden when empty or while the
 	-- sessions/history view is shown. Manual height; the transcript's geometry follows via layoutChecklist().
@@ -353,13 +360,15 @@ function Widget.mount(gui: Instance, deps: Deps)
 
 	-- Forward declaration so a memory row's ✕ callback can refresh the list (defined after refreshSessions).
 	local refreshMemory: () -> ()
+	local refreshSkills: () -> ()
 
-	-- The transcript and the two alternate views (sessions, memory) are mutually exclusive; only one
-	-- shows at a time. layoutChecklist() hides the checklist while either alternate view is up.
+	-- The transcript and the alternate views (sessions, memory, skills) are mutually exclusive; only one
+	-- shows at a time. layoutChecklist() hides the checklist while any alternate view is up.
 	local function updateViews()
-		transcript.Visible = not (sessionList.Visible or memoryList.Visible)
+		transcript.Visible = not (sessionList.Visible or memoryList.Visible or skillsList.Visible)
 		histBtn.Text = if sessionList.Visible then "Back" else "History"
 		memBtn.Text = if memoryList.Visible then "Back" else "Memory"
+		skillsBtn.Text = if skillsList.Visible then "Back" else "Skills"
 		layoutChecklist()
 	end
 
@@ -367,6 +376,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 		sessionList.Visible = show
 		if show then
 			memoryList.Visible = false
+			skillsList.Visible = false
 		end
 		updateViews()
 	end
@@ -375,17 +385,29 @@ function Widget.mount(gui: Instance, deps: Deps)
 		memoryList.Visible = show
 		if show then
 			sessionList.Visible = false
+			skillsList.Visible = false
 			refreshMemory()
 		end
 		updateViews()
 	end
 
-	-- Return to the transcript, closing BOTH alternate views. Used by New chat / Send / open-session so
-	-- the transcript is never left hidden behind a still-open Memory or History view (a Send would
-	-- otherwise stream the whole reply into a hidden scroller).
+	local function showSkills(show: boolean)
+		skillsList.Visible = show
+		if show then
+			sessionList.Visible = false
+			memoryList.Visible = false
+			refreshSkills()
+		end
+		updateViews()
+	end
+
+	-- Return to the transcript, closing ALL alternate views. Used by New chat / Send / open-session so
+	-- the transcript is never left hidden behind a still-open Memory / History / Skills view (a Send
+	-- would otherwise stream the whole reply into a hidden scroller).
 	local function showTranscript()
 		sessionList.Visible = false
 		memoryList.Visible = false
+		skillsList.Visible = false
 		updateViews()
 	end
 
@@ -504,6 +526,83 @@ function Widget.mount(gui: Instance, deps: Deps)
 		end
 	end
 
+	-- Skills view --------------------------------------------------------------------------------
+	local function addSkillHeader(text: string)
+		rowOrder += 1
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.new(1, -8, 0, 0)
+		label.AutomaticSize = Enum.AutomaticSize.Y
+		label.TextWrapped = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Top
+		label.TextColor3 = MUTED
+		label.TextSize = 12
+		label.Font = Enum.Font.GothamBold
+		label.Text = text
+		label.LayoutOrder = rowOrder
+		label.Parent = skillsList
+	end
+
+	local function addSkillRow(skill: any, deletable: boolean)
+		rowOrder += 1
+		local row = Instance.new("Frame")
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, -8, 0, 0)
+		row.AutomaticSize = Enum.AutomaticSize.Y
+		row.LayoutOrder = rowOrder
+		row.Parent = skillsList
+		local txt = Instance.new("TextLabel")
+		txt.BackgroundTransparency = 1
+		txt.Size = UDim2.new(1, if deletable then -26 else 0, 0, 0)
+		txt.AutomaticSize = Enum.AutomaticSize.Y
+		txt.TextWrapped = true
+		txt.TextXAlignment = Enum.TextXAlignment.Left
+		txt.TextYAlignment = Enum.TextYAlignment.Top
+		txt.TextColor3 = TEXT
+		txt.TextSize = 13
+		txt.Font = Enum.Font.Gotham
+		txt.Text = tostring(skill.name) .. " — " .. tostring(skill.description)
+		txt.Parent = row
+		if deletable then
+			local x = button("✕")
+			x.Size = UDim2.fromOffset(22, 22)
+			x.Position = UDim2.new(1, -22, 0, 0)
+			x.Parent = row
+			x.Activated:Connect(function()
+				deps.skills:delete(skill.name)
+				refreshSkills()
+			end)
+		end
+	end
+
+	function refreshSkills()
+		clearScroller(skillsList)
+		rowOrder = 0
+		local builtins = deps.skills:listBuiltins()
+		addSkillHeader("BUILD RECIPES")
+		for _, s in builtins do
+			if s.category ~= "working" then
+				addSkillRow(s, false)
+			end
+		end
+		addSkillHeader("WORKING SKILLS")
+		for _, s in builtins do
+			if s.category == "working" then
+				addSkillRow(s, false)
+			end
+		end
+		addSkillHeader("YOUR SKILLS")
+		local user = deps.skills:listUser()
+		if #user == 0 then
+			addSkillHeader("  (none yet — save one with the create-skill skill)")
+		else
+			for _, s in user do
+				addSkillRow(s, true)
+			end
+		end
+	end
+
 	-- Wiring -------------------------------------------------------------------------------------
 	local cancelled = false
 
@@ -528,6 +627,10 @@ function Widget.mount(gui: Instance, deps: Deps)
 
 	memBtn.Activated:Connect(function()
 		showMemory(not memoryList.Visible)
+	end)
+
+	skillsBtn.Activated:Connect(function()
+		showSkills(not skillsList.Visible)
 	end)
 
 	newBtn.Activated:Connect(function()
@@ -557,6 +660,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 			deps.conversation,
 			deps.taskList,
 			deps.memory,
+			deps.skills,
 			text,
 			{
 				onEvent = function(event: string, data: any)
