@@ -26,7 +26,9 @@ local TasksTool = require(script.Tasks)
 local MemoryTool = require(script.Memory)
 local WritersTool = require(script.Writers)
 local SkillsTool = require(script.Skills)
-local DestroyTool = require(script.Destroy)
+-- NB: the module is DestroyInstance (NOT Destroy) — `script.Destroy` resolves to the built-in
+-- Instance:Destroy method (methods shadow same-named children on dot-access), so requiring it errors.
+local DestroyTool = require(script.DestroyInstance)
 local PlaceTool = require(script.Place)
 
 local Tools = {}
