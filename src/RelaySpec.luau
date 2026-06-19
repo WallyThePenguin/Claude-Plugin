@@ -27,6 +27,8 @@ local EXPECTED_RELAY = {
 	"get_output",
 	"set_property",
 	"create_instance",
+	"destroy_instance",
+	"place_relative",
 	"capture",
 	"capture_angles",
 	"capture_animation",
