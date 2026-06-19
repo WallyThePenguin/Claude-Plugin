@@ -1,6 +1,6 @@
 --!strict
 -- CaptureCore: the shared engine for the capture tools. PURE helpers (camera framing math, presets,
--- downscale policy, elevation) are unit-tested in CaptureSpec; IMPURE helpers (camera save/set/restore,
+-- elevation) are unit-tested in CaptureSpec; IMPURE helpers (camera save/set/restore,
 -- CaptureScreenshot trigger, sidecar HTTP fetch, target resolution) are added in Task 4 and are
 -- LIVE-verified in Studio. A plugin can't read the capture file, so the impure fetch asks the local
 -- sidecar to read the newest wob PNG(s) off disk. See the multi-capture design spec.
@@ -57,19 +57,6 @@ function CaptureCore.frameCFrame(
 		math.cos(pitch) * math.cos(yaw)
 	)
 	return CFrame.lookAt(center + dir * distance, center)
-end
-
--- Downscale ceiling so a batch stays under Anthropic's per-request limits: >20 images must each be
--- <=2000px (the "many-image" rule), and the 32MB request payload caps total bytes. nil = native res.
-function CaptureCore.maxPxForCount(count: number): number?
-	if count <= 20 then
-		return nil
-	elseif count <= 50 then
-		return 2000
-	elseif count <= 100 then
-		return 1280
-	end
-	return 768
 end
 
 -- "low"/"eye"/"high" or a numeric degrees -> pitch degrees.
@@ -223,38 +210,22 @@ function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
 	return center, size, nil
 end
 
--- Ask the sidecar for `count` newest capture PNGs created at/after `since` (epoch seconds), downscaled
--- to maxPx when given. Returns (blocks, nil) on success — a list of base64 image blocks — or
--- (nil, errString) on any failure (same error wording as the previous capture tool).
-function CaptureCore.fetchCaptures(
-	count: number,
-	since: number,
-	maxPx: number?,
-	config: any
-): ({ any }?, string?)
+-- Ask the sidecar for `count` newest capture PNGs created at/after `since` (epoch seconds). Returns
+-- (blocks, nil) on success — a list of base64 image blocks — or (nil, errString) on any failure.
+function CaptureCore.fetchCaptures(count: number, since: number, config: any): ({ any }?, string?)
 	if config == nil then
 		return nil, "capture: internal error (no config available)"
-	end
-	local token = config:getSidecarToken()
-	if token == "" then
-		return nil,
-			"capture: no sidecar token is set. Start the vision sidecar (sidecar/run.ps1) and paste "
-				.. "the token it prints into the panel's 'sidecar token' field."
 	end
 	local url = config:getSidecarUrl()
 		.. "/captures?b64=1&count="
 		.. tostring(count)
 		.. "&since="
 		.. tostring(math.floor(since))
-	if maxPx ~= nil then
-		url ..= "&max_px=" .. tostring(maxPx)
-	end
 
 	local ok, res = pcall(function()
 		return HttpService:RequestAsync({
 			Url = url,
 			Method = "GET",
-			Headers = { ["Authorization"] = "Bearer " .. token },
 		})
 	end)
 	if not ok then
@@ -271,17 +242,13 @@ function CaptureCore.fetchCaptures(
 		return nil,
 			"capture: could not reach the vision sidecar at "
 				.. config:getSidecarUrl()
-				.. " — is it running? Start it with sidecar/run.ps1. ("
+				.. " — is it running? Start StudioAgentSidecar.exe (sidecar/dist). ("
 				.. tostring(res)
 				.. ")"
 	end
 
 	local response = res :: any
 	if not response.Success then
-		if response.StatusCode == 401 then
-			return nil,
-				"capture: the sidecar rejected the token (401). Re-copy the token from sidecar/run.ps1."
-		end
 		return nil,
 			"capture: the sidecar returned HTTP "
 				.. tostring(response.StatusCode)

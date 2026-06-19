@@ -70,47 +70,27 @@ function Widget.mount(gui: Instance, deps: Deps)
 	saveBtn.Position = UDim2.new(1, -54, 0, 0)
 	saveBtn.Parent = root
 
-	-- Sidecar token row (vision/capture) — mirrors the proxy-key row.
-	local tokenBox = Instance.new("TextBox")
-	tokenBox.Size = UDim2.new(1, -58, 0, 26)
-	tokenBox.Position = UDim2.fromOffset(0, 32)
-	tokenBox.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
-	tokenBox.BorderSizePixel = 0
-	tokenBox.TextColor3 = TEXT
-	tokenBox.PlaceholderText = "sidecar token (vision)"
-	tokenBox.PlaceholderColor3 = MUTED
-	tokenBox.Text = deps.config:getSidecarToken()
-	tokenBox.ClearTextOnFocus = false
-	tokenBox.TextSize = 13
-	tokenBox.Font = Enum.Font.Code
-	tokenBox.TextXAlignment = Enum.TextXAlignment.Left
-	tokenBox.Parent = root
-	local tokenSaveBtn = button("Save")
-	tokenSaveBtn.Size = UDim2.fromOffset(54, 26)
-	tokenSaveBtn.Position = UDim2.new(1, -54, 0, 32)
-	tokenSaveBtn.Parent = root
-
 	-- Control row (compact so all four buttons fit the 260px min dock width).
 	local newBtn = button("New chat")
 	newBtn.Size = UDim2.fromOffset(64, 26)
-	newBtn.Position = UDim2.fromOffset(0, 64)
+	newBtn.Position = UDim2.fromOffset(0, 32)
 	newBtn.Parent = root
 	local histBtn = button("History")
 	histBtn.Size = UDim2.fromOffset(56, 26)
-	histBtn.Position = UDim2.fromOffset(68, 64)
+	histBtn.Position = UDim2.fromOffset(68, 32)
 	histBtn.Parent = root
 	local memBtn = button("Memory")
 	memBtn.Size = UDim2.fromOffset(56, 26)
-	memBtn.Position = UDim2.fromOffset(128, 64)
+	memBtn.Position = UDim2.fromOffset(128, 32)
 	memBtn.Parent = root
 	local skillsBtn = button("Skills")
 	skillsBtn.Size = UDim2.fromOffset(52, 26)
-	skillsBtn.Position = UDim2.fromOffset(188, 64)
+	skillsBtn.Position = UDim2.fromOffset(188, 32)
 	skillsBtn.Parent = root
 	local status = Instance.new("TextLabel")
 	status.BackgroundTransparency = 1
 	status.Size = UDim2.new(1, -244, 0, 26)
-	status.Position = UDim2.fromOffset(244, 64)
+	status.Position = UDim2.fromOffset(244, 32)
 	status.TextColor3 = MUTED
 	status.TextSize = 12
 	status.Font = Enum.Font.Gotham
@@ -120,7 +100,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 	status.Parent = root
 
 	-- Main area (flexes between the header rows ending at y=96 and the input row at the bottom).
-	local TOP = 96 -- three 26px header rows on a 32px stride: proxy-key (y0), sidecar-token (y32), control (y64).
+	local TOP = 64 -- two 26px header rows on a 32px stride: proxy-key (y0), control (y32).
 	local INPUT_H = 70
 	-- Checklist (update_tasks) layout constants. The checklist is pinned at y=TOP and the transcript
 	-- reflows below it; height is derived from task count + collapsed state (no AutomaticSize race).
@@ -609,11 +589,6 @@ function Widget.mount(gui: Instance, deps: Deps)
 	saveBtn.Activated:Connect(function()
 		local ok, reason = deps.config:set("proxyKey", keyBox.Text)
 		status.Text = if ok then "key saved" else "rejected: " .. tostring(reason)
-	end)
-
-	tokenSaveBtn.Activated:Connect(function()
-		local ok, reason = deps.config:set("sidecarToken", tokenBox.Text)
-		status.Text = if ok then "sidecar token saved" else "rejected: " .. tostring(reason)
 	end)
 
 	histBtn.Activated:Connect(function()

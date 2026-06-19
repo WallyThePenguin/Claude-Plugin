@@ -26,9 +26,8 @@ local DEFAULTS = {
 	retryMaxAttempts = 4,
 	retryBaseDelay = 1.0,
 	retryMaxDelay = 30.0,
-	-- Vision sidecar (the `capture` tool): localhost screenshot server + its auth token.
+	-- Vision sidecar (the `capture` tool): localhost screenshot server (no auth — 127.0.0.1-only).
 	sidecarUrl = "http://127.0.0.1:8389",
-	sidecarToken = "",
 	-- Context-window auto-compaction.
 	contextWindow = 1000000, -- model window, tokens (claude-opus-4-8)
 	compactThreshold = 0.8, -- compact when last prompt >= window * this (0 < x < 1)
@@ -133,10 +132,6 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 	elseif key == "sidecarUrl" then
 		if type(value) ~= "string" or value == "" then
 			return false, "sidecarUrl must be a non-empty string"
-		end
-	elseif key == "sidecarToken" then
-		if type(value) ~= "string" then
-			return false, "sidecarToken must be a string"
 		end
 	elseif key == "model" then
 		if type(value) ~= "string" or not isAllowedModel(value) then
@@ -279,10 +274,6 @@ end
 
 function Config.getSidecarUrl(self: Config): string
 	return self:get("sidecarUrl") :: string
-end
-
-function Config.getSidecarToken(self: Config): string
-	return self:get("sidecarToken") :: string
 end
 
 function Config.getModel(self: Config): string

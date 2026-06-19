@@ -38,7 +38,7 @@ local Tools = {}
 export type Content = string | { any }
 
 -- `context` carries loop-level dependencies a tool may need at run time (config, anthropic). Most
--- tools ignore it; `capture` reads context.config for the sidecar URL + token.
+-- tools ignore it; `capture` reads context.config for the sidecar URL.
 export type Descriptor = {
 	name: string,
 	description: string,

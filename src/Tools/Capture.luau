@@ -33,7 +33,7 @@ local function runSingle(_input: any, context: any): (any, boolean)
 			true
 	end
 	CaptureCore.settle(1)
-	local blocks, err = CaptureCore.fetchCaptures(1, since, nil, getConfig(context))
+	local blocks, err = CaptureCore.fetchCaptures(1, since, getConfig(context))
 	if blocks == nil then
 		return err :: string, true
 	end
@@ -67,6 +67,7 @@ local function runAngles(input: any, context: any): (any, boolean)
 		local count = if type(args.count) == "number" and args.count >= 1
 			then math.floor(args.count)
 			else 6
+		count = math.min(count, 20) -- batch cap: keeps requests within Anthropic's image limits
 		local pitch = CaptureCore.elevationPitch(args.elevation)
 		for _, yaw in CaptureCore.yawsFor(count) do
 			table.insert(shots, {
@@ -105,12 +106,7 @@ local function runAngles(input: any, context: any): (any, boolean)
 	if not okAll or triggered == 0 then
 		return "capture_angles: failed to capture any angle (camera restored).", true
 	end
-	local blocks, err = CaptureCore.fetchCaptures(
-		triggered,
-		since,
-		CaptureCore.maxPxForCount(triggered),
-		getConfig(context)
-	)
+	local blocks, err = CaptureCore.fetchCaptures(triggered, since, getConfig(context))
 	if blocks == nil then
 		return err :: string, true
 	end

@@ -66,14 +66,6 @@ local function buildCases(): { Case }
 			and math.abs(CaptureCore.PRESETS.bottom.pitch) < 90
 	end)
 
-	add("maxPxForCount: native res <=20, then 2000/1280/768", function()
-		return CaptureCore.maxPxForCount(20) == nil
-			and CaptureCore.maxPxForCount(21) == 2000
-			and CaptureCore.maxPxForCount(50) == 2000
-			and CaptureCore.maxPxForCount(80) == 1280
-			and CaptureCore.maxPxForCount(200) == 768
-	end)
-
 	add("elevationPitch maps low/eye/high and passes numbers through", function()
 		return CaptureCore.elevationPitch("low") == 5
 			and CaptureCore.elevationPitch("high") == 45
