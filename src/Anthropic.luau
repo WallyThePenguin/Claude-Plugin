@@ -54,26 +54,45 @@ end
 local EMPTY_OBJECT_SENTINEL = "@@studio_agent_empty_object_sentinel@@"
 
 local function encodeBody(body: { [string]: any }): string
-	local restores: { { block: any, old: any } } = {}
+	-- Each restore records an (object, key) whose empty/absent value we swapped for the sentinel, so
+	-- the original is put back after encoding (the live conversation + tool defs are never left mutated).
+	local restores: { { obj: any, key: string, old: any } } = {}
+	local function swapEmpty(obj: any, key: string)
+		local v = obj[key]
+		if v == nil or (type(v) == "table" and next(v) == nil) then
+			table.insert(restores, { obj = obj, key = key, old = v })
+			obj[key] = EMPTY_OBJECT_SENTINEL
+		end
+	end
+
+	-- (1) tool_use blocks in messages: a no-arg call echoes back an empty `input`.
 	local messages = body.messages
 	if type(messages) == "table" then
 		for _, msg in messages do
 			if type(msg) == "table" and type(msg.content) == "table" then
 				for _, block in msg.content do
 					if type(block) == "table" and block.type == "tool_use" then
-						local input = block.input
-						if input == nil or (type(input) == "table" and next(input) == nil) then
-							table.insert(restores, { block = block, old = input })
-							block.input = EMPTY_OBJECT_SENTINEL
-						end
+						swapEmpty(block, "input")
 					end
 				end
 			end
 		end
 	end
+
+	-- (2) tool DEFINITIONS: a no-arg tool (e.g. `capture`) declares `input_schema.properties = {}`,
+	-- which Anthropic requires to be a JSON object, not []. (Server tools carry no input_schema.)
+	local tools = body.tools
+	if type(tools) == "table" then
+		for _, tool in tools do
+			if type(tool) == "table" and type(tool.input_schema) == "table" then
+				swapEmpty(tool.input_schema, "properties")
+			end
+		end
+	end
+
 	local encoded = HttpService:JSONEncode(body)
 	for _, r in restores do
-		r.block.input = r.old
+		r.obj[r.key] = r.old
 	end
 	return (string.gsub(encoded, '"' .. EMPTY_OBJECT_SENTINEL .. '"', "{}"))
 end
