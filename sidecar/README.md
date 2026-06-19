@@ -1,41 +1,47 @@
-# Vision sidecar (M10) — screenshots so Claude can *see*
+# Vision sidecar — screenshots so Claude can *see*
 
-A plugin can't read viewport pixels, so this tiny OS-side helper does. It captures the Roblox
-Studio window (Windows `PrintWindow(PW_RENDERFULLCONTENT)` — works even when occluded / unfocused,
-including the hardware-accelerated viewport) and serves it over **localhost only**, token-authed.
-The plugin's `capture` tool fetches a frame and forwards it to Claude as a base64 image block.
+A Roblox plugin can't read viewport pixels, but `CaptureService:CaptureScreenshot` writes a full-res
+viewport PNG to disk (`%LOCALAPPDATA%\Roblox\tmp-capture-storage\wob-*`). This tiny helper reads the
+newest of those files and serves them over **localhost only**, so the plugin's `capture` /
+`capture_angles` tools can fetch a frame and forward it to Claude as a base64 image block.
 
 ```
-plugin  --GET /screenshot?b64=1-->  127.0.0.1:8389 (this sidecar)  --PrintWindow-->  Studio window
+plugin  --GET /captures?b64=1&count=N-->  127.0.0.1:8389 (this sidecar)  --reads-->  tmp-capture-storage
 ```
 
-## Setup
+## Run it
+
+**Normal use — no Python needed:** double-click `dist/StudioAgentSidecar.exe`. It prints
+`listening on http://127.0.0.1:8389` and serves while the window is open. Close the window to stop.
+
+**From source (dev):** `.\run.ps1` (needs Python 3; the sidecar is pure standard library — no `pip`).
+
+There is **no token** — capture works as soon as the sidecar is running. (Earlier versions required
+pasting a token into the panel; that field is gone.)
+
+## Build the exe
 
 ```powershell
-cd C:\Users\manso\Desktop\Claude-Plugin\sidecar
-py -m pip install -r requirements.txt   # one time: pywin32 + Pillow
-.\run.ps1                               # prints the token, then serves on 127.0.0.1:8389
+py -m pip install pyinstaller   # one time
+.\build-exe.ps1                 # -> dist\StudioAgentSidecar.exe (commit it)
 ```
 
-`run.ps1` generates a token once (saved to `sidecar/.token`, gitignored) and prints it — paste it
-into the plugin's **Sidecar token** setting (added with the `capture` tool). Leave the window open
-while using vision.
+Rebuild and re-commit the exe whenever `server.py` / `capture.py` change. If antivirus flags the
+onefile build, edit `build-exe.ps1` to use `--onedir`.
 
-## Verify it captures Studio (standalone)
+## Verify it reads captures (standalone)
 
-With Studio open and the sidecar running, from another PowerShell:
+With Studio open, take a screenshot in it (so a `wob-*` file exists), then from another shell:
 
 ```powershell
-$t = (Get-Content .\.token -Raw).Trim()
-curl.exe -s "http://127.0.0.1:8389/screenshot?window=Roblox%20Studio&token=$t" -o studio.png
-start studio.png   # should be a screenshot of the Studio window
+curl.exe -s "http://127.0.0.1:8389/captures?b64=1&count=1"
 ```
 
-401 = wrong/missing token. 500 with `"no visible window matching..."` = Studio isn't open or the
-title differs (pass `&window=<substring>`). A black frame = focus Studio once and retry.
+`{"images":[],"returned":0,"shortfall":true}` means no recent capture file was found; a non-empty
+`images` array is a base64 PNG. `404` means a path other than `/captures`.
 
 ## Security
 
-- Binds `127.0.0.1` only; every request requires the token (`?token=` or `Authorization: Bearer`).
-- This grants screenshot access to whatever holds the token — keep `.token` local (gitignored).
-- The sidecar only ever *reads* pixels; it executes nothing it is sent.
+- Binds `127.0.0.1` only — the sole trust boundary. The served asset is just your own Studio
+  viewport PNGs, kept off the network by loopback.
+- The sidecar only ever *reads* capture files; it executes nothing it is sent.

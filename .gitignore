@@ -17,7 +17,8 @@
 proxy/config.yaml
 proxy/auth/
 proxy/data/
-sidecar/.token
+sidecar/build/
+sidecar/*.spec
 sidecar/*.png
 *.key
 
