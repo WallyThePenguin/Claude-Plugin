@@ -192,8 +192,18 @@ local r15: Template = {
 
 local byName: { [string]: Template } = { r6 = r6, r15 = r15 }
 
+-- Official Roblox rig asset ids (loaded via InsertService) — the NATIVE rig, preferred over the
+-- programmatic placeholder. r15 = the official "R15 Block Rig". (r6 has no verified id yet → falls back
+-- to the programmatic r6 template.)
+local nativeAsset: { [string]: number } = { r15 = 16644810619 }
+
 function RigTemplates.get(name: string): Template?
 	return byName[string.lower(name)]
+end
+
+-- The native Roblox rig asset id for a type, or nil if none (use the programmatic template instead).
+function RigTemplates.getNative(name: string): number?
+	return nativeAsset[string.lower(name)]
 end
 
 return RigTemplates

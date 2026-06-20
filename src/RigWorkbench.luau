@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local InsertService = game:GetService("InsertService")
 
 local RigTemplates = require(script.Parent.RigTemplates)
 
@@ -213,9 +214,45 @@ function RigWorkbench.resetPose(rig: Instance): (string, boolean)
 	return string.format("reset %d joints on %s", #joints, rig.Name), true
 end
 
--- ---- spawn (blocky humanoid placeholder; correct-by-construction joints) ----
+-- ---- spawn ----
 
-function RigWorkbench.spawn(templateName: string): (Instance?, string)
+-- Try to load the NATIVE Roblox rig via InsertService (the official R15 Block Rig etc.). LoadAsset
+-- YIELDS + hits the network, so it runs OUTSIDE any ChangeHistory recording; the parenting/MakeJoints/
+-- placement are recorded. Returns the rig Model, or nil so the caller falls back to the placeholder.
+local function loadNativeRig(templateName: string): Instance?
+	local assetId = RigTemplates.getNative(templateName)
+	if assetId == nil then
+		return nil
+	end
+	local ok, wrapper = pcall(function()
+		return InsertService:LoadAsset(assetId)
+	end)
+	if not ok or typeof(wrapper) ~= "Instance" then
+		warn("[StudioAgent] native rig LoadAsset failed: " .. tostring(wrapper))
+		return nil
+	end
+	local rig = wrapper:FindFirstChildWhichIsA("Model")
+	if rig == nil then
+		wrapper:Destroy()
+		return nil
+	end
+	local rid = beginRecording("Spawn native rig")
+	rig.Name = "AgentRig_" .. string.upper(templateName)
+	rig.Parent = Workspace
+	pcall(function()
+		rig:MakeJoints() -- glue Motor6Ds if the asset relies on legacy joint connectors
+	end)
+	pcall(function()
+		(rig :: Model):MoveTo(Vector3.new(0, 0, 0)) -- stand it on the baseplate
+	end)
+	finishRecording(rid, true)
+	wrapper:Destroy()
+	return rig
+end
+
+-- Programmatic blocky placeholder (correct-by-construction joints) — the fallback when no native asset
+-- exists for the type (e.g. r6) or LoadAsset fails.
+local function buildPlaceholder(templateName: string): (Instance?, string)
 	local template = RigTemplates.get(templateName)
 	if template == nil then
 		return nil, "unknown rig type '" .. templateName .. "' (try 'r6' or 'r15')"
@@ -259,7 +296,16 @@ function RigWorkbench.spawn(templateName: string): (Instance?, string)
 	model.PrimaryPart = parts["HumanoidRootPart"]
 	model.Parent = Workspace
 	finishRecording(rid, true)
-	return model, "spawned " .. model.Name
+	return model, "spawned " .. model.Name .. " (programmatic placeholder)"
+end
+
+-- Spawn a rig: prefer the NATIVE Roblox rig (InsertService), fall back to the programmatic placeholder.
+function RigWorkbench.spawn(templateName: string): (Instance?, string)
+	local native = loadNativeRig(templateName)
+	if native ~= nil then
+		return native, "spawned native " .. native.Name
+	end
+	return buildPlaceholder(templateName)
 end
 
 return RigWorkbench

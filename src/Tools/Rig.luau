@@ -101,10 +101,10 @@ end
 Rig.descriptors = {
 	{
 		name = "spawn_rig",
-		description = "Spawn a blocky humanoid PLACEHOLDER rig to pose and animate. type = 'r6' (default, "
-			.. "6-limb R6) or 'r15' (15-part R15 topology + standard R15 joint names + a Humanoid set to "
-			.. "R15). Returns the rig's path. get_rig/pose_joint also work on ANY real rig you insert "
-			.. "(Studio's Rig Builder), so you can spawn one here or operate on an existing one.",
+		description = "Spawn a rig to pose/animate. type = 'r15' loads the NATIVE Roblox R15 rig "
+			.. "(InsertService — the real jointed dummy; falls back to a blocky placeholder if the load "
+			.. "fails); type = 'r6' (default) spawns a blocky R6 placeholder. Returns the rig's path. "
+			.. "get_rig/pose_joint also work on ANY Motor6D rig you insert (Studio's Rig Builder).",
 		inputSchema = {
 			type = "object",
 			properties = {
