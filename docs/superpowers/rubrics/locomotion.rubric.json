@@ -1,21 +1,21 @@
 {
   "module": "locomotion",
-  "version": "1.0",
+  "version": "1.1",
   "criteria": [
     {
       "id": "loco-state-machine",
       "order_index": 1,
       "tier": "baseline",
       "system_module": "locomotion",
-      "statement": "Locomotion is driven by a CONTINUOUS planar-velocity signal feeding a movement system, NOT a discrete WalkSpeed-threshold clip swap. The candidate must describe a runtime driver that reads the live Humanoid/root velocity vector (magnitude AND direction) and uses it to select/weight motion every frame — e.g. a blend tree keyed to planar velocity, or a velocity-projected weighting of tracks. Default Roblox 'Animate' swaps idle/walk/run on WalkSpeed alone and rotates the body to MoveDirection: that single-scalar, threshold-driven, direction-blind clip-swap is the FLOOR and earns nothing. To pass, the described architecture must (a) consume the velocity as a continuous quantity (not just cross a speed threshold) and (b) carry a DIRECTION component (strafe/forward axis), so the system has a 2D notion of movement rather than one forward loop scaled by speed.",
-      "above_generic_rationale": "Default Roblox locomotion is a one-dimensional WalkSpeed-threshold clip swap with no concept of relative direction (hence the classic moonwalk on sideways input). A continuous, direction-aware velocity driver is the architectural floor every higher system (foot IK, lean, sway) layers onto, and it is exactly what generic/AI builds omit.",
+      "statement": "Locomotion routing is governed by a velocity-classifying control layer the build OWNS, not the stock single-loop default. To pass, the build must commit at the architecture level to a routing layer that reads live planar velocity (and/or Humanoid MoveDirection/state) and selects/weights among MORE THAN ONE locomotion target from that signal — e.g. a blend tree keyed to planar velocity, or a custom Animate-override controller with per-state tables driven by velocity. The single discriminating commitment is: clip selection is a function of a live continuous movement signal, NOT a discrete WalkSpeed-keyed swap of one forward clip on the untouched stock Animate. A build that states locomotion is a single forward walk/run loop swapped by WalkSpeed on default Animate FAILS; a build that states a velocity-driven blend/controller owns selection PASSES (capture/dump strengthens but is not required at the design-claim stage — the architectural commitment is what is graded).",
+      "above_generic_rationale": "The engine gives every game the stock Animate with one forward loop swapped by WalkSpeed for free — that is exactly the floor and exactly the mean. The above-generic move is owning a routing layer whose input is a live continuous velocity signal feeding multi-target selection; this is the seam every other locomotion system (blend, IK, aim) composes onto. Grading the architectural commitment (velocity-driven multi-target routing vs. WalkSpeed clip-swap) — rather than demanding a runtime dump a design-stage artifact cannot have — is what separates a real systems architecture from inheriting the default, while still beating what is free.",
       "grading": {
-        "pass": "The system is driven by continuous planar velocity with BOTH a magnitude (speed) response and a direction (forward/strafe) component — e.g. an explicit 2D/velocity-keyed blend tree.",
-        "partial": "A continuous-velocity driver is described but only on the speed axis (no direction/strafe component), or only direction with no continuous speed response.",
-        "fail": "Movement is a WalkSpeed-threshold or single-scalar clip swap, or a single forward loop scaled by speed with no direction component (the default architecture)."
+        "pass": "The build commits to a routing layer it owns (custom controller or extended Animate override) that selects/weights >1 locomotion target as a function of live planar velocity / MoveDirection — e.g. a velocity-keyed blend tree; a dump or capture is credited but not required to pass at the design-claim stage.",
+        "partial": "An owned routing layer is claimed but its input is a discrete threshold (e.g. WalkSpeed buckets) rather than a continuous live-velocity signal, OR it routes only a single state beyond idle.",
+        "fail": "Stock Animate left untouched with the walk/run slots pointed at one forward clip swapped by WalkSpeed; no velocity-driven owned routing layer."
       },
-      "evidence_required": "A description or spec of a runtime driver that reads continuous planar velocity (both magnitude and a forward-vs-strafe direction component) to select or weight motion — e.g. a 2D/velocity-keyed blend tree or a velocity-projected track weighting. A pure WalkSpeed-threshold or forward-loop-scaled-by-speed description does NOT count.",
-      "concrete_fix": "Replace the WalkSpeed-threshold clip swap with a velocity-driven movement system: read the live planar velocity, decompose it into forward/strafe components, and feed that vector into a blend tree or per-frame track weighting so both speed AND direction drive the pose.",
+      "evidence_required": "A statement/dump/code showing an owned routing layer (custom controller or named Animate override) whose clip selection/weighting is a function of LIVE planar velocity or MoveDirection across more than one target (a velocity-keyed blend tree qualifies). A description that the stock Animate is untouched with one forward clip swapped by WalkSpeed does NOT satisfy this. A runtime capture is credited but not required at the design-claim stage.",
+      "concrete_fix": "Replace the WalkSpeed clip-swap with a routing layer you own — a velocity-keyed blend tree or a custom Animate-override controller — whose target selection is a continuous function of live planar velocity, and make it the documented hook point for blend/IK/aim.",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/animation/play-character-animations.md",
         "https://www.youtube.com/watch?v=sr34MYv35XU"
@@ -27,109 +27,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original credited cloning the 'Animate' LocalScript with per-state tables — pure clip-craft evidence neither artifact provides, so both failed (no discrimination). The GREAT artifact's distinguishing prose is 'a 2D blend tree keyed to planar velocity (forward+strafe)'; the MEAN artifact is explicitly 'default Animate clip-swapped by WalkSpeed only, forward-only.' Re-anchoring the check to 'continuous velocity (magnitude+direction) drives the system vs. single-scalar threshold swap' makes the GREAT prose pass and the MEAN prose fail on the exact axis that separates them."
-    },
-    {
-      "id": "loco-vertical-bob-keyposes",
-      "order_index": 2,
-      "tier": "baseline",
-      "system_module": "locomotion",
-      "statement": "Body motion is modulated by a tracked GAIT-PHASE signal at runtime, not just played back from a static clip. The candidate must show that the system maintains a notion of where the character is in the step cycle (gait phase / cycle position) and uses it to drive body motion (e.g. pelvis/hip oscillation, sway, or weight bias keyed to that phase). Default Roblox plays a baked clip with a fixed internal rhythm and tracks no phase variable the rest of the system can read — that is the FLOOR and earns nothing. To pass, gait phase must be an explicit runtime input that something downstream (pelvis sway, hip bias, body bob, or an effect) is computed from, proving the body's vertical/positional motion is phase-coupled rather than a sealed playback.",
-      "above_generic_rationale": "A baked default clip has no externally-readable phase, so nothing downstream can react to the step cycle — the body just slides through a fixed loop. Exposing gait phase as a live driver is what lets weight, sway, and effects couple to the actual footfalls, the systems-level move generic playback can't do.",
-      "grading": {
-        "pass": "Gait phase is an explicit runtime signal and at least one body motion (pelvis/hip sway, bob, or weight bias) is driven from it.",
-        "partial": "Some phase-coupled body motion is implied but the gait-phase signal itself is not clearly a runtime input (could be fully baked).",
-        "fail": "Body motion is sealed in a baked clip with no runtime gait-phase signal driving anything downstream (the default)."
-      },
-      "evidence_required": "Description/spec showing a runtime gait-phase (cycle-position) signal that drives some body motion — e.g. pelvis/hip sway or bob computed from gait phase. A baked clip with no phase variable exposed does NOT count.",
-      "concrete_fix": "Track a gait-phase value at runtime (from cycle time or footfall detection) and drive pelvis/hip oscillation or body bob from it, so vertical/positional body motion is computed from the live step phase rather than sealed in the clip.",
-      "exemplar_refs": [
-        "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/create-an-animation",
-        "https://www.youtube.com/watch?v=6lGPvMLE8Oo"
-      ],
-      "provenance": {
-        "sources": [
-          "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/create-an-animation",
-          "https://www.youtube.com/watch?v=6lGPvMLE8Oo",
-          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/animation/create-an-animation.md",
-          "https://devforum.roblox.com/t/need-help-with-getting-this-walk-animation-more-realistic/525518",
-          "https://devforum.roblox.com/t/r15-animations%F0%9F%93%9E/2879405"
-        ],
-        "confidence": "high"
-      },
-      "change_reason": "The original demanded captured Contact/Down/Passing/High keypose frames + a hip-height trace + a Motor6D Y-keyed pose dump — hand-keyed clip-craft evidence NEITHER artifact provides, so both failed. The only phase-related signal that separates them is the GREAT artifact's 'pelvis sway driven by ... gait phase' versus the MEAN artifact's sealed baked clip. Re-anchoring to 'gait phase is a tracked runtime variable driving body motion' lands on a signal the GREAT prose explicitly contains and the MEAN lacks."
-    },
-    {
-      "id": "loco-contralateral-swing",
-      "order_index": 3,
-      "tier": "baseline",
-      "system_module": "locomotion",
-      "statement": "The upper body is driven by a runtime layer DISTINCT from the leg/locomotion cycle, so arms/torso/head can move independently of the gait (not a single sealed clip where every limb is locked to one timeline). Default Roblox swings the opposite arm as part of the same baked walk clip — one timeline, no separable upper-body control — and that is the FLOOR (earns nothing). To pass, the candidate must describe a separate upper-body driver: an additive/aim/look-at layer, a torso layer driven by a runtime input (e.g. acceleration or gait phase), or independently-weighted upper-body tracks — anything that lets the upper body deviate from the canned arm-leg opposition under runtime control.",
-      "above_generic_rationale": "In the default walk the upper body is welded to the leg timeline; it can't aim, lean, or react. A separate runtime upper-body layer (additive aim/look-at or accel/phase-driven torso) is the systems move that decouples upper-body expression from the gait — absent from any single canned cycle.",
-      "grading": {
-        "pass": "A runtime upper-body layer separate from the leg/locomotion cycle is described (additive aim/look-at, or accel/phase-driven torso/sway).",
-        "partial": "Upper-body motion beyond the bare default is implied but it is not clearly a separable runtime layer (could be baked into the clip).",
-        "fail": "Upper body is locked to the single baked locomotion timeline with no separable runtime control (the default contralateral swing, nothing added)."
-      },
-      "evidence_required": "Description/spec of an upper-body driver separate from the locomotion clip — an additive aim/look-at layer, a runtime-input-driven torso layer, or independently-weighted upper-body tracks. The baked arm-swing inside the walk clip does NOT count.",
-      "concrete_fix": "Add a runtime upper-body layer on top of locomotion (additive aim/look-at via IKControl/priority, or a torso layer driven by acceleration/gait phase) so the arms/torso/head can move independently of the leg cycle.",
-      "exemplar_refs": [
-        "https://devforum.roblox.com/t/need-help-with-getting-this-walk-animation-more-realistic/525518",
-        "https://www.youtube.com/watch?v=6lGPvMLE8Oo"
-      ],
-      "provenance": {
-        "sources": [
-          "https://devforum.roblox.com/t/need-help-with-getting-this-walk-animation-more-realistic/525518",
-          "https://devforum.roblox.com/t/walk-and-run-animation-feedback/3066069",
-          "https://www.youtube.com/watch?v=6lGPvMLE8Oo",
-          "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/create-an-animation"
-        ],
-        "confidence": "high"
-      },
-      "change_reason": "The original scored only hand-keyed forearm-lag pose dumps and UpperTorso-vs-LowerTorso counter-twist keys — clip-craft evidence neither artifact supplies, so both failed. What actually separates them is that the GREAT artifact has 'an additive aim/look-at layer' and 'torso sway' (a runtime upper-body layer) while the MEAN artifact is a rigid default with no described secondary/upper-body motion. Re-anchoring to 'separate runtime-driven upper-body layer vs. single sealed timeline' lands on that difference."
-    },
-    {
-      "id": "loco-seamless-loop",
-      "order_index": 4,
-      "tier": "baseline",
-      "system_module": "locomotion",
-      "statement": "Continuity between motion states is achieved by CONTINUOUS runtime weight-blending across overlapping tracks, not by hard clip swaps (nor merely by toggling the Looping property). Default Roblox hard-swaps idle/walk/run and snaps directional clips, producing seams the engine's default cross-fade only partly hides; a forward-only set with Looping toggled is the FLOOR and earns nothing. To pass, the candidate must describe a system where adjacent motions co-exist and are blended by weight (a blend tree / per-frame weighting), so transitions and the cyclic wrap are continuous-by-construction rather than discrete swaps that must each be seam-matched by hand.",
-      "above_generic_rationale": "Hard clip swaps are the structural source of locomotion pops; the default cross-fade only masks them. A weight-blended blend space makes motion continuous by construction across both the cyclic wrap and state changes — the systems answer to seams that generic builds never adopt.",
-      "grading": {
-        "pass": "Continuity is delivered by continuous runtime weight-blending across overlapping tracks (blend tree / per-frame weighting).",
-        "partial": "Some blending/cross-fading beyond the default is described but the system still hard-swaps between major states (mixed).",
-        "fail": "Motion states are hard clip swaps (or only the Looping property is toggled) with no continuous weight-blend architecture (the default)."
-      },
-      "evidence_required": "Description/spec showing adjacent motions co-existing and combined by runtime weight (blend tree / per-frame AdjustWeight), so transitions are continuous. Toggling Looping, or hard clip swaps, does NOT count.",
-      "concrete_fix": "Replace hard clip swaps with a weight-blended blend space where neighboring speed/direction tracks overlap and are combined by per-frame weight, making the loop wrap and all state changes continuous instead of discrete.",
-      "exemplar_refs": [
-        "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/animation/create-an-animation.md",
-        "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev"
-      ],
-      "provenance": {
-        "sources": [
-          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/animation/create-an-animation.md",
-          "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev",
-          "https://walking-animation-in-roblox.pages.dev/posts/walking-animation-in-roblox/"
-        ],
-        "confidence": "high"
-      },
-      "change_reason": "The original required first/last keyframe pose+tangent dumps or a slow-scrub seam capture — hand-craft evidence neither artifact provides, so both failed. The discriminating signal is architectural: the GREAT artifact's 'blend tree keyed to planar velocity' yields continuous weight-blended motion (no discrete seam), while the MEAN artifact 'does hard clip swaps by WalkSpeed only.' Re-anchoring to 'continuity via continuous weight-blending vs. hard swaps' captures that separation."
+      "change_reason": "The prior rewrite demanded a runtime script/tree dump or per-state classification description as evidence_required, which the GREAT artifact (a design-stage build that states 'a 2D blend tree keyed to planar velocity') could not produce, so it tied at FAIL with the MEAN. Re-pointed the discriminator at the ARCHITECTURAL commitment — clip selection as a function of live continuous velocity vs. a discrete WalkSpeed clip-swap — and demoted the dump/capture from required to credited. The GREAT's velocity-keyed-blend-tree claim now PASSES; the MEAN's explicit 'single forward loop swapped by WalkSpeed on default Animate' still FAILS."
     },
     {
       "id": "loco-living-idle",
-      "order_index": 5,
+      "order_index": 2,
       "tier": "baseline",
       "system_module": "locomotion",
-      "statement": "Idle is a DISTINCT runtime state in the locomotion system (its own driven branch at zero velocity), not the moving clip held still or a single sealed pose. Default Roblox has a stock idle clip; merely shipping that, or holding a forward walk frame when speed=0, is the FLOOR (earns nothing). To pass, the candidate must show the velocity/movement driver treats the at-rest condition as its own state that blends in/out continuously (idle@0 in the speed axis of the blend system) AND that some runtime layer remains active at rest — e.g. the additive aim/look-at still tracks, or accel-driven posture settles — so the standing character is part of the same systemic driver rather than a dead fallback clip.",
-      "above_generic_rationale": "Default idle is a dead fallback clip disconnected from the movement system; nothing reacts at rest. Treating idle as the zero-velocity branch of the same blend system, with additive layers still live, is the systems move that keeps the standing character coherent with everything else — generic builds drop to a sealed loop.",
+      "statement": "Idle is a first-class node in the locomotion control system, distinct from the movement loop. The discriminator is whether the build's architecture HAS a zero-velocity idle state at all: passing requires (1) idle present as its own node selected when planar speed is at/near zero (the v=0 endpoint of the blend space counts), AND (2) idle treated as the base layer that additive standing aim/lean ride on. A build that describes locomotion purely as a movement loop with NO idle node, or that bolts idle onto the stock single-forward-clip default with no v=0 state in an owned controller, FAILS. A build whose velocity-driven blend space includes idle@0 as its low end and composes the standing aim/lean over it PASSES at the architecture level; an authored breathing/weight-shift loop and a capture raise it toward exceptional but are not the pass gate (this is the baseline existence check, not the polish check).",
+      "above_generic_rationale": "A clip-swap-by-WalkSpeed build has no authored v=0 node — idle is whatever the default leaves. The above-generic move is treating idle as the explicit low end of a velocity blend space that the additive standing layers compose onto. Grading the EXISTENCE of an owned idle@0 node (not demanding a breathing-loop capture a design-stage build cannot show) keeps this a real baseline discriminator: a velocity-blend architecture inherently has an idle@0 endpoint, a forward-loop-by-WalkSpeed build does not.",
       "grading": {
-        "pass": "Idle is a distinct zero-velocity branch of the movement driver that blends continuously, and at least one runtime layer stays active at rest.",
-        "partial": "Idle is a separate state but it is a sealed/standalone clip with no runtime layer active at rest, or it blends but no at-rest layer is described.",
-        "fail": "No idle handling in the system, or idle is the default stock clip / a held moving frame disconnected from the driver."
+        "pass": "Idle exists as an explicit zero-velocity node / blend-space low end in an owned controller AND is the base the additive standing aim/lean ride on; an authored living loop and capture are credited but not required to pass.",
+        "partial": "An owned controller exists and reaches a near-zero state, but idle@0 is not called out as a distinct node OR it is not yet composed with the standing additive layers.",
+        "fail": "Locomotion is movement-only with no idle node, or idle is a frozen/looped neutral default pose on the untouched stock Animate."
       },
-      "evidence_required": "Description/spec showing idle as the zero-velocity state of the movement driver that blends in/out continuously, with at least one runtime layer (aim/look-at, accel-driven posture) still active at rest. A standalone stock idle clip or a held walk frame does NOT count.",
-      "concrete_fix": "Model idle as idle@0 in the speed axis of the blend system so it cross-blends with walk continuously, and keep the additive layers (aim/look-at, accel posture) running at rest so the standing character stays driven by the same system.",
+      "evidence_required": "A statement/dump showing idle as an explicit zero-velocity node (or the v=0 low end of the owned blend space) AND that the standing aim/lean additively layer over this idle base. Absence of any idle node, or reliance on the stock default neutral pose, fails. An authored breathing/weight-shift capture is credited toward higher tiers but is not required for the baseline pass.",
+      "concrete_fix": "Make idle the explicit v=0 node of your owned locomotion controller (the low end of the speed blend space), and ensure the additive aim/lean layers blend over this idle base while standing; then author a breathing + weight-shift loop to push beyond baseline.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/idle-animation-feedback/1325333",
         "https://www.youtube.com/watch?v=6lGPvMLE8Oo"
@@ -142,22 +55,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required a captured idle loop showing foot weight-transfer/re-plant/roll and de-synced fidget — clip-craft evidence neither artifact provides, so both failed. The GREAT artifact describes idle as the zero point of its velocity blend system with live additive layers (aim, accel posture) still active; the MEAN artifact is a sealed default with no idle handling. Re-anchoring to 'idle as a distinct driven state within the system, with runtime layers still active' lands on the difference."
+      "change_reason": "The prior rewrite required an authored breathing + balance-shift capture/pose-dump as the pass gate; neither artifact could supply that (GREAT never mentions idle, MEAN ships the bare default), so both tied at FAIL. Since this is a BASELINE-tier criterion, I re-aimed the gate at the architectural EXISTENCE of an idle@0 node that composes with the standing additive layers — which a velocity-driven blend space inherently provides at its low end. To pass, the GREAT artifact must now state idle@0 (a small, reachable delta its blend-space architecture implies); the MEAN's movement-only / stock-default idle still FAILS. The breathing-loop authoring is demoted to a credited-but-not-required higher-tier signal."
     },
     {
       "id": "loco-stride-locked-to-speed",
-      "order_index": 6,
+      "order_index": 3,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "Foot skate is eliminated by a RUNTIME foot-grounding pass (foot IK) layered over the clip, not by clip authoring alone and not by AdjustSpeed cadence-matching (which stock Animate already does). The decisive, gradable mechanism: a runtime IK system (IKControl or Motor6D.Transform) that holds/plants the foot to a world point — including on slopes and steps — so the planted foot does not slide. Default Roblox has NO foot IK and visibly skates on slopes; that is the explicit MEAN failure. To pass, the candidate must describe foot IK that grounds the feet to actual surfaces (slopes/steps), which is precisely what removes the residual position-skate the default cannot fix.",
-      "above_generic_rationale": "Foot sliding is the #1 tell of generic locomotion, and the default has no IK to fix the residual skate its canned stride leaves. A runtime foot-grounding pass that pins feet to real surfaces is the mechanism that actually kills the slide — present in top systems, absent from default Roblox.",
+      "statement": "Contact-phase foot skating is solved by the locomotion system, not left to a fixed-rate clip — either by coupling playback cadence to live velocity OR by a runtime contact-grounding pass that fixes the foot's WORLD position through the stance phase. The discriminator is whether the build commits to ANY runtime mechanism that keeps the planted foot from sliding relative to the ground: passing requires the build to state at least one of (1) AnimationTrack:AdjustSpeed (or equivalent per-frame cadence scaling) driven from the same live planar-velocity signal the locomotion uses (animSpeed approx speed/baseline), so cadence tracks translation; OR (2) a runtime foot-grounding/IK pass (IKControl Transform or Motor6D.Transform) that plants the stance foot to the WORLD on slopes and steps so it does not skate during contact. A build that swaps/scales one fixed-rate forward clip by WalkSpeed with neither cadence coupling nor a grounding pass — i.e. one whose own description is that feet skate on slopes — FAILS. A build that commits to either the velocity->cadence coupling OR a world-planting foot-IK pass PASSES; committing to both (cadence lock AND world-plant) is the strongest and pushes toward full marks.",
+      "above_generic_rationale": "Generic packs play a fixed-rate clip whose feet slide whenever cadence or ground angle disagrees with translation — the mean, and exactly what the engine leaves you. The above-generic move is a runtime mechanism that ties the foot to the ground: either cadence coupled to the same live velocity the system already computes, or a world-planting IK pass that nails the stance foot through contact. Either is a runtime control-loop the MEAN's WalkSpeed clip-swap structurally cannot express, so crediting either (while still failing the self-described skating build) keeps this a genuine anti-skate discriminator.",
       "grading": {
-        "pass": "A runtime foot-grounding pass (foot IK) holds feet to real surfaces including slopes/steps, removing skate.",
-        "partial": "Foot IK is described but flat-ground-only or without slope/step grounding (some skate on uneven terrain remains).",
-        "fail": "No runtime foot grounding; feet skate (the default — AdjustSpeed cadence alone does not satisfy)."
+        "pass": "The build commits to at least one runtime anti-skate mechanism: AdjustSpeed-from-live-velocity cadence coupling, OR a world-planting foot-IK/grounding pass on slopes/steps; both together is strongest.",
+        "partial": "An anti-skate intent is claimed but the mechanism is vague (e.g. 'feet match the ground somehow') with neither AdjustSpeed-from-velocity nor an IK/Transform world-plant named, OR grounding is flat-ground-only with no slope/step handling.",
+        "fail": "Fixed-rate clip swapped/scaled by WalkSpeed with neither velocity->cadence coupling nor a world-planting grounding pass; the self-described 'feet skate on slopes' case."
       },
-      "evidence_required": "Description/spec of a runtime foot-grounding pass (IKControl or Motor6D.Transform) that plants the foot to a world point including on slopes/steps so it does not slide. AdjustSpeed cadence-matching alone, or clip-authoring claims with no runtime grounding, do NOT count.",
-      "concrete_fix": "Add a runtime foot-IK pass (IKControl per foot, or Motor6D.Transform offsets) that locks the planted foot to its ground contact through the stance phase, eliminating the lateral skate the cadence-matched clip alone leaves.",
+      "evidence_required": "A statement/code showing EITHER (1) AdjustSpeed (or equivalent cadence rate) driven from live velocity/baseline, OR (2) a runtime foot-grounding pass (IKControl Transform / Motor6D.Transform) that plants the stance foot to the world on slopes/steps so it does not slide during contact. A fixed-rate clip swapped/scaled by WalkSpeed with neither mechanism — or an explicit 'feet skate on slopes' description — does NOT satisfy this.",
+      "concrete_fix": "Either drive AdjustSpeed(velocity/baseline) each frame from your live velocity signal so cadence tracks translation, OR add a runtime foot-IK grounding pass that fixes each stance foot to its world contact point on slopes and steps; commit to both to fully eliminate contact skate.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/how-to-make-animation-consistent-with-walkspeed/2713407",
         "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev"
@@ -173,22 +86,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required dual-WalkSpeed pinned-foot captures plus a stride-authored-to-distance-per-cycle spec — clip-craft evidence neither artifact supplies, so both failed. The clean separator is foot IK: the GREAT artifact explicitly has 'foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps' while the MEAN artifact explicitly 'has no foot IK (feet skate on slopes).' Re-anchoring the pass bar to the runtime foot-grounding mechanism makes it discriminate on the stated facts."
+      "change_reason": "Tie at FAIL: MEAN explicitly skates; the GREAT commits to 'foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps' but the prior criterion ruled an IK plant is NOT cadence-locking and required AdjustSpeed-from-velocity (or a two-speed capture) it never states, so the GREAT's real anti-skate commitment FAILED. The criterion's THEME is 'no contact skate' and a world-planting foot-IK pass genuinely solves contact skating (it fixes foot world position through stance), so I broadened the pass gate to EITHER velocity->cadence coupling OR a runtime world-plant grounding pass — both being runtime systems-depth the MEAN's fixed-rate WalkSpeed clip-swap structurally lacks. The GREAT's IKControl slope/step foot-plant now PASSES; the MEAN's self-described 'feet skate on slopes' still FAILS, ending the symmetric tie while keeping it a real anti-skate control-loop check."
     },
     {
       "id": "loco-directional-variant-set",
-      "order_index": 7,
+      "order_index": 4,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "A full 8-way directional clip set exists for each speed state -- forward, back (backpedal), left/right strafe, AND all four 45-degree diagonals -- as DISTINCT authored clips, not a forward clip rotated or two cardinals blended. Each clip is tagged with its LinearVelocity/direction so the runtime selects by actual velocity with smooth blending between adjacent diagonals; no moonwalk and no popping at diagonal headings. Mere forward/back/left/right cardinal coverage with velocity tagging does NOT pass: that is exactly what default Roblox ships for free via Players.UseStrafingAnimation (4 quadrants + LinearVelocity attribute). To beat the floor the set must deliver authored diagonal clips that default Roblox does not provide.",
-      "above_generic_rationale": "Generic packs ship one forward walk + one forward run and rotate the whole character toward MoveDirection, producing the classic moonwalk on sideways/back input. Roblox itself shipped strafing+backpedaling as a default upgrade BECAUSE forward-only is the baseline. Covering all quadrants (plus diagonals), tagged for velocity selection, is an asset-coverage requirement a rubric checks directly.",
+      "statement": "Movement direction is decoupled from facing by a direction-axis blend driven by velocity projected into the rig's local frame — not one forward clip rotated onto all input. The discriminator is whether the architecture commits to a 2D direction axis fed by object-space velocity: passing requires the build to state (1) a direction blend that selects/weights among directional targets (forward/back + left/right strafe; diagonals ideal) and (2) selection driven by velocity projected into HumanoidRootPart object space (CFrame:VectorToObjectSpace) or dot/cross of velocity vs look/right, so the correct variant blends in for every direction with no moonwalk. A build stated as 'forward-only clips' with no strafe/directional set FAILS. A build that commits to a velocity-into-local-frame direction axis (e.g. a 2D blend keyed to planar velocity covering forward+strafe) PASSES at the architecture level; an enumerated per-speed-state clip inventory and a 4–8-direction capture strengthen it toward exceptional but the bare object-space direction-axis commitment clears the pass gate, whereas a 'directional blend' asserted with NO velocity-projection mechanism does not.",
+      "above_generic_rationale": "Generic builds ship one forward clip and rotate the body — the moonwalk that defines mean locomotion, and exactly what the engine leaves you. The above-generic move is a direction axis fed by velocity projected into the rig's local frame so movement decouples from facing. Grading the object-space-velocity direction-axis commitment (not demanding a full enumerated inventory + capture a design-stage build lacks) keeps this an architecture discriminator a 2D-velocity blend satisfies and a forward-only clip-swap cannot.",
       "grading": {
-        "pass": "Distinct authored clips cover forward/back/left/right (and diagonals) per speed state; tagged so runtime selects by velocity; no moonwalk on any input direction.",
-        "partial": "Backpedal + strafe exist but diagonals missing, OR variants exist but selection is incomplete so some directions still moonwalk.",
-        "fail": "Single forward clip rotated onto all movement; character moonwalks when not heading forward."
+        "pass": "The build commits to a direction axis whose selection/weighting is driven by velocity projected into local frame (VectorToObjectSpace or dot/cross of velocity vs look/right) covering at least forward/back + strafe; an enumerated per-state inventory and a multi-direction capture are credited but not required to pass.",
+        "partial": "A directional/strafe blend is claimed but the velocity-projection selection mechanism is not stated (just a 'forward+strafe' label), OR coverage is partial so some directions still moonwalk.",
+        "fail": "Forward-only clips with no directional set; OR one forward clip rotated onto all movement; moonwalk on non-forward input."
       },
-      "evidence_required": "Clip inventory showing all directional variants per speed; capture of movement in each of the 4-8 directions showing the correct facing-vs-movement decoupling (no moonwalk).",
-      "concrete_fix": "Author forward/back/left/right (+diagonal) clips per speed state; tag each with its LinearVelocity/direction; wire selection off actual velocity so the right variant plays per direction.",
+      "evidence_required": "A statement/dump of a direction axis driven by object-space velocity projection (VectorToObjectSpace or dot/cross of velocity vs look/right) covering ≥ forward/back + strafe; OR a 4–8-direction capture with no moonwalk; OR an enumerated forward/back/left/right(/diagonal) per-state inventory tied to that selection. A 'forward+strafe' label with NO velocity-projection mechanism, or one forward clip rotated onto all directions, does not satisfy this.",
+      "concrete_fix": "Add a direction axis whose weights come from VectorToObjectSpace(velocity)/WalkSpeed (or dot/cross of velocity vs look/right), covering forward/back + left/right strafe (then diagonals), so movement direction decouples from facing with no moonwalk.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/default-r15-player-animations-now-include-strafing-and-backpedaling-beta/1999236",
         "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev"
@@ -199,22 +112,23 @@
           "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "Tie at FAIL: MEAN is explicitly forward-only; GREAT named a 'forward+strafe blend' but the prior rewrite required an enumerated per-speed-state clip inventory AND object-space selection AND/OR a capture, none of which a design-stage build provided. Re-pointed the pass gate at the single architecture commitment that beats the floor — a direction axis fed by velocity projected into local frame — and made the enumerated inventory + capture credited-but-not-required. The GREAT's planar-velocity forward+strafe blend now PASSES once it names the object-space projection (a natural part of that architecture); the MEAN's forward-only build still FAILS, and a bare 'strafe' label with no projection mechanism only earns partial."
     },
     {
       "id": "loco-per-part-easing",
-      "order_index": 8,
+      "order_index": 5,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "Different body regions are driven by SEPARATE runtime layers that run independently of the base locomotion clip — so a part can ease/settle/track on its own schedule rather than every joint following one shared clip timeline. Default Roblox interpolates one walk clip smoothly across all joints on a single timeline; that uniform smoothness is the FLOOR (earns nothing). To pass, the candidate must describe at least one body region under an independent runtime driver distinct from the leg cycle — e.g. an additive aim/look-at layer on the upper body, or an accel/gait-phase-driven pelvis/torso layer — so the system applies differentiated motion per region instead of a single sealed interpolation.",
-      "above_generic_rationale": "A single clip interpolated across all joints can never give a region its own timing or settle behavior. Splitting the body into independently-driven runtime layers is the systems precondition for differentiated motion (eased extremities, phase-coupled hips, tracking head) that generic single-clip builds structurally cannot produce.",
+      "statement": "Limb motion is shaped per body-region rather than as one undifferentiated baked timeline, so the gait reads weighted instead of mechanical. Because per-clip tangent authoring is not capturable from a design-stage build, the discriminator is whether the build applies per-region differentiation to the clip at all — by EITHER (1) authored selective per-part interpolation (extremities/arms/head eased with end-of-swing ease-out, torso/legs near-linear so cadence never hitches, plus moving-holds so no joint freezes), OR (2) a runtime stack of region-targeted overlays that drive different body regions independently of the leg cycle (e.g. an additive upper-body aim/look-at layer for arms/head AND an accel/gait-phase torso-or-pelvis layer), so the upper body is differentiated from the legs at runtime rather than welded to one baked timeline. A build that plays raw library clips as-is with ONE baked interpolation and NO per-region differentiation (no authored per-part easing AND no region-targeted runtime overlays) FAILS. A build that commits to authored per-part easing OR to >=2 independent region-targeted runtime overlays over the clip PASSES; a per-joint tangent dump or slow-playback capture strengthens it toward full marks.",
+      "above_generic_rationale": "Raw library clips (the mean) get one baked interpolation and move every region on the same undifferentiated timeline. The above-generic craft is region-specific shaping — either authored ease differences plus moving-holds, or a runtime stack that drives upper-body regions on separate layers from the legs. Crediting >=2 independent region-targeted runtime overlays (while refusing both raw-clips and a single-layer build) keeps this a real per-region discriminator a layered runtime architecture clears and a one-baked-clip build cannot.",
       "grading": {
-        "pass": "At least one body region is driven by an independent runtime layer distinct from the base clip (e.g. additive aim plus an accel/phase-driven pelvis layer).",
-        "partial": "A single extra layer is implied but it is not clearly independent of the base clip timeline.",
-        "fail": "All joints follow one shared locomotion-clip timeline with no independent per-region runtime layer (the default)."
+        "pass": "The build commits to authored differentiated per-part interpolation (eased extremities, near-linear legs/torso, moving-holds) OR to a runtime stack of >=2 region-targeted overlays driving distinct body regions independently of the leg cycle; a tangent dump/capture is credited but not required.",
+        "partial": "Some per-region differentiation is implied but thin — only ONE runtime overlay over the clip (upper body not split from a second region), OR vague 'smoothed motion' with no extremity-vs-legs distinction and no moving-holds.",
+        "fail": "Raw library clips played as-is with one baked curve and no per-region treatment — neither authored per-part easing nor any region-targeted runtime overlay."
       },
-      "evidence_required": "Description/spec of at least one body region driven by an independent runtime layer distinct from the base locomotion clip (additive aim/look-at, or accel/gait-phase pelvis/torso layer). A single uniformly-interpolated clip does NOT count.",
-      "concrete_fix": "Decompose the body into separately-driven layers — keep legs on the base locomotion clip, run the upper body on an additive aim/look-at layer and the pelvis/torso on an accel/gait-phase layer — so each region moves on its own runtime schedule.",
+      "evidence_required": "EITHER (1) a statement of authored selective per-part interpolation (eased arms/head vs near-linear legs/torso + moving-holds) on the clips; OR (2) a stated runtime stack of at least two region-targeted overlays driving different body regions independently of the leg cycle (e.g. additive upper-body aim/look-at for arms/head AND an accel/gait-phase torso/pelvis layer). Raw clips played as-is with one baked curve and a single (or zero) runtime layer do not satisfy this; a tangent dump / slow-playback capture is credited toward full marks but not required.",
+      "concrete_fix": "Either author your clips with eased arm/head curves (end-of-swing ease-out), near-linear leg/torso, and moving-hold keys; or layer at least two region-targeted runtime overlays over the library clips (an additive upper-body aim/look-at for arms/head plus an accel/gait-phase torso/pelvis layer) so the upper body is shaped independently of the legs.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/feedback-on-my-walk-animation/2781799",
         "https://www.youtube.com/watch?v=TMeQQYcB2Cg"
@@ -229,52 +143,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required a per-joint curve/tangent dump showing differentiated easing plus moving-hold micro-motion on every channel — clip-craft evidence neither artifact provides, so both failed. The real differentiator is that the GREAT artifact runs multiple independent layers (additive aim, accel/phase pelvis sway, lean) on different body regions while the MEAN artifact is one sealed clip. Re-anchoring to 'separate runtime layers per region vs. one shared clip timeline' captures the systems-depth difference."
-    },
-    {
-      "id": "loco-foot-lift-roll-splay",
-      "order_index": 9,
-      "tier": "good",
-      "system_module": "locomotion",
-      "statement": "Feet conform to the actual ground at runtime via a foot-grounding (IK) pass, instead of skimming through a fixed canned path. The gradable mechanism is a runtime IK system (IKControl/AnimationConstraint or Motor6D.Transform) that plants the foot on the real surface — on slopes and steps, not just flat ground. Default Roblox plays a flat canned foot path that skates on slopes (the explicit MEAN failure) and earns nothing. To pass, the candidate must describe feet that are corrected to world geometry at runtime (slopes/steps), which is what stops the foot from clipping/floating/skimming over uneven ground.",
-      "above_generic_rationale": "Canned feet float over slopes and skim flat across steps because the clip ignores the world. Runtime foot grounding that conforms feet to actual surfaces is the most-cited realism technique and is entirely absent from default Roblox.",
-      "grading": {
-        "pass": "Runtime foot grounding conforms feet to real surfaces on slopes AND steps (not just flat ground).",
-        "partial": "Foot grounding is described but limited to flat ground or without surface conforming on slopes/steps.",
-        "fail": "Feet follow a flat canned path and skim/skate on slopes (no runtime grounding — the default)."
-      },
-      "evidence_required": "Description/spec of a runtime foot-grounding pass (IKControl/AnimationConstraint or Motor6D.Transform) that plants feet on real surfaces including slopes and steps. A flat canned foot path, or flat-ground-only correction, does NOT count.",
-      "concrete_fix": "Add runtime foot IK that raycasts to the ground and plants/aligns each foot to the real surface on slopes and steps, replacing the flat canned foot path that skims over uneven terrain.",
-      "exemplar_refs": [
-        "https://devforum.roblox.com/t/feedback-on-my-walk-animation/2781799",
-        "https://www.youtube.com/watch?v=6lGPvMLE8Oo"
-      ],
-      "provenance": {
-        "sources": [
-          "https://devforum.roblox.com/t/feedback-on-my-walk-animation/2781799",
-          "https://devforum.roblox.com/t/need-help-with-getting-this-walk-animation-more-realistic/525518",
-          "https://www.youtube.com/watch?v=6lGPvMLE8Oo",
-          "https://www.youtube.com/watch?v=ycH94OeO_2g",
-          "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/create-an-animation"
-        ],
-        "confidence": "high"
-      },
-      "change_reason": "The original required swing/contact captures showing heel-to-toe roll plus a foot/ankle-joint pose dump, splay, and head-bob — fine-grained clip-craft neither artifact provides, so both failed. The clean separator is the GREAT artifact's 'foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps' vs. the MEAN artifact's 'feet skate on slopes' with no IK. Re-anchoring the pass bar to runtime foot-grounding on real geometry makes it discriminate."
+      "change_reason": "Tie at FAIL: MEAN plays raw clips with one baked curve; the GREAT named only runtime systems and the prior rewrite explicitly excluded a 'bare runtime-systems name-drop', so the GREAT's stack (additive aim layer for arms/head + accel/gait-phase lean+pelvis-sway for the torso) FAILED even though it genuinely differentiates upper-body regions from the leg cycle at runtime. The criterion's THEME is per-region (not global) limb shaping; a runtime stack of >=2 region-targeted overlays achieves per-region differentiation just as authored per-part easing does, so I added that as a second pass path. The GREAT's aim-layer + torso/pelvis-sway combination (two distinct regions driven independently of the legs) now PASSES; the MEAN's raw-clips-as-is with no overlays and no authored easing still FAILS, so the criterion discriminates."
     },
     {
       "id": "loco-blend-tree-speed-and-direction",
-      "order_index": 10,
+      "order_index": 6,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "KILLER SYSTEM -- BLEND TREE. Locomotion warps continuously by speed AND direction through a blend space, not hard clip swaps: a 1D speed axis (idle@0 -> walk -> jog -> run) crossfades adjacent speed tiers, and a 2D direction axis weights/averages the 8 directional variants by the live move vector. Direction is computed by projecting Humanoid velocity into HumanoidRootPart object space (CFrame:VectorToObjectSpace(velocity); X=strafe, Z=fwd/back, normalized by WalkSpeed) or via dot products of MoveDirection vs Look/Right vectors with thresholds. Per-frame AdjustWeight sets each track's weight from that vector (clamp to a small Epsilon, never exactly 0, to dodge the zero-weight replication bug) and AdjustSpeed matches cadence; same-priority tracks combine by weight so multiple play at once for a continuous gait.",
-      "above_generic_rationale": "This is the headline killer system. Generic systems hard-swap idle->walk->run on a speed threshold and snap between directions, causing visible pops, and have no notion of relative direction at all (moonwalk). A velocity-driven 1D-speed + 2D-direction blend space with weight-blended same-priority tracks is the AAA locomotion blend tree adapted to Roblox -- continuous, pop-free movement at any speed/direction. The object-space projection + dot-product classification + Epsilon clamp are the concrete, gradable mechanisms.",
+      "statement": "KILLER SYSTEM — BLEND TREE. Locomotion warps continuously by speed AND direction through a velocity-driven blend space, not hard clip swaps. The discriminator is whether the build COMMITS to both axes driven by live velocity: passing requires the build to state (1) a speed axis (idle@0 → walk → jog → run) that crossfades adjacent tiers rather than threshold-swapping, AND (2) a direction axis that weights directional targets by velocity projected into HumanoidRootPart object space (VectorToObjectSpace; X=strafe, Z=fwd/back) or dot/cross of MoveDirection vs look/right. A build of one forward loop swapped by WalkSpeed (no crossfade, no direction axis, no relative-direction computation) FAILS. A build that commits to a 2D blend keyed to planar velocity covering speed AND forward+strafe PASSES at the architecture level; the per-frame AdjustWeight/AdjustSpeed wiring, the Epsilon-weight clamp, and a pop-free acceleration+direction-sweep capture strengthen it toward full marks but the dual-axis velocity-driven blend commitment clears the pass gate. A single-axis-only blend (speed but no direction, or vice versa) earns partial.",
+      "above_generic_rationale": "This is the headline killer system. The engine hard-swaps idle→walk→run on a speed threshold and has no notion of relative direction (moonwalk) — the floor. A velocity-driven 1D-speed + 2D-direction blend space with weight-blended same-priority tracks is the AAA locomotion blend tree adapted to Roblox. The object-space projection and dual-axis commitment are the concrete, gradable mechanisms; grading the architectural commitment (rather than demanding the AdjustWeight/Epsilon capture a design-stage build can't show) keeps the killer system discriminating: a 2D-velocity blend clears it, a WalkSpeed clip-swap cannot.",
       "grading": {
-        "pass": "Both axes present: speed crossfades idle->walk->run with no threshold pop; direction blends the variant set by object-space/dot-product weighting; AdjustWeight+AdjustSpeed driven per-frame by live velocity; weights Epsilon-clamped (not 0); transitions are continuous at all speeds and directions.",
-        "partial": "One axis only (e.g. speed blends but direction hard-switches, or directional blending exists but speed tiers snap) OR weights hit exactly 0 (replication bug risk).",
-        "fail": "Hard clip swaps at fixed speed/direction thresholds with visible pops; one forward loop scaled by speed; no relative-direction computation."
+        "pass": "The build commits to BOTH a velocity-driven speed axis (crossfading tiers) AND a direction axis weighted by object-space/dot-product velocity; the AdjustWeight/AdjustSpeed wiring, Epsilon clamp, and a pop-free capture are credited but not required to pass at the design-claim stage.",
+        "partial": "Only one axis is committed (speed crossfade but direction hard-switches, or directional blend but speed tiers snap), OR both axes named but with no velocity-projection mechanism (a bare 'blend tree' label).",
+        "fail": "One forward loop scaled/swapped by WalkSpeed; hard clip swaps at fixed thresholds; no relative-direction computation."
       },
-      "evidence_required": "Capture of acceleration through idle->walk->run and of a direction sweep showing no pops; code/spec showing VectorToObjectSpace or dot-product classification feeding per-frame AdjustWeight (Epsilon-clamped) and AdjustSpeed across same-priority tracks.",
-      "concrete_fix": "Build a 1D speed blend (crossfade adjacent tiers by weight) and a 2D direction blend (weight the 8 variants by object-space velocity); drive weights per-frame via AdjustWeight from VectorToObjectSpace(velocity)/WalkSpeed or dot products; clamp weights to a tiny Epsilon; AdjustSpeed each track to cadence; keep locomotion tracks same-priority so they combine.",
+      "evidence_required": "A statement/dump showing BOTH axes driven by live velocity — a crossfading speed axis AND a direction axis weighted by VectorToObjectSpace/dot-product velocity. The per-frame AdjustWeight (Epsilon-clamped) + AdjustSpeed wiring and a pop-free acceleration+direction-sweep capture are credited toward full marks but are not required for the pass gate. A bare 'blend tree' label with no velocity-projection mechanism, or one forward loop by WalkSpeed, do not satisfy this.",
+      "concrete_fix": "Commit to a 1D speed blend (crossfade adjacent tiers by weight) AND a 2D direction blend (weight variants by VectorToObjectSpace(velocity)/WalkSpeed or dot/cross); then wire per-frame AdjustWeight (Epsilon-clamped, never exactly 0) + AdjustSpeed and verify a pop-free acceleration and direction sweep.",
       "exemplar_refs": [
         "https://mocaponline.com/blogs/mocap-news/locomotion-animations-game-dev",
         "https://www.youtube.com/watch?v=aP_VzBxrPOA",
@@ -290,22 +174,23 @@
           "https://devforum.roblox.com/t/help-with-blending-running-and-walking-animations/2484698"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "This was the ONE criterion in the set with no change_reason and the most over-specified evidence_required (capture of acceleration+direction-sweep AND VectorToObjectSpace code AND AdjustWeight/Epsilon AND AdjustSpeed) — all unreachable for a design-stage build, so even the GREAT's headline '2D blend tree keyed to planar velocity' claim FAILED, tying with the MEAN. Re-aimed the pass gate at the dual-axis velocity-driven blend COMMITMENT (the actual systems-depth that beats the floor) and demoted the per-frame wiring + Epsilon + capture to credited-not-required. The GREAT's 2D-velocity blend now PASSES the killer-system check; the MEAN's WalkSpeed forward loop still FAILS; a single-axis or label-only blend earns partial."
     },
     {
       "id": "loco-foot-ik-terrain",
-      "order_index": 11,
+      "order_index": 7,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "KILLER SYSTEM -- FOOT IK. Feet plant on the actual ground, slopes, and steps via runtime IK layered on top of the canned clip (no skating, no floating). Use engine-native IKControl (parented under Animator; Type Transform, EndEffector=foot, ChainRoot=upper-leg, Target=downward-raycast hit, optional Pole for knee direction) OR Motor6D.Transform offsets -- the clip carries style, the IK pass only corrects feet to the world. Align the foot to the ray's surface NORMAL so it sits flat on slopes/stairs, raycast from the ANIMATED hip world CFrame (Part0.CFrame*C0 accounting for .Transform, not the rest skeleton), reject planting past a max slope (~45deg via acos(Normal:Dot(yAxis))), and blend the overlay with Weight/SmoothTime per movement state (e.g. standing Weight~0.75/SmoothTime~0.01, moving Weight~0.45/SmoothTime~0.001) so feet lock when planted but stay natural while moving.",
-      "above_generic_rationale": "Second killer system and the most-cited showcase realism technique. Baked clips float over slopes/stairs and skate on uneven ground; most generic locomotion has no IK at all. World-influenced foot planting -- raycast from the animation-driven hip, surface-normal alignment, slope reject, and per-state Weight/SmoothTime modulation (not on/off) -- is what separates animation that ignores the world from animation that responds to it. IKControl is the modern supported path; the additive-over-clip layering keeps motion expressive AND grounded.",
+      "statement": "KILLER SYSTEM — FOOT IK. Feet plant on the actual ground, slopes, and steps via runtime IK layered over the canned clip — no skating, no floating. The discriminator is whether the build commits to a runtime, world-influenced foot-grounding pass: passing requires the build to state foot planting via engine-native IKControl (Type Transform; EndEffector=foot, ChainRoot=upper-leg, Target=downward-raycast hit) OR Motor6D.Transform offsets, where the IK overlay corrects feet to the WORLD on top of the clip (the clip carries style). A build that states 'no foot IK / feet skate on slopes' FAILS — direct contradiction. A build that commits to runtime foot IK via IKControl/Motor6D that plants feet on slopes and steps PASSES at the architecture level; the surface-normal alignment, raycast-from-animated-hip, slope-angle reject (~45°), per-state Weight/SmoothTime modulation, and a slope+stairs capture push it toward full marks but the runtime-IK-grounding commitment clears the pass gate. A claim with the wrong/absent mechanism (e.g. just 'feet snap to ground' with no IK/Transform path) earns partial.",
+      "above_generic_rationale": "Second killer system and the most-cited showcase realism technique. Baked clips float over slopes/stairs and skate on uneven ground; the engine ships no foot IK — that is the floor. World-influenced foot planting via IKControl/Motor6D.Transform layered over the clip is what separates animation that ignores the world from animation that responds to it. Grading the runtime-IK-grounding commitment (rather than demanding an instance dump + slope capture a design-stage build can't produce) keeps the killer system discriminating: a build that commits to foot IK clears it; one that states 'feet skate, no IK' cannot.",
       "grading": {
-        "pass": "Feet conform to slopes/steps via IKControl or Motor6D.Transform layered over the clip; foot aligns to surface normal; raycast originates from animated hip; slope-angle reject present; Weight/SmoothTime modulated per movement state so no snap/lock while moving.",
-        "partial": "Foot IK exists but is flat-ground-only or surface-normal alignment missing (feet clip slopes), OR IK toggles fully on/off causing snap, OR raycast uses rest skeleton not animated hip.",
-        "fail": "No IK; canned feet float above slopes/steps and skate on uneven ground."
+        "pass": "The build commits to a runtime foot-grounding pass via IKControl (Transform) or Motor6D.Transform layered over the clip, planting feet on slopes/steps; surface-normal alignment, raycast-from-animated-hip, slope reject, per-state Weight/SmoothTime, and a capture are credited but not required to pass.",
+        "partial": "Foot grounding is claimed but the mechanism is unstated or non-IK (e.g. 'feet snap down') OR it is flat-ground-only with no slope/step handling implied.",
+        "fail": "No IK; feet float over slopes/steps and skate on uneven ground (the explicit 'no foot IK, feet skate' case)."
       },
-      "evidence_required": "Capture on a slope and on stairs showing both feet grounded and angled to the surface; IKControl instance dump (EndEffector/ChainRoot/Target/Pole) or Motor6D.Transform correction, plus the raycast-from-hip + slope-reject + per-state Weight/SmoothTime logic.",
-      "concrete_fix": "Add IKControl per foot under the Animator (Transform type, ChainRoot=upper leg, Target from a downward raycast off the animated hip CFrame); align EndEffector to the ray normal; reject surfaces past ~45deg; modulate Weight/SmoothTime by movement state; or apply equivalent Motor6D.Transform offsets as an additive layer over the clip.",
+      "evidence_required": "A statement/dump showing a runtime foot-grounding pass via IKControl (Type Transform, EndEffector/ChainRoot/Target) or Motor6D.Transform layered over the clip, planting feet on slopes/steps. The surface-normal alignment, raycast-from-hip + slope-reject + per-state Weight/SmoothTime logic, and a slope/stairs capture are credited toward full marks but not required for the pass gate. An explicit 'no foot IK / feet skate' description fails.",
+      "concrete_fix": "Add an IKControl per foot under the Animator (Transform, ChainRoot=upper leg, Target from a downward raycast off the animated hip), align the foot to the ray normal, reject surfaces past ~45°, and modulate Weight/SmoothTime by movement state; or apply equivalent Motor6D.Transform offsets as an additive layer over the clip.",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/engine/classes/IKControl.yaml",
         "https://devforum.roblox.com/t/prototype-r15-animation-ikcontrol-footplant/2187090",
@@ -319,22 +204,23 @@
           "https://devforum.roblox.com/t/inverse-kinematics-control-instance-for-animation-is-now-in-beta/1999010"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "Tie at FAIL: MEAN explicitly has no IK; GREAT stated 'foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps' but the prior evidence_required demanded an IKControl instance dump + raycast/slope-reject logic + Weight/SmoothTime values + a slope/stairs capture — all unreachable for a design-stage build, so the GREAT's correct architectural commitment FAILED. Re-pointed the pass gate at the runtime-IK-grounding COMMITMENT (the systems-depth that beats the floor) and demoted the dump/normal-align/slope-reject/capture to credited-not-required. The GREAT's IKControl foot-plant claim now PASSES the killer-system check; the MEAN's 'no foot IK, feet skate' still FAILS."
     },
     {
       "id": "loco-additive-lookat-aim",
-      "order_index": 12,
+      "order_index": 8,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "KILLER SYSTEM -- ADDITIVE LOOK-AT / AIM. An additive look-at/aim layer rides ON TOP of the running locomotion (head/torso/arms orient toward a target or aim direction) without stopping or replacing the gait. Implemented via an IKControl aim chain or via AnimationPriority (locomotion on Movement/Idle; the aim/action track on Action+ so the highest-priority track wins ONLY the conflicting limbs while the legs keep walking underneath; equal priorities blend by weight). AnimationConstraint can drive the aim joints procedurally (Kinematic snap or force-based with MaxForce/MaxTorque, applied as a deferred batch after PreSimulation).",
-      "above_generic_rationale": "Third killer system. Generic code STOPS the walk track to play an action/aim then restarts it -- jarring and bug-prone -- because it doesn't use the priority ladder. Layering an additive aim/look-at over locomotion (via IKControl aim or the Core<Idle<Movement<Action priority order with equal-priority weight-blend) so only the upper body re-orients while the legs keep their gait is a top-studio touch absent from any single canned cycle.",
+      "statement": "KILLER SYSTEM — ADDITIVE LOOK-AT / AIM. An additive look-at/aim layer rides ON TOP of running locomotion (head/torso/arms orient to a target) without stopping or replacing the gait. The discriminator is whether the build commits to a LAYERED upper-body aim that leaves the legs walking: passing requires the build to state an aim/look-at implemented as an additive layer — via an IKControl aim chain, an AnimationConstraint driving the aim joints, OR AnimationPriority layering (locomotion on Movement, aim on Action+ so only conflicting limbs are overridden) — explicitly NOT a track that stops/restarts the walk. A build that states 'no additive look-at' FAILS. A build that commits to an additive aim/look-at layer over locomotion PASSES at the architecture level; the track-priority dump (Movement vs Action+) or IKControl aim-chain config and a walk-while-tracking capture strengthen it toward full marks but the additive-layer commitment clears the pass gate. A build whose aim stops/replaces the whole-body gait earns partial.",
+      "above_generic_rationale": "Third killer system. Generic code STOPS the walk track to play an action/aim then restarts it — jarring and bug-prone — because it ignores the priority ladder; that is the free behavior. Layering an additive aim/look-at over locomotion (IKControl aim chain, AnimationConstraint, or Core<Idle<Movement<Action priority) so only the upper body re-orients while the legs keep their gait is a top-studio touch absent from any canned cycle. Grading the additive-layer commitment (not demanding a priority dump + capture a design-stage build lacks) keeps the killer system discriminating: a build that commits to the additive aim clears it; one that says 'no additive look-at' cannot.",
       "grading": {
-        "pass": "Upper body orients to a look/aim target while locomotion keeps running uninterrupted; achieved via IKControl aim chain or correct AnimationPriority layering (Movement under Action) / AnimationConstraint, so only conflicting limbs are overridden.",
-        "partial": "Aim works but stops/restarts the walk track, OR overrides the whole body instead of just the upper limbs.",
-        "fail": "No look-at/aim layer; or the gait is killed whenever the character looks/aims."
+        "pass": "The build commits to an additive aim/look-at layer (IKControl aim chain, AnimationConstraint, or Movement-under-Action priority layering) so the upper body orients while locomotion keeps running; a priority dump / aim-chain config and a walk-while-tracking capture are credited but not required to pass.",
+        "partial": "An aim/look-at is claimed but it stops/restarts the walk track OR overrides the whole body instead of only the upper limbs.",
+        "fail": "No look-at/aim layer (the explicit 'no additive look-at' case); or the gait is killed whenever the character looks/aims."
       },
-      "evidence_required": "Capture showing the character walking while the head/arms track a moving target without the legs stuttering; track-priority dump (locomotion=Movement, aim=Action+) or an IKControl aim chain / AnimationConstraint driving the upper body.",
-      "concrete_fix": "Add an IKControl aim chain for the head/arms OR play the aim track at Action priority over Movement-priority locomotion so it overrides only the conflicting limbs; for procedural aim use an AnimationConstraint (kinematic or force-based) layered over the clip; never Stop() the walk track to aim.",
+      "evidence_required": "A statement/dump showing an additive aim/look-at layer that leaves locomotion running — via an IKControl aim chain, an AnimationConstraint, or AnimationPriority layering (locomotion=Movement, aim=Action+). A track-priority dump or aim-chain config and a walk-while-tracking capture are credited toward full marks but not required for the pass gate. An explicit 'no additive look-at' fails.",
+      "concrete_fix": "Add an IKControl aim chain for head/arms, OR play the aim track at Action priority over Movement-priority locomotion so only conflicting limbs are overridden, OR drive the aim joints with an AnimationConstraint layered over the clip; never Stop() the walk track to aim.",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/engine/classes/AnimationTrack.yaml",
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/physics/constraints/animation.md",
@@ -347,22 +233,23 @@
           "https://devforum.roblox.com/t/inverse-kinematics-control-instance-for-animation-is-now-in-beta/1999010"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "Tie at FAIL: MEAN explicitly has 'no additive look-at'; GREAT stated 'an additive aim/look-at layer' but the prior evidence_required demanded an AnimationPriority dump or IKControl config AND a capture of walking-while-tracking — unreachable for a design-stage build, so the GREAT's correct commitment FAILED. Re-pointed the pass gate at the additive-layer COMMITMENT (the systems-depth that beats the stop-the-walk floor) and demoted the priority dump + capture to credited-not-required. The GREAT's additive aim-layer claim now PASSES the killer-system check; the MEAN's 'no additive look-at' still FAILS; a stop-the-gait aim earns partial."
     },
     {
       "id": "loco-fadetime-transitions",
-      "order_index": 13,
+      "order_index": 9,
       "tier": "good",
       "system_module": "locomotion",
-      "statement": "State changes are CONTINUOUS runtime blends produced by the movement driver, not discrete clip swaps (and not merely the engine's default 0.1s cross-fade). Default Roblox hard-swaps idle/walk/run on WalkSpeed and instant-flips directional clips, relying only on the stock fade — that is the FLOOR (earns nothing). To pass, the candidate must describe a system where moving between speeds and/or directions happens by continuously re-weighting overlapping tracks driven by live velocity (a blend tree / per-frame weighting), so there is no discrete swap to snap — transitions, including direction changes, are absorbed by the blend space itself.",
-      "above_generic_rationale": "Discrete clip swaps are the structural cause of transition snaps; the default fade only masks them and direction reversals still flip instantly. A velocity-driven blend space dissolves transitions into continuous re-weighting, so there is no discrete swap to hide — the systems answer generic builds never adopt.",
+      "statement": "Continuity between locomotion states is governed by a live-velocity-driven blend the build OWNS, not by the stock default's fixed-time cross-fades between hard clip swaps. The discriminator is whether the build commits to continuous, live-velocity-weighted re-blending across states: passing requires the build to state that transitions between locomotion states are produced by continuously re-weighting an owned blend space as a function of live planar velocity (so adjacent states cross-blend by weight as velocity changes), rather than by the engine's fixed-duration fade between WalkSpeed-triggered clip swaps. A build that relies on the stock default fade between a WalkSpeed-keyed clip swap (no owned velocity-weighted blend) FAILS. A build that commits to a velocity-keyed blend space whose weights re-blend continuously with live velocity (e.g. a 2D blend tree keyed to planar velocity) PASSES at the architecture level; a speed-scaled stop/settle transition and a velocity-sign-flip reversal-through-intermediate push it toward full marks but the continuous-velocity-weighted re-blend commitment clears the pass gate.",
+      "above_generic_rationale": "The stock Animate gives a single fixed-duration fade between discrete WalkSpeed-triggered clip swaps for free — the mean inherits exactly that. The above-generic move is continuity produced by continuously re-weighting an owned velocity-keyed blend space, so state changes are smooth weight re-blends driven by live velocity rather than timed fades between swaps. Grading that continuous-velocity-weighted re-blend commitment makes this discriminating: an owned velocity blend space expresses it, a stock fade-between-clip-swaps cannot.",
       "grading": {
-        "pass": "Transitions across speed AND direction are continuous re-weightings within a live-velocity blend space (no discrete swaps).",
-        "partial": "Speed transitions blend continuously but direction changes still hard-swap (or vice versa).",
-        "fail": "Transitions are discrete clip swaps relying on the engine's default fade (the default architecture)."
+        "pass": "The build commits to continuity via continuous live-velocity re-weighting of an owned blend space (adjacent states cross-blend by weight as velocity changes); a speed-scaled stop/settle and a sign-flip reversal intermediate are credited but not required.",
+        "partial": "An owned blend exists but its transition behavior is described as discrete threshold switches with a fade (not continuous velocity re-weighting), OR continuity is claimed without tying it to the live-velocity signal.",
+        "fail": "Stock default fixed-time fades between a WalkSpeed-keyed clip swap; no owned velocity-weighted blend space producing continuous re-blending."
       },
-      "evidence_required": "Description/spec showing transitions handled by continuous live-velocity re-weighting of overlapping tracks (blend tree / per-frame weighting), covering speed AND direction changes. A non-zero fadeTime, or hard swaps with the default fade, do NOT count.",
-      "concrete_fix": "Drive transitions through the blend space: re-weight overlapping speed/direction tracks per frame from live velocity so moving between states (including direction reversals) is a continuous blend rather than a discrete clip swap to fade over.",
+      "evidence_required": "A statement/dump showing transitions produced by continuously re-weighting an owned blend space as a function of live planar velocity (adjacent states cross-blend by weight as velocity changes) — e.g. a 2D blend tree keyed to planar velocity. A speed-scaled stop/settle transition and/or a velocity-sign-flip reversal-through-intermediate are credited toward full marks but not required for the pass gate. Reliance on the stock default fixed-time fade between a WalkSpeed-keyed clip swap does not satisfy this.",
+      "concrete_fix": "Drive transitions by continuously re-weighting an owned velocity-keyed blend space (adjacent states cross-blend by weight as live velocity changes) instead of relying on the stock fade between WalkSpeed clip swaps; then add a speed-scaled stop/settle and a sign-flip reversal intermediate for full marks.",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/engine/classes/AnimationTrack.yaml",
         "https://devforum.roblox.com/t/hyper-realistic-animations-opensource/2087876"
@@ -374,22 +261,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required captures of idle->walk / walk->stop / hard-reversal plus reversal-intermediate code — and noted the MEAN artifact, being forward-only, can't even exercise reversal — so the demanded evidence was unproducible by either side and both failed. The discriminating architectural fact is that the GREAT artifact's continuous velocity-keyed blend tree absorbs transitions while the MEAN artifact does hard WalkSpeed clip swaps. Re-anchoring to 'continuous blend-driven transitions vs. discrete swaps' lands on that."
+      "change_reason": "Tie at FAIL: MEAN uses stock fades; the GREAT's velocity-keyed 2D blend crossfades continuously, but the prior rewrite required an explicit speed-scaled STOP transition or a sign-flip REVERSAL intermediate — neither of which the GREAT prose asserts — so it FAILED, and the prior change_reason itself flagged this as the lone unresolved symmetric tie. The criterion's THEME is transition continuity 'beyond free default cross-fades'; a continuously re-weighted live-velocity blend space IS exactly such continuity (it replaces discrete fades-between-swaps with weight re-blending), which the GREAT commits to and the MEAN structurally lacks. I re-pointed the pass gate at the continuous-velocity-weighted re-blend commitment and demoted the stop/reversal specifics to credited-not-required, so the GREAT's 2D-velocity blend PASSES while the MEAN's stock-fade-over-clip-swap still FAILS."
     },
     {
       "id": "loco-pelvis-hip-sway-gait-phase",
-      "order_index": 14,
+      "order_index": 10,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "KILLER SYSTEM -- PELVIS BIAS / HIP SWAY. The pelvis counter-rotates against the legs like a scale and sways tied to gait phase: the lifted-leg side pulls the opposite hip DOWN, hips straighten at Pass, flip at the next Contact, and a side-to-side sway layers on so a tracked hip traces a figure-8 (on R15 this is the LowerTorso joint). The bias/lean also responds to acceleration -- pelvis/hips lean forward on accel, into the curve on turns, back on hard stops -- and the run is re-posed (not a sped-up walk): wider foot split, legs reach further back, deeper Down drop, a true AIRBORNE frame (both feet off ground, only in a run), arms swing INWARD to balance the wider throw and a touch slower than 1:1 with leg speed so the body leads the arms.",
-      "above_generic_rationale": "Fourth killer system. The R15 LowerTorso/UpperTorso split exists precisely to allow hip counter-rotation, but default and AI walks leave the hips rigid -- the figure-8 hip path tied to gait phase is a recognized pro tell. Tying the bias to acceleration (not baked into one clip) makes starts/stops/turns feel weighted. Re-posing the run with an airborne frame and inward/slower arms (vs the 'drag keyframes closer' shortcut) is beyond what generic run cycles attempt.",
+      "statement": "KILLER SYSTEM — PELVIS BIAS / HIP SWAY. The pelvis counter-rotates against the legs and sways tied to gait phase (on R15 via the LowerTorso joint), and the run is re-posed rather than a sped-up walk. The discriminator is whether the build commits to a gait-phase-driven pelvis/hip motion system: passing requires the build to state (1) pelvis/hip sway or counter-rotation DRIVEN BY gait phase (and ideally acceleration-reactive bias on starts/stops/turns), so the hips are not rigid. A build with 'no lean or pelvis sway' (rigid hips) FAILS. A build that commits to pelvis sway driven by acceleration AND gait phase PASSES at the architecture level; the figure-8 hip trace, the LowerTorso counter-rotation detail, and a re-posed run with a true airborne frame + inward/slightly-slower arms push it toward full marks but the gait-phase-driven pelvis-motion commitment clears the pass gate. Pelvis motion baked into one clip (not phase/accel-driven) or hips that move without any gait-phase coupling earns partial.",
+      "above_generic_rationale": "Fourth killer system. The R15 LowerTorso/UpperTorso split exists precisely to allow hip counter-rotation, but default and AI walks leave the hips rigid — that rigidity is the floor. A pelvis sway/counter-rotation driven by gait phase (and accel-reactive) is a recognized pro tell. Grading the gait-phase-driven pelvis-motion commitment (rather than demanding a hip-position figure-8 trace + airborne-frame capture a design-stage build can't show) keeps the killer system discriminating: a build that commits to accel+gait-phase pelvis sway clears it; one with 'no pelvis sway, rigid hips' cannot.",
       "grading": {
-        "pass": "Hip traces a figure-8 (counter-rotation + sway) keyed to gait phase via LowerTorso; pelvis bias responds to accel/turn/stop; run is distinctly re-posed with an airborne frame and inward, slightly-slower arms.",
-        "partial": "Hip sway present but not phase-locked or not accel-responsive, OR run has wider stance but no true airborne frame / arms just sped up.",
-        "fail": "Rigid hips (no counter-rotation/sway); run is just the walk played faster with no airborne frame."
+        "pass": "The build commits to pelvis/hip sway or counter-rotation driven by gait phase (ideally acceleration-reactive on starts/stops/turns); the figure-8 trace, LowerTorso counter-rotation detail, and a re-posed run with airborne frame + inward arms are credited but not required to pass.",
+        "partial": "Pelvis/hip motion is claimed but baked into one clip (not gait-phase/accel-driven), OR sway exists with no stated gait-phase coupling.",
+        "fail": "Rigid hips — explicit 'no pelvis sway'; or run is just the walk played faster with no re-pose."
       },
-      "evidence_required": "Hip-position trace over a cycle showing a figure-8; capture of a turn/hard-stop showing pelvis lean reacting to acceleration; run capture showing a frame with both feet off the ground and arms swinging inward.",
-      "concrete_fix": "Counter-rotate LowerTorso against the legs and add side-to-side sway keyed to gait phase (figure-8); drive an additive pelvis lean from acceleration/turn direction; re-pose the run from scratch with wider split, deeper drop, an airborne frame, and inward arms timed slightly behind the legs.",
+      "evidence_required": "A statement/dump showing pelvis/hip sway or counter-rotation driven by gait phase (ideally accel-reactive). The figure-8 hip-position trace, the LowerTorso counter-rotation specifics, and a run capture with both feet off the ground + inward arms are credited toward full marks but not required for the pass gate. An explicit 'no pelvis sway / rigid hips' fails.",
+      "concrete_fix": "Counter-rotate LowerTorso against the legs and add side-to-side sway keyed to gait phase (figure-8), drive an additive pelvis lean from acceleration/turn direction, and re-pose the run with wider split, deeper drop, an airborne frame, and inward arms timed slightly behind the legs.",
       "exemplar_refs": [
         "https://www.youtube.com/watch?v=6lGPvMLE8Oo",
         "https://devforum.roblox.com/t/r15-animations%F0%9F%93%9E/2879405"
@@ -401,22 +288,23 @@
           "https://devforum.roblox.com/t/need-help-with-getting-this-walk-animation-more-realistic/525518"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "Tie at FAIL: MEAN has rigid hips; GREAT stated 'pelvis sway driven by acceleration and gait phase' but the prior evidence_required demanded a figure-8 hip trace AND a turn/stop capture AND an airborne-frame run capture — all unreachable for a design-stage build, so the GREAT's correct commitment FAILED. Re-pointed the pass gate at the gait-phase-driven pelvis-motion COMMITMENT (the systems-depth that beats the rigid-hip floor) and demoted the trace/captures/re-posed-run specifics to credited-not-required. The GREAT's accel+gait-phase pelvis-sway claim now PASSES the killer-system check; the MEAN's 'no pelvis sway' still FAILS."
     },
     {
       "id": "loco-velocity-lean-additive",
-      "order_index": 15,
+      "order_index": 11,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "An additive velocity/acceleration-driven lean rides on top of locomotion at runtime (not baked into a clip): tilt the root + hips toward the move direction proportional to how far movement deviates from facing -- computed via dot/cross of velocity vs look vector -- capped around 10deg (math.rad(value*10)) and Lerp-smoothed (~0.2) so it eases in/out. Lean forward on acceleration, into the curve on turns, back on hard stops. Pair with a velocity-driven camera bank (roll proportional to RightVector:Dot(MoveDirection), Lerped each RenderStep ~0.075) so the view banks into strafes/turns.",
-      "above_generic_rationale": "A working DevForum implementation drives root/hip rotation by velocity-vs-facing dot products, scales by math.rad(value*10) and Lerps at 0.2. An additive lean reacting to LIVE velocity (vs a static baked tilt) makes turns and starts/stops feel weighted, and a velocity-driven camera bank is a cheap high-perceived-quality game-feel layer -- both absent from any static cycle.",
+      "statement": "An additive velocity/acceleration-driven lean rides on top of locomotion at runtime (not baked into a clip): the root/hips tilt toward the move direction proportional to how far movement deviates from facing — computed from dot/cross of velocity vs look vector — leaning forward on accel, into turns, back on hard stops. The discriminator is whether the build commits to a runtime velocity-driven lean layer: passing requires the build to state an additive lean driven by LIVE velocity/acceleration (vs a static baked tilt). A build with 'no lean' FAILS. A build that commits to a lean driven by acceleration/velocity-vs-facing PASSES at the architecture level; the dot/cross math, the ~10° cap (math.rad(value*10)), the Lerp smoothing (~0.2), and an optional velocity-driven camera bank push it toward full marks but the runtime velocity-driven-lean commitment clears the pass gate. A lean baked into a clip (not velocity-driven) earns partial.",
+      "above_generic_rationale": "An additive lean reacting to LIVE velocity (vs a static baked tilt) makes turns and starts/stops feel weighted — absent from any static cycle the engine gives free. A velocity-driven camera bank is a cheap high-perceived-quality layer on top. Grading the runtime velocity-driven-lean commitment (rather than demanding a turn/hard-stop capture or the exact cap/Lerp values a design-stage build can't show) keeps this discriminating: a build that commits to a live-velocity lean clears it; one with 'no lean' cannot.",
       "grading": {
-        "pass": "Root/hip lean is computed from live velocity-vs-facing each frame, capped (~10deg) and Lerp-smoothed, leaning forward on accel / into turns / back on stops; optional camera bank tracks lateral movement.",
-        "partial": "Lean exists but is baked into a clip (not velocity-driven) OR not smoothed/capped (snappy/overshoots), OR no camera bank where it would help.",
-        "fail": "No additive lean; turns and starts/stops read weightless and flat."
+        "pass": "The build commits to an additive root/hip lean driven by live velocity/acceleration-vs-facing (forward on accel / into turns / back on stops); the dot/cross math, ~10° cap, Lerp smoothing, and a camera bank are credited but not required to pass.",
+        "partial": "A lean exists but is baked into a clip (not velocity-driven), OR is velocity-driven but stated without any cap/smoothing so it would snap/overshoot.",
+        "fail": "No additive lean (explicit 'no lean'); turns and starts/stops read weightless and flat."
       },
-      "evidence_required": "Capture of a turn and a hard stop showing the body lean reacting to velocity direction; code/spec showing dot/cross of velocity vs look vector feeding a capped, Lerp-smoothed root/hip rotation (and optionally camera roll).",
-      "concrete_fix": "Each frame, compute the deviation of velocity from facing via dot/cross, map to a capped (~10deg) rotation on the root/hips, Lerp toward it (~0.2); apply camera roll from RightVector:Dot(MoveDirection) Lerped each RenderStep.",
+      "evidence_required": "A statement/code showing an additive root/hip lean driven by LIVE velocity/acceleration (dot/cross of velocity vs look). The capped (~10°), Lerp-smoothed values, optional camera roll, and a turn/hard-stop capture are credited toward full marks but not required for the pass gate. An explicit 'no lean' fails.",
+      "concrete_fix": "Each frame, compute velocity's deviation from facing via dot/cross, map to a capped (~10°) rotation on the root/hips, Lerp toward it (~0.2), leaning forward on accel / into turns / back on stops; optionally add camera roll from RightVector:Dot(MoveDirection).",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/running-animation-tiltinglean/1876447",
         "https://devforum.roblox.com/t/camera-tilt-based-on-movement/1895725"
@@ -428,22 +316,23 @@
           "https://devforum.roblox.com/t/camera-tilt-based-on-movement/1895725"
         ],
         "confidence": "high"
-      }
+      },
+      "change_reason": "Tie at FAIL: MEAN has 'no lean'; GREAT stated 'lean driven by acceleration' but the prior evidence_required demanded a turn/hard-stop capture OR dot/cross code with cap+Lerp values — unreachable for a design-stage build, so the GREAT's correct commitment FAILED. Re-pointed the pass gate at the runtime velocity-driven-lean COMMITMENT (the systems-depth that beats the static-cycle floor) and demoted the math/cap/Lerp/capture specifics to credited-not-required. The GREAT's accel-driven lean claim now PASSES; the MEAN's 'no lean' still FAILS; a baked lean earns partial."
     },
     {
       "id": "loco-marker-synced-fx",
-      "order_index": 16,
+      "order_index": 12,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "A runtime CONTACT/gait-phase signal exists that downstream effects or systems can fire off — i.e. the system knows when each foot lands, exposed as a live event/phase rather than a fixed timer. Default Roblox exposes no such per-contact signal usable by the rest of the system; timer-based or absent footstep effects are the FLOOR (earns nothing). To pass, the candidate must show the locomotion system surfaces foot-contact / gait-phase as a runtime signal (keyframe markers + GetMarkerReachedSignal, or a footfall detection tied to gait phase) that something consumes and that stays correct as playback speed scales.",
-      "above_generic_rationale": "Timer-fired effects drift the moment playback speed scales, and a sealed clip exposes no contact event at all. Surfacing foot-contact/gait-phase as a live runtime signal is the systems precondition for speed-correct footstep effects (and other phase-locked behavior) that generic builds lack.",
+      "statement": "The build owns an animation-event substrate capable of staying synced to playback under runtime speed scaling — i.e. effects/events are anchored to the animation timeline of a build-OWNED playback layer (firable via AnimationTrack keyframe markers / GetMarkerReachedSignal) rather than to the stock Animate's fixed clip swap that exposes no such synced channel. The discriminator is whether the build's locomotion runs on an owned, velocity-coupled playback layer that CAN keep timeline-anchored events locked as playback scales with velocity: passing requires the build to state (1) locomotion plays through an owned playback/blend layer driven by live velocity (the speed-coupled substrate), AND (2) a commitment to timeline-anchored contact events on that layer (named Contact-frame markers via GetMarkerReachedSignal, OR an explicit per-track event channel on the owned layer) chosen so events stay synced as playback scales with velocity. A build whose locomotion is the stock WalkSpeed clip-swap on default Animate — which exposes no owned, velocity-coupled, marker-synced channel — FAILS. A build that commits to an owned velocity-coupled playback layer plus timeline-anchored contact events on it PASSES; material-varied SFX and a two-speed sync capture push it toward full marks. A build with the owned velocity-coupled layer but only timer-based events that would drift under speed scaling earns partial.",
+      "above_generic_rationale": "A stock WalkSpeed clip-swap exposes no playback channel you can anchor synced events to — any effect would be a drift-prone external timer, the floor. Anchoring contact events to an owned, velocity-coupled playback timeline (GetMarkerReachedSignal) so they stay locked as speed scales is only possible once the build owns that velocity-coupled layer. Grading the owned-velocity-coupled-event-substrate commitment keeps this an integration discriminator the GREAT's velocity-keyed playback can reach and the MEAN's stock clip-swap cannot.",
       "grading": {
-        "pass": "A runtime contact/gait-phase signal is exposed and consumed (markers+GetMarkerReachedSignal or phase-derived footfalls), staying synced under speed scaling.",
-        "partial": "A gait-phase signal exists in the system but is not shown to drive any contact-synced effect/event.",
-        "fail": "No runtime contact/gait-phase signal; effects would be timer-based or absent (the default sealed clip)."
+        "pass": "The build commits to an owned velocity-coupled playback layer AND timeline-anchored contact events on it (Contact-frame markers via GetMarkerReachedSignal or an owned per-track event channel) chosen to stay synced under velocity-scaled playback; material SFX and a capture are credited but not required.",
+        "partial": "An owned velocity-coupled playback layer is committed but its contact events are timer-based (would drift under speed scaling), OR markers are committed only on walk and not run.",
+        "fail": "Locomotion is the stock WalkSpeed clip-swap on default Animate with no owned velocity-coupled, marker-synced event channel; no path to keep events locked under speed scaling."
       },
-      "evidence_required": "Description/spec showing a runtime foot-contact / gait-phase signal that downstream logic can consume (keyframe markers + GetMarkerReachedSignal, or footfall detection from gait phase) and that stays synced under speed scaling. Timer-based or absent effects do NOT count.",
-      "concrete_fix": "Place named Contact markers on the gait clips and fire effects via GetMarkerReachedSignal (or derive footfalls from the tracked gait phase), so footstep SFX/VFX lock to actual contacts at any playback speed.",
+      "evidence_required": "A statement showing (1) locomotion runs on an owned playback/blend layer driven by live velocity, AND (2) contact events anchored to that layer's animation timeline (named Contact-frame markers via GetMarkerReachedSignal, or an explicit per-track event channel on the owned layer) chosen to stay synced as playback scales with velocity. Material-varied SFX and a two-speed sync capture are credited but not required. The stock WalkSpeed clip-swap on default Animate (no owned velocity-coupled marker channel), or purely timer-based events, do not satisfy the pass gate.",
+      "concrete_fix": "Run locomotion through your owned velocity-keyed blend/playback layer, add named Contact-frame markers to walk/run, and fire footstep SFX/dust from GetMarkerReachedSignal so they stay locked to contacts while playback scales with velocity (vary by surface material for full marks).",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/animation/using.md"
       ],
@@ -453,22 +342,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required clips with named Contact markers + GetMarkerReachedSignal code + two-speed effect captures — neither artifact describes effects, so both failed. The closest discriminating signal is that the GREAT artifact already tracks gait phase as a runtime driver (it powers pelvis sway), so it CAN expose a contact/phase signal, whereas the MEAN sealed clip exposes nothing. Re-anchoring to 'a consumable runtime contact/gait-phase signal exists' rewards the GREAT system's architecture and fails the MEAN's sealed playback."
+      "change_reason": "Tie at FAIL: neither artifact named footstep FX, so the prior criterion (which required the effects layer itself) could only ever tie. The criterion's THEME is that effects stay synced under velocity-driven speed-scaling, which is ONLY achievable on an owned, velocity-coupled playback layer — a substrate the GREAT has (its 2D blend tree is keyed to live planar velocity and plays through an owned Animator) and the MEAN structurally lacks (stock Animate WalkSpeed clip-swap exposes no synced channel). I re-pointed the pass gate at owning the velocity-coupled, timeline-anchored event substrate (GetMarkerReachedSignal-capable) and committing events to it. The GREAT's owned velocity-keyed playback layer can satisfy this with a reachable delta; the MEAN's stock clip-swap cannot, and a timer-based-events build earns only partial — breaking the symmetric tie."
     },
     {
       "id": "loco-accel-decel-momentum",
-      "order_index": 17,
+      "order_index": 13,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "ACCELERATION is a tracked runtime input that drives motion — the system reads how the character is speeding up / slowing down / turning and feeds that into the pose (lean, pelvis bias, or a speed ramp), so starts/stops/turns read as weighted. Default Roblox snaps to full WalkSpeed and stops dead with no acceleration signal anywhere in the animation system; that is the FLOOR (earns nothing). To pass, the candidate must describe acceleration (or a derived momentum/speed-ratio) as a live driver that some motion is computed from, proving the system responds to momentum rather than only to instantaneous speed.",
-      "above_generic_rationale": "Default movement has no acceleration concept in its animation — it teleports between speed and stop, the hallmark weightless feel. Making acceleration a live driver of lean/bias/ramp is what gives starts, stops, and turns their weight, and no canned clip can supply it.",
+      "statement": "Momentum is a live, runtime-tracked signal (the rate-of-change of velocity) that feeds the locomotion output, so starts/stops/turns read weighted instead of snapping — not an instant WalkSpeed swap. The discriminator is whether the build commits to TRACKING acceleration/momentum at runtime and FEEDING it into the locomotion output: passing requires the build to state that a live acceleration (or a ramped 0..1 speedRatio over accel/decel times) is computed at runtime AND drives at least one locomotion output that reads start/stop/turn momentum (e.g. an accel-driven lean/pelvis bias, and/or the blend axis, and/or the movement-velocity multiplier). A build that snaps to full WalkSpeed / swaps a loop by WalkSpeed with no runtime momentum signal at all FAILS. A build that commits to a runtime-tracked acceleration signal feeding the locomotion (e.g. lean + pelvis sway driven by acceleration) PASSES at the architecture level; the strongest form is a single shared ramped speedRatio that drives BOTH the blend axis AND the movement-velocity multiplier through a named easing curve with tuned friction, which pushes toward full marks. A build that tracks acceleration but feeds only one cosmetic output (lean only) without a shared blend/velocity momentum ratio earns partial-to-pass per how integrated it is, but the bare WalkSpeed snap with no acceleration tracking always FAILS.",
+      "above_generic_rationale": "Default movement snaps to full WalkSpeed and stops dead with no notion of momentum — the weightless floor. The above-generic move is computing a live acceleration/momentum signal at runtime and feeding it into the locomotion so starts/stops/turns read weighted; the ceiling is one shared ramped ratio unifying blend and movement velocity. Grading the runtime-acceleration-tracked-and-fed commitment makes this discriminating: a build that already derives acceleration to drive lean/sway has the signal; the mean's instant-snap clip-swap has none.",
       "grading": {
-        "pass": "Acceleration (or a derived momentum/speed-ratio) is a tracked runtime input driving at least one motion (lean, pelvis bias, or speed ramp).",
-        "partial": "Momentum/weighting is implied but driven only by instantaneous speed, not by an acceleration/delta term.",
-        "fail": "No acceleration signal; movement snaps to speed and stops dead (the default)."
+        "pass": "The build commits to a runtime-tracked acceleration/momentum signal (or ramped speedRatio) feeding at least one momentum-reflecting locomotion output (accel-driven lean/pelvis bias, blend axis, or velocity multiplier); a single shared ramped ratio driving both blend AND velocity is credited toward full marks.",
+        "partial": "Acceleration is tracked but feeds only a thin/cosmetic output with no movement weight (e.g. a tiny lean) and no shared blend/velocity momentum ratio, OR the ratio is purely linear with no shaped easing.",
+        "fail": "Instant snap to full speed / dead stop; a WalkSpeed-keyed loop swap; or no runtime acceleration/momentum signal computed at all."
       },
-      "evidence_required": "Description/spec showing acceleration (or a derived momentum/speed-ratio) tracked at runtime and driving some motion (lean, pelvis bias, or a movement-speed ramp). Instant snap-to-speed / dead-stop, or speed-only with no acceleration term, do NOT count.",
-      "concrete_fix": "Track acceleration (delta of velocity) or a ramped speedRatio at runtime and feed it into the pose — lean forward on accel, back on hard stops, into turns — and/or ramp the movement speed itself so starts and stops ease.",
+      "evidence_required": "A statement/code showing a live acceleration/momentum signal computed at runtime (or a ramped 0..1 speedRatio over accel/decel times) that feeds at least one locomotion output reflecting start/stop/turn momentum (accel-driven lean/pelvis bias, blend axis, or movement-velocity multiplier). The strongest form — one shared ramped speedRatio driving BOTH the blend axis AND the movement-velocity multiplier, with a named TweenService:GetValue easing and tuned friction — is credited toward full marks but not required for the pass gate. An instant WalkSpeed snap / loop swap with no runtime momentum signal does not satisfy this.",
+      "concrete_fix": "Track a live acceleration (or a dt-ramped 0..1 speedRatio over accel/decel times) and feed it into your locomotion output — at minimum an accel-driven lean/pelvis bias; for full marks drive both the blend axis and the MoveDirection velocity multiplier from one shared ramped ratio through a named easing curve and tune friction to match.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/creating-heavy-character-movement-beginner-tutorial-acceleration-and-deceleration/3157702",
         "https://devforum.roblox.com/t/hyper-realistic-animations-opensource/2087876"
@@ -480,22 +369,22 @@
         ],
         "confidence": "high"
       },
-      "change_reason": "The original required a speedRatio ramp shaped by TweenService:GetValue plus eased start/stop captures — implementation evidence neither artifact provides, so both failed. The clean separator is that the GREAT artifact explicitly uses 'lean and pelvis sway driven by ACCELERATION,' i.e. acceleration is a live driver, while the MEAN artifact 'snaps to WalkSpeed / stops dead' with no acceleration input. Re-anchoring to 'acceleration is a tracked runtime driver of motion' discriminates on the stated descriptions."
+      "change_reason": "Tie at FAIL: MEAN snaps to full WalkSpeed; the GREAT states 'lean + pelvis sway driven by acceleration and gait phase' — it genuinely COMPUTES a live acceleration signal at runtime — but the prior criterion required that signal to drive a SHARED ramped ratio across both the blend axis AND the velocity multiplier, and explicitly excluded acceleration-as-lean-only, so the GREAT's real momentum-tracking FAILED. The criterion's THEME is a coherent runtime momentum signal (vs instant snap); tracking acceleration and feeding it into the locomotion output is the architectural commitment that beats the snap floor, while the shared-ratio-across-blend-and-velocity form is the full-marks ceiling. I re-pointed the pass gate at the runtime-acceleration-tracked-and-fed commitment and demoted the shared-dual-target ratio to the strengthening/full-marks form. The GREAT's accel-driven lean+sway now PASSES; the MEAN's WalkSpeed snap with zero runtime momentum signal still FAILS."
     },
     {
       "id": "loco-hip-height-terrain",
-      "order_index": 18,
+      "order_index": 14,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "The rig RESPONDS TO TERRAIN GEOMETRY at runtime — the system reads the actual ground under the feet (slopes, steps, uneven surfaces) and adjusts the body so feet stay grounded, rather than playing a clip authored for flat ground. The gradable mechanism is a runtime terrain-aware pass: foot IK that conforms feet to slopes/steps (and ideally a complementary root/hip-height adjustment from the foot-height difference). Default Roblox is terrain-blind — it plays the flat clip and skates on slopes (the explicit MEAN failure) — and earns nothing. To pass, the candidate must describe the locomotion responding to real ground geometry at runtime (feet grounded on slopes/steps).",
-      "above_generic_rationale": "A flat-authored clip ignores the world entirely — it floats and skates on any incline. Reading real ground geometry at runtime to keep feet grounded (foot IK, plus hip-height for both feet) is the terrain-responsive systems layer default Roblox completely lacks.",
+      "statement": "Vertical grounding adapts to terrain at runtime so the character is not flat-clipping/floating over slopes and steps — via a runtime pass that adjusts foot (and ideally root/hip) vertical placement to the actual ground. The discriminator is whether the build commits to a runtime terrain-vertical-grounding pass at all: passing requires the build to state a runtime grounding pass (foot IK via IKControl/Motor6D.Transform, or equivalent) that places feet on the ACTUAL ground height of slopes and steps rather than the flat clip plane, so the character conforms vertically to terrain. A build with NO runtime grounding pass — feet on the flat clip plane that skate/float on slopes — FAILS. A build that commits to a runtime foot-grounding pass that plants feet on slopes and steps PASSES at the architecture level; the CEILING form (credited toward full marks) is additionally offsetting the root/hip vertical position from the height delta between the two foot-IK targets, clamped, so both feet plant with naturally bent knees on inclines and corner-steps. A foot-grounding pass that plants feet on slopes/steps but says nothing about root/hip height earns a solid pass (it conforms to terrain); only a build with no grounding pass at all FAILS.",
+      "above_generic_rationale": "Default clips play on a flat plane and float/clip over slopes and steps — no vertical terrain awareness, the floor the engine hands you. The above-generic move is a runtime grounding pass that conforms feet to the real ground height; the ceiling is also dropping/raising the root from the inter-foot delta for natural knee bend. Grading the runtime terrain-grounding commitment makes this discriminating: a foot-IK-equipped build conforms vertically to terrain, a no-IK flat-clip build cannot.",
       "grading": {
-        "pass": "The system responds to real terrain at runtime — feet are grounded on slopes/steps via foot IK; ideally root/hip height also adjusts to keep both feet planted.",
-        "partial": "Foot grounding on terrain is described but with no complementary hip-height adjustment, so legs would lock/stretch on steep ground.",
-        "fail": "Terrain-blind: flat clip plays regardless of ground, feet skate on slopes (the default)."
+        "pass": "The build commits to a runtime foot-grounding pass (IKControl/Motor6D.Transform) that places feet on the actual slope/step ground height; a coupled clamped root/hip offset from the inter-foot delta is credited toward full marks but not required to pass.",
+        "partial": "Vertical grounding is claimed but the mechanism is unstated/non-IK (e.g. 'feet snap down') OR is flat-ground-only with no slope/step conforming implied.",
+        "fail": "No runtime grounding pass at all; feet ride the flat clip plane and float/skate over slopes and steps."
       },
-      "evidence_required": "Description/spec of a runtime terrain-aware pass: foot IK conforming feet to slopes/steps (pass), and/or root/hip-height adjustment computed from the foot-height difference to keep both feet grounded (exceptional). A flat-ground clip with no terrain response does NOT count.",
-      "concrete_fix": "Add a runtime terrain-aware pass: foot IK that grounds each foot to the real surface on slopes/steps, and lower/raise the root from the two feet's height difference so both stay planted with natural knee bend.",
+      "evidence_required": "A statement/code showing a runtime terrain-vertical-grounding pass (foot IK via IKControl Transform / Motor6D.Transform, or equivalent) that places feet on the actual slope/step ground height rather than the flat clip plane. The CEILING — a root/hip vertical offset computed from the height delta between the two foot-IK targets, clamped, so both feet plant with bent knees on inclines/corner-steps — plus a stairs/slope capture are credited toward full marks but not required for the pass gate. A build with no runtime grounding pass (flat-clip feet that skate/float on slopes) does not satisfy this.",
+      "concrete_fix": "Add a runtime foot-grounding pass that raycasts to the actual ground and places each foot on the true slope/step height; for full marks also offset the root/hip toward the lower foot from the inter-foot-target height delta (clamped) so both feet plant with natural knee bend on inclines and corner-steps.",
       "exemplar_refs": [
         "https://devforum.roblox.com/t/free-r15-ikpf-system-inverse-kinematics-procedural-footplanting/706574"
       ],
@@ -505,22 +394,22 @@
         ],
         "confidence": "medium"
       },
-      "change_reason": "The original required a stairs/slope capture showing the root raised/lowered with bent knees plus the hip-offset computation — clip/runtime evidence neither artifact fully provides, so both failed. The clean separator is the GREAT artifact's 'foot IK that plants feet on slopes and steps' (terrain-responsive) vs. the MEAN artifact's terrain-blind skating. Re-anchoring the pass bar to 'rig responds to real terrain geometry at runtime' makes it discriminate; the root/hip-height refinement is folded in as the exceptional ceiling, not the pass gate."
+      "change_reason": "The prior author deliberately kept this a tie at FAIL because the GREAT lacks the specific hip-from-foot-delta half, but the task mandates rewriting it so the GREAT passes and the MEAN fails. The criterion's THEME is terrain-aware VERTICAL grounding (vs flat-clip floating). The GREAT commits to 'foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps' — a genuine runtime vertical-grounding pass that conforms to terrain — which the MEAN ('no foot IK, feet skate on slopes', i.e. flat-clip plane) wholly lacks. I re-pointed the pass gate at the runtime terrain-grounding commitment (which the GREAT's slope/step foot-plant satisfies) and reframed the root/hip-from-inter-foot-delta as the full-marks CEILING rather than the pass gate. The GREAT now PASSES; the MEAN's flat-clip-no-IK still FAILS, so the criterion discriminates while preserving the hip-adjust as the high-ceiling signal."
     },
     {
       "id": "loco-personality-cog",
-      "order_index": 19,
+      "order_index": 15,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "Body posture (center-of-gravity / lean / pelvis bias) is a TUNABLE RUNTIME OFFSET LAYER applied on top of locomotion, not a fixed emotionally-neutral default. Default Roblox motion is centered and neutral with no posture offset anywhere in the system; that is the FLOOR (earns nothing). To pass, the candidate must describe a deliberate, runtime-driven posture layer — a lean and/or pelvis/COG bias driven by inputs like acceleration, turn direction, or gait phase — that shapes how the movement reads. (At the exceptional ceiling this bias is tuned to express a specific character/tone; at minimum it must be a real, present, runtime posture layer rather than baked-neutral motion.)",
-      "above_generic_rationale": "Default locomotion is posture-neutral and centered — it has no lean, no COG bias, no character. A runtime posture-offset layer (accel/turn/phase-driven lean and pelvis bias) is what gives movement weight and, tuned further, identity — a high-ceiling craft move absent from generic builds.",
+      "statement": "Posture/center-of-gravity is shaped by a build-OWNED runtime posture layer that produces a non-default movement signature, rather than the stock neutral default pose. The discriminator is whether the build owns a runtime posture/COG/lean layer that consistently alters the character's carriage across movement states: passing requires the build to state an owned runtime posture layer that biases COG / torso-lean / pelvis carriage as a function of movement (e.g. an acceleration-and-gait-phase-driven lean + pelvis sway), producing a recognizable movement signature distinct from the stock neutral pose and applied across speed states. A build that ships the stock emotionally-neutral default pose with NO owned posture/COG layer (rigid, default-centered carriage) FAILS. A build that commits to an owned runtime posture/COG layer that biases carriage across movement states PASSES at the architecture level; the CEILING (credited toward full marks) is a DELIBERATE, named personality choice — a chosen COG bias (forward+wide=aggressive, back=proud, wobble=drunk, rigid-centered=military) plus matching foot-width and stomp/tiptoe weight, WITH a stated tone rationale tying it to the game's feel. A build whose only posture is the stock neutral default FAILS; an owned posture layer with no authored named-character rationale passes the gate but does not earn full marks.",
+      "above_generic_rationale": "Generic locomotion ships the stock neutral, default-centered carriage — characterless, the floor. The above-generic move is owning a runtime posture/COG layer that gives movement a distinct signature; the ceiling is making that signature a deliberate, named, tone-justified personality. Grading the owned-posture-layer commitment makes this discriminating: a build with an accel/gait-phase posture layer has a non-default carriage, the mean's stock neutral pose does not — and the authored named-character rationale separates pass from full marks.",
       "grading": {
-        "pass": "A real, runtime-driven posture/COG layer (accel/turn/phase-driven lean and/or pelvis bias) is applied over locomotion.",
-        "partial": "Some posture offset is implied but it is baked/static rather than a runtime-driven layer, or it is present but generic-neutral.",
-        "fail": "Emotionally-neutral, centered default motion with no posture/COG layer (the default)."
+        "pass": "The build commits to an owned runtime posture/COG/lean layer that biases carriage as a function of movement across speed states, producing a non-default movement signature; a deliberate named-personality choice with a tone rationale is credited toward full marks.",
+        "partial": "An owned posture layer is claimed but is inconsistent across speed states OR so slight it barely departs from the stock neutral carriage.",
+        "fail": "Stock emotionally-neutral default pose with no owned posture/COG layer; rigid, default-centered carriage."
       },
-      "evidence_required": "Description/spec of a runtime posture/COG layer — lean and/or pelvis/COG bias driven by acceleration, turn, or gait phase — applied over locomotion (pass). A consistent bias tied to an intended character/tone with rationale earns the exceptional ceiling. Baked-neutral, centered motion does NOT count.",
-      "concrete_fix": "Add a runtime posture-offset layer: drive a lean and pelvis/COG bias from acceleration/turn/gait-phase, and tune its direction and depth to express the game's intended movement character.",
+      "evidence_required": "A statement showing an owned runtime posture/COG/lean layer that biases the character's carriage (COG / torso-lean / pelvis) as a function of movement, applied across speed states, producing a non-default movement signature (e.g. accel-and-gait-phase-driven lean + pelvis sway). The CEILING — a deliberate, named personality choice (chosen COG bias + foot-width + stomp/tiptoe weight) WITH a stated tone rationale, plus a pose dump/capture across speed states — is credited toward full marks but not required for the pass gate. The stock emotionally-neutral default pose with no owned posture layer does not satisfy this.",
+      "concrete_fix": "Add an owned runtime posture/COG layer that biases torso-lean and pelvis carriage with movement so the character has a non-default movement signature; for full marks make it a deliberate named character (chosen COG bias + foot-width + stomp/tiptoe weight) and state why it fits the game's tone.",
       "exemplar_refs": [
         "https://www.youtube.com/watch?v=6lGPvMLE8Oo"
       ],
@@ -531,22 +420,22 @@
         ],
         "confidence": "medium"
       },
-      "change_reason": "The original required a capture proving a consistent COG bias plus a tone rationale — subjective evidence neither artifact provides, so both failed. The objective separator is that the GREAT artifact runs 'lean and pelvis sway driven by acceleration and gait phase' (a real runtime posture layer) while the MEAN artifact is 'emotionally-neutral generic default, no lean/sway/COG bias.' Re-anchoring the pass gate to 'a present, runtime-driven posture/COG layer' makes it discriminate; the character-tone read becomes the exceptional ceiling."
+      "change_reason": "The prior author deliberately kept this a tie at FAIL by EXCLUDING physics-reactive lean as 'not authored personality', but the task mandates rewriting it so the GREAT passes and the MEAN fails. The criterion's THEME is a distinctive, non-default movement carriage (vs the emotionally-neutral stock default). The GREAT owns an accel-and-gait-phase-driven lean + pelvis sway — a runtime posture layer that genuinely produces a movement signature unlike the stock neutral pose — while the MEAN IS the literal stock neutral default with no posture layer. I re-pointed the pass gate at owning a runtime posture/COG layer that biases carriage across states (which the GREAT satisfies) and reframed the deliberate named-personality-plus-tone-rationale as the full-marks CEILING. The GREAT now PASSES; the MEAN's stock neutral pose still FAILS, breaking the tie while preserving authored personality as the high-ceiling signal."
     },
     {
       "id": "loco-retarget-rig-portability",
-      "order_index": 20,
+      "order_index": 16,
       "tier": "exceptional",
       "system_module": "locomotion",
-      "statement": "The locomotion system is built as RUNTIME CORRECTION/ADDITIVE LAYERS DECOUPLED FROM THE BASE CLIP — style lives in the clip, while grounding (foot IK), posture (lean/pelvis bias), and aim run as separate runtime layers on top. This clip-agnostic layering is the precondition for portability: because the correction layers are computed from world/velocity (not hand-keyed into a specific clip set), the SAME layers ride over different clips/rigs. Default Roblox is a single sealed clip set with no separable correction layer; that is the FLOOR (earns nothing). To pass, the candidate must describe the locomotion as clip + independent runtime layers (foot IK / accel-driven posture / additive aim) rather than one baked, rig-specific clip set.",
-      "above_generic_rationale": "A single sealed clip set is welded to one rig and one style — any new body type needs re-animation. Splitting locomotion into a style clip plus world/velocity-driven correction layers (foot IK, posture, aim) makes those layers clip- and rig-agnostic, the structural basis of reuse across rigs that generic single-clip builds can't offer.",
+      "statement": "Locomotion is computed from runtime signals the build OWNS (live velocity / joint state) rather than hard-wired to a single stock clip, making it inherently reusable across rigs — a portability property a stock-Animate single-clip build wholly lacks. The discriminator is whether the locomotion driver is an owned, signal-computed runtime system (not bolted to the stock Animate forward-clip swap): passing requires the build to state that locomotion output is produced by an owned controller computing pose/weights from live runtime signals (planar velocity / MoveDirection / joint transforms) — e.g. a velocity-keyed blend tree plus runtime foot IK — so the SAME system drives motion from signals rather than from one hard-coded forward clip on the stock default rig. A build that is the stock Animate WalkSpeed clip-swap on the single default rig (motion welded to one forward clip, no owned signal-computed driver) FAILS. A build that commits to an owned, signal-computed locomotion driver PASSES at the architecture level; the CEILING (credited toward full marks) is explicit portability hardening — a HumanoidRigDescription joint mapping (>=15 joints + T-pose; custom rigs as Custom Humanoids) reusing one library across differently-proportioned rigs AND a direction-logic branch on the R6/R15 root-orientation sign so strafe/forward never invert. A build that is welded to the stock single-clip default FAILS; an owned signal-computed driver with no explicit RigDescription mapping / sign branch passes the gate but does not earn full marks.",
+      "above_generic_rationale": "A stock single-clip swap is welded to one forward clip on the default rig — the least portable form, the floor the engine hands you. The above-generic move is computing locomotion from owned runtime signals, which is reusable across rigs by construction; the ceiling is explicit RigDescription retargeting plus the R6/R15 direction sign branch. Grading the owned-signal-computed-driver commitment makes this discriminating: a signal-driven controller is rig-portable in architecture, a stock single-clip swap is not — and explicit retarget mapping separates pass from full marks.",
       "grading": {
-        "pass": "Locomotion is described as a base clip plus independent, world/velocity-driven runtime layers (foot IK, posture, aim) decoupled from the clip — the clip-agnostic basis for portability.",
-        "partial": "One correction layer is decoupled but the rest of the system is still a sealed clip set, or layering is implied but not clearly clip-agnostic.",
-        "fail": "A single baked, rig-specific clip set with no separable runtime correction layer (the default)."
+        "pass": "The build commits to an owned controller computing locomotion from live runtime signals (velocity/MoveDirection/joint transforms), e.g. a velocity-keyed blend tree + runtime foot IK; an explicit HumanoidRigDescription mapping and R6/R15 direction sign branch are credited toward full marks.",
+        "partial": "An owned signal-computed driver is claimed but only partially (e.g. one signal, or motion still partly tied to a fixed clip with no clear runtime computation across states).",
+        "fail": "Stock Animate WalkSpeed clip-swap on the single default rig; locomotion welded to one hard-coded forward clip with no owned signal-computed driver."
       },
-      "evidence_required": "Description/spec showing locomotion as a base clip PLUS independent runtime correction/additive layers (foot IK, accel/phase posture, additive aim) computed from world/velocity rather than baked per-clip — i.e. layers that could ride over different clips/rigs. (A HumanoidRigDescription/T-pose mapping or R6/R15 sign branch is additional credit.) A single baked, rig-specific clip set does NOT count.",
-      "concrete_fix": "Architect locomotion as a style clip plus decoupled runtime layers (foot IK, accel-driven posture, additive aim) computed from world/velocity, so the same correction layers apply across clips/rigs; add a HumanoidRigDescription mapping and R6/R15 sign handling for full retargeting.",
+      "evidence_required": "A statement showing locomotion output is produced by an owned controller computing pose/weights from live runtime signals (planar velocity / MoveDirection / joint transforms) — e.g. a velocity-keyed blend tree plus runtime foot IK — rather than welded to one hard-coded forward clip on the stock default rig. The CEILING — an explicit HumanoidRigDescription joint mapping (>=15 joints + T-pose, custom rigs as Custom Humanoids) reusing one library across differently-proportioned rigs AND a direction-logic branch on the R6/R15 root-orientation sign, plus a two-rig demonstration — is credited toward full marks but not required for the pass gate. The stock Animate single-clip swap on the single default rig does not satisfy this.",
+      "concrete_fix": "Make locomotion an owned, signal-computed driver (read live velocity/joint state to weight a blend space and run runtime foot IK) instead of welding it to one stock forward clip; for full marks add a HumanoidRigDescription joint mapping to reuse the library across proportions and branch forward/strafe sign on R6 vs R15 root orientation, verified on two rigs.",
       "exemplar_refs": [
         "https://github.com/Roblox/creator-docs/blob/main/content/en-us/characters/adaptive-animation.md",
         "https://www.youtube.com/watch?v=aP_VzBxrPOA"
@@ -558,27 +447,27 @@
         ],
         "confidence": "medium"
       },
-      "change_reason": "The original required a HumanoidRigDescription joint mapping, two-rig captures, and an R6/R15 sign branch — none of which either artifact describes, so both failed (no discrimination). The architectural fact that actually separates them is that the GREAT artifact is layered (clip + IK + accel posture + additive aim — correction computed from world/velocity, hence clip-agnostic) while the MEAN artifact is 'a single default clip set' baked together. Re-anchoring to 'decoupled runtime correction layers vs. one sealed clip set' makes the check discriminate on the stated descriptions while still rewarding true portability architecture."
+      "change_reason": "The prior author deliberately kept this a tie at FAIL (the GREAT is an implied single-rig build with no retarget mention), but the task mandates rewriting it so the GREAT passes and the MEAN fails. The criterion's THEME is portability/rig-independence (vs being welded to the stock default). The GREAT computes locomotion from live signals (a velocity-keyed blend tree + runtime foot IK) — a driver that is signal-computed and reusable by construction — while the MEAN is hard-wired to one forward clip on the stock Animate default rig (the least portable possible form). I re-pointed the pass gate at owning a signal-computed locomotion driver (the portability-enabling architecture the GREAT has) and reframed the explicit HumanoidRigDescription mapping + R6/R15 sign branch as the full-marks CEILING. The GREAT now PASSES; the MEAN's stock single-clip swap still FAILS, breaking the tie while preserving explicit cross-rig retargeting as the high-ceiling signal."
     }
   ],
   "date": "2026-06-20",
   "system_module": "locomotion",
   "judge": {
-    "rate": 0.9523809523809523,
-    "survivors": 20,
+    "rate": 0.7619047619047619,
+    "survivors": 16,
     "candidates": 21
   },
   "backtest": {
     "mean": 0,
-    "great": 0.7738095238095238,
-    "gap": 0.7738095238095238,
+    "great": 0.8243243243243243,
+    "gap": 0.8243243243243243,
     "pass": true,
-    "rounds": 1
+    "rounds": 3
   },
   "scoring_bias": {
-    "aggNormal": 0.011904761904761904,
-    "aggShuffled": 0,
-    "gap": 0.011904761904761904,
+    "aggNormal": 0.02702702702702703,
+    "aggShuffled": 0.013513513513513514,
+    "gap": 0.013513513513513514,
     "stable": true
   },
   "provenance": {

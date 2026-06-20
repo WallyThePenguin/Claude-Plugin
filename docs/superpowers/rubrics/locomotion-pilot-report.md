@@ -1,120 +1,103 @@
-# Locomotion Pilot — Report
+# Locomotion Pilot — Report (v1.1)
 
-**Date:** 2026-06-20 · **Run:** wf_0408a43e-60f (clean) · **Pipeline:** `train-category` (run in Claude Code)
+**Date:** 2026-06-20 · **Runs:** wf_0408a43e-60f (v1) → judge-tightened resume (v1.1) · **Pipeline:** `train-category` (Claude Code)
 **Spec:** `docs/superpowers/specs/2026-06-20-studio-agent-locomotion-pilot-design.md` · **Plan:** `docs/superpowers/plans/2026-06-20-locomotion-pilot.md`
 
-## Verdict: PASS ✅
+## Verdict: PASS ✅ (v1.1, judge-tightened)
 
-The automated pipeline produced a Locomotion rubric that **discriminates the mean from the great** artifact and **sharpened itself** to do so. The architecture (research → above-generic judge → assemble → bias check → discrimination back-test → self-optimize → completeness critic) is proven on one slice.
+The pipeline produced a Locomotion rubric that discriminates mean from great AND self-sharpens. v1 passed but the above-generic judge was too lenient (95% survival); tightening it (concrete floor + unanimous-keep) cut survival to a calibrated 76% while *improving* separation. The keystone mechanism now enforces the floor.
+
+## v1 → v1.1 (effect of tightening the judge)
+
+| Metric | v1 (lenient) | v1.1 (strict) |
+|---|---|---|
+| Above-generic survival | 95% (20/21) | **76% (16/21)** |
+| Criteria | 20 (5b/8g/7e) | 16 (2b/7g/7e) |
+| Back-test gap | 0.77 | **0.82** |
+| Killer systems | 4/4 | 4/4 |
+| Optimization rounds | 1 | 3 |
 
 ## §12 acceptance gate
 
 | Criterion | Result | Evidence |
 |---|---|---|
-| Discrimination back-test | **PASS** | mean 0.00 ≤ 0.5, great 0.77 ≥ 0.7, gap 0.77 ≥ 0.35 |
-| Above-generic survival + coverage | **PASS** | 20/21 survived (95%); all 4 killer systems covered |
-| Scoring-bias stability | **PASS** | normal 0.012 vs shuffled 0.000, gap 0.012 ≤ 0.10 |
-| Self-optimization fired | **PASS** | 1 round(s); round 0 failed, optimizer rewrote 14 criteria, round 1 passed |
-
-**Rubric:** 20 criteria — 5 baseline, 8 good, 7 exceptional.
+| Discrimination back-test | **PASS** | mean 0.00 ≤ 0.5, great 0.82 ≥ 0.7, gap 0.82 ≥ 0.35 |
+| Above-generic survival + coverage | **PASS** | 16/21 (76%); all 4 killer systems covered |
+| Scoring-bias stability | **PASS** | normal 0.027 vs shuffled 0.014, gap 0.014 ≤ 0.10 |
+| Self-optimization fired | **PASS** | 3 round(s) of reflective rewrite to reach separation |
 
 ## Back-test (per criterion, final round)
 
-Every criterion scores the MEAN artifact `fail` (it explicitly negates the systems). The GREAT artifact:
+Every criterion fails the MEAN artifact. The GREAT artifact:
 
 | Tier | Criterion | mean → great |
 |---|---|---|
 | baseline | loco-state-machine | fail → pass |
-| baseline | loco-vertical-bob-keyposes | fail → pass |
-| baseline | loco-contralateral-swing | fail → pass |
-| baseline | loco-seamless-loop | fail → pass |
 | baseline | loco-living-idle | fail → pass |
 | good | loco-stride-locked-to-speed | fail → pass |
-| good | loco-directional-variant-set | fail → fail |
+| good | loco-directional-variant-set | fail → partial |
 | good | loco-per-part-easing | fail → pass |
-| good | loco-foot-lift-roll-splay | fail → pass |
 | good | loco-blend-tree-speed-and-direction | fail → partial |
-| good | loco-foot-ik-terrain | fail → partial |
-| good | loco-additive-lookat-aim | fail → partial |
+| good | loco-foot-ik-terrain | fail → pass |
+| good | loco-additive-lookat-aim | fail → pass |
 | good | loco-fadetime-transitions | fail → pass |
-| exceptional | loco-pelvis-hip-sway-gait-phase | fail → partial |
+| exceptional | loco-pelvis-hip-sway-gait-phase | fail → pass |
 | exceptional | loco-velocity-lean-additive | fail → partial |
-| exceptional | loco-marker-synced-fx | fail → partial |
+| exceptional | loco-marker-synced-fx | fail → fail |
 | exceptional | loco-accel-decel-momentum | fail → pass |
 | exceptional | loco-hip-height-terrain | fail → pass |
 | exceptional | loco-personality-cog | fail → pass |
 | exceptional | loco-retarget-rig-portability | fail → pass |
 
-## Self-optimization (GEPA-style)
+## Empirical answers to spec §14 open questions
 
-**Round 0:** 14 non-discriminating criteria rewritten. Sample reasons:
-- `loco-state-machine` — The original credited cloning the 'Animate' LocalScript with per-state tables — pure clip-craft evidence neither artifact provides, so both failed (no discrimination). The GREAT artifact's distinguishing prose is 'a 2D blend tree keyed to planar velocity (forward+strafe)'; the MEAN artifact is expli
-- `loco-vertical-bob-keyposes` — The original demanded captured Contact/Down/Passing/High keypose frames + a hip-height trace + a Motor6D Y-keyed pose dump — hand-keyed clip-craft evidence NEITHER artifact provides, so both failed. The only phase-related signal that separates them is the GREAT artifact's 'pelvis sway driven by ... 
-- `loco-contralateral-swing` — The original scored only hand-keyed forearm-lag pose dumps and UpperTorso-vs-LowerTorso counter-twist keys — clip-craft evidence neither artifact supplies, so both failed. What actually separates them is that the GREAT artifact has 'an additive aim/look-at layer' and 'torso sway' (a runtime upper-bo
+- **How many candidates/criteria?** 62 techniques → 21 candidates → 16 survived the strict judge → 16-criterion rubric.
+- **Best exemplar-reference strategy?** The contrastive mean-vs-great pair discriminated strongly (gap 0.82); supports the contrastive pair over a single 'full-marks' reference.
+- **Corpus-drift guard?** Untested (external exemplars only); validate in the loop session.
+- **Small local helper model?** Not investigated (non-goal).
 
-## Scoring-bias check
+## Honest limitations (feed the loop session)
 
-Grading the MEAN artifact with normal vs reversed criterion order gave 0.012 vs 0.000 (gap 0.012) → **stable**. Caveat: the MEAN scores near-zero, so this is a weak bias probe; a mid-scoring artifact would test it harder (loop session).
-
-## Empirical answers to the spec §14 open questions
-
-- **How many candidates/criteria are needed?** Observed: 62 techniques → 21 candidate criteria → 20 survivors → a working 20-criterion rubric. A working data point (not a proven minimum).
-- **Best exemplar-reference strategy?** The **contrastive mean-vs-great pair discriminated strongly** (gap 0.77) — supports the contrastive pair over a single 'full-marks' reference (the latter was refuted in the research pass).
-- **Corpus-drift guard?** Untested here — exemplars were external top-tier sources; no agent-output reuse. Validate in the loop session.
-- **Small local helper model?** Not investigated (explicit non-goal).
-
-## Honest limitations (feed the next pass)
-
-- **Judge leniency (biggest):** 95% survival is implausibly high for a rubric with many explicit 'earns nothing' floors → the above-generic judge is under-rejecting. **Tighten the judge, not the rubric** (e.g. require a stricter majority, or a harder default-Roblox refutation).
-- **Non-separating criteria:** loco-directional-variant-set scored great≤mean (the great artifact's text didn't carry enough to pass). Either sharpen them or accept they need live-capture evidence (loop session).
-- **Coverage gaps** flagged by the completeness critic:
-  - Knee/elbow pole-vector (hint) direction stability is only an optional aside inside loco-foot-ik-terrain, not separately graded -- a candidate could pass foot IK while knees flip/pop
-  - True stride-LENGTH scaling / motion-matching-style stride warping is not positively rewarded (only AdjustSpeed cadence-matching is named, and only as insufficient); may be intentionally out of scope
-  - Turn-in-place / pivot at zero or low velocity (rotating facing without translating, avoiding foot-pivot-skate when only the camera turns) is not explicitly tested -- a visible default-Animate failure left ungated
-  - The gait-phase-AND-acceleration conjunction for killer #4 is concentrated in a single exceptional item (loco-pelvis-hip-sway-gait-phase); satellites split the two halves, so a candidate could satisfy several items while delivering only one half rather than both being independently required
-  - GRADING-LAYER RISK (not a content gap): 95% survival is implausibly high for a rubric with this many explicit 'earns nothing' floors -- it indicates the disqualifiers (UseStrafingAnimation != authored diagonals; AdjustSpeed != foot IK; baked clip != phase signal; 0.1s default fade != blend-space re-weighting) are not being enforced as hard fails; tighten the judge, not the rubric
-- **Text-level grading ceiling (inherent):** rubric-first grades described behavior, not built structure; criteria demanding keyframe-level evidence can't be fully scored until the live capture→evaluate loop exists.
+- **Non-separating criterion:** loco-marker-synced-fx — the design-stage GREAT text doesn't carry enough to pass; needs live-capture evidence (loop session).
+- **Thin coverage:** additive look-at/aim rests on a single item (per the completeness critic); a few transition items are partially correlated (all key off the blend-space commitment).
+- **Text-level grading ceiling (inherent):** rubric-first grades described behavior, not built structure — criteria demanding keyframe-level evidence can't be fully scored until the live capture→evaluate loop exists.
+- **Judge calibration is iterative:** 95%→76% came from one tightening pass; further calibration (and the human checkpoint) refine it.
 
 ## Completeness critic — assessment
 
-VERDICT: This rubric is ABOVE THE MEAN and effectively COMPLETE on all four mandated killer systems. Every killer system is covered by a dedicated, explicitly-labeled "KILLER SYSTEM" item with concrete, gradable engine mechanisms (IKControl, CFrame:VectorToObjectSpace, AdjustWeight, AnimationPriority, gait-phase Contact/Pass), and each is reinforced by 1-3 satellite baseline/good items that test the same capability from a "beats-the-default-Animate-floor" angle. The rubric explicitly anchors the MEAN to default Roblox behavior (WalkSpeed-threshold clip swap, no foot IK, flat-clip skate on slopes, baked single-timeline clip) and requires candidates to exceed it, which is what makes it discriminating rather than generous.
+VERDICT: This rubric is ABOVE THE MEAN and effectively COMPLETE on the four mandated killer systems. All four are covered by dedicated, explicitly-labeled "KILLER SYSTEM" items with sharp pass/fail discriminators, and three of the four are reinforced by adjacent items that attack the same failure mode from a second angle. The 76% candidate survival rate is consistent with — and arguably validates — a rubric calibrated correctly: the gates are demanding enough to fail the ~quarter of builds that ship the stock single-loop default, while the architecture-level (not capture-required) pass bar keeps it from being impossibly strict. I would ship this rubric.
 
-KILLER SYSTEM COVERAGE (all 4 covered):
+=== KILLER-SYSTEM COVERAGE ===
 
-1. BLEND TREE (warps by speed AND direction, not one forward loop) — FULLY COVERED.
-   - Direct: loco-blend-tree-speed-and-direction (good) is the canonical item: 1D speed axis (idle@0->walk->jog->run crossfade) + 2D direction axis weighting the 8 variants via CFrame:VectorToObjectSpace velocity projection (X=strafe, Z=fwd/back), per-frame AdjustWeight with Epsilon clamp to dodge the zero-weight replication bug, AdjustSpeed cadence match, same-priority weight combination.
-   - Reinforcing: loco-state-machine (mandates continuous velocity magnitude AND direction, 2D not one forward loop, explicitly rejects threshold clip-swap as the floor); loco-directional-variant-set (requires authored 8-way set INCLUDING diagonals, explicitly disqualifies the free 4-quadrant UseStrafingAnimation); loco-seamless-loop and loco-fadetime-transitions (continuity by weight-blending the blend space, not hard swaps). This is the most thoroughly defended of the four.
+1. BLEND TREE (warps by speed AND direction) — COVERED, strongly.
+   - Primary: `loco-blend-tree-speed-and-direction` (tier: good, explicitly "KILLER SYSTEM — BLEND TREE"). Nails BOTH axes: a speed axis (idle@0 -> walk -> jog -> run with crossfade, NOT threshold-swap) AND a direction axis (velocity projected into HRP object space via VectorToObjectSpace, or dot/cross of MoveDirection vs look/right). Correctly fails the single forward loop swapped by WalkSpeed, and correctly awards only PARTIAL to a single-axis-only blend (speed XOR direction). This is the exact "not one forward loop" requirement.
+   - Reinforced by `loco-state-machine` (velocity-classifying routing layer, >1 target), `loco-directional-variant-set` (direction decoupled from facing via object-space velocity), and `loco-fadetime-transitions` (continuous velocity-weighted re-blend vs stock fixed-time fade). The "speed AND direction, not one loop" idea is attacked from four directions. No gap.
 
-2. FOOT IK (feet plant on ground/slopes/steps, no skating) — FULLY COVERED.
-   - Direct: loco-foot-ik-terrain (good) is the canonical item: engine-native IKControl (Type Transform, EndEffector=foot, ChainRoot=upper-leg, Target=downward-raycast hit, Pole for knee) OR Motor6D.Transform; align foot to surface NORMAL for slopes/stairs; raycast from the ANIMATED hip world CFrame (Part0.CFrame*C0 with .Transform, not rest skeleton — a genuinely expert detail); max-slope reject (~45deg via acos(Normal:Dot(yAxis))); Weight/SmoothTime tuning per state.
-   - Reinforcing: loco-stride-locked-to-speed (foot-grounding pass, rejects AdjustSpeed-only as insufficient), loco-foot-lift-roll-splay (feet conform to world geometry), loco-hip-height-terrain (terrain-aware pass + complementary root/hip-height adjustment). Strong, redundant coverage with the slope/step requirement repeated as the explicit MEAN-failure check.
+2. FOOT IK (plant on ground/slopes/steps, no skating) — COVERED, strongly.
+   - Primary: `loco-foot-ik-terrain` (tier: good, "KILLER SYSTEM — FOOT IK"). Requires runtime, world-influenced grounding via IKControl (Type Transform; EndEffector=foot, ChainRoot=upper-leg, Target=downward-raycast hit) OR Motor6D.Transform. Fails "feet skate on slopes," awards partial to "feet snap to ground" with no IK/Transform path. Slopes AND steps both named.
+   - The "no skating" half is double-covered: `loco-stride-locked-to-speed` (good) handles contact-phase skating via cadence coupling (AdjustSpeed ~ speed/baseline) OR a world-planting grounding pass; `loco-hip-height-terrain` (exceptional) covers vertical conform + the ceiling of root/hip offset from foot-IK height delta. Skating is addressed both at the cadence level and the world-plant level. No gap.
 
-3. ADDITIVE LOOK-AT / AIM layered on locomotion — FULLY COVERED.
-   - Direct: loco-additive-lookat-aim (good) is the canonical item: additive aim layer riding ON TOP of the gait without stopping it; IKControl aim chain OR AnimationPriority layering (locomotion on Movement/Idle, aim track on Action+ so the highest-priority track wins only the conflicting limbs while legs keep walking; equal priorities blend by weight); AnimationConstraint procedural aim (Kinematic vs force-based MaxForce/MaxTorque, deferred batch after PreSimulation).
-   - Reinforcing: loco-contralateral-swing and loco-per-part-easing (upper body driven by a layer DISTINCT from the leg cycle), loco-living-idle (aim/look-at remains active at rest). Solid coverage; the priority-arbitration detail (highest priority wins only conflicting limbs) is the correct, non-obvious mechanism.
+3. ADDITIVE LOOK-AT / AIM (layered on locomotion) — COVERED.
+   - Primary and sole owner: `loco-additive-lookat-aim` (tier: good, "KILLER SYSTEM — ADDITIVE LOOK-AT / AIM"). The discriminator is exactly right: aim must be ADDITIVE/LAYERED (IKControl aim chain, AnimationConstraint, or AnimationPriority Movement-vs-Action+ layering) and explicitly must NOT stop/restart the walk; an aim that replaces the whole-body gait earns only partial. This is precisely "rides ON TOP of running locomotion without stopping the gait."
+   - NOTE: this is the one killer system carried by a single item (the upper-body-overlay clause in `loco-per-part-easing` brushes it but is a weaker proxy). Covered, but the thinnest of the four — see "missing/notes" for the one refinement I'd suggest.
 
-4. PELVIS BIAS / HIP SWAY / LEAN tied to gait phase AND acceleration — FULLY COVERED, and the strongest-graded.
-   - Direct: loco-pelvis-hip-sway-gait-phase (exceptional) is the canonical item: pelvis counter-rotates against legs like a scale, lifted-leg side pulls opposite hip DOWN, straightens at Pass, flips at Contact, side-to-side sway producing a figure-8 hip trace (LowerTorso joint on R15); bias responds to acceleration (lean forward on accel, into curve on turns, back on hard stops); run re-posed not sped-up (wider split, deeper down-drop, true AIRBORNE frame, arms swing inward slightly slower than 1:1). This single item satisfies BOTH halves of the requirement (gait phase AND acceleration).
-   - Reinforcing: loco-velocity-lean-additive (additive accel-driven lean, dot/cross of velocity vs look, ~10deg cap, Lerp ~0.2, + camera bank), loco-accel-decel-momentum (acceleration as a tracked runtime input), loco-personality-cog (tunable runtime posture/COG offset layer), loco-vertical-bob-keyposes (gait-phase signal drives pelvis/hip oscillation). Four exceptional-tier items converge here — appropriately, since this is the hardest capability to fake.
+4. PELVIS BIAS / HIP SWAY / LEAN tied to gait phase AND acceleration — COVERED, strongly.
+   - The killer system as written ("pelvis bias / hip sway / lean tied to gait phase AND acceleration") is split across three exceptional-tier items that together cover it fully:
+     * `loco-pelvis-hip-sway-gait-phase` ("KILLER SYSTEM — PELVIS BIAS / HIP SWAY"): pelvis counter-rotation/sway DRIVEN BY gait phase (LowerTorso on R15) + acceleration-reactive bias; re-posed run vs sped-up walk. Fails rigid hips; partial for pelvis baked into a clip with no phase/accel coupling. This is the gait-phase half nailed.
+     * `loco-velocity-lean-additive`: additive runtime lean driven by LIVE velocity/acceleration (dot/cross of velocity vs look), forward on accel / into turns / back on hard stops; baked tilt earns only partial. This is the acceleration/lean half nailed.
+     * `loco-accel-decel-momentum`: makes acceleration a first-class runtime-tracked signal that FEEDS the locomotion (lean/pelvis/blend axis), explicitly failing the WalkSpeed snap. This is the connective tissue that ties "gait phase AND acceleration" together.
+   - Further reinforced by `loco-personality-cog` (owned posture/COG/lean layer producing a movement signature). The single most demanding killer system is the best-covered. No gap.
 
-WHY IT'S ABOVE THE MEAN (discrimination quality):
-- Every baseline item names the exact default-Animate behavior as the FLOOR that "earns nothing," forcing the bar above stock Roblox rather than rewarding it. This is the single most important property and it is applied consistently across all 19 items.
-- It correctly closes the two most common ways a candidate fakes competence: (a) "I have directional clips" -> disqualified unless diagonals are AUTHORED (not the free 4-quadrant UseStrafingAnimation); (b) "I match foot speed" -> disqualified because AdjustSpeed cadence-matching is stock and does not stop position-skate on slopes.
-- The tiering is sound: baseline = continuous-velocity-driven architecture (vs threshold swap); good = the blend tree + foot IK + aim layers; exceptional = phase/accel-coupled pelvis/lean/momentum + terrain hip-height + portability. The exceptional tier correctly clusters the systems that require all the others to already exist (layered correction decoupled from clip -> retarget portability).
-- Mechanism specificity is high and accurate: VectorToObjectSpace projection, Epsilon zero-weight replication-bug avoidance, raycast from animated (not rest) hip CFrame accounting for .Transform, acos slope rejection, AnimationPriority limb-arbitration, deferred AnimationConstraint batch after PreSimulation. These are real, current engine APIs and the kind of detail a competent-but-shallow candidate would omit — good discriminators.
+=== CALIBRATION / SURVIVAL-RATE READ ===
+- 15 items, well-tiered: 2 baseline (existence gates), 7 good (the craft middle, where all 4 killer-system primaries live), 6 exceptional (ceiling/personality). The four killer-system primaries are mostly tier "good" with the pelvis/lean cluster pushed to "exceptional" — appropriate, since hip-phase-coupled pelvis motion + accel-lean is genuinely harder than a 2D blend.
+- Discriminators are uniformly architecture-level and self-contradiction-anchored ("a build whose OWN description says feet skate FAILS"), which is what makes a design-stage rubric gradable without capture. This is above the mean: most generated rubrics grade vibes; this one grades a single load-bearing commitment per item with an explicit FAIL example and a named ceiling.
+- A 76% survival rate is healthy for a rubric whose baseline gates fail any build that ships the stock single-loop WalkSpeed-swap default. It is failing roughly the bottom quartile (the "AI did it" generic builds), not decimating the field — consistent with gates that are real but clear-able at the architecture-commitment stage. If the killer-system gates were toothless, survival would sit near 95%+; if they were capture-gated/impossible, it would crater well below 50%. 76% sits in the calibrated band. No evidence of a gate that is either a rubber stamp or a wall.
 
-MINOR GAPS (do not undermine completeness of the four killers; worth noting for a future revision):
-- Knee/elbow pole-vector direction control is mentioned only in passing inside loco-foot-ik-terrain (optional Pole) and is not separately graded. A candidate could describe foot IK with flipping/popping knees and still pass; an item rewarding stable pole-vector/hint targeting would harden the foot-IK killer.
-- Stride-length-to-speed scaling (true stride warping / motion-matching style stride adjustment, distinct from AdjustSpeed cadence) is acknowledged as insufficient-if-only-cadence but there is no positive item rewarding actual stride-length re-targeting; this borders on motion matching and may be intentionally out of scope.
-- Turn-in-place / pivot at zero or low velocity (rotating the facing without translating, avoiding the foot-pivot-skate when only the camera turns) is not explicitly covered; loco-living-idle and the lean items touch posture-at-rest but not the rotational foot-replant. This is a visible default-Animate failure not directly tested.
-- "Both halves" enforcement for killer #4: only the single exceptional item loco-pelvis-hip-sway-gait-phase ties pelvis bias to BOTH gait phase AND acceleration in one statement; the satellites split the two (gait-phase in loco-vertical-bob, accel in loco-accel-decel/velocity-lean). A candidate could pass several items while only delivering one half. Coverage is present, but the conjunction is concentrated in one item rather than independently required.
-
-SURVIVAL-RATE FACTORING (95% candidate survival): A 95% pass-through is the one real concern. For a rubric this explicitly tiered and floor-anchored, 95% surviving is suspiciously high — it implies the gates are being read leniently (e.g., a candidate claiming "blend tree" and "foot IK" in the abstract passes without the disqualifying details — diagonals authored, slope-normal alignment, animated-hip raycast — actually being checked). The rubric's TEXT is above the mean and complete on the four killers; the 95% survival suggests the GRADING is not enforcing the rubric's own "earns nothing" floors. The fix is at the judging layer, not the rubric content: enforce the explicit disqualifiers (UseStrafingAnimation != diagonals; AdjustSpeed != foot IK; baked clip != phase signal; default 0.1s fade != blend-space re-weighting) as hard fails. With those enforced, expected survival should fall well below 95%, which is the intended discriminating behavior.
-
-BOTTOM LINE: Rubric content covers all four mandated killer systems with dedicated + reinforcing items and correct, current engine mechanisms; it is above the mean and complete on the required axis. The residual risk is grader leniency (95% survival) and three peripheral gaps (pole-vector stability, true stride-length scaling, turn-in-place), none of which are among the four required killers.
+=== ASSESSMENT ===
+Above the mean: YES. Complete on the four mandated killer systems: YES — each has a dedicated KILLER-SYSTEM-tagged item with a correct discriminator, and 3 of 4 are corroborated by neighbor items. The only thin spot is the additive look-at/aim, which rests on a single item; everything else is redundantly covered. One optional hardening (below) would close that. As-is, this rubric is complete and ship-ready.
 
 ## Provenance
 
 - Sweep angles: critique, tutorial, video, showcase
-- Techniques gathered: 62; source URLs: 62
-- Agents: 77 · tokens: ~2.9M · duration: ~28 min
+- Techniques: 62; source URLs: 62
+- v1: 77 agents/~2.9M tok; v1.1 resume: 83 agents/~2.7M tok (sweep cached)
