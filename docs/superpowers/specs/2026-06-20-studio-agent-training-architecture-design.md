@@ -127,17 +127,28 @@ Sources split into two modes that ingest differently:
 
 ### 6b. Copyright & licensing guardrails (both ingestion + output)
 
-1. **License, not price.** Roblox Toolbox "free" is a *price*, not a license, and the Toolbox is
-   full of stolen re-uploads. The source filter keys on **license**: ingest only genuinely
-   free-to-use — CC0 / public domain / explicit free-license / Roblox's own official samples / the
-   user's own. The §7 source judge is therefore also a **license-cleanliness judge** (a dirty-license
-   asset is rejected regardless of quality).
-2. **Technique, not expression.** Learn the transferable *method* (e.g. "blend tree + foot IK +
-   pelvis bias") → it becomes a rubric criterion + a visual exemplar. Never clone the asset's specific
-   creative expression (its exact meshes/textures/keyframes) into a shipped game. Techniques/methods
-   aren't copyrightable; specific expression is — so this stays legally clean **and** on-thesis (the
-   goal is the *system*, not the *asset*). The captured exemplar image is a reference for grading,
-   not a template to reproduce.
+*Not legal advice; for commercial use, verify the specific license. The default-safe path is
+copyright-free sources; copyrighted assets are a careful secondary path under the tier rule below.*
+
+1. **Two source tiers, by license.** The best exemplars often aren't copyright-free, so copyrighted
+   assets are usable — but only for *study*, never as stored reproductions or shipped content:
+   - **Copyright-free / your-own / official Roblox samples** → **full treatment**: dissect, capture,
+     and **store** the visual exemplar + criteria.
+   - **Copyrighted ("licensed") assets** → **ephemeral, technique-only**: insert, dissect, derive the
+     *method* criteria, then **discard** — never persist the asset or its screenshot, never ship it.
+     What's kept is the non-copyrightable *method*, not a stored copy of the *expression*. Honor each
+     asset's actual license — some terms forbid dissection/reverse-engineering/derivatives even
+     privately, regardless of whether it's shipped.
+   - **"Free" ≠ a clean license.** Roblox Toolbox "free" is a *price*, not a license, and the Toolbox
+     is full of stolen re-uploads. Reject dirty-license/re-uploaded assets regardless of quality. The
+     §7 source judge is therefore also a **license-cleanliness judge**.
+2. **Technique, not expression** (applies to *both* tiers). Learn the transferable *method* (e.g.
+   "blend tree + foot IK + pelvis bias") → it becomes a rubric criterion. Never clone the asset's
+   specific creative expression (its exact meshes/textures/keyframes), and never produce output
+   *substantially similar* to it (a derivative work infringes even without a literal copy).
+   Techniques/methods aren't copyrightable; specific expression is — so this stays legally clean
+   **and** on-thesis (the goal is the *system*, not the *asset*). Any stored exemplar image is a
+   grading reference drawn only from the full-treatment tier, never a template to reproduce.
 
 ## 7. The above-the-mean mechanism (load-bearing, because the pipeline is automated)
 
@@ -167,7 +178,9 @@ respects them — the system learns the user's taste over time.
 Because capture works, "what good looks like" can be **literal**: the corpus stores captured
 screenshots of top exemplar assets, and the evaluate step grades the agent's own capture *against the
 reference image*, not just against text criteria. Visual exemplars anchor criteria (§7.4) and
-strengthen the visual evaluate step.
+strengthen the visual evaluate step. **Stored exemplars come only from the full-treatment tier**
+(copyright-free / your-own / official — §6b); copyrighted assets contribute ephemeral *technique*
+during study but are never persisted as reference images.
 
 ## 9. Delivery & storage
 
