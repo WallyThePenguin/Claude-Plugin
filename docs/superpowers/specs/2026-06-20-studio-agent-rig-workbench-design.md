@@ -25,7 +25,11 @@ Slice A **matches** the skeleton preview + joint manipulation and **already exce
 
 Posing sets **`Motor6D.Transform`** (the per-joint animation offset the Animation Editor drives) — it applies **live in edit** (confirmed) and is exactly the channel animations use, so it's the right foundation for the animation slices. We do **not** edit joint *centers* (`C0`/`C1`) here — that's rig *setup* (the Modern Rig Editor's domain), needed only for building custom rigs, and comes with custom-rig support later. Standard R6/R15 already have correct centers; you pose them.
 
-## Spawn: blocky humanoid placeholder, correct-by-construction (settled)
+## Spawn: native Roblox rig via InsertService, placeholder fallback (UPDATED 2026-06-20)
+
+**Update from the live test:** `spawn_rig('r15')` now loads the **native Roblox R15 Block Rig** via `InsertService:LoadAsset(16644810619)` → extract the Model → `:MakeJoints()` (the step the unbuilt native rigs were missing) → `:MoveTo` the baseplate. The programmatic blocky build below is the **fallback** when the load fails or no native asset id exists (r6). `RigBuilderService` was probed live and **does not exist** (no programmatic Rig Builder API), so InsertService is the native path. `get_rig`/`pose_joint` remain rig-agnostic and work on the native rig (Motor6D).
+
+### Programmatic placeholder (fallback)
 
 `spawn_rig` builds a simple **blocky humanoid** (HumanoidRootPart + Torso + Head + 2 arms + 2 legs, an R6-shaped layout) where each `Motor6D`'s `C0`/`C1` is **computed from the part positions we choose** — so the joints are correct by construction, with no risk of hand-authoring Roblox's exact matrices wrong. It is a placeholder rig for posing/animation testing (the user OK'd blocky placeholders), NOT a byte-exact Roblox R6. **Real** R6/R15 rigs (e.g. from Studio's Rig Builder) are handled by the rig-agnostic read/visualize/pose path — so R15 works immediately even though `spawn_rig` makes a placeholder. (A faithful R15 spawn is a later add.)
 
