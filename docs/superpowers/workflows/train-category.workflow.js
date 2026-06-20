@@ -115,7 +115,7 @@ log(`Distilled ${distilled.criteria.length} candidate criteria`)
 phase('Judge')
 const judged = (await parallel(distilled.criteria.map(c => () =>
   parallel([0, 1, 2].map(i => () =>
-    agent(`ABOVE-GENERIC JUDGE. Default/generic Roblox ${CATEGORY} gives a baseline for free. For this candidate criterion decide: does DEFAULT Roblox already do this? If yes it is the FLOOR -> verdict "reject". If only slightly above -> "raise" and give a tougher raised_statement. If it genuinely beats the default -> "keep". Be skeptical; default to "reject" when unsure.\n\nCRITERION: ${JSON.stringify(c)}`,
+    agent(`ABOVE-GENERIC JUDGE (STRICT). The GENERIC FLOOR for ${CATEGORY} — what default/generic builds and a basic tutorial already produce — is:\n"${MEAN.description}"\nREJECT this candidate criterion if ANY of: (a) that floor already satisfies it; (b) a beginner following a basic tutorial would produce it; (c) it checks surface PRESENCE ("has an X") rather than deliberate systems DEPTH. Only "keep" if it genuinely requires systems engineering the floor omits. Use "raise" (with a tougher raised_statement) if it is only slightly above the floor. Be very skeptical: most weak candidates should be rejected — when in doubt, REJECT.\n\nCRITERION: ${JSON.stringify(c)}`,
       { label: `judge:${c.id}#${i}`, phase: 'Judge', schema: VERDICT_SCHEMA }))
   ).then(votes => ({ c, votes: votes.filter(Boolean) }))
 ))).filter(Boolean)
@@ -123,8 +123,9 @@ const judged = (await parallel(distilled.criteria.map(c => () =>
 const survivors = []
 let rejected = 0
 for (const j of judged) {
+  // STRICT: unanimous keep required — ANY reject vote kills the criterion.
   const rej = j.votes.filter(x => x.verdict === 'reject').length
-  if (rej >= 2) { rejected++; continue }
+  if (rej >= 1) { rejected++; continue }
   const raise = j.votes.find(x => x.verdict === 'raise' && x.raised_statement)
   survivors.push(raise ? { ...j.c, statement: raise.raised_statement } : j.c)
 }
