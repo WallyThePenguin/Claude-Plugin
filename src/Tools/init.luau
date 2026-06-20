@@ -30,6 +30,7 @@ local SkillsTool = require(script.Skills)
 -- Instance:Destroy method (methods shadow same-named children on dot-access), so requiring it errors.
 local DestroyTool = require(script.DestroyInstance)
 local PlaceTool = require(script.Place)
+local RubricsTool = require(script.Rubrics)
 
 local Tools = {}
 
@@ -108,6 +109,9 @@ for _, descriptor in DestroyTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in PlaceTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in RubricsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
