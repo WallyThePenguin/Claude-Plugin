@@ -31,6 +31,7 @@ local LOCAL_TOOLS: { [string]: boolean } = {
 	use_skill = true,
 	save_skill = true,
 	delete_skill = true,
+	use_rubric = true,
 }
 
 -- "edit" | "serverplay" | "clientplay" | "other". IsEdit() FIRST: edit reports IsServer=true AND

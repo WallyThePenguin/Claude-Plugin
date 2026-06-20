@@ -12,6 +12,7 @@ local Sessions = require(script.Sessions)
 local TaskList = require(script.TaskList)
 local Memory = require(script.Memory)
 local SkillStore = require(script.SkillStore)
+local RubricStore = require(script.RubricStore)
 local Relay = require(script.Relay)
 
 -- Best-effort: try to enable runtime loadstring (run_luau) during a playtest. The property does not
@@ -49,6 +50,7 @@ local deps = {
 	taskList = TaskList.new(),
 	memory = Memory.new(plugin),
 	skills = SkillStore.new(plugin),
+	rubrics = RubricStore.new(),
 }
 
 -- Client-view relay (LIVE-VERIFIED 2026-06-18): Accurate Play Solo runs separate per-context plugin
