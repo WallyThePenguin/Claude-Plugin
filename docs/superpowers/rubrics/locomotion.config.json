@@ -1,0 +1,17 @@
+{
+  "category": "locomotion",
+  "description": "Roblox R15 character locomotion / movement animation system (idle, walk, run, strafe, turns)",
+  "killerSystems": [
+    "blend tree: warps by speed AND direction (not one forward loop)",
+    "foot IK: feet plant on ground/slopes/steps, no skating",
+    "additive look-at / aim layered on locomotion",
+    "pelvis bias / hip sway / lean tied to gait phase and acceleration"
+  ],
+  "meanArtifact": {
+    "name": "default Roblox Animate + raw Quaternius forward-only clips",
+    "description": "A single forward walk/run loop swapped by WalkSpeed only. No strafe/directional set, no foot IK (feet skate on slopes), no additive look-at, no lean or pelvis sway. This is the generic default a beginner ships."
+  },
+  "greatArtifactHint": "A top DevForum / showcase locomotion system: a 2D blend tree keyed to planar velocity (forward+strafe), foot IK via IKControl/AnimationConstraint that plants feet on slopes and steps, an additive aim/look-at layer, and lean + pelvis sway driven by acceleration and gait phase.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
