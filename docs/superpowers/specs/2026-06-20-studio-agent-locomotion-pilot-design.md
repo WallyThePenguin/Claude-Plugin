@@ -152,4 +152,26 @@ The pilot **succeeds** if:
 
 1. Turn this spec into an implementation plan (writing-plans skill).
 2. The plan's execution = run the parameterized Workflow on `locomotion`, producing the §3 deliverables, and report against §12.
-3. Then schedule the **loop session**: retarget a rig, build the live capture→evaluate→refine loop anchored to this rubric, and exercise the online-eval path.
+3. Then schedule the **loop session**: retarget a rig, build the live capture→evaluate→refine loop anchored to this rubric, and exercise the online-eval path. Its scope is §17.
+
+## 17. Loop-session scope (confirmed plugin-gap roadmap)
+
+A grounded audit of the current plugin against this rubric's demands (7-agent Workflow, adversarially verified against the code — all gaps confirmed present) defines what the **loop session** must build. This is NOT pilot scope; the pilot deliberately runs in Claude Code to avoid all of it. Recorded here so the loop session starts from evidence.
+
+**How the rubric already helps the shipped plugin (no new code):** a produced rubric rides the existing knowledge-delivery path (`src/AgentLoop.luau:112` composes SystemPrompt + memory + skills into the leading preamble), so it upgrades the agent's *output* — turning the prose in `src/SystemPrompt.luau:51` into per-criterion checkable targets — with zero new transport code.
+
+**Critical gaps — required to run the grading loop in Studio:**
+1. **No rubric store** — nothing loads a Quality Pack at call time. → new `src/RubricStore.luau` (mirror SkillStore/Memory) + wire into `src/init.server.luau:42` and the `AgentLoop` preamble. *Medium.*
+2. **No structured grading** — the Anthropic client has no forced-JSON path, so per-criterion scores would be free-form prose (drift). → new `src/Tools/Evaluate.luau` **plus a schema contract** (tool-input schema or `tool_choice`/structured-output support in `src/Anthropic.luau`). *Med-High.* (The store alone is insufficient — the schema enforcement is a distinct requirement.)
+3. **Can't dissect rigs** — `PropertyCatalog.luau:25-73` covers only basic classes; `get_properties` can't read Motor6D (C0/C1/Transform), IKControl, AnimationConstraint, Animator, KeyframeSequence/Keyframe/Pose, ParticleEmitter, Beam. → additive catalog entries (serializer tags for CFrame/Vector3/EnumItem already exist). *Low-Med.*
+4. **Can't film motion** — `capture_animation` is a hard-disabled stub (`Capture.luau:142-152`; `TimePosition` doesn't advance in edit), and the vision sidecar HTTP path is **server-only**, so it doesn't reach a client-view playtest. → ship the deferred playtest-mode filmstrip (plan `2026-06-18-multi-capture.md` Tasks 7-8) **and rework the relay** to forward the sidecar GET through the server. *High — the hardest, and the gating one for motion criteria.*
+
+**Important gaps — quality, cost, taste-learning, UX:**
+5. **No exemplar-image store** for mean-vs-great side-by-side → exemplar handles in RubricStore + a retrieval path reusing capture's base64 return shape. *Medium.*
+6. **Learnings can't be high-priority overrides** — `Memory.luau:19-20` is flat `{id,text,createdAt}`, cap 25×240, no category/priority → a per-category prioritized learnings bucket (or a dedicated store) the Evaluate tool reads as override-priority. *Medium.*
+7. **No prompt-caching of the active pack** across refine iterations (`AgentLoop` rebuilds the preamble each Send) → `cache_control` breakpoints — **verify the CLIProxyAPI path honors them** (it strips `system`). *Medium.*
+8. **No Studio rubric viewer / category-onboard trigger** → a panel mirroring the Memory/Skills viewers + a button to launch the parameterized `train-category` workflow. *Med-High.*
+
+**Scaling caveat:** rubric packs (tiered criteria + exemplar images + corpus refs) are far larger than the small SkillStore catalog — they need **on-demand per-category loading + caching**, not a copy of the SkillStore pattern.
+
+**Boundary + a low-cost option:** none of this rewrites the plugin's own Luau automatically — the rubric improves *output* and *surfaces* these work items. But the same engine could later be aimed at a non-visual **"plugin code quality"** category (criteria: tool-schema hygiene à la the `encodeBody` bug, error handling, sidecar loopback security). That category is **lower-dependency than Locomotion** — read-file + structured grading + learnings, no capture/catalog/animation work — so it's the cheapest path if the goal is ever to have the system help improve the plugin's *code* directly.
