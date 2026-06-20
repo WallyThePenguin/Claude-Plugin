@@ -7,6 +7,28 @@ standard. This is the **standard** half of the thesis; the **loop** half is the 
 memory `studio-agent-asset-creator-vision`, not yet specced). Memories: `studio-agent-training-vision`,
 `studio-agent-north-star`, `studio-agent-asset-creator-vision`.
 
+## Addendum (2026-06-20, session 2): research validation + amendments
+
+A deep-research pass (23 sources, 25 claims adversarially verified) **confirmed the core framing** — a
+curated knowledge system is the correct substitute for fine-tuning a frozen model (Reflexion lifted GPT-4
+HumanEval 80%→~90% purely from an in-context loop; Karpathy's "Software 3.0 / LLM OS" frames context
+curation as *the* act of building). It added four amendments, now folded into the pilot
+(`2026-06-20-studio-agent-locomotion-pilot-design.md`) and applicable to **every** category:
+
+1. **Self-optimizing rubrics (GEPA).** Rubrics/prompts should sharpen themselves from *textual* failure
+   feedback (an LLM reads why a candidate failed and rewrites it). GEPA beats RL by ~6% avg with ~35× fewer
+   rollouts. → the engine gains a self-optimization stage; §5's rubric is no longer authored-once-and-frozen.
+2. **External-verifier anchoring.** Intrinsic self-correction can *degrade* output without an external
+   signal; the capture→rubric signal is that verifier — the refine loop must always grade against
+   rubric+evidence, never model vibe.
+3. **Judge/rubric = calibrated, bias-tested instrument.** "Scoring bias" means rubric wording/order can
+   shift scores by themselves → fix criterion ids/order/labels, use a strong judge model, perturbation-test
+   the rubric. The §7 human-audit valve is **promoted** from optional-later to a routine *calibration* step.
+4. **Continuous eval.** Rubrics seed a growing offline regression set + online feedback, with a guard
+   against corpus drift toward the agent's own outputs.
+
+Left out on evidence: distilling a small local helper model is **unresolved** (explicit non-goal for now).
+
 ## Purpose of this document
 
 The "Training vision" is to make the agent excellent at making games by sampling forums / free
