@@ -43,6 +43,8 @@ local DEFAULTS = {
 	-- Web access (Anthropic SERVER-SIDE web_search/web_fetch). `max_uses` bounds calls per turn.
 	webSearchMaxUses = 5, -- max server-side web_search calls per turn
 	webFetchMaxUses = 5, -- max server-side web_fetch calls per turn
+	-- Camera-lock rig: when true, draw debug gizmos (orbit sphere/camera/pivot). Default off.
+	cameraRigDebug = false,
 }
 
 -- Allowed models. Never Haiku.
@@ -238,6 +240,10 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "webFetchMaxUses must be >= 1"
 		end
 		value = math.floor(value)
+	elseif key == "cameraRigDebug" then
+		if type(value) ~= "boolean" then
+			return false, "cameraRigDebug must be a boolean"
+		end
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -338,6 +344,10 @@ end
 
 function Config.getConfirmDestructive(self: Config): boolean
 	return self:get("confirmDestructive") :: boolean
+end
+
+function Config.getCameraRigDebug(self: Config): boolean
+	return self:get("cameraRigDebug") :: boolean
 end
 
 function Config.getRetryMaxAttempts(self: Config): number
