@@ -67,7 +67,45 @@ local r6: Template = {
 	},
 }
 
-local byName: { [string]: Template } = { r6 = r6 }
+local r15: Template = {
+	parts = {
+		{ name = "HumanoidRootPart", size = V(2, 2, 1), pos = V(0, 4, 0) },
+		{ name = "LowerTorso", size = V(2, 0.8, 1), pos = V(0, 3.8, 0) },
+		{ name = "UpperTorso", size = V(2, 1.6, 1), pos = V(0, 5.0, 0) },
+		{ name = "Head", size = V(1.2, 1.2, 1.2), pos = V(0, 6.4, 0) },
+		{ name = "RightUpperArm", size = V(1, 1.4, 1), pos = V(1.5, 4.9, 0) },
+		{ name = "RightLowerArm", size = V(1, 1.2, 1), pos = V(1.5, 3.6, 0) },
+		{ name = "RightHand", size = V(1, 0.8, 1), pos = V(1.5, 2.6, 0) },
+		{ name = "LeftUpperArm", size = V(1, 1.4, 1), pos = V(-1.5, 4.9, 0) },
+		{ name = "LeftLowerArm", size = V(1, 1.2, 1), pos = V(-1.5, 3.6, 0) },
+		{ name = "LeftHand", size = V(1, 0.8, 1), pos = V(-1.5, 2.6, 0) },
+		{ name = "RightUpperLeg", size = V(1, 1.4, 1), pos = V(0.5, 2.7, 0) },
+		{ name = "RightLowerLeg", size = V(1, 1.4, 1), pos = V(0.5, 1.3, 0) },
+		{ name = "RightFoot", size = V(1, 0.6, 1.2), pos = V(0.5, 0.3, 0) },
+		{ name = "LeftUpperLeg", size = V(1, 1.4, 1), pos = V(-0.5, 2.7, 0) },
+		{ name = "LeftLowerLeg", size = V(1, 1.4, 1), pos = V(-0.5, 1.3, 0) },
+		{ name = "LeftFoot", size = V(1, 0.6, 1.2), pos = V(-0.5, 0.3, 0) },
+	},
+	joints = {
+		{ name = "Root", part0 = "HumanoidRootPart", part1 = "LowerTorso", pivot = V(0, 3.4, 0), host = "HumanoidRootPart" },
+		{ name = "Waist", part0 = "LowerTorso", part1 = "UpperTorso", pivot = V(0, 4.2, 0), host = "LowerTorso" },
+		{ name = "Neck", part0 = "UpperTorso", part1 = "Head", pivot = V(0, 5.8, 0), host = "UpperTorso" },
+		{ name = "RightShoulder", part0 = "UpperTorso", part1 = "RightUpperArm", pivot = V(1.0, 5.6, 0), host = "UpperTorso" },
+		{ name = "RightElbow", part0 = "RightUpperArm", part1 = "RightLowerArm", pivot = V(1.5, 4.2, 0), host = "RightUpperArm" },
+		{ name = "RightWrist", part0 = "RightLowerArm", part1 = "RightHand", pivot = V(1.5, 3.0, 0), host = "RightLowerArm" },
+		{ name = "LeftShoulder", part0 = "UpperTorso", part1 = "LeftUpperArm", pivot = V(-1.0, 5.6, 0), host = "UpperTorso" },
+		{ name = "LeftElbow", part0 = "LeftUpperArm", part1 = "LeftLowerArm", pivot = V(-1.5, 4.2, 0), host = "LeftUpperArm" },
+		{ name = "LeftWrist", part0 = "LeftLowerArm", part1 = "LeftHand", pivot = V(-1.5, 3.0, 0), host = "LeftLowerArm" },
+		{ name = "RightHip", part0 = "LowerTorso", part1 = "RightUpperLeg", pivot = V(0.5, 3.4, 0), host = "LowerTorso" },
+		{ name = "RightKnee", part0 = "RightUpperLeg", part1 = "RightLowerLeg", pivot = V(0.5, 2.0, 0), host = "RightUpperLeg" },
+		{ name = "RightAnkle", part0 = "RightLowerLeg", part1 = "RightFoot", pivot = V(0.5, 0.6, 0), host = "RightLowerLeg" },
+		{ name = "LeftHip", part0 = "LowerTorso", part1 = "LeftUpperLeg", pivot = V(-0.5, 3.4, 0), host = "LowerTorso" },
+		{ name = "LeftKnee", part0 = "LeftUpperLeg", part1 = "LeftLowerLeg", pivot = V(-0.5, 2.0, 0), host = "LeftUpperLeg" },
+		{ name = "LeftAnkle", part0 = "LeftLowerLeg", part1 = "LeftFoot", pivot = V(-0.5, 0.6, 0), host = "LeftLowerLeg" },
+	},
+}
+
+local byName: { [string]: Template } = { r6 = r6, r15 = r15 }
 
 function RigTemplates.get(name: string): Template?
 	return byName[string.lower(name)]
@@ -333,6 +371,9 @@ function RigWorkbench.spawn(templateName: string): (Instance?, string)
 		end
 	end
 	local hum = Instance.new("Humanoid")
+	if string.lower(templateName) == "r15" then
+		hum.RigType = Enum.HumanoidRigType.R15
+	end
 	hum.Parent = model
 	model.PrimaryPart = parts["HumanoidRootPart"]
 	model.Parent = Workspace
@@ -527,14 +568,14 @@ end
 Rig.descriptors = {
 	{
 		name = "spawn_rig",
-		description = "Spawn a blocky humanoid PLACEHOLDER rig (R6 layout: HumanoidRootPart/Torso/Head/"
-			.. "arms/legs + standard Motor6D joints) to pose and animate. Input: type (default 'r6'). "
-			.. "Returns the rig's path. For a real R6/R15 character, insert one via Studio's Rig Builder "
-			.. "instead — get_rig/pose_joint work on ANY Motor6D rig.",
+		description = "Spawn a blocky humanoid PLACEHOLDER rig to pose and animate. type = 'r6' (default, "
+			.. "6-limb R6) or 'r15' (15-part R15 topology + standard R15 joint names + a Humanoid set to "
+			.. "R15). Returns the rig's path. get_rig/pose_joint also work on ANY real rig you insert "
+			.. "(Studio's Rig Builder), so you can spawn one here or operate on an existing one.",
 		inputSchema = {
 			type = "object",
 			properties = {
-				type = { type = "string", description = "Rig type (default 'r6')." },
+				type = { type = "string", description = "'r6' (default) or 'r15'." },
 			},
 		},
 		destructive = true,
@@ -686,7 +727,7 @@ git commit -m "feat: document the rig tools (Rigs & posing) in SystemPrompt"
 3. `pose_joint` "Right Shoulder" rotation {z:-70} → the right arm visibly rotates up/out; `pose_joint` "Right Hip" {x:60} → the leg lifts. Confirm the parts move and the skeleton gizmos follow.
 4. `camera_focus` + `camera_orbit` → inspect the pose from several angles.
 5. `reset_pose` → the rig returns to neutral.
-6. **Real rig:** insert an R15 dummy via Studio's Avatar → Rig Builder, then `get_rig` + `pose_joint` on it → confirm read/visualize/pose work on a real R15.
+6. **R15:** `spawn_rig {type:"r15"}` → a blocky R15 dummy; `get_rig` shows 15 joints (Root/Waist/Neck/RightShoulder/RightElbow/RightWrist/RightHip/RightKnee/RightAnkle + left); `pose_joint` "RightElbow" {x:-90} and "RightKnee" {x:80} → confirm R15 reads + poses. (Optional: insert a real R15 via Studio's Rig Builder and pose that too, to confirm operate-on-existing on a non-spawned rig.)
 7. `show_skeleton {on:false}` → gizmos clear. Clean up the spawned rig.
 
 - [ ] **Step 3: Report** — if the Spec passes + the live checks hold, slice A is delivered. Watch specifically for: (a) the unanchored limbs staying put before posing (Motor6D should hold them in edit — if they drift, note it for a fix), (b) skeleton gizmos rendering (Neon parts are proven; if not visible, check the folder in Explorer). Debug from the symptom; the static layer is green.
