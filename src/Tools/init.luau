@@ -32,6 +32,7 @@ local DestroyTool = require(script.DestroyInstance)
 local PlaceTool = require(script.Place)
 local RubricsTool = require(script.Rubrics)
 local CameraRigTool = require(script.CameraRig)
+local RigTool = require(script.Rig)
 
 local Tools = {}
 
@@ -116,6 +117,9 @@ for _, descriptor in RubricsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in CameraRigTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in RigTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
