@@ -637,6 +637,7 @@ function Widget.mount(gui: Instance, deps: Deps)
 			deps.memory,
 			deps.skills,
 			deps.rubrics,
+			deps.cameraRig,
 			text,
 			{
 				onEvent = function(event: string, data: any)

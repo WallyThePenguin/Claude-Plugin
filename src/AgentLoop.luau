@@ -36,6 +36,7 @@ local function runLoop(
 	memory: any,
 	skills: any,
 	rubrics: any,
+	cameraRig: any,
 	snapshot: number,
 	cb: Callbacks,
 	relay: any
@@ -102,6 +103,7 @@ local function runLoop(
 		memory = memory,
 		skills = skills,
 		rubrics = rubrics,
+		cameraRig = cameraRig,
 	}
 
 	-- System-prompt + memory delivery (verified live): the model proxy (CLIProxyAPI subscription path)
@@ -293,6 +295,7 @@ function AgentLoop.send(
 	memory: any,
 	skills: any,
 	rubrics: any,
+	cameraRig: any,
 	userText: string,
 	cb: Callbacks,
 	relay: any
@@ -318,6 +321,7 @@ function AgentLoop.send(
 			memory,
 			skills,
 			rubrics,
+			cameraRig,
 			snapshot,
 			cb,
 			relay

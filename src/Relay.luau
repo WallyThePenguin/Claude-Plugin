@@ -32,6 +32,9 @@ local LOCAL_TOOLS: { [string]: boolean } = {
 	save_skill = true,
 	delete_skill = true,
 	use_rubric = true,
+	camera_focus = true,
+	camera_orbit = true,
+	camera_release = true,
 }
 
 -- "edit" | "serverplay" | "clientplay" | "other". IsEdit() FIRST: edit reports IsServer=true AND
