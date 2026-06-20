@@ -107,6 +107,38 @@ Sources → Deep-research sample → Distill candidates → [above-the-mean judg
 - **Decision (settled): fully automated, with a human audit valve later (optional).** No mandatory
   human gate. **This puts the entire above-the-mean guarantee on the automation** — see §7.
 
+### 6a. Two ingestion modes — text vs. asset
+
+Sources split into two modes that ingest differently:
+
+- **Text** (forums, critique threads, docs): `web_fetch` → read → extract criteria. Commentary
+  *about* good work.
+- **Asset** (copyright-free models/rigs/VFX): the richest mode, and unique to the in-Studio agent —
+  it can **dissect the actual artifact in the engine**:
+  1. **Insert** the asset (Toolbox/Marketplace/the user's library).
+  2. **Structurally dissect** with `get_tree`/`get_properties` — read the *real* Motor6D/`IKControl`
+     rig, the *real* `ParticleEmitter`/`Beam` values, the real part hierarchy and script structure.
+     This is **ground truth**, not a description of it.
+  3. **Capture** (`capture_angles`) → a **visual exemplar** (§8).
+  4. **Extract the technique** → rubric criteria + the captured reference image.
+
+  Asset ingestion feeds both halves of a pack — concrete dissection-grounded criteria *and* the
+  visual exemplars — and learns from shipped quality work by taking it apart.
+
+### 6b. Copyright & licensing guardrails (both ingestion + output)
+
+1. **License, not price.** Roblox Toolbox "free" is a *price*, not a license, and the Toolbox is
+   full of stolen re-uploads. The source filter keys on **license**: ingest only genuinely
+   free-to-use — CC0 / public domain / explicit free-license / Roblox's own official samples / the
+   user's own. The §7 source judge is therefore also a **license-cleanliness judge** (a dirty-license
+   asset is rejected regardless of quality).
+2. **Technique, not expression.** Learn the transferable *method* (e.g. "blend tree + foot IK +
+   pelvis bias") → it becomes a rubric criterion + a visual exemplar. Never clone the asset's specific
+   creative expression (its exact meshes/textures/keyframes) into a shipped game. Techniques/methods
+   aren't copyrightable; specific expression is — so this stays legally clean **and** on-thesis (the
+   goal is the *system*, not the *asset*). The captured exemplar image is a reference for grading,
+   not a template to reproduce.
+
 ## 7. The above-the-mean mechanism (load-bearing, because the pipeline is automated)
 
 With no mandatory human curator, the automation itself must clear the bar or it inherits the forum's
@@ -174,6 +206,10 @@ strengthen the visual evaluate step.
 - **Context bloat:** mitigated by external raw corpus + on-demand per-category loading + caching (§9).
 - **Automation produces plausible-but-mediocre criteria:** the above-generic judge + provenance +
   audit valve are the defense; the pilot (§13) is where we measure whether it holds.
+- **Dirty-license ingestion** (learning from a stolen/copyrighted asset): mitigated by the §6b
+  license-cleanliness judge (filter on license, not price; reject re-uploads). The
+  technique-not-expression rule is the backstop — even a misclassified asset's influence is limited
+  to non-copyrightable *method*, never reproduced expression.
 
 ## 13. Next sessions (the multi-session program)
 
