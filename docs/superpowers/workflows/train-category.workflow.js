@@ -12,7 +12,9 @@ export const meta = {
 }
 
 // ---- args: the ONLY category-specific input (keeps the engine category-general) ----
-const cfg = args || {}
+// Robust to args arriving as a JSON string (some invocation paths stringify it).
+let cfg = args || {}
+if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch (e) { cfg = {} } }
 const CATEGORY = cfg.category || 'locomotion'
 const DESCRIPTION = cfg.description || 'character locomotion / movement animation'
 const KILLER = cfg.killerSystems || []
@@ -20,6 +22,9 @@ const MEAN = cfg.meanArtifact || { name: 'generic default', description: 'what a
 const GREAT_HINT = cfg.greatArtifactHint || 'a top, award-quality example'
 const MAX_OPT = cfg.maxOptRounds || 3
 const SEPARATION_MIN = cfg.separationMin || 0.35
+
+// Fail-loud visibility: a future run shows immediately whether args actually landed.
+log(`Config: category=${CATEGORY}, killerSystems=${KILLER.length}, mean="${(MEAN.description || '').slice(0, 40)}…", greatHint="${GREAT_HINT.slice(0, 40)}…", maxOpt=${MAX_OPT}, sepMin=${SEPARATION_MIN}`)
 
 // ---- pure helpers (deterministic; aggregate score in [0,1], higher tiers weighted more) ----
 const TIER_W = { baseline: 0, good: 1, exceptional: 2 }
