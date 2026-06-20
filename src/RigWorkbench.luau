@@ -216,25 +216,23 @@ end
 
 -- ---- spawn ----
 
--- Try to load the NATIVE Roblox rig via InsertService (the official R15 Block Rig etc.). LoadAsset
--- YIELDS + hits the network, so it runs OUTSIDE any ChangeHistory recording; the parenting/MakeJoints/
--- placement are recorded. Returns the rig Model, or nil so the caller falls back to the placeholder.
-local function loadNativeRig(templateName: string): Instance?
-	local assetId = RigTemplates.getNative(templateName)
-	if assetId == nil then
-		return nil
-	end
+-- Load a rig from a TRUSTED asset id via InsertService. NOTE: LoadAsset is gated by Roblox's
+-- asset-trust rule — it only works for assets OWNED by this place's creator (or whitelisted); the
+-- official Roblox rig ids fail with "Asset is not trusted for this place" (verified live), and there is
+-- no RigBuilderService API, so we can't auto-load the native rig. This is for when the user passes
+-- their OWN published rig's id. LoadAsset YIELDS + hits the network, so it runs OUTSIDE any
+-- ChangeHistory recording. Returns (rig, nil) or (nil, errorString).
+local function loadNativeRig(assetId: number, templateName: string): (Instance?, string?)
 	local ok, wrapper = pcall(function()
 		return InsertService:LoadAsset(assetId)
 	end)
 	if not ok or typeof(wrapper) ~= "Instance" then
-		warn("[StudioAgent] native rig LoadAsset failed: " .. tostring(wrapper))
-		return nil
+		return nil, tostring(wrapper)
 	end
 	local rig = wrapper:FindFirstChildWhichIsA("Model")
 	if rig == nil then
 		wrapper:Destroy()
-		return nil
+		return nil, "loaded asset had no rig Model inside"
 	end
 	local rid = beginRecording("Spawn native rig")
 	rig.Name = "AgentRig_" .. string.upper(templateName)
@@ -247,7 +245,7 @@ local function loadNativeRig(templateName: string): Instance?
 	end)
 	finishRecording(rid, true)
 	wrapper:Destroy()
-	return rig
+	return rig, nil
 end
 
 -- Programmatic blocky placeholder (correct-by-construction joints) — the fallback when no native asset
@@ -299,11 +297,24 @@ local function buildPlaceholder(templateName: string): (Instance?, string)
 	return model, "spawned " .. model.Name .. " (programmatic placeholder)"
 end
 
--- Spawn a rig: prefer the NATIVE Roblox rig (InsertService), fall back to the programmatic placeholder.
-function RigWorkbench.spawn(templateName: string): (Instance?, string)
-	local native = loadNativeRig(templateName)
-	if native ~= nil then
-		return native, "spawned native " .. native.Name
+-- Spawn a rig. With a TRUSTED assetId (a rig you own), load it via InsertService. Otherwise (or if the
+-- load fails) build the programmatic rig. Auto-loading the official Roblox rig is impossible (LoadAsset
+-- trust gate + no RigBuilderService) — for the native art, generate a rig via Studio's Avatar > Character
+-- (Rig Builder) and operate on it with get_rig/pose_joint (they work on any Motor6D rig).
+function RigWorkbench.spawn(templateName: string, assetId: number?): (Instance?, string)
+	if assetId ~= nil then
+		local native, err = loadNativeRig(assetId, templateName)
+		if native ~= nil then
+			return native, "spawned native rig (asset " .. tostring(assetId) .. ") " .. native.Name
+		end
+		local model, note = buildPlaceholder(templateName)
+		if model ~= nil then
+			return model,
+				note .. " — native asset " .. tostring(assetId) .. " did not load (" .. tostring(
+					err
+				) .. ")"
+		end
+		return nil, note
 	end
 	return buildPlaceholder(templateName)
 end

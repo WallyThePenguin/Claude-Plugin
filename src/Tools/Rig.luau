@@ -33,7 +33,8 @@ end
 local function runSpawn(input: any, _context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	local t = if type(args.type) == "string" then args.type else "r6"
-	local model, note = RigWorkbench.spawn(t)
+	local assetId = if type(args.assetId) == "number" then args.assetId else nil
+	local model, note = RigWorkbench.spawn(t, assetId)
 	if model == nil then
 		return note, true
 	end
@@ -101,14 +102,19 @@ end
 Rig.descriptors = {
 	{
 		name = "spawn_rig",
-		description = "Spawn a rig to pose/animate. type = 'r15' loads the NATIVE Roblox R15 rig "
-			.. "(InsertService — the real jointed dummy; falls back to a blocky placeholder if the load "
-			.. "fails); type = 'r6' (default) spawns a blocky R6 placeholder. Returns the rig's path. "
-			.. "get_rig/pose_joint also work on ANY Motor6D rig you insert (Studio's Rig Builder).",
+		description = "Spawn a PROGRAMMATIC rig to pose/animate — type 'r6' (default) or 'r15' (Motor6D, "
+			.. "poseable). For the actual NATIVE Roblox rig, the user generates one via Avatar > Character "
+			.. "(Rig Builder) and you operate on it with get_rig/pose_joint (they work on ANY Motor6D rig) "
+			.. "— a plugin can't auto-spawn the native rig (LoadAsset is asset-trust-gated; no "
+			.. "RigBuilderService). Optional assetId loads a rig the USER OWNS (a trusted published asset).",
 		inputSchema = {
 			type = "object",
 			properties = {
 				type = { type = "string", description = "'r6' (default) or 'r15'." },
+				assetId = {
+					type = "number",
+					description = "Optional: load a rig YOU OWN by asset id (must be trusted for this place).",
+				},
 			},
 		},
 		destructive = true,
