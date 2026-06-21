@@ -45,6 +45,10 @@ local DEFAULTS = {
 	webFetchMaxUses = 5, -- max server-side web_fetch calls per turn
 	-- Camera-lock rig: when true, draw debug gizmos (orbit sphere/camera/pivot). Default off.
 	cameraRigDebug = false,
+	-- Dev bridge (DevBridge.luau): lets Claude Code drive the plugin from the shell via the sidecar.
+	-- EDIT-only + localhost-only, so default-on (nothing to toggle); set false to disable.
+	devBridge = true,
+	devBridgePollInterval = 1.5, -- seconds between bridge poll ticks
 }
 
 -- Allowed models. Never Haiku.
@@ -244,6 +248,14 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 		if type(value) ~= "boolean" then
 			return false, "cameraRigDebug must be a boolean"
 		end
+	elseif key == "devBridge" then
+		if type(value) ~= "boolean" then
+			return false, "devBridge must be a boolean"
+		end
+	elseif key == "devBridgePollInterval" then
+		if type(value) ~= "number" or value ~= value or value < 0.25 then
+			return false, "devBridgePollInterval must be a number >= 0.25"
+		end
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -348,6 +360,14 @@ end
 
 function Config.getCameraRigDebug(self: Config): boolean
 	return self:get("cameraRigDebug") :: boolean
+end
+
+function Config.getDevBridge(self: Config): boolean
+	return self:get("devBridge") :: boolean
+end
+
+function Config.getDevBridgePollInterval(self: Config): number
+	return self:get("devBridgePollInterval") :: number
 end
 
 function Config.getRetryMaxAttempts(self: Config): number
