@@ -26,6 +26,7 @@ export type SendOpts = {
 	maxTokens: number?,
 	system: string?,
 	tools: { any }?,
+	toolChoice: any?,
 }
 
 export type Anthropic = typeof(setmetatable(
@@ -187,6 +188,9 @@ function Anthropic.sendMessage(self: Anthropic, opts: SendOpts): Result
 	if opts.tools ~= nil then
 		body.tools = opts.tools
 	end
+	if opts.toolChoice ~= nil then
+		body.tool_choice = opts.toolChoice
+	end
 	return self:request(body)
 end
 
@@ -202,6 +206,39 @@ local function collectText(data: any): string
 		end
 	end
 	return table.concat(parts, "")
+end
+
+export type StructuredOpts = { messages: { any }, tool: { [string]: any }, maxTokens: number? }
+
+-- Force a single tool call (structured output). Sends tools={tool} + tool_choice={type="tool",name}.
+-- Returns (input, rawText, result):
+--   input   = the forced tool's `input` table if the model called it (the structured result), else nil;
+--   rawText = the assistant's text (for the caller's JSON-from-text fallback) when no tool_use came back
+--             (e.g. a proxy that ignores tool_choice);
+--   result  = the underlying Result (for error handling when ok=false).
+function Anthropic.requestStructured(self: Anthropic, opts: StructuredOpts): (any?, string?, Result)
+	local res = self:sendMessage({
+		messages = opts.messages,
+		maxTokens = opts.maxTokens,
+		tools = { opts.tool },
+		toolChoice = { type = "tool", name = opts.tool.name },
+	})
+	if not res.ok then
+		return nil, nil, res
+	end
+	local data = res.data
+	if type(data) == "table" and type(data.content) == "table" then
+		for _, block in ipairs(data.content) do
+			if
+				type(block) == "table"
+				and block.type == "tool_use"
+				and type(block.input) == "table"
+			then
+				return block.input, nil, res
+			end
+		end
+	end
+	return nil, collectText(data), res
 end
 
 -- A no-tools smoke test. Runs under task.spawn so the caller (UI button) never yields.
