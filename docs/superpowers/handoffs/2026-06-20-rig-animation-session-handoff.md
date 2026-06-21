@@ -57,6 +57,12 @@ Spec: `docs/superpowers/specs/2026-06-20-studio-agent-rig-workbench-design.md`. 
 
 ## 3. The open questions the deep research must settle (why we're researching)
 
+> **RESOLVED 2026-06-20 — research complete → [`docs/superpowers/specs/2026-06-20-native-rig-animation-research.md`](../specs/2026-06-20-native-rig-animation-research.md).**
+> - **Q1 (native rig without a trusted asset):** ✅ `Players:CreateHumanoidModelFromDescriptionAsync(desc, rigType)` (`Security:None`, no asset id). ⚠️ it `Yields`/web-backed → confirm it works in EDIT at PluginSecurity (LIVE-TEST #1). `HumanoidDescription` APIs are all `Security:None`; `BuildRigFromAttachments` was KILLED as a reliable path.
+> - **Q2 (edit-mode playback):** ✅ **answered** — not a hand-rolled per-frame stepper; the native mechanism is `Animator:StepAnimations(dt)` ("plugins only") on a locally-registered `KeyframeSequence`. (Manual `Motor6D.Transform` posing stays the static-pose primitive; the two must not run at once — Animator overrides Transform.)
+> - **Q3 (save/export):** ⚠️ **UNRESOLVED** — silent publish of a KeyframeSequence→Animation is not proven (research self-contradicted; `RegisterKeyframeSequence` gives a no-upload *preview* id, which is enough for D-preview/E). Plan a manual / Open-Cloud fallback (LIVE-TEST #3).
+> - **Q4 (IK in edit):** ⚠️ build our own CCD/FABRIK on `Motor6D.Transform`; `IKControl` edit-reliability claims were KILLED. Optional spike to reconsider.
+
 Before building slices B–E, we need facts (not guesses) on:
 1. **Native-equivalent rig WITHOUT a trusted asset** — can we build a faithful R15/R6 from scratch with
    the exact part names/sizes + Motor6D C0/C1? Do the `HumanoidDescription` APIs
@@ -72,7 +78,11 @@ Before building slices B–E, we need facts (not guesses) on:
 4. **IK in edit** — `IKControl` (Type/EndEffector/ChainRoot/Pole/Target) + `AnimationConstraint` for
    grab-and-place posing without playtest.
 
-## 4. NEXT TASK — run this deep research (copy/paste into the `deep-research` skill)
+## 4. ~~NEXT TASK — run this deep research~~ ✅ DONE 2026-06-20
+
+> **Findings written to [`docs/superpowers/specs/2026-06-20-native-rig-animation-research.md`](../specs/2026-06-20-native-rig-animation-research.md)** (run `wf_66374fd5-8ba`; 25 claims verified → 21 confirmed / 4 killed). The exact question that was fed to the `deep-research` skill is preserved below for provenance. **The actual NEXT TASK is now: run LIVE-TEST #1 (spec §9), then turn spec §8 into a plan for slices B–E.**
+
+The question that was researched (kept for provenance):
 
 > How does native character RIGGING and ANIMATION work in Roblox Studio via Luau, specifically for
 > building an in-Studio PLUGIN that spawns rigs and authors animations with an AI agent? Be concrete and
