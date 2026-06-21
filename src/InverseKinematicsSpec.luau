@@ -94,6 +94,19 @@ local function buildCases(): { Case }
 		return vClose(eff.Position, target, 1e-2)
 	end)
 
+	add("solveCCD converges a 3-link chain onto a reachable target", function()
+		local links = {
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, -2, 0) },
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, -2, 0) },
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, -2, 0) },
+		}
+		local start = { CFrame.identity, CFrame.identity, CFrame.identity }
+		local target = Vector3.new(4, -3, 0) -- within 6-stud reach
+		local transforms = IK.solveCCDTransforms(CFrame.identity, links, start, target, 20)
+		local _, eff = IK.forwardFrames(CFrame.identity, links, transforms)
+		return vClose(eff.Position, target, 5e-2)
+	end)
+
 	return cases
 end
 

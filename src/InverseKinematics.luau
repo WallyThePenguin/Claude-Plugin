@@ -136,4 +136,35 @@ function IK.solve2BoneTransforms(
 	return { t1, t2 }, solve.clamped
 end
 
+-- Cyclic Coordinate Descent. Poses ALL links (effector = last link's Part1). Iterates tip->root,
+-- rotating each joint so the effector swings toward the target, composing onto the running transforms.
+-- Returns the per-joint Transforms. Computes FK analytically each sub-step (no posed-CFrame read-back).
+function IK.solveCCDTransforms(
+	anchorCF: CFrame,
+	links: { Link },
+	startTransforms: { CFrame },
+	targetPos: Vector3,
+	iterations: number
+): { CFrame }
+	local n = #links
+	local transforms: { CFrame } = table.clone(startTransforms)
+	for _ = 1, iterations do
+		for i = n, 1, -1 do
+			local preFrames, effectorWorld = IK.forwardFrames(anchorCF, links, transforms)
+			local pivot = preFrames[i].Position
+			local toEff = effectorWorld.Position - pivot
+			local toTgt = targetPos - pivot
+			if toEff.Magnitude > EPS and toTgt.Magnitude > EPS then
+				local r = IK.rotationBetween(toEff, toTgt)
+				transforms[i] = IK.transformForRotation(preFrames[i], r) * transforms[i]
+			end
+		end
+		local _, eff = IK.forwardFrames(anchorCF, links, transforms)
+		if (eff.Position - targetPos).Magnitude < 1e-2 then
+			break
+		end
+	end
+	return transforms
+end
+
 return IK
