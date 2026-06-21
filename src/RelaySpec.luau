@@ -10,7 +10,8 @@ local Tools = require(script.Parent.Tools)
 
 local M = {}
 
--- The 16 custom (locally-dispatchable) tools, partitioned by where they run in client-view play.
+-- The custom (locally-dispatchable) tools, partitioned by where they run in client-view play. Must match
+-- Relay.LOCAL_TOOLS: plugin/panel-state-only tools run LOCAL; everything else relays to the server copy.
 local EXPECTED_LOCAL = {
 	"update_tasks",
 	"remember",
@@ -18,6 +19,10 @@ local EXPECTED_LOCAL = {
 	"use_skill",
 	"save_skill",
 	"delete_skill",
+	"use_rubric",
+	"camera_focus",
+	"camera_orbit",
+	"camera_release",
 }
 local EXPECTED_RELAY = {
 	"run_luau",
@@ -34,6 +39,17 @@ local EXPECTED_RELAY = {
 	"capture_animation",
 	"dispatch_subagents",
 	"dispatch_writers",
+	"spawn_rig",
+	"get_rig",
+	"pose_joint",
+	"reset_pose",
+	"show_skeleton",
+	"ik_reach",
+	"add_keyframe",
+	"list_clip",
+	"remove_keyframe",
+	"clear_clip",
+	"export_animation",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
