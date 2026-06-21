@@ -35,13 +35,12 @@ local CLASSES_OF_INTEREST: { [string]: boolean } = {
 	Motor6D = true,
 }
 
-local function resolveSubject(target: any): Instance?
+local function resolveSubject(target: any): (Instance?, string?)
 	if type(target) == "string" and target ~= "" then
-		local inst = Path.resolve(target)
-		return inst
+		return Path.resolve(target) -- (Instance?, errString?)
 	end
 	local sel = Selection:Get()
-	return if #sel > 0 then sel[1] else nil
+	return (if #sel > 0 then sel[1] else nil), nil
 end
 
 -- Structural evidence: a class census under the subject + the source of nearby scripts (capped).
@@ -165,11 +164,21 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 			true
 	end
 
-	local subject = resolveSubject(args.subject)
+	local subject, subjectErr = resolveSubject(args.subject)
 	local design = if type(args.design) == "string" and args.design ~= ""
 		then args.design
 		else "(no design summary provided)"
 	local structural = gatherStructural(subject)
+	-- A given-but-unresolvable subject path: tell the judge structure is absent because the path failed
+	-- (so it doesn't silently grade design-only as if no subject was intended).
+	if subject == nil and type(args.subject) == "string" and args.subject ~= "" then
+		structural = "(note: subject path '"
+			.. args.subject
+			.. "' did not resolve"
+			.. (if subjectErr ~= nil then " — " .. subjectErr else "")
+			.. ")\n"
+			.. structural
+	end
 	local content = INSTRUCTION
 		.. "\n\n=== RUBRIC ===\n"
 		.. RubricCatalog.render(rubric)
