@@ -24,7 +24,9 @@ local EPS = 1e-4
 -- World rotation CFrame that maps direction a onto direction b (about the origin). Identity if either is
 -- degenerate or already aligned; a 180-degree flip about an arbitrary perpendicular when opposed.
 function IK.rotationBetween(a: Vector3, b: Vector3): CFrame
-	if a.Magnitude < 1e-6 or b.Magnitude < 1e-6 then
+	-- `not (m > 1e-6)` (rather than `m < 1e-6`) also catches NaN: a zero-length input vector yields a
+	-- NaN-component .Unit upstream, and `NaN < 1e-6` is false — this form returns identity for NaN too.
+	if not (a.Magnitude > 1e-6) or not (b.Magnitude > 1e-6) then
 		return CFrame.identity
 	end
 	local ua, ub = a.Unit, b.Unit
@@ -125,6 +127,10 @@ function IK.solve2BoneTransforms(
 	local elbowRestPos = restFrames[2].Position
 	local l1 = (elbowRestPos - rootPos).Magnitude
 	local l2 = (effectorRest.Position - elbowRestPos).Magnitude
+	if l1 < EPS or l2 < EPS then
+		-- degenerate (coincident joints / zero-length bone): can't solve; leave the chain neutral.
+		return { CFrame.identity, CFrame.identity }, false
+	end
 	local restUpperDir = (elbowRestPos - rootPos).Unit
 	local solve = IK.solve2Bone(rootPos, l1, l2, targetPos, poleHint)
 

@@ -145,6 +145,21 @@ local function buildCases(): { Case }
 		return residual < 0.5, ("residual=%.3f hand=%s"):format(residual, tostring(hand))
 	end)
 
+	add("solve2BoneTransforms with a zero-length bone returns identity (no NaN)", function()
+		local links = {
+			{ c0 = CFrame.identity, c1 = CFrame.identity }, -- zero-length: elbow coincides with shoulder
+			{ c0 = CFrame.identity, c1 = CFrame.new(0, -2, 0) },
+			{ c0 = CFrame.identity, c1 = CFrame.identity },
+		}
+		local transforms = IK.solve2BoneTransforms(
+			CFrame.identity,
+			links,
+			Vector3.new(1, -1, 0),
+			Vector3.new(1, -1, 5)
+		)
+		return transforms[1] == CFrame.identity and transforms[2] == CFrame.identity
+	end)
+
 	return cases
 end
 

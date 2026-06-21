@@ -34,10 +34,12 @@ local function vec(t: any): Vector3?
 	if type(t) ~= "table" then
 		return nil
 	end
-	local x = if type(t.x) == "number" then t.x else 0
-	local y = if type(t.y) == "number" then t.y else 0
-	local z = if type(t.z) == "number" then t.z else 0
-	return Vector3.new(x, y, z)
+	local hasX, hasY, hasZ = type(t.x) == "number", type(t.y) == "number", type(t.z) == "number"
+	if not (hasX or hasY or hasZ) then
+		-- an empty/garbage object is NOT a valid point — report it rather than silently using origin.
+		return nil
+	end
+	return Vector3.new(if hasX then t.x else 0, if hasY then t.y else 0, if hasZ then t.z else 0)
 end
 
 local function runReach(input: any, _context: any): (string, boolean)
