@@ -52,7 +52,7 @@ local function buildCases(): { Case }
 	end
 
 	add("normalizeTime rounds to ms and clamps negatives/NaN to 0", function()
-		if AnimationClip.normalizeTime(0.12345) ~= 0.123 then
+		if math.abs(AnimationClip.normalizeTime(0.12345) - 0.123) > 1e-9 then
 			return false, "round failed: " .. tostring(AnimationClip.normalizeTime(0.12345))
 		end
 		if AnimationClip.normalizeTime(-1) ~= 0 then

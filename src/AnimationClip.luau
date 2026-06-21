@@ -49,14 +49,14 @@ function AnimationClip.rigRoot(rig: Instance): Instance?
 		return hrp
 	end
 	local isChild: { [Instance]: boolean } = {}
-	local part0s: { Instance } = {}
+	local part0s: { [Instance]: boolean } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
 			isChild[d.Part1 :: Instance] = true
-			table.insert(part0s, d.Part0 :: Instance)
+			part0s[d.Part0 :: Instance] = true
 		end
 	end
-	for _, p in part0s do
+	for p in part0s do
 		if not isChild[p] then
 			return p
 		end
@@ -131,10 +131,11 @@ function AnimationClip.findClip(rig: Instance, clipName: string): KeyframeSequen
 end
 
 -- The rig's current Motor6D.Transform per joint, keyed by the CHILD part name (matches Pose.Name).
+-- Guards BOTH Part0 and Part1 (a joint with a nil Part0 is degenerate — its Transform is meaningless).
 function AnimationClip.currentTransforms(rig: Instance): { [string]: CFrame }
 	local map: { [string]: CFrame } = {}
 	for _, d in rig:GetDescendants() do
-		if d:IsA("Motor6D") and d.Part1 ~= nil then
+		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
 			map[(d.Part1 :: Instance).Name] = d.Transform
 		end
 	end
@@ -152,6 +153,9 @@ local function sortedTimes(ks: KeyframeSequence): { number }
 	return times
 end
 
+-- How many joints are actively posed in a keyframe (Pose.CFrame ~= identity). The root/unposed joints
+-- carry identity poses; we built them from Motor6D.Transform, which is identity at rest, so this reads as
+-- "joints moved from rest" -- a display heuristic, not an exact-equality contract.
 local function posedCount(kf: Keyframe): number
 	local n = 0
 	for _, d in kf:GetDescendants() do
@@ -178,8 +182,16 @@ function AnimationClip.summary(rig: Instance, clipName: string): string
 	if #kfs == 0 then
 		return clipName .. ": empty (0 keyframes). Pose the rig, then add_keyframe."
 	end
-	local times = sortedTimes(ks)
-	local length = times[#times]
+	-- Pair each keyframe with its time and sort by time. (Don't key a map by the float time -- two
+	-- keyframes sharing a millisecond slot would collide and one would be dropped from the summary.)
+	local entries: { { t: number, kf: Keyframe } } = {}
+	for _, kf in kfs do
+		table.insert(entries, { t = kf.Time, kf = kf })
+	end
+	table.sort(entries, function(a, b)
+		return a.t < b.t
+	end)
+	local length = entries[#entries].t
 	local lines: { string } = {
 		string.format(
 			"%s: %d keyframes, length %.3fs, loop=%s, priority=%s",
@@ -190,15 +202,8 @@ function AnimationClip.summary(rig: Instance, clipName: string): string
 			ks.Priority.Name
 		),
 	}
-	local byTime: { [number]: Keyframe } = {}
-	for _, kf in kfs do
-		byTime[kf.Time] = kf
-	end
-	for _, t in times do
-		local kf = byTime[t]
-		if kf ~= nil then
-			table.insert(lines, string.format("  t=%.3fs: %d posed joints", t, posedCount(kf)))
-		end
+	for _, e in entries do
+		table.insert(lines, string.format("  t=%.3fs: %d posed joints", e.t, posedCount(e.kf)))
 	end
 	return table.concat(lines, "\n")
 end
@@ -273,6 +278,7 @@ function AnimationClip.clearClip(rig: Instance, clipName: string): (string, bool
 		return "no clip '" .. clipName .. "' to clear under " .. rig.Name, false
 	end
 	local n = 0
+	-- GetKeyframes() returns a snapshot array (not a live view), so destroying inside the loop is safe.
 	for _, kf in ks:GetKeyframes() do
 		kf:Destroy()
 		n += 1
