@@ -1,9 +1,10 @@
 --!strict
 -- RigWorkbench: the rig-editor foundation. Read a rig's Motor6D skeleton, visualize it (Neon gizmo
--- markers + bones, like the camera rig's proven parts), and POSE it by setting Motor6D.Transform (the
--- animation channel — applies live in edit). Also spawns a blocky humanoid placeholder (RigTemplates);
--- read/visualize/pose are rig-agnostic (any Motor6D rig, incl. real R6/R15). STATELESS module: operates
--- on rigs in the DataModel; gizmos live under a tagged Workspace folder (found by name, not held).
+-- markers + bones, like the camera rig's proven parts), and POSE it by setting Motor6D.Transform then
+-- applyPose() (Animator:StepAnimations, which makes the pose VISIBLE in edit — moving joints relative to
+-- the body; Transform alone doesn't move parts in static edit — verified live). Spawns a real native R15
+-- rig via NativeRig (block or avatar). read/visualize/pose are rig-agnostic (any Motor6D rig). STATELESS
+-- module: operates on rigs in the DataModel; gizmos live under a tagged Workspace folder (found by name).
 
 local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
