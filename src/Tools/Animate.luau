@@ -41,21 +41,22 @@ local function clipName(args: any): string
 	return if type(args.clip) == "string" and args.clip ~= "" then args.clip else DEFAULT_CLIP
 end
 
--- Wrap a DataModel mutation in an undoable ChangeHistory recording (edit only), like the rig tools.
+-- Wrap a DataModel mutation in an undoable ChangeHistory recording (edit only). Refuses if a recording
+-- is already open (TryBeginRecording -> nil) rather than mutating inside an alien recording, matching the
+-- structured writers (create_instance).
 local function recorded(label: string, fn: () -> (string, boolean)): (string, boolean)
 	if not RunService:IsEdit() then
 		return fn()
 	end
 	local rid = ChangeHistoryService:TryBeginRecording(label)
-	local text, ok = fn()
-	if rid ~= nil then
-		ChangeHistoryService:FinishRecording(
-			rid,
-			if ok
-				then Enum.FinishRecordingOperation.Commit
-				else Enum.FinishRecordingOperation.Cancel
-		)
+	if rid == nil then
+		return label .. ": a change recording is already in progress — try again.", true
 	end
+	local text, ok = fn()
+	ChangeHistoryService:FinishRecording(
+		rid,
+		if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel
+	)
 	return text, ok
 end
 
@@ -81,6 +82,7 @@ local function runList(input: any, _context: any): (string, boolean)
 	if rig == nil then
 		return "list_clip: " .. tostring(err), true
 	end
+	-- An absent/empty clip is informational here (summary returns a friendly note), not an error.
 	return AnimationClip.summary(rig, clipName(args)), false
 end
 
@@ -135,7 +137,8 @@ local function runExport(input: any, _context: any): (string, boolean)
 	if ok and result ~= nil then
 		return "export_animation: published '" .. clip .. "' -> " .. tostring(result) .. ".", false
 	end
-	-- Manual handoff (a SUCCESS, not an error): the clip is in AnimSaves, openable in the Animation Editor.
+	-- Manual handoff (a SUCCESS, not an error): reached when CreateAssetAsync throws (the expected case) OR
+	-- returns nil. The clip is in AnimSaves, openable in the Animation Editor.
 	return "export_animation: programmatic animation publish isn't available in Studio yet, so the clip is "
 		.. "saved at "
 		.. rig:GetFullName()
