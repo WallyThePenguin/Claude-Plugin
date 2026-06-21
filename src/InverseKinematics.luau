@@ -241,6 +241,15 @@ function IK.reach(
 	for i, m in fk do
 		m.Transform = transforms[i] or CFrame.identity
 	end
+	-- Motor6D.Transform alone does NOT reposition parts in static edit (no animation/assembly step
+	-- applies it — verified live). Apply the joint relation to the CHAIN's parts root->tip so the pose
+	-- is visible in edit: Part1.CFrame = Part0.CFrame * C0 * Transform * C1:Inverse(). Confined to the
+	-- chain (leaf-ward of the torso) — setting torso/root parts would rigidly drag the whole assembly.
+	for _, m in fk do
+		if m.Part0 ~= nil and m.Part1 ~= nil then
+			m.Part1.CFrame = m.Part0.CFrame * m.C0 * m.Transform * m.C1:Inverse()
+		end
+	end
 	finishRecording(rid, true)
 
 	if Workspace:FindFirstChild(SKELETON_FOLDER) ~= nil then

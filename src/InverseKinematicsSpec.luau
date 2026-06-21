@@ -140,9 +140,11 @@ local function buildCases(): { Case }
 		local shoulderPos = ((shoulder.Part0 :: BasePart).CFrame * shoulder.C0).Position
 		local target = shoulderPos + Vector3.new(0.5, -0.5, 1)
 		local _, residual = IK.reach(rig, resolved, target, nil)
-		local hand = (resolved.effectorPart :: BasePart).Position
+		-- also assert the ACTUAL part moved (reach applies the joint relation to the chain in edit)
+		local handErr = ((resolved.effectorPart :: BasePart).Position - target).Magnitude
 		rig:Destroy()
-		return residual < 0.5, ("residual=%.3f hand=%s"):format(residual, tostring(hand))
+		return residual < 0.5 and handErr < 0.5,
+			("residual=%.3f handErr=%.3f"):format(residual, handErr)
 	end)
 
 	add("solve2BoneTransforms with a zero-length bone returns identity (no NaN)", function()
