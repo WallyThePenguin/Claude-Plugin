@@ -57,6 +57,43 @@ local function buildCases(): { Case }
 			and vClose(eff.Position, Vector3.new(0, 8, 0))
 	end)
 
+	add("solve2Bone places the effector at a reachable target", function()
+		local root = Vector3.new(0, 10, 0)
+		local target = Vector3.new(3, 8, 0)
+		local s = IK.solve2Bone(root, 2, 2, target, Vector3.new(3, 8, 5))
+		local effector = s.elbowPos + s.lowerDir * 2
+		return vClose(effector, target) and not s.clamped
+	end)
+
+	add("solve2Bone clamps an out-of-reach target and straightens", function()
+		local root = Vector3.new(0, 10, 0)
+		local target = Vector3.new(0, 0, 0) -- 10 studs away; max reach 4
+		local s = IK.solve2Bone(root, 2, 2, target, Vector3.new(1, 5, 0))
+		return s.clamped and vClose(s.upperDir, s.lowerDir, 1e-2)
+	end)
+
+	add("solve2Bone pole flips the elbow side", function()
+		local root = Vector3.new(0, 10, 0)
+		local target = Vector3.new(0, 7, 0)
+		local front = IK.solve2Bone(root, 2, 2, target, Vector3.new(0, 8.5, 5))
+		local back = IK.solve2Bone(root, 2, 2, target, Vector3.new(0, 8.5, -5))
+		return front.elbowPos.Z > 0.1 and back.elbowPos.Z < -0.1
+	end)
+
+	add("solve2BoneTransforms lands the effector on target (via FK)", function()
+		local links = {
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, -2, 0) }, -- shoulder -> upper (len 2)
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, -2, 0) }, -- elbow -> lower (len 2)
+			{ c0 = CFrame.new(0, 0, 0), c1 = CFrame.new(0, 0, 0) }, -- wrist (terminal, identity)
+		}
+		local target = Vector3.new(3, -2, 0)
+		local transforms =
+			IK.solve2BoneTransforms(CFrame.identity, links, target, Vector3.new(3, -2, 5))
+		local full = { transforms[1], transforms[2], CFrame.identity }
+		local _, eff = IK.forwardFrames(CFrame.identity, links, full)
+		return vClose(eff.Position, target, 1e-2)
+	end)
+
 	return cases
 end
 
