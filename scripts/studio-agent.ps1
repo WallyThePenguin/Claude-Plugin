@@ -29,7 +29,7 @@ function Submit-And-Wait($payload, $timeoutSec) {
 switch ($Command) {
     "tool" {
         $toolInput = if ($Arg2) { $Arg2 | ConvertFrom-Json } else { @{} }
-        $r = Submit-And-Wait @{ kind = "tool"; tool = $Arg1; input = $toolInput } 30
+        $r = Submit-And-Wait @{ kind = "tool"; tool = $Arg1; input = $toolInput } 150
         "ok=$($r.ok)"; $r.result; if ($r.error) { "ERROR: $($r.error)" }
     }
     "luau" {

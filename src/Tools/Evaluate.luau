@@ -193,21 +193,36 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 		tool = gradeTool,
 		maxTokens = 4096,
 	})
-	if gradeInput == nil then
-		if rawText ~= nil and rawText ~= "" then
-			local parsed = parseFromText(rawText)
-			if parsed ~= nil then
-				gradeInput = parsed
-			else
-				return "evaluate: structured grading unavailable (the model returned prose, not a "
-					.. "submit_grade call). Raw evaluation follows:\n\n"
-					.. rawText,
-					false
-			end
-		else
-			local msg = if type(res) == "table" then tostring(res.message) else "unknown error"
+	-- A result is USABLE only if it carries a non-empty grades array. A forced tool_choice does NOT
+	-- guarantee non-empty arguments (and the proxy may not honor it), so a non-nil-but-empty/degenerate
+	-- result (grades = {} or absent) must NOT be rendered as a confident all-ungraded grade.
+	local function usable(g: any): boolean
+		return type(g) == "table" and type(g.grades) == "table" and #g.grades > 0
+	end
+	if not usable(gradeInput) and rawText ~= nil and rawText ~= "" then
+		local parsed = parseFromText(rawText)
+		if usable(parsed) then
+			gradeInput = parsed
+		end
+	end
+	if not usable(gradeInput) then
+		if type(res) == "table" and res.ok == false then
+			local msg = if type(res.message) == "string" then res.message else "unknown error"
 			return "evaluate: the grading call failed (" .. msg .. ")", true
 		end
+		if rawText ~= nil and rawText ~= "" then
+			-- The model returned prose, not a usable submit_grade call: graceful degrade — hand back the
+			-- prose so the agent still gets the substance (not a hard error).
+			return "evaluate: structured grading unavailable (the model returned prose, not a "
+				.. "submit_grade call). Raw evaluation follows:\n\n"
+				.. rawText,
+				false
+		end
+		-- A 2xx but empty/degenerate result (no grades AND no text — truncated, or structured output not
+		-- honored): flag it so the agent RETRIES rather than seeing a confident all-ungraded report.
+		return "evaluate: the grader returned an empty result (no grades) — the response was likely "
+			.. "truncated or the structured-output path was not honored. Try again.",
+			true
 	end
 
 	local validated = EvaluateReport.validateGrades(gradeInput, rubric)
