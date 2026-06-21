@@ -9,9 +9,8 @@ local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
-local InsertService = game:GetService("InsertService")
 
-local RigTemplates = require(script.Parent.RigTemplates)
+local NativeRig = require(script.Parent.NativeRig)
 
 local RigWorkbench = {}
 
@@ -169,6 +168,27 @@ local function redrawIfShown(rig: Instance)
 	end
 end
 
+-- Make Motor6D.Transform poses VISIBLE in edit. Writing Transform alone does NOT move parts in static edit
+-- (verified live); the animation system applies it. Get-or-create the rig's Animator and StepAnimations(0),
+-- which re-solves the rig from its Transforms — moving joints RELATIVE to the body (root + unposed limbs
+-- stay; children follow their parent). NEVER set part CFrames directly (that rigidly drags the whole
+-- assembly). No-op (Transform still set) if the rig has no Humanoid/AnimationController.
+function RigWorkbench.applyPose(rig: Instance)
+	local controller = rig:FindFirstChildOfClass("Humanoid")
+		or rig:FindFirstChildOfClass("AnimationController")
+	if controller == nil then
+		return
+	end
+	local animator = controller:FindFirstChildOfClass("Animator")
+	if animator == nil then
+		animator = Instance.new("Animator")
+		animator.Parent = controller
+	end
+	pcall(function()
+		(animator :: Animator):StepAnimations(0)
+	end)
+end
+
 -- Pose one joint by Name (degrees x/y/z). relative accumulates onto the current Transform. (note, ok).
 function RigWorkbench.poseJoint(
 	rig: Instance,
@@ -186,6 +206,7 @@ function RigWorkbench.poseJoint(
 	local rot = RigWorkbench.rotationCFrame(rx, ry, rz)
 	local rid = beginRecording("Pose " .. m.Name)
 	m.Transform = RigWorkbench.applyRotation(m.Transform, rot, relative)
+	RigWorkbench.applyPose(rig)
 	finishRecording(rid, true)
 	redrawIfShown(rig)
 	return string.format(
@@ -209,114 +230,30 @@ function RigWorkbench.resetPose(rig: Instance): (string, boolean)
 	for _, m in joints do
 		m.Transform = CFrame.identity
 	end
+	RigWorkbench.applyPose(rig)
 	finishRecording(rid, true)
 	redrawIfShown(rig)
 	return string.format("reset %d joints on %s", #joints, rig.Name), true
 end
 
--- ---- spawn ----
+-- ---- spawn (delegates to NativeRig) ----
 
--- Load a rig from a TRUSTED asset id via InsertService. NOTE: LoadAsset is gated by Roblox's
--- asset-trust rule — it only works for assets OWNED by this place's creator (or whitelisted); the
--- official Roblox rig ids fail with "Asset is not trusted for this place" (verified live), and there is
--- no RigBuilderService API, so we can't auto-load the native rig. This is for when the user passes
--- their OWN published rig's id. LoadAsset YIELDS + hits the network, so it runs OUTSIDE any
--- ChangeHistory recording. Returns (rig, nil) or (nil, errorString).
-local function loadNativeRig(assetId: number, templateName: string): (Instance?, string?)
-	local ok, wrapper = pcall(function()
-		return InsertService:LoadAsset(assetId)
-	end)
-	if not ok or typeof(wrapper) ~= "Instance" then
-		return nil, tostring(wrapper)
-	end
-	local rig = wrapper:FindFirstChildWhichIsA("Model")
-	if rig == nil then
-		wrapper:Destroy()
-		return nil, "loaded asset had no rig Model inside"
-	end
-	local rid = beginRecording("Spawn native rig")
-	rig.Name = "AgentRig_" .. string.upper(templateName)
-	rig.Parent = Workspace
-	pcall(function()
-		rig:MakeJoints() -- glue Motor6Ds if the asset relies on legacy joint connectors
-	end)
-	pcall(function()
-		(rig :: Model):MoveTo(Vector3.new(0, 0, 0)) -- stand it on the baseplate
-	end)
-	finishRecording(rid, true)
-	wrapper:Destroy()
-	return rig, nil
-end
-
--- Programmatic blocky placeholder (correct-by-construction joints) — the fallback when no native asset
--- exists for the type (e.g. r6) or LoadAsset fails.
-local function buildPlaceholder(templateName: string): (Instance?, string)
-	local template = RigTemplates.get(templateName)
-	if template == nil then
-		return nil, "unknown rig type '" .. templateName .. "' (try 'r6' or 'r15')"
-	end
-	local rid = beginRecording("Spawn rig")
-	local model = Instance.new("Model")
-	model.Name = "AgentRig_" .. string.upper(templateName)
-	local parts: { [string]: BasePart } = {}
-	for _, pt in template.parts do
-		local p = Instance.new("Part")
-		p.Name = pt.name
-		p.Size = pt.size
-		p.CFrame = CFrame.new(pt.pos)
-		p.Anchored = pt.name == "HumanoidRootPart"
-		p.Color = if pt.name == "Head"
-			then Color3.fromRGB(255, 200, 120)
-			else Color3.fromRGB(160, 160, 170)
-		p.TopSurface = Enum.SurfaceType.Smooth
-		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.Parent = model
-		parts[pt.name] = p
-	end
-	for _, j in template.joints do
-		local p0, p1, host = parts[j.part0], parts[j.part1], parts[j.host]
-		if p0 ~= nil and p1 ~= nil and host ~= nil then
-			local pivot = CFrame.new(j.pivot)
-			local motor = Instance.new("Motor6D")
-			motor.Name = j.name
-			motor.Part0 = p0
-			motor.Part1 = p1
-			motor.C0 = p0.CFrame:Inverse() * pivot
-			motor.C1 = p1.CFrame:Inverse() * pivot
-			motor.Parent = host
+-- Spawn a native R15 rig. type "block" (default) = CreateHumanoidModelFromDescription; "avatar" = a mesh
+-- character from a userId (default 1). Both build the Motor6Ds, sit on the baseplate, and anchor the root;
+-- block also flat-colors each part. (Async/web — YIELDS.) Returns (model, note) or (nil, errorNote).
+function RigWorkbench.spawn(rigType: string, userId: number?): (Instance?, string)
+	if string.lower(rigType) == "avatar" then
+		local model, err = NativeRig.spawnAvatar(userId or 1)
+		if model == nil then
+			return nil, "spawn_rig avatar: " .. tostring(err)
 		end
+		return model, "spawned avatar rig at " .. model:GetFullName()
 	end
-	local hum = Instance.new("Humanoid")
-	if string.lower(templateName) == "r15" then
-		hum.RigType = Enum.HumanoidRigType.R15
+	local model, err = NativeRig.spawnBlock()
+	if model == nil then
+		return nil, "spawn_rig block: " .. tostring(err)
 	end
-	hum.Parent = model
-	model.PrimaryPart = parts["HumanoidRootPart"]
-	model.Parent = Workspace
-	finishRecording(rid, true)
-	return model, "spawned " .. model.Name .. " (programmatic placeholder)"
-end
-
--- Spawn a rig. With a TRUSTED assetId (a rig you own), load it via InsertService. Otherwise (or if the
--- load fails) build the programmatic rig. Auto-loading the official Roblox rig is impossible (LoadAsset
--- trust gate + no RigBuilderService) — for the native art, generate a rig via Studio's Avatar > Character
--- (Rig Builder) and operate on it with get_rig/pose_joint (they work on any Motor6D rig).
-function RigWorkbench.spawn(templateName: string, assetId: number?): (Instance?, string)
-	if assetId ~= nil then
-		local native, err = loadNativeRig(assetId, templateName)
-		if native ~= nil then
-			return native, "spawned native rig (asset " .. tostring(assetId) .. ") " .. native.Name
-		end
-		local model, note = buildPlaceholder(templateName)
-		if model ~= nil then
-			return model,
-				note .. " — native asset " .. tostring(assetId) .. " did not load (" .. tostring(
-					err
-				) .. ")"
-		end
-		return nil, note
-	end
-	return buildPlaceholder(templateName)
+	return model, "spawned native R15 block rig at " .. model:GetFullName()
 end
 
 return RigWorkbench
