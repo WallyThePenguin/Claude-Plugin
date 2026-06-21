@@ -196,16 +196,20 @@ local function resolveSource(args: any): (Instance?, string?, string?)
 	if not rig:IsA("Model") then
 		return nil, nil, "capture_animation: the rig must be a Model (with a bounding box)."
 	end
-	if type(args.clip) == "string" and args.clip ~= "" then
-		local ks = AnimationClip.findClip(rig, args.clip)
+	local clip = if type(args.clip) == "string" and args.clip ~= "" then args.clip else nil
+	local animation = if type(args.animation) == "string" and args.animation ~= ""
+		then args.animation
+		else nil
+	-- Default to the working clip when neither source is given (consistent with add_keyframe/list_clip).
+	if clip == nil and animation == nil then
+		clip = "AgentClip"
+	end
+	if clip ~= nil then
+		local ks = AnimationClip.findClip(rig, clip)
 		if ks == nil then
 			return nil,
 				nil,
-				"capture_animation: no clip '"
-					.. args.clip
-					.. "' under "
-					.. rig.Name
-					.. "/AnimSaves."
+				"capture_animation: no clip '" .. clip .. "' under " .. rig.Name .. "/AnimSaves."
 		end
 		local id, ierr = AnimationClip.register(ks)
 		if id == nil then
@@ -213,22 +217,18 @@ local function resolveSource(args: any): (Instance?, string?, string?)
 		end
 		return rig, id, nil
 	end
-	if type(args.animation) == "string" and args.animation ~= "" then
-		local maybe = Path.resolve(args.animation)
-		if maybe ~= nil and maybe:IsA("KeyframeSequence") then
-			local id, ierr = AnimationClip.register(maybe :: KeyframeSequence)
-			if id == nil then
-				return nil, nil, "capture_animation: " .. tostring(ierr)
-			end
-			return rig, id, nil
+	-- animation: a KeyframeSequence instance path, else an asset id (bare number -> rbxassetid://).
+	local maybe = Path.resolve(animation :: string)
+	if maybe ~= nil and maybe:IsA("KeyframeSequence") then
+		local id, ierr = AnimationClip.register(maybe :: KeyframeSequence)
+		if id == nil then
+			return nil, nil, "capture_animation: " .. tostring(ierr)
 		end
-		local raw = args.animation :: string
-		local id = if string.match(raw, "^%d+$") ~= nil then "rbxassetid://" .. raw else raw
 		return rig, id, nil
 	end
-	return nil,
-		nil,
-		"capture_animation: pass a working `clip` name or an `animation` (asset id / KeyframeSequence path)."
+	local raw = animation :: string
+	local id = if string.match(raw, "^%d+$") ~= nil then "rbxassetid://" .. raw else raw
+	return rig, id, nil
 end
 
 local function runAnimation(input: any, context: any): (any, boolean)
@@ -270,8 +270,7 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	end
 	local length = animTrack.Length
 	if length <= 0 then
-		animTrack:Stop()
-		animTrack:Destroy()
+		animator:Destroy() -- removes the played track (Stop alone doesn't fully remove it in edit)
 		anim:Destroy()
 		return "capture_animation: the clip has no length (empty? add keyframes first).", true
 	end
@@ -308,10 +307,10 @@ local function runAnimation(input: any, context: any): (any, boolean)
 		end
 	end)
 
-	-- restore everything (always): stop + destroy the temp track/Animation, restore the working pose,
-	-- re-show it (StepAnimations with no playing track), restore the camera.
-	animTrack:Stop()
-	animTrack:Destroy()
+	-- restore everything (always): DESTROY the temp Animator -- AnimationTrack:Stop alone does NOT remove a
+	-- playing track in edit (it lingers and overrides manual poses; spike + dogfood verified). applyPose
+	-- below recreates a clean Animator and Steps to re-show the restored pose. anim is parentless, destroy it.
+	animator:Destroy()
 	anim:Destroy()
 	restoreTransforms(savedTransforms)
 	RigWorkbench.applyPose(rig)
