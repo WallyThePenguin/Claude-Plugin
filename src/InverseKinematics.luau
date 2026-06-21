@@ -7,6 +7,12 @@
 -- ChangeHistory recording. Hybrid: analytic 2-bone for limbs (pole vector), CCD for spine / R6
 -- single-joint / custom chains.
 
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+
+local RigWorkbench = require(script.Parent.RigWorkbench)
+
 local IK = {}
 
 export type Link = { c0: CFrame, c1: CFrame }
@@ -165,6 +171,78 @@ function IK.solveCCDTransforms(
 		end
 	end
 	return transforms
+end
+
+-- ---- the thin DataModel method: read a rig, solve, write Motor6D.Transform ----
+
+local SKELETON_FOLDER = "__StudioAgentRigSkeleton"
+
+local function beginRecording(name: string): string?
+	if RunService:IsEdit() then
+		return ChangeHistoryService:TryBeginRecording(name)
+	end
+	return nil
+end
+
+local function finishRecording(rid: string?, commit: boolean)
+	if rid ~= nil then
+		ChangeHistoryService:FinishRecording(
+			rid,
+			if commit
+				then Enum.FinishRecordingOperation.Commit
+				else Enum.FinishRecordingOperation.Cancel
+		)
+	end
+end
+
+-- The default pole world point for a 2-bone limb: the rest elbow position pushed out along the
+-- anchor-local poleDir hint. nil poleDir -> a far point so solve2Bone falls back to a perpendicular.
+local function defaultPole(anchorCF: CFrame, elbowRestPos: Vector3, poleDir: Vector3?): Vector3
+	if poleDir == nil then
+		return elbowRestPos + Vector3.new(0, 0, 1000)
+	end
+	return elbowRestPos + anchorCF:VectorToWorldSpace(poleDir) * 2
+end
+
+-- Pose `resolved` (an IkChains.Resolved) so its effector reaches targetPos. Writes Motor6D.Transform in
+-- one recording, redraws the skeleton if shown. Returns (clamped, residualStuds).
+function IK.reach(
+	rig: Instance,
+	resolved: any,
+	targetPos: Vector3,
+	poleOverride: Vector3?
+): (boolean, number)
+	local fk = resolved.fkJoints :: { Motor6D }
+	local anchorCF = (resolved.anchorPart :: BasePart).CFrame
+	local links: { Link } = {}
+	for _, m in fk do
+		table.insert(links, { c0 = m.C0, c1 = m.C1 })
+	end
+
+	local transforms: { CFrame }
+	local clamped = false
+	if resolved.twoBone then
+		local identityT: { CFrame } = table.create(#links, CFrame.identity)
+		local restFrames = IK.forwardFrames(anchorCF, links, identityT)
+		local pole = poleOverride or defaultPole(anchorCF, restFrames[2].Position, resolved.poleDir)
+		transforms, clamped = IK.solve2BoneTransforms(anchorCF, links, targetPos, pole)
+	else
+		local startT: { CFrame } = table.create(#links, CFrame.identity)
+		transforms = IK.solveCCDTransforms(anchorCF, links, startT, targetPos, 12)
+	end
+
+	local rid = beginRecording("IK reach")
+	for i, m in fk do
+		m.Transform = transforms[i] or CFrame.identity
+	end
+	finishRecording(rid, true)
+
+	if Workspace:FindFirstChild(SKELETON_FOLDER) ~= nil then
+		RigWorkbench.drawSkeleton(rig)
+	end
+
+	local _, effWorld = IK.forwardFrames(anchorCF, links, transforms)
+	return clamped, (effWorld.Position - targetPos).Magnitude
 end
 
 return IK

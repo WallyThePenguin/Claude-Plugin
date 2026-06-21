@@ -126,6 +126,25 @@ local function buildCases(): { Case }
 			and resolved.twoBone == true
 	end)
 
+	add("reach RightArm lands the right hand near a reachable target (r15)", function()
+		local rig = RigWorkbench.spawn("r15")
+		if rig == nil then
+			return false, "spawn failed"
+		end
+		local resolved = IkChains.resolveChain(rig, { chain = "RightArm" })
+		if resolved == nil then
+			rig:Destroy()
+			return false, "resolve failed"
+		end
+		local shoulder = resolved.posedJoints[1]
+		local shoulderPos = ((shoulder.Part0 :: BasePart).CFrame * shoulder.C0).Position
+		local target = shoulderPos + Vector3.new(0.5, -0.5, 1)
+		local _, residual = IK.reach(rig, resolved, target, nil)
+		local hand = (resolved.effectorPart :: BasePart).Position
+		rig:Destroy()
+		return residual < 0.5, ("residual=%.3f hand=%s"):format(residual, tostring(hand))
+	end)
+
 	return cases
 end
 
