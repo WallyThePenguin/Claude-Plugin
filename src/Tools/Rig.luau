@@ -32,13 +32,13 @@ end
 
 local function runSpawn(input: any, _context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
-	local t = if type(args.type) == "string" then args.type else "r6"
-	local assetId = if type(args.assetId) == "number" then args.assetId else nil
-	local model, note = RigWorkbench.spawn(t, assetId)
+	local t = if type(args.type) == "string" then args.type else "block"
+	local userId = if type(args.userId) == "number" then args.userId else nil
+	local model, note = RigWorkbench.spawn(t, userId)
 	if model == nil then
 		return note, true
 	end
-	return note .. " at " .. Path.fullPath(model), false
+	return note, false -- note already includes the full path
 end
 
 local function runGet(input: any, _context: any): (string, boolean)
@@ -102,18 +102,18 @@ end
 Rig.descriptors = {
 	{
 		name = "spawn_rig",
-		description = "Spawn a PROGRAMMATIC rig to pose/animate — type 'r6' (default) or 'r15' (Motor6D, "
-			.. "poseable). For the actual NATIVE Roblox rig, the user generates one via Avatar > Character "
-			.. "(Rig Builder) and you operate on it with get_rig/pose_joint (they work on ANY Motor6D rig) "
-			.. "— a plugin can't auto-spawn the native rig (LoadAsset is asset-trust-gated; no "
-			.. "RigBuilderService). Optional assetId loads a rig the USER OWNS (a trusted published asset).",
+		description = "Spawn a real NATIVE R15 rig to pose/animate. type 'block' (default) = the standard "
+			.. "R15 block rig (built in-engine, joints + attachments, parts flat-colored so poses read "
+			.. "clearly); type 'avatar' = a real mesh character from a userId (pass userId; defaults to 1). "
+			.. "The rig lands on the baseplate with its root anchored. get_rig/pose_joint/ik_reach then "
+			.. "operate on it (they work on ANY Motor6D rig, incl. one you insert via Avatar > Rig Builder).",
 		inputSchema = {
 			type = "object",
 			properties = {
-				type = { type = "string", description = "'r6' (default) or 'r15'." },
-				assetId = {
+				type = { type = "string", description = "'block' (default) or 'avatar'." },
+				userId = {
 					type = "number",
-					description = "Optional: load a rig YOU OWN by asset id (must be trusted for this place).",
+					description = "For type 'avatar': the Roblox userId to spawn (default 1).",
 				},
 			},
 		},
