@@ -4,11 +4,15 @@
 -- sidecar to read the newest file(s). Three tools share CaptureCore:
 --   capture           - one shot at the current camera.
 --   capture_angles    - orbit a target: N framed angles (objects/assets/art).
---   capture_animation - filmstrip: time-sampled frames of an animation (review a motion).
+--   capture_animation - filmstrip: time-sampled frames of a clip/animation via TimePosition scrub + StepAnimations (edit-mode).
 -- These return STRUCTURED content (a tool_result blocks array of text labels + base64 images);
 -- AgentLoop forwards the array verbatim. On ANY failure they fall back to a STRING error (isError=true).
 
 local CaptureCore = require(script.Parent.CaptureCore)
+local Selection = game:GetService("Selection")
+local AnimationClip = require(script.Parent.Parent.AnimationClip)
+local RigWorkbench = require(script.Parent.Parent.RigWorkbench)
+local Path = require(script.Parent.Path)
 
 local Capture = {}
 
@@ -136,19 +140,195 @@ local function runAngles(input: any, context: any): (any, boolean)
 end
 
 -- ---- capture_animation (filmstrip) -----------------------------------------
--- Implemented in Task 7 after the edit-mode-playback feasibility spike. Until then it returns a
--- clear, non-crashing error so the registry/relay wiring is testable now.
+-- Edit-mode scrub-and-sample: register the clip/animation, Play it on a temp track, set TimePosition +
+-- StepAnimations(0) per sample time (Roblox's own interpolation), capture, then restore the working pose
+-- and tear the playback down. Proven live (LIVE-TEST #2).
 
-local function runAnimation(_input: any, _context: any): (any, boolean)
-	-- Spike verdict (2026-06-18): in EDIT mode an AnimationTrack's TimePosition does NOT advance (the
-	-- animation evaluator only steps during simulation), so sampled frames would be identical.
-	-- Filmstrips therefore require a running playtest — a planned follow-up. In edit, author the
-	-- animation pose-by-pose and use `capture` between poses to review the motion.
-	return "capture_animation: animation filmstrips aren't available in edit yet — an animation's "
-		.. "TimePosition doesn't advance without a running playtest, so the frames would be "
-		.. "identical. (Playtest-mode filmstrips are a planned follow-up.) To review motion now, "
-		.. "capture pose-by-pose in edit, or run a playtest.",
-		true
+-- get-or-create the rig's Animator (block rigs have a Humanoid). nil if the rig has no controller.
+local function rigAnimator(rig: Instance): Animator?
+	local controller = rig:FindFirstChildOfClass("Humanoid")
+		or rig:FindFirstChildOfClass("AnimationController")
+	if controller == nil then
+		return nil
+	end
+	local existing = controller:FindFirstChildOfClass("Animator")
+	if existing ~= nil then
+		return existing
+	end
+	local a = Instance.new("Animator")
+	a.Parent = controller
+	return a
+end
+
+local function saveTransforms(rig: Instance): { [Motor6D]: CFrame }
+	local map: { [Motor6D]: CFrame } = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") then
+			map[d :: Motor6D] = (d :: Motor6D).Transform
+		end
+	end
+	return map
+end
+
+local function restoreTransforms(map: { [Motor6D]: CFrame })
+	for m, cf in map do
+		m.Transform = cf
+	end
+end
+
+-- Resolve (rig, animationId, err). Source = a working `clip` (AnimSaves under the rig) or `animation`
+-- (an asset id, or a path to a KeyframeSequence instance). rig = path arg or the current selection.
+local function resolveSource(args: any): (Instance?, string?, string?)
+	local rig: Instance? = nil
+	if type(args.rig) == "string" and args.rig ~= "" then
+		rig = Path.resolve(args.rig)
+	else
+		local sel = Selection:Get()
+		rig = if #sel > 0 then sel[1] else nil
+	end
+	if rig == nil then
+		return nil,
+			nil,
+			"capture_animation: no rig given and nothing selected — pass a rig path or select it."
+	end
+	if not rig:IsA("Model") then
+		return nil, nil, "capture_animation: the rig must be a Model (with a bounding box)."
+	end
+	if type(args.clip) == "string" and args.clip ~= "" then
+		local ks = AnimationClip.findClip(rig, args.clip)
+		if ks == nil then
+			return nil,
+				nil,
+				"capture_animation: no clip '"
+					.. args.clip
+					.. "' under "
+					.. rig.Name
+					.. "/AnimSaves."
+		end
+		local id, ierr = AnimationClip.register(ks)
+		if id == nil then
+			return nil, nil, "capture_animation: " .. tostring(ierr)
+		end
+		return rig, id, nil
+	end
+	if type(args.animation) == "string" and args.animation ~= "" then
+		local maybe = Path.resolve(args.animation)
+		if maybe ~= nil and maybe:IsA("KeyframeSequence") then
+			local id, ierr = AnimationClip.register(maybe :: KeyframeSequence)
+			if id == nil then
+				return nil, nil, "capture_animation: " .. tostring(ierr)
+			end
+			return rig, id, nil
+		end
+		local raw = args.animation :: string
+		local id = if string.match(raw, "^%d+$") ~= nil then "rbxassetid://" .. raw else raw
+		return rig, id, nil
+	end
+	return nil,
+		nil,
+		"capture_animation: pass a working `clip` name or an `animation` (asset id / KeyframeSequence path)."
+end
+
+local function runAnimation(input: any, context: any): (any, boolean)
+	local args = if type(input) == "table" then input else {}
+	local rig, animId, serr = resolveSource(args)
+	if rig == nil or animId == nil then
+		return serr :: string, true
+	end
+	local animator = rigAnimator(rig)
+	if animator == nil then
+		return "capture_animation: the rig has no Humanoid or AnimationController, so it can't play an "
+			.. "animation. Use a native rig (spawn_rig) or add an AnimationController.",
+			true
+	end
+
+	local anim = Instance.new("Animation")
+	anim.AnimationId = animId
+	local okLoad, track = pcall(function()
+		return animator:LoadAnimation(anim)
+	end)
+	if not okLoad or track == nil then
+		return "capture_animation: couldn't load the animation (" .. tostring(track) .. ").", true
+	end
+	local animTrack = track :: AnimationTrack
+	animTrack.Priority = Enum.AnimationPriority.Action
+	animTrack:Play(0)
+
+	-- poll for the clip data to resolve (Length stays 0 until loaded)
+	local deadline = os.clock() + 4
+	while animTrack.Length <= 0 and os.clock() < deadline do
+		CaptureCore.settle(1)
+	end
+	local length = animTrack.Length
+	if length <= 0 then
+		animTrack:Stop()
+		return "capture_animation: the clip has no length (empty? add keyframes first).", true
+	end
+
+	local frames = if type(args.frames) == "number" and args.frames >= 2
+		then math.floor(args.frames)
+		else 8
+	frames = math.min(frames, 20)
+	local startT = if type(args.startTime) == "number" then math.max(0, args.startTime) else 0
+	local endT = if type(args.endTime) == "number" then math.min(args.endTime, length) else length
+	if endT <= startT then
+		startT, endT = 0, length
+	end
+
+	local preset = CaptureCore.PRESETS[string.lower(tostring(args.angle))]
+		or CaptureCore.PRESETS.front
+	local boundCF, boundSize = (rig :: Model):GetBoundingBox()
+
+	local savedTransforms = saveTransforms(rig)
+	local savedCam = CaptureCore.saveCamera()
+	CaptureCore.setCamera(
+		CaptureCore.frameCFrame(boundCF.Position, boundSize, preset.yaw, preset.pitch, 1)
+	)
+
+	local since = os.time() - 2
+	local triggered = 0
+	local labels: { string } = {}
+	local okAll = pcall(function()
+		for i = 0, frames - 1 do
+			local t = startT + (endT - startT) * (i / (frames - 1))
+			animTrack.TimePosition = t
+			animator:StepAnimations(0)
+			CaptureCore.settle(2)
+			if CaptureCore.triggerCapture() then
+				triggered += 1
+				table.insert(labels, string.format("%.2fs", t))
+			end
+		end
+	end)
+
+	-- restore everything (always): stop playback, restore the working pose, re-show it, restore the camera.
+	animTrack:Stop()
+	restoreTransforms(savedTransforms)
+	RigWorkbench.applyPose(rig)
+	CaptureCore.restoreCamera(savedCam)
+
+	if not okAll or triggered == 0 then
+		return "capture_animation: failed to sample the animation (state restored).", true
+	end
+	local blocks, err = CaptureCore.fetchCaptures(triggered, since, getConfig(context))
+	if blocks == nil then
+		return err :: string, true
+	end
+	local content: { any } = {
+		{
+			type = "text",
+			text = string.format("%d-frame filmstrip (%.2fs to %.2fs):", #blocks, startT, endT),
+		},
+	}
+	for i, b in blocks do
+		local label = if labels[i] ~= nil then labels[i] else tostring(i)
+		table.insert(
+			content,
+			{ type = "text", text = string.format("frame %d/%d — t=%s", i, #blocks, label) }
+		)
+		table.insert(content, b)
+	end
+	return content, false
 end
 
 -- ---- descriptors ------------------------------------------------------------
@@ -203,32 +383,42 @@ Capture.descriptors = {
 	},
 	{
 		name = "capture_animation",
-		description = "(Requires a running playtest — NOT available in edit mode yet.) Capture a "
-			.. "FILMSTRIP of an animation — time-sampled frames of a rig's motion "
-			.. "from a fixed angle, so you can review whether an animation looks right end-to-end. "
-			.. "Inputs: rig (instance path), animation (asset id or KeyframeSequence path), frames "
-			.. "(default 8), startTime/endTime (seconds; defaults to the full clip), angle (a preset). "
-			.. "Returns the sampled frames as labeled images.",
+		description = "See an animation as a time-sampled FILMSTRIP from a fixed angle, so you can review a "
+			.. "motion end-to-end in edit. Source: a working `clip` (a clip you authored with add_keyframe, "
+			.. "under rig/AnimSaves) OR an existing `animation` (an asset id or a KeyframeSequence path). It "
+			.. "registers + plays the clip and samples frames across time (no upload). Inputs: rig (path or "
+			.. "selection), clip OR animation, frames (default 8), startTime/endTime (seconds; default full "
+			.. "clip), angle (front/back/left/right/top/bottom/iso). LOOK at the frames and iterate. Restores "
+			.. "your working pose when done.",
 		inputSchema = {
 			type = "object",
 			properties = {
 				rig = {
 					type = "string",
-					description = "Path to the model with an Animator/Humanoid.",
+					description = "Path to the rig (Model with an Animator/Humanoid); omit to use the selection.",
+				},
+				clip = {
+					type = "string",
+					description = "A working clip name under rig/AnimSaves (e.g. 'AgentClip').",
 				},
 				animation = {
 					type = "string",
-					description = "Animation asset id or KeyframeSequence path.",
+					description = "An existing animation: asset id or a KeyframeSequence path.",
 				},
-				frames = { type = "number", description = "Number of time samples (default 8)." },
+				frames = {
+					type = "number",
+					description = "Number of time samples (default 8, max 20).",
+				},
 				startTime = { type = "number", description = "Start time in seconds (default 0)." },
 				endTime = {
 					type = "number",
 					description = "End time in seconds (default clip length).",
 				},
-				angle = { type = "string", description = "A preset angle (front/left/iso/…)." },
+				angle = {
+					type = "string",
+					description = "A preset angle (front/back/left/right/top/bottom/iso).",
+				},
 			},
-			required = { "rig", "animation" },
 		},
 		destructive = false,
 		run = runAnimation,
