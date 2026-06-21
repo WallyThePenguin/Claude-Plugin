@@ -15,6 +15,7 @@ local SkillStore = require(script.SkillStore)
 local RubricStore = require(script.RubricStore)
 local CameraRig = require(script.CameraRig)
 local Relay = require(script.Relay)
+local DevBridge = require(script.DevBridge)
 
 -- Best-effort: try to enable runtime loadstring (run_luau) during a playtest. The property does not
 -- exist in all Studio versions (the pcall swallows that); when loadstring can't be enabled, the
@@ -69,6 +70,11 @@ elseif relayMode == "clientplay" then
 		deps.anthropic = Relay.wrapAnthropic(relayClient)
 	end
 end
+
+-- Dev bridge: let Claude Code drive the plugin from the shell over the sidecar. EDIT-only + localhost-
+-- only (DevBridge.start no-ops in play/published), default-on via config. Pass the shared deps so prompt
+-- mode runs on the same conversation the panel shows.
+DevBridge.start(deps)
 
 -- Mount the panel, and re-mount if Studio clears the widget's content on an edit<->play transition
 -- (DockWidgetPluginGui can blank out across Play Solo). The conversation lives in `deps`, so a
