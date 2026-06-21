@@ -581,14 +581,14 @@ git commit -m "test: drop IK spec DataModel cases (spawn is now web-backed); bri
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full static suite + install**
+- [x] **Step 1: Full static suite + install**
 
 Run: `stylua src ; selene src ; rojo build default.project.json --output StudioAgent.rbxm ; .\build.ps1`
 Expected: selene `0 errors, 0 warnings`; rojo build succeeds; `Installed -> …\Plugins\StudioAgent.rbxm`.
 
-- [ ] **Step 2: Reload the plugin** — the dev bridge can't hot-reload itself, so the USER restarts Studio ("Restart to update") on a fresh Baseplate. The sidecar + bridge are already running; confirm `[StudioAgent] dev bridge active` via `powershell -File scripts/studio-agent.ps1 logs`.
+- [x] **Step 2: Reload the plugin** — the dev bridge can't hot-reload itself, so the USER restarts Studio ("Restart to update") on a fresh Baseplate. The sidecar + bridge are already running; confirm `[StudioAgent] dev bridge active` via `powershell -File scripts/studio-agent.ps1 logs`.
 
-- [ ] **Step 3: Dogfood the spawn + pose + LOOK** (the verification that matters — a clear capture, not coordinates):
+- [x] **Step 3: Dogfood the spawn + pose + LOOK** (the verification that matters — a clear capture, not coordinates):
 ```bash
 powershell -File scripts/studio-agent.ps1 tool spawn_rig '{"type":"block"}'        # -> "spawned native R15 block rig at Workspace.AgentRig"
 powershell -File scripts/studio-agent.ps1 tool get_rig '{"rig":"Workspace.AgentRig"}'  # -> 15 joints listed
@@ -599,7 +599,7 @@ powershell -File scripts/studio-agent.ps1 capture C:/Users/manso/AppData/Local/T
 ```
 Then **Read `rework-verify.png`** and confirm: a colored R15 rig standing on the baseplate, right arm posed toward the target, body/other limbs unmoved. (Pick a target near the rig's right shoulder; read the shoulder via `luau` first if the reach clamps.) Restore the camera: `luau 'workspace.CurrentCamera.CameraType=Enum.CameraType.Custom'`.
 
-- [ ] **Step 4: Update HANDOFF.md** — add a dated block: rework shipped (native R15 spawn + applyPose/StepAnimations), placeholder/RigTemplates/R6-spawn dropped, slice B's posing now correct. Commit.
+- [x] **Step 4: Update HANDOFF.md** — add a dated block: rework shipped (native R15 spawn + applyPose/StepAnimations), placeholder/RigTemplates/R6-spawn dropped, slice B's posing now correct. Commit.
 
 ```bash
 git add HANDOFF.md
