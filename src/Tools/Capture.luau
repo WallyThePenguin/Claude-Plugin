@@ -180,8 +180,9 @@ end
 -- (an asset id, or a path to a KeyframeSequence instance). rig = path arg or the current selection.
 local function resolveSource(args: any): (Instance?, string?, string?)
 	local rig: Instance? = nil
+	local rigErr: string? = nil
 	if type(args.rig) == "string" and args.rig ~= "" then
-		rig = Path.resolve(args.rig)
+		rig, rigErr = Path.resolve(args.rig)
 	else
 		local sel = Selection:Get()
 		rig = if #sel > 0 then sel[1] else nil
@@ -189,7 +190,8 @@ local function resolveSource(args: any): (Instance?, string?, string?)
 	if rig == nil then
 		return nil,
 			nil,
-			"capture_animation: no rig given and nothing selected — pass a rig path or select it."
+			"capture_animation: "
+				.. (rigErr or "no rig given and nothing selected — pass a rig path or select it.")
 	end
 	if not rig:IsA("Model") then
 		return nil, nil, "capture_animation: the rig must be a Model (with a bounding box)."
@@ -242,12 +244,19 @@ local function runAnimation(input: any, context: any): (any, boolean)
 			true
 	end
 
+	-- Snapshot the working pose + camera BEFORE loading/playing anything, so we can fully restore them
+	-- afterward (playback + StepAnimations would otherwise overwrite the joints' Transforms).
+	local savedTransforms = saveTransforms(rig)
+	local savedCam = CaptureCore.saveCamera()
+
+	-- A parentless Animation is fine for LoadAnimation (verified live).
 	local anim = Instance.new("Animation")
 	anim.AnimationId = animId
 	local okLoad, track = pcall(function()
 		return animator:LoadAnimation(anim)
 	end)
 	if not okLoad or track == nil then
+		anim:Destroy()
 		return "capture_animation: couldn't load the animation (" .. tostring(track) .. ").", true
 	end
 	local animTrack = track :: AnimationTrack
@@ -262,13 +271,14 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	local length = animTrack.Length
 	if length <= 0 then
 		animTrack:Stop()
+		animTrack:Destroy()
+		anim:Destroy()
 		return "capture_animation: the clip has no length (empty? add keyframes first).", true
 	end
 
-	local frames = if type(args.frames) == "number" and args.frames >= 2
-		then math.floor(args.frames)
+	local frames = if type(args.frames) == "number"
+		then math.clamp(math.floor(args.frames), 2, 20)
 		else 8
-	frames = math.min(frames, 20)
 	local startT = if type(args.startTime) == "number" then math.max(0, args.startTime) else 0
 	local endT = if type(args.endTime) == "number" then math.min(args.endTime, length) else length
 	if endT <= startT then
@@ -278,9 +288,6 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	local preset = CaptureCore.PRESETS[string.lower(tostring(args.angle))]
 		or CaptureCore.PRESETS.front
 	local boundCF, boundSize = (rig :: Model):GetBoundingBox()
-
-	local savedTransforms = saveTransforms(rig)
-	local savedCam = CaptureCore.saveCamera()
 	CaptureCore.setCamera(
 		CaptureCore.frameCFrame(boundCF.Position, boundSize, preset.yaw, preset.pitch, 1)
 	)
@@ -301,8 +308,11 @@ local function runAnimation(input: any, context: any): (any, boolean)
 		end
 	end)
 
-	-- restore everything (always): stop playback, restore the working pose, re-show it, restore the camera.
+	-- restore everything (always): stop + destroy the temp track/Animation, restore the working pose,
+	-- re-show it (StepAnimations with no playing track), restore the camera.
 	animTrack:Stop()
+	animTrack:Destroy()
+	anim:Destroy()
 	restoreTransforms(savedTransforms)
 	RigWorkbench.applyPose(rig)
 	CaptureCore.restoreCamera(savedCam)
