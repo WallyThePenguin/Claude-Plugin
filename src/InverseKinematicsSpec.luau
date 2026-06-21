@@ -5,6 +5,8 @@
 -- Mirrors RigWorkbenchSpec / CameraRigSpec.
 
 local IK = require(script.Parent.InverseKinematics)
+local RigWorkbench = require(script.Parent.RigWorkbench)
+local IkChains = require(script.Parent.IkChains)
 
 local M = {}
 
@@ -105,6 +107,23 @@ local function buildCases(): { Case }
 		local transforms = IK.solveCCDTransforms(CFrame.identity, links, start, target, 20)
 		local _, eff = IK.forwardFrames(CFrame.identity, links, transforms)
 		return vClose(eff.Position, target, 5e-2)
+	end)
+
+	add("resolveChain RightArm on a spawned r15 returns shoulder+elbow", function()
+		local rig = RigWorkbench.spawn("r15")
+		if rig == nil then
+			return false, "spawn failed"
+		end
+		local resolved, err = IkChains.resolveChain(rig, { chain = "RightArm" })
+		rig:Destroy()
+		if resolved == nil then
+			return false, err
+		end
+		return #resolved.posedJoints == 2
+			and resolved.posedJoints[1].Name == "RightShoulder"
+			and resolved.posedJoints[2].Name == "RightElbow"
+			and resolved.effectorPart.Name == "RightHand"
+			and resolved.twoBone == true
 	end)
 
 	return cases
