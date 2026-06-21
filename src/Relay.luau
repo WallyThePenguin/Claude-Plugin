@@ -32,6 +32,7 @@ local LOCAL_TOOLS: { [string]: boolean } = {
 	save_skill = true,
 	delete_skill = true,
 	use_rubric = true,
+	evaluate = true,
 	camera_focus = true,
 	camera_orbit = true,
 	camera_release = true,

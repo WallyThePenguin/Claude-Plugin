@@ -20,6 +20,7 @@ local EXPECTED_LOCAL = {
 	"save_skill",
 	"delete_skill",
 	"use_rubric",
+	"evaluate",
 	"camera_focus",
 	"camera_orbit",
 	"camera_release",
