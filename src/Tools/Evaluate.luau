@@ -179,6 +179,10 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 			.. ")\n"
 			.. structural
 	end
+	local learningsStore = if type(context) == "table" then context.learnings else nil
+	local learned = if learningsStore ~= nil
+		then (learningsStore :: any):forCategory(args.category)
+		else ""
 	local content = INSTRUCTION
 		.. "\n\n=== RUBRIC ===\n"
 		.. RubricCatalog.render(rubric)
@@ -186,6 +190,12 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 		.. design
 		.. "\n\n=== STRUCTURAL EVIDENCE (dumped from the DataModel) ===\n"
 		.. structural
+		.. (
+			if learned ~= ""
+				then "\n\n=== ESTABLISHED LEARNINGS for this category (confirmed corrections to weight) ===\n"
+					.. learned
+				else ""
+		)
 
 	local gradeTool = EvaluateReport.buildGradeTool(rubric)
 	local gradeInput, rawText, res = (anthropic :: any):requestStructured({
