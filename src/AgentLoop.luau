@@ -37,6 +37,7 @@ local function runLoop(
 	skills: any,
 	rubrics: any,
 	cameraRig: any,
+	learnings: any,
 	snapshot: number,
 	cb: Callbacks,
 	relay: any
@@ -104,6 +105,7 @@ local function runLoop(
 		skills = skills,
 		rubrics = rubrics,
 		cameraRig = cameraRig,
+		learnings = learnings,
 	}
 
 	-- System-prompt + memory delivery (verified live): the model proxy (CLIProxyAPI subscription path)
@@ -130,6 +132,12 @@ local function runLoop(
 		local cat = rubrics:catalogBlock()
 		if cat ~= "" then
 			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
+		end
+	end
+	if learnings ~= nil then
+		local block = learnings:promptBlock()
+		if block ~= "" then
+			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
 		end
 	end
 
@@ -296,6 +304,7 @@ function AgentLoop.send(
 	skills: any,
 	rubrics: any,
 	cameraRig: any,
+	learnings: any,
 	userText: string,
 	cb: Callbacks,
 	relay: any
@@ -322,6 +331,7 @@ function AgentLoop.send(
 			skills,
 			rubrics,
 			cameraRig,
+			learnings,
 			snapshot,
 			cb,
 			relay

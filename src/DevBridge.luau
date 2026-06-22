@@ -100,6 +100,7 @@ local function toolContext(deps: any): any
 		skills = deps.skills,
 		rubrics = deps.rubrics,
 		cameraRig = deps.cameraRig,
+		learnings = deps.learnings,
 	}
 end
 
@@ -146,6 +147,7 @@ local function handleCommand(deps: any, cmd: any)
 			deps.skills,
 			deps.rubrics,
 			deps.cameraRig,
+			deps.learnings,
 			tostring(cmd.prompt),
 			cb,
 			deps.relay
