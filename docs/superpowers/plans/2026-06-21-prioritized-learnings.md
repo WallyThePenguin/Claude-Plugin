@@ -288,8 +288,17 @@ function Learnings.add(self: Learnings, category: any, text: any): string
 		end
 	end
 	if not present then
-		table.insert(index, c)
-		saveIndex(self, index)
+		-- Drop index entries whose bucket is now empty (e.g. fully-unlearned categories) before adding c,
+		-- so a stale entry can never consume a MAX_CATEGORIES slot and orphan this genuinely-new category
+		-- from the always-on preamble (categories()/promptBlock() enumerate via the index).
+		local live: { string } = {}
+		for _, n in ipairs(index) do
+			if #self:loadBucket(n) > 0 then
+				table.insert(live, n)
+			end
+		end
+		table.insert(live, c)
+		saveIndex(self, live)
 	end
 	return note .. " [" .. c .. "]"
 end
@@ -306,6 +315,18 @@ function Learnings.forget(self: Learnings, category: any, id: any): string
 		return "no learning #" .. tostring(id) .. " in '" .. c .. "'"
 	end
 	self._plugin:SetSetting(catKey(c), updated)
+	-- Keep the index honest: when a category's LAST learning is removed, drop it from the index so empty
+	-- categories don't accumulate and consume a MAX_CATEGORIES slot (categories() already hides it at
+	-- runtime; this makes the stored index match).
+	if #updated == 0 then
+		local pruned: { string } = {}
+		for _, n in ipairs(self:loadIndex()) do
+			if n ~= c then
+				table.insert(pruned, n)
+			end
+		end
+		saveIndex(self, pruned)
+	end
 	return "unlearned #" .. tostring(id) .. " [" .. c .. "]"
 end
 
