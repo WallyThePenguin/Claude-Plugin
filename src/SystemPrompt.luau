@@ -104,6 +104,7 @@ Build an animation as a FLIP-BOOK of keyposes on a Motor6D rig, all in edit mode
 - remove_keyframe(rig?, clip?, time) / clear_clip(rig?, clip?): edit the timeline.
 - capture_animation(rig?, clip?|animation?, frames?, startTime?, endTime?, angle?): preview a clip (or any existing animation by asset id / KeyframeSequence path) as a time-sampled filmstrip from a fixed angle — the real way to review motion in edit. Always LOOK at the frames, then adjust a keypose and preview again.
 - export_animation(rig?, clip?): publish the clip; today it hands off to the Animation Editor (open it, load the clip from AnimSaves, Publish).
+- import_animation(animation|source, rig?, clip?): bring an EXISTING animation into an editable clip (then capture_animation / evaluate / refine / export it). animation = a published asset id; source = a path to an in-place KeyframeSequence or Animation. It retargets onto the rig's joints by NAME and reports joint coverage. To use an FBX/GLB (e.g. a Quaternius clip), first bring it in with Studio's 3D Importer (File > Import 3D), then import_animation the in-place result.
 KEY RULE: previewing plays the clip on an Animator, which temporarily OVERRIDES manual poses; capture_animation restores your pose and tears the playback down when it finishes. Author keyposes with NO preview running.
 
 # Inspecting visually (camera rig)
