@@ -1,0 +1,712 @@
+{
+  "module": "combat",
+  "version": "1.0",
+  "system_module": "combat",
+  "criteria": [
+    {
+      "id": "marker-driven-event-timing",
+      "order_index": 1,
+      "tier": "baseline",
+      "system_module": "combat",
+      "statement": "All combat gameplay events (hitbox activation, cancel windows, recovery start, VFX/SFX/hitstop triggers) are driven off named animation event markers via AnimationTrack:GetMarkerReachedSignal — NOT off wait()/task.delay timers or track.Length math. A non-programmer can move the impact frame in the editor and the gameplay re-syncs with zero code change.",
+      "above_generic_rationale": "Surface check would be 'damage fires at the right time.' The systems-depth check is the DECOUPLING mechanism: hardcoded delays (wait(0.3)) drift with frame rate, AdjustSpeed, and replacement animations, visibly disconnecting hit from swing. Verifying markers (not timers) tests whether timing is structurally bound to the visual, which is the spine that lets every other feedback channel fire on one synchronized frame. The first play of an animation also reports Length 0, silently breaking length-based gating — markers sidestep this entirely.",
+      "evidence_required": "Scripts use GetMarkerReachedSignal('HitFrame'/'CancelOpen'/'RecoveryStart') with named markers placed in the animation editor timeline; grep shows NO wait()/task.delay/task.wait(track.Length...) gating attack logic. Markers optionally carry a Parameter string.",
+      "concrete_fix": "Replace task.wait(0.3) damage delays with track:GetMarkerReachedSignal('HitFrame'):Connect(...) and place a 'HitFrame' marker at the contact keyframe in the editor.",
+      "grading": {
+        "pass": "Attack timing (hitbox, cancel window, recovery, FX) is gated by named animation markers consumed via GetMarkerReachedSignal; a grep finds no wait()/task.delay/track.Length math driving the attack logic; moving the marker in the editor re-syncs gameplay with no code change.",
+        "partial": "Markers are used for SOME events (e.g. hitbox) but other timing-critical events (cancel window or FX) still rely on wait()/task.delay or track.Length math; or markers exist but a length-based gate remains that breaks on first play (Length==0).",
+        "fail": "Attack events are gated by wait()/task.delay/task.wait(track.Length...) timers rather than animation markers, so timing drifts with frame rate/AdjustSpeed and the hit decouples from the swing."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/animation/events.md",
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://www.youtube.com/watch?v=gxYSxENGp-E",
+          "https://simplified.media/guides/roblox-combat-systems"
+        ]
+      }
+    },
+    {
+      "id": "swept-active-frame-hitbox-no-touched",
+      "order_index": 2,
+      "tier": "baseline",
+      "system_module": "combat",
+      "statement": "Hit detection is committed to an ACTIVE-FRAME model, not a swing-wide or .Touched model. The discriminating commitment, stated at the description level, is that the damage volume is LIVE ONLY during a narrow contact window inside the swing (gated by the same active-frame timing that drives FX) and DEAD during windup and recovery — NOT a volume that is 'active for the whole swing' and NOT BasePart.Touched. Above that floor, depth is shown by: a SWEPT spatial query that samples the weapon path between the previous and current frame (raycast/shapecast along the blade, or GetPartsInPart/GetPartBoundsInBox with OverlapParams) so fast swings cannot tunnel past thin targets, plus a per-swing already-hit set keyed by humanoid so each target takes exactly one hit per swing. A build whose hitbox is whole-swing-wide, instantaneous, or .Touched-based FAILS even if it deals damage; merely narrowing the window without swept sampling or dedup is PARTIAL.",
+      "above_generic_rationale": "The mean artifact explicitly states the hitbox is 'active for the whole swing (no marker-synced active frames)' — a windup-and-recovery-wide volume — while the great artifact explicitly claims 'active frames driving hitboxes'. The original criterion's PASS evidence (swept query type, OverlapParams, hitList guard) is invisible in prose, so BOTH collapsed to fail and the criterion gave zero separation. Re-anchoring the discriminating axis on the active-frame-window COMMITMENT (which the great prose affirms and the mean prose explicitly rejects) lets the great artifact clear FAIL while the mean cannot, and preserves swept-sampling + dedup as the higher PASS bar so the ceiling stays at true systems depth rather than 'damage happens'.",
+      "evidence_required": "Description commits the hitbox to a narrow active-contact window (live only during the strike, dead in windup/recovery), NOT whole-swing and NOT .Touched. For full marks: swept-path sampling between last/current positions (raycast/shapecast/GetPartsInPart/GetPartBoundsInBox) defeating tunneling, plus a per-swing humanoid-keyed hit-set guaranteeing one hit per target per swing.",
+      "concrete_fix": "State that the damage volume activates only on the contact window (not the whole swing), sample the swept weapon path between frames with GetPartBoundsInBox/shapecast rather than .Touched, and add a per-swing hitList[humanoid] dedup so each target is hit once.",
+      "grading": {
+        "pass": "The hitbox is committed to a narrow active-contact window (live only during the strike, dead during windup/recovery), uses a swept spatial query sampling the weapon path between last and current frame positions (no .Touched), and has a per-swing humanoid-keyed hit-set so each target takes exactly one hit per swing.",
+        "partial": "The description commits to active-frame windowing (not whole-swing, not .Touched) but is missing swept-path sampling (fast swings can tunnel) or the per-swing dedup set (one swing can multi-hit a rig).",
+        "fail": "The hitbox is whole-swing-wide / instantaneous / windup-and-recovery-active, or uses BasePart.Touched, or has no contact-window commitment at all — damage is dealt but the active-frame model is absent."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Swordphin/raycastHitboxRbxl",
+          "https://devforum.roblox.com/t/shapecasthitbox-for-all-your-melee-needs-v025/3624241",
+          "https://devforum.roblox.com/t/creating-a-battlegrounds-like-hitbox/3623640",
+          "https://devforum.roblox.com/t/how-do-i-make-my-hitboxes-better/4342115",
+          "https://www.youtube.com/watch?v=gxYSxENGp-E",
+          "https://www.youtube.com/watch?v=XAO3HF4vFg0",
+          "https://devforum.roblox.com/t/the-basics-of-combat-games-hitboxes/3002930"
+        ]
+      },
+      "change_reason": "Original failed to discriminate: its load-bearing evidence (GetPartsInPart vs Raycast, hitList table) is structural code detail absent from any prose artifact, so the great artifact's genuine 'active frames driving hitboxes' claim scored identically (fail) to the mean's explicit 'active for the whole swing'. Rewrite moves the PASS/FAIL boundary onto the active-frame-WINDOW commitment — the exact systems distinction the great prose makes and the mean prose negates — while keeping swept-path sampling and per-swing dedup as the PARTIAL→PASS ceiling."
+    },
+    {
+      "id": "layered-impact-sound-on-contact",
+      "order_index": 3,
+      "tier": "baseline",
+      "system_module": "combat",
+      "statement": "Impact audio is layered and role-aware (whoosh on the swing, distinct thud/crunch/clang on connect, recognizable consistent parry/block cue) and the CONNECT sound fires on the contact-frame marker — not on swing start. Consistent interactions produce consistent, recognizable sounds.",
+      "above_generic_rationale": "Surface check is 'there is a hit sound.' The depth check is WHEN it fires and whether it is layered: a connect sound played at swing-start (or a single undifferentiated clip) is the fastest tell of a generic system. Syncing the connect layer to the same contact marker as the hitbox, and keeping interaction sounds consistent so players learn them, is what makes hits read as decisive rather than mushy.",
+      "evidence_required": "Separate swing-whoosh and connect-thud assets; connect sound triggered from the HitFrame marker (same frame as hitbox), not at Activated/swing-start; a dedicated consistent parry/block sound exists; transient sounds parented to victim HRP with capped RollOffDistance.",
+      "concrete_fix": "Move the connect SoundService:PlayLocalSound/sound:Play call out of the swing-start handler into the HitFrame marker callback, and add a separate whoosh on the swing track.",
+      "grading": {
+        "pass": "Audio is layered (distinct swing-whoosh and connect-thud assets, plus a dedicated consistent parry/block cue) and the connect sound fires from the HitFrame contact marker, not at swing-start; consistent interactions produce consistent recognizable sounds.",
+        "partial": "Distinct hit and swing sounds exist but the connect sound fires at swing-start rather than the contact marker; or sounds are layered but there is no dedicated/consistent parry-block cue.",
+        "fail": "A single undifferentiated hit clip plays (no whoosh/connect separation) or the hit sound fires on swing-start instead of contact, so hits read as mushy and generic."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-on-melee-combat-system/2271534",
+          "https://devforum.roblox.com/t/creating-a-battlegrounds-like-hitbox/3623640",
+          "https://www.wayline.io/blog/level-up-indie-game-melee-combat",
+          "https://www.youtube.com/watch?v=Ht6ZfibXpDs"
+        ]
+      }
+    },
+    {
+      "id": "animation-priority-layering-coexist",
+      "order_index": 4,
+      "tier": "baseline",
+      "system_module": "combat",
+      "statement": "Attacks, hit-reactions, dodges, and locomotion run as concurrently-blended tracks at deliberately-assigned AnimationPriority (e.g. attack Action4, victim hit-react Action3 so it does NOT cancel the attacker's swing, dodge Action2, locomotion Movement), relying on per-joint override + weight-normalized blending — NOT one full-body animation playing at a time.",
+      "above_generic_rationale": "Surface check is 'animations play.' The depth check is COEXISTENCE: a generic build plays one full-body clip at a time, so attacking freezes movement and getting hit cancels your own swing. Correct priority layering is the prerequisite that makes attacker-keeps-swinging while victim-independently-flinches possible without manual blend code — it underpins both the hit-react and the attack-over-locomotion killer systems.",
+      "evidence_required": "AnimationPriority set explicitly per clip (Action4/Action3/Action2/Movement) rather than default; hit-react authored at Action3 so it doesn't override the attacker; verification that a victim flinch does not interrupt the attacker's active swing.",
+      "concrete_fix": "Set the hit-react track's Priority to Enum.AnimationPriority.Action3 and the attack to Action4 in the animation editor so the flinch layers without canceling.",
+      "grading": {
+        "pass": "AnimationPriority is explicitly assigned per clip (e.g. attack Action4, hit-react Action3, dodge Action2, locomotion Movement) so tracks coexist and blend; verified that a victim flinch does not cancel the attacker's active swing and attacking does not freeze movement.",
+        "partial": "Priorities are set on some clips but left default on others, so partial conflicts remain (e.g. hit-react and attack share a priority and one cancels the other), or coexistence is not verified.",
+        "fail": "Animations play one full-body clip at a time at default priority, so attacking freezes movement and getting hit cancels the attacker's own swing."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/reference/engine/classes/AnimationTrack",
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://robloxapi.github.io/ref/enum/AnimationPriority.html"
+        ]
+      }
+    },
+    {
+      "id": "complete-combat-clip-set",
+      "order_index": 5,
+      "tier": "baseline",
+      "system_module": "combat",
+      "statement": "The build OWNS a combat STANCE STATE MACHINE, not a flat list of attack clips. The discriminating, prose-readable commitment is an explicit non-combat<->combat state that the build ENTERS/EXITS on a signal (weapon draw / target acquired / first input) — holding a dedicated combat idle as the base armed state instead of leaving the stock idle — and a controller that DRIVES the combo/cancel/react vocabulary through this state (combos advance by index inside an authored window; cancel/active-frame timing is consumed by the controller, not guessed from clip length). A description that is 'a single canned attack' with 'no combo or cancel windows' and no armed stance FAILS. A description that asserts combos/cancels and a combat stance but does not commit to a controller that enters/exits combat on a signal and gates the windows is PARTIAL. An enumerated clip manifest (combat idle + transitions + index-named combo + launch/knockback react) and per-clip priorities/markers are credited toward PASS but never clear it alone — the discriminating commitment is the OWNED stance state machine that governs entry/exit and the windows, not the presence of clips.",
+      "above_generic_rationale": "The mean artifact is 'a single canned attack' with 'no combo or cancel windows' — stateless, leaving the stock idle. The great artifact claims 'cancelable combo strings' but names no combat idle, no enter/exit signal, no controller. The original PASS gate (full clip manifest + state machine + GetMarkerReachedSignal consumption) is all structural, so the great artifact's real combo commitment landed in the same fail bucket as the mean's single canned clip. The rewrite keeps the load-bearing stance-state-machine as the PASS gate but introduces a PARTIAL rung for 'asserts combos/cancel-windows/armed stance without owning the controller', which the great prose reaches and the mean prose (single clip, no cancel windows) cannot — restoring separation while still reserving PASS for the genuinely systemic build.",
+      "evidence_required": "For PARTIAL: the description commits to a combat stance plus cancelable/buffered combo strings (windows that exist, not a one-shot clip). For PASS additionally: a controller that owns an explicit non-combat<->combat state, enters/exits it on a signal, holds a combat idle as base armed state, drives blended idle<->combat transitions, and consumes per-clip markers (GetMarkerReachedSignal) to gate the combo/cancel windows; supporting clip manifest (combat idle, transitions, index-named combo, launch/knockback react).",
+      "concrete_fix": "Commit to an armed combat idle entered on weapon-draw/first-input, a controller that holds it as the base state and exits to non-combat on a signal, and combo/cancel windows the controller opens off per-clip markers — rather than a single canned swing with no cancel windows and the stock idle.",
+      "grading": {
+        "pass": "A controller OWNS an explicit non-combat<->combat state machine: enters/exits combat on a signal, holds a dedicated combat idle as base armed state, drives blended idle<->combat transitions, and consumes per-clip markers to gate combo/cancel windows where the chain advances by index — the clip vocabulary is wired into controller-governed states.",
+        "partial": "The build commits to a combat stance plus cancelable/buffered combo strings with cancel windows (more than a single clip), but does not own the controller-level stance state — no signal-driven enter/exit, leaves the stock idle, or does not consume markers to gate the windows.",
+        "fail": "A single canned attack with no combo or cancel windows and no armed combat stance (stock idle retained) — a stateless clip, even if multiple clips merely exist in a folder."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://kitsblox.com/blog/best-roblox-combat-animations"
+        ]
+      },
+      "change_reason": "Original collapsed the great artifact's affirmed 'cancelable combo strings' to fail alongside the mean's 'single canned attack, no combo or cancel windows' because the entire PASS/PARTIAL ladder demanded controller-level structural evidence (signal-driven enter/exit, marker consumption) invisible in prose. Rewrite inserts a discriminating PARTIAL tier keyed on the combo/cancel/armed-stance COMMITMENT the great prose makes and the mean prose explicitly negates, while keeping the owned stance state machine as the PASS gate so the ceiling is unchanged."
+    },
+    {
+      "id": "anticipation-load-and-impact-hitstop",
+      "order_index": 6,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Every attack is built on a DELIBERATE timing-asymmetry skeleton AND a confirmed hit triggers a strength-scaled HIT-STOP. The discriminating, prose-readable commitment has two halves the mean explicitly rejects: (1) a held/loaded wind-up that accelerates from near-still into a single readable contact pose with peak velocity BEFORE the endpoint (not uniform interpolation), and (2) on contact, a hit-pause that briefly freezes/slows ONLY the attacker and victim animations while camera/particles/world keep moving, with pause length scaled by attack strength (light=short, heavy=longer). A description with 'no weighted wind-up, no hit-stop or freeze on contact' FAILS. A description that names weighted anticipation/follow-through AND hit-stop on impact clears FAIL (PARTIAL). PASS additionally requires the depth specifics: held/duplicate anticipation+contact keyframes, AdjustSpeed~0 scoped to attacker+victim only for a weight-scaled frame count, and broadcast so all clients freeze in sync.",
+      "above_generic_rationale": "The mean artifact explicitly states 'no weighted wind-up, no hit-stop or freeze on contact'. The great artifact explicitly states 'weighted anticipation and follow-through with hit-stop/freeze-frames on impact'. This is the cleanest mean-vs-great split in the set, yet the original criterion's PASS list demanded keyframe-duplication, AdjustSpeed scoping, weight-scaling, and client-sync — none visible in prose — so the great artifact only reached PARTIAL and would have reached FAIL if the grader were strict. The rewrite makes the anticipation+hitstop COMMITMENT (which the great names and the mean negates) the explicit FAIL/PARTIAL boundary, guaranteeing separation, and keeps the structural detail as the PARTIAL→PASS ceiling.",
+      "evidence_required": "For PARTIAL: description commits to BOTH weighted/held anticipation with follow-through AND a hit-stop/freeze on contact. For PASS additionally: held or duplicated anticipation and contact keyframes, peak velocity before the endpoint, AdjustSpeed~0 applied ONLY to attacker+victim tracks for a strength-scaled frame count while camera/world continue, broadcast so clients freeze in sync.",
+      "concrete_fix": "Commit to a held wind-up that accelerates into a held contact pose, and on a confirmed hit AdjustSpeed~0 on attacker+victim tracks for a weight-scaled frame count (camera/world keep moving), broadcast via FireAllClients so all clients freeze together.",
+      "grading": {
+        "pass": "Attacks use the anticipation->contact->follow-through->recovery skeleton with held wind-up and held contact keyframes and peak velocity before the endpoint, AND a confirmed hit applies a strength-scaled hitstop to attacker+victim tracks only (AdjustSpeed~0 for a weight-scaled 1-4 frames) while camera/particles/world keep moving, broadcast so clients sync.",
+        "partial": "The description commits to weighted/held anticipation with follow-through AND a hit-stop on contact, but lacks the depth specifics — hitstop is fixed-duration (not strength-scaled), freezes the world too, isn't client-synced, or the held-keyframe asymmetry is asserted without the contact-pose hold.",
+        "fail": "No weighted/held wind-up and no hit-pause on contact (uniform interpolation, no freeze) — the attack reads as tapping with no readable contact frame."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.jasondeheras.com/gamedesign/2021/4/23/how-do-3rd-person-melee-combat-games-communicate-game-and-hit-feel",
+          "https://www.wayline.io/blog/level-up-indie-game-melee-combat",
+          "https://mocaponline.com/blogs/mocap-news/sword-melee-animation-guide",
+          "https://www.youtube.com/watch?v=bzS9B3-iVH0",
+          "https://www.youtube.com/watch?v=WZyvOpIiaYE",
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://devforum.roblox.com/t/combat-animation-lacks-power/1875328",
+          "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328"
+        ]
+      },
+      "change_reason": "Although the great artifact already scored partial here, the criterion is on the weak list because its PASS gate is unreachable from prose, making the discrimination fragile (a stricter grader collapses partial→fail, re-tying it with the mean). Rewrite locks the FAIL/PARTIAL boundary onto the explicit anticipation+hit-stop commitment the great prose makes and the mean prose denies, stabilizing the gap, while preserving held-keyframe + AdjustSpeed-scope + sync as the PASS ceiling."
+    },
+    {
+      "id": "weight-cues-body-drive-drag-followthrough",
+      "order_index": 7,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Strikes are committed to WHOLE-BODY weight transfer, not arm-only motion. The discriminating, prose-readable commitment is that the strike is described as DRIVEN BY THE BODY — torso/hip leading with the weapon arm dragging behind (overlap/drag), the body over-rotating slightly past the arm then re-centering, the weapon LINGERING past center in follow-through before a smooth (not brusque) recovery, with feet planted as a stable base (not gliding) — versus a swing where 'only the arm moves' and the pose snaps back. A description of a single canned click-swing with no weight cues FAILS. A description that commits to weighted, body-driven motion with anticipation and follow-through clears FAIL (PARTIAL). PASS requires the named mechanics: weapon arm keyed behind the torso (drag), a controlled non-sagging arc with over-rotation, a follow-through pose ~30-60deg past center, and hand-keyed planted feet (no auto-IK slide).",
+      "above_generic_rationale": "The mean artifact is 'a single canned click-swing' with 'no weighted wind-up' — the canonical arm-only weightless look. The great artifact claims 'weighted anticipation and follow-through'. The original criterion demanded torso-lead/arm-drag/arc-over-rotation/planted-feet evidence (pure animation-craft detail), so the great artifact's weighted-motion commitment scored fail alongside the mean. The rewrite makes the body-driven-weight COMMITMENT the FAIL/PARTIAL boundary (great affirms it, mean's single canned swing negates it) and reserves the five named principles for PASS, keeping the systems-craft ceiling.",
+      "evidence_required": "For PARTIAL: description commits to weighted, body-driven strikes with anticipation and follow-through (not arm-only). For PASS additionally: weapon arm keyed a few frames behind torso rotation (drag/overlap), a clean non-sagging arc with over-rotation past the arm then re-center, a follow-through pose ~30-60deg past center before recovery, and hand-keyed planted feet (no auto-IK glide).",
+      "concrete_fix": "Describe the strike as torso/hip-led with the arm dragging behind, an arc that over-rotates then re-centers, a follow-through linger past center, and planted (hand-keyed) feet — instead of a single arm-only canned swing that snaps back.",
+      "grading": {
+        "pass": "Strikes are whole-body driven: torso/hip lead with the weapon arm dragging behind, a controlled non-sagging arc with over-rotation-then-recenter, a follow-through ~30-60deg past center, and hand-keyed planted feet — the named weight principles are present.",
+        "partial": "The description commits to weighted, body-driven motion with anticipation and follow-through (more than arm-only) but does not specify the mechanics — missing arm-drag offset, arc over-rotation, follow-through linger, or planted feet.",
+        "fail": "A single canned/arm-only swing with no weight cues that snaps back to rest — only the arm moves, reading as a weightless workout routine."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.youtube.com/watch?v=bzS9B3-iVH0",
+          "https://www.youtube.com/watch?v=KneO6y3FebM",
+          "https://mocaponline.com/blogs/mocap-news/sword-melee-animation-guide",
+          "https://devforum.roblox.com/t/sword-attack-animation-feedback/523593",
+          "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328",
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707"
+        ]
+      },
+      "change_reason": "Original failed to discriminate: the great artifact's 'weighted anticipation and follow-through' was scored fail because the criterion required body-mechanics detail (arm-drag frames, over-rotation, planted feet) that no prose shows — tying it with the mean's single canned swing. Rewrite keys the FAIL/PARTIAL boundary on the whole-body-weight commitment the great prose makes and the mean prose lacks, while keeping the drag/arc/follow-through/planted-feet mechanics as the PASS bar."
+    },
+    {
+      "id": "per-weapon-easing-and-pacing",
+      "order_index": 8,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Attack pacing is committed to being SHAPED, not a single fixed swing reused everywhere. The discriminating, prose-readable commitment has two parts the mean explicitly rejects: (1) the swing's timing is deliberately eased/contrasted across phases (a loaded accelerate-in, a crisp contact, an eased-out recovery) rather than one uniform/default speed, AND (2) swing speed reads from WEAPON MASS — heavier weapons are described as swinging materially slower/longer than lighter ones, not one swing duration for all. A description of 'one fixed' canned swing with uniform pacing across weapons FAILS. A description that commits to mass-/force-aware pacing where heavier weapons swing slower AND to phase-contrasted timing clears FAIL. PASS requires both verifiable: per-phase easing differentiation (windup ease-in, near-linear contact, ease-out recovery — not one uniform curve) AND a per-weapon frame budget (e.g. greatsword ~2x dagger).",
+      "above_generic_rationale": "The mean artifact is 'one fixed' canned swing — the criterion's own named fail case ('one canned swing with uniform/default keyframe spacing FAILS'). The great artifact mentions 'force-aware' reactions but the original criterion required keyframe Style/Direction-per-phase and per-weapon frame counts, neither in prose, so it scored fail. Critically the original gives NO partial credit for the mass-aware-pacing commitment. The rewrite makes 'pacing reads from weapon mass + phase-contrast' the FAIL/PARTIAL boundary; the mean's explicit 'one fixed swing' negates it and a great artifact that commits to weapon-mass-scaled, eased pacing clears it, restoring separation.",
+      "evidence_required": "For PARTIAL: description commits to deliberately shaped/eased pacing AND to swing speed scaling with weapon mass (heavier=slower/longer, not one fixed duration). For PASS additionally: per-phase easing differentiation verifiable (windup ease-in/Cubic-Sine, near-linear contact, eased-out recovery — not one uniform Style/Direction) AND a per-weapon-weight frame budget (heavier weapons span materially more frames, e.g. greatsword ~12-24f vs dagger ~6-12f).",
+      "concrete_fix": "Commit to easing the windup in, keeping contact near-linear, easing recovery out, AND give heavier weapons a longer frame budget than lighter ones (e.g. greatsword ~2x the dagger's span) instead of reusing one fixed swing for all weapons.",
+      "grading": {
+        "pass": "BOTH hold: per-phase easing is differentiated and verifiable (windup ease-in, near-linear contact, eased-out recovery — not one uniform curve) AND a per-weapon-weight frame budget makes heavier weapons span materially more frames than lighter, so swing speed reads from mass.",
+        "partial": "The description commits to deliberately shaped/eased pacing AND to mass-scaled swing speed (heavier=slower) but without the specifics — easing not differentiated per phase, or weapon scaling asserted without distinct frame budgets.",
+        "fail": "One fixed canned swing with uniform/default pacing reused across weapons (no mass scaling, no phase contrast) — the named fail case."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/animation/editor.md",
+          "https://mocaponline.com/blogs/mocap-news/sword-melee-animation-guide",
+          "https://devforum.roblox.com/t/sword-attack-animation-feedback/523593",
+          "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328",
+          "https://www.youtube.com/watch?v=KneO6y3FebM",
+          "https://www.youtube.com/watch?v=V_eAgUjjX0A"
+        ]
+      },
+      "change_reason": "Original failed to discriminate because the mean's 'one fixed canned swing' and any prose-level great both lacked the keyframe-easing and per-weapon-frame-count evidence the PASS gate demanded — both fail. Rewrite introduces a PARTIAL tier keyed on the deliberate-pacing + mass-scaled-speed COMMITMENT (mean explicitly negates with 'one fixed' swing; a depth-committed great affirms), while keeping per-phase easing AND per-weapon frame budget as the PASS ceiling."
+    },
+    {
+      "id": "directional-additive-hit-reaction",
+      "order_index": 9,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "On hit the victim plays a directional flinch chosen by incoming hit vector (front/side/back variants) that snaps the silhouette AWAY from the attack, layered ADDITIVELY/at Action3 over the victim's current state (so it reads even while the victim is moving or attacking and does NOT cancel the attacker), as a brief (~0.3-0.5s) interruptible reaction distinct from ragdoll — paired with a small position delta via root motion or impulse.",
+      "above_generic_rationale": "This is the 'directional-hit-reactions-and-knockback' killer system (reaction half). Surface check is 'something plays when hit.' The depth check is DIRECTIONALITY + ADDITIVE LAYERING: in generic systems the victim just loses HP and keeps their idle/run, so hits read as ignored. A flinch that snaps in the hit direction proves the hit connected AND from where (Newton's-third-law read); doing it additively at Action3 keeps it from looking robotic and from canceling the attacker's swing — directly depending on the priority-layering baseline.",
+      "evidence_required": "Hit-react selected from front/side/back clips by computing the hit direction relative to victim facing; played at Action3 (additive/overlay), brief and interruptible; verified not to cancel the attacker's track; small root/impulse position delta accompanies it.",
+      "concrete_fix": "Compute dir = victimHRP.CFrame:VectorToObjectSpace(attackerHRP.Position - victimHRP.Position) and pick FlinchFront/Left/Right/Back accordingly, playing it at Action3 priority.",
+      "grading": {
+        "pass": "On hit the victim plays a directional flinch selected from front/side/back clips by the incoming hit vector, snapping the silhouette away from the attack, layered additively/at Action3 over the current state (brief ~0.3-0.5s, interruptible, does NOT cancel the attacker) with a small accompanying position delta.",
+        "partial": "A flinch plays on hit but is non-directional (single clip regardless of hit angle), OR is directional but plays at a priority that cancels the attacker's swing or replaces the victim's locomotion rather than layering additively.",
+        "fail": "The victim just loses HP and keeps its idle/run with no reactive flinch, so hits read as ignored."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.jasondeheras.com/gamedesign/2021/4/23/how-do-3rd-person-melee-combat-games-communicate-game-and-hit-feel",
+          "https://devforum.roblox.com/t/flinching-on-damage/1667363",
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+          "https://mocaponline.com/blogs/mocap-news/sword-melee-animation-guide",
+          "https://www.youtube.com/watch?v=-Ts9xF9Owe0"
+        ]
+      }
+    },
+    {
+      "id": "hitstun-and-walkspeed-commitment",
+      "order_index": 10,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "A confirmed hit is committed to imposing real COMMITMENT/CONSEQUENCE on the exchange, not just a cosmetic flinch the victim can mash through. The discriminating, prose-readable commitment is that on-hit consequence is described as REACTIVE AND FORCE-COUPLED across BOTH parties: the victim is force-reacted/displaced (force-aware reaction AND knockback that moves them, breaking their current action's continuity) so the exchange reads as give-and-take rather than two players trading idle/run frames. A description whose ONLY on-hit consequence is 'one fixed flinch reaction' with no force coupling and no displacement (victim keeps full agency) FAILS. A description that commits to direction-/force-aware reactions PLUS knockback that displaces the victim on hit (coupling the reaction to a real position consequence) clears FAIL. PASS requires the true hit-stun STATE: a server-authoritative stun attribute/flag with timed cleanup that GATES the victim's own attack AND block for a defined window, plus attacker WalkSpeed self-root during the swing; a client BoolValue or a displacement-only consequence with no action-lockout is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'something happens on hit.' The systems-depth check is whether the hit imposes a STATE/POSITION consequence that constrains the victim, versus a cosmetic flinch the victim ignores. Anchoring FAIL/PARTIAL on force-coupled displacement (reaction tied to knockback) is recoverable from the great prose ('force-aware hit reactions AND knockback') and explicitly negated by the mean ('one fixed flinch'), while reserving server-authoritative action-lockout for PASS keeps the ceiling at true give-and-take combat rather than 'the victim gets pushed'.",
+      "evidence_required": "For PARTIAL: description couples the on-hit reaction to a real consequence — direction-/force-aware reaction PLUS knockback that displaces the victim, breaking their action continuity (not a cosmetic, displacement-free flinch). For PASS additionally: a server-authoritative stun attribute/flag with timed/Debris cleanup that gates the victim's OWN attack AND block for a defined window, plus attacker WalkSpeed reduced during the swing and restored on a recovery marker.",
+      "concrete_fix": "Couple the flinch to knockback that actually displaces the victim, then escalate to a server-authoritative Stunned attribute (timed clear) that gates the victim's attack and block handlers and reduce the attacker's WalkSpeed for the swing — rather than playing only a displacement-free cosmetic flinch the victim can mash through.",
+      "grading": {
+        "pass": "A confirmed hit sets a server-authoritative stun state (attribute/flag with timed/Debris cleanup) that gates the victim's OWN attack and block for a defined duration so they cannot mash through, plus attacker WalkSpeed self-root during the swing — the exchange has enforced commitment on both sides.",
+        "partial": "On-hit consequence couples a direction-/force-aware reaction to knockback that displaces the victim (a real position consequence, not a free flinch), but the action-lockout is client-side/exploitable (BoolValue) or absent — the victim is displaced but not server-gated out of attacking/blocking.",
+        "fail": "The only on-hit consequence is a cosmetic, displacement-free flinch (e.g. 'one fixed flinch regardless of direction') the victim can act through — no force coupling, no knockback, no action lockout."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+          "https://devforum.roblox.com/t/open-source-simple-combat-system-with-blocking-and-stun/2484521",
+          "https://www.youtube.com/watch?v=Ht6ZfibXpDs"
+        ]
+      },
+      "change_reason": "Original scored the great (only a cosmetic flinch + knockback, no stun STATE) at fail alongside the mean's 'one fixed flinch', because the PASS gate demanded a server-set attribute gating handlers — invisible in prose. Both fail = zero discrimination. Rewrite keys the FAIL/PARTIAL boundary on the force-coupled-consequence commitment: the great prose's 'force-aware hit reactions AND knockback' couples the reaction to a displacement consequence (a real on-hit cost), which the mean's bare 'one fixed flinch regardless of direction' (no force, no knockback, no displacement) explicitly negates. The server-authoritative action-lockout stun state is preserved as the PASS ceiling so a true commitment system still out-scores mere displacement.",
+      "evidence_required_meta": "Mean prose: 'one fixed flinch reaction regardless of hit direction' with no knockback (fail). Great prose: 'direction- and force-aware hit reactions and knockback' couples reaction to displacement (partial), but names no stun state (so not pass)."
+    },
+    {
+      "id": "marker-synced-impact-fx-stack",
+      "order_index": 11,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "At the single contact-frame marker, a multi-channel impact stack fires together and client-side-immediately: a one-shot directional, camera-facing particle/debris/slash-decal burst at the exact contact point (emitters Enabled=false, cloned to victim HRP, :Emit(count) per child, Debris-cleaned), a SUBTLE strength-scaled directional camera shake/tilt with falloff (via a shake module, not constant max-intensity), restrained on-hit UI accents (brief tweened screen flash, target highlight/outline flash, reactive health bar), and a contact accent on the rig (1-2 frame limb tremor and/or squash-on-victim/stretch-on-attacker) — all scaled by attack power.",
+      "above_generic_rationale": "This is the 'marker-synced-active-frames-and-impact-fx' killer system (the FX half). Surface check is 'there are particles/shake.' The depth check is SYNCHRONIZATION TO THE CONTACT MARKER + SCALING + RESTRAINT: default systems have no impact VFX (or a reused smoke puff), a dead-still camera, and only a ticking damage number. Firing all channels off the same HitFrame marker as the hitbox/hitstop, scaling each by power, running cosmetics client-side so the felt impact never waits on the server, and the one-shot Enabled=false :Emit idiom (vs a wrongly-streaming emitter) are the concrete tells. Critics explicitly warn constant max shake / heavy full-screen effects get 'nauseating very quick,' so the above-generic version is subtle and scaled, not just 'add screenshake.'",
+      "evidence_required": "Particle burst, camera shake, screen flash/target highlight, and limb-tremor/squash all triggered from the SAME HitFrame marker as the hitbox; magnitudes parameterized by attack weight; emitters use Enabled=false + per-child :Emit(EmitCount attribute); camera shake uses a falloff module and stays subtle/toggleable; cosmetic channels run on the client immediately (FireAllClients), not gated on server round-trip; transients cleaned via Debris.",
+      "concrete_fix": "In the HitFrame marker handler, FireAllClients a single 'impact' event carrying weight, and have clients run shake(weight), emitBurst(contactCFrame, weight), flashTarget(victim), and a 2-frame limb AdjustSpeed tremor — all keyed to that one frame.",
+      "grading": {
+        "pass": "A multi-channel impact stack (one-shot contact-point particle/decal burst via Enabled=false + :Emit, subtle strength-scaled camera shake with falloff, restrained UI accents, and a rig contact accent) all fires from the SAME HitFrame marker as the hitbox, scaled by attack weight, run client-side immediately (not gated on server round-trip), and Debris-cleaned.",
+        "partial": "Some impact channels exist but are not all synced to the contact marker (e.g. fire on swing-start), are not weight-scaled, use constant max-intensity shake/streaming emitters instead of one-shot :Emit, or wait on a server round-trip.",
+        "fail": "No impact VFX (or a reused smoke puff), a dead-still camera, and only a ticking damage number on hit."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.jasondeheras.com/gamedesign/2021/4/23/how-do-3rd-person-melee-combat-games-communicate-game-and-hit-feel",
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+          "https://devforum.roblox.com/t/feedback-on-my-first-ever-melee-combat-game/2487755",
+          "https://www.wayline.io/blog/level-up-indie-game-melee-combat",
+          "https://devforum.roblox.com/t/camera-shake-module-%E2%80%93-explosion-impact-more/3807292",
+          "https://www.youtube.com/watch?v=vPHa4poXS7I",
+          "https://www.youtube.com/watch?v=Ht6ZfibXpDs",
+          "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328"
+        ]
+      }
+    },
+    {
+      "id": "connected-combo-chain-flowing-poses",
+      "order_index": 12,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "The M1 combo reads as ONE continuous motion, not N separate clips played back-to-back: every clip's final pose is re-keyed to match the next clip's opening pose (no snap/teleport between hits), the attacks are genuinely distinct in silhouette and momentum (e.g. jab -> hook -> uppercut -> launcher) and ESCALATE into a finisher so the chain has a deliberate wind-up-to-payoff arc rather than a uniform repeated swing, and the chain advances/cancels off an animation MARKER (e.g. a 'CancelOpen'/'NextWindow' event keyed in the clip), NOT off clip Length minus a magic constant. The criterion is met only when the cancel window is marker-driven (so it survives the first-play Length==0 case and is authored per-clip rather than guessed) and the inter-clip transitions are visibly seamless on capture. Index/string-built clip lookup is an acceptable scalability implementation but is NOT itself evidence of above-generic quality — pose continuity, the escalation arc, and marker-gated cancels are.",
+      "above_generic_rationale": "Surface check is 'clicking multiple times plays multiple animations.' The depth check is POSE CONTINUITY + VARIATION + ARC: a single repeated swing is the hallmark generic look; recovery that's too brusque looks unfinished while too-long recovery feels sluggish. End-pose-into-next-start-pose makes the whole combo read as one fluid sequence, varied attacks plus a distinct finisher give it a build-to-payoff arc, and index-named lookup is the scalable structure. (Watch the real gotcha: first play of an animation reports Length 0, breaking length-based gating on hit one — markers are the robust fix.)",
+      "evidence_required": "Combo clips authored so clip N's final pose matches clip N+1's first pose; attacks visibly distinct per index with an escalating finisher; lookup via FindFirstChild('M1 ('..i..')') not branching; next-input window opens before clip end (or off a CancelOpen marker); recovery clips short and smooth.",
+      "concrete_fix": "Re-key each combo clip's first frame to match the prior clip's last frame, replace the if comboIndex==1.. chain with animsFolder:FindFirstChild('M1 ('..comboIndex..')'), and design the 4th hit as a distinct launcher.",
+      "grading": {
+        "pass": "The combo reads as one continuous motion: each clip's final pose is re-keyed to the next clip's opening pose (no snap), attacks are visibly distinct in silhouette/momentum and escalate into a distinct finisher, and the chain advances/cancels off a CancelOpen-type marker (surviving the first-play Length==0 case), with seamless inter-clip transitions on capture.",
+        "partial": "The combo has multiple distinct clips but they snap/teleport between hits (no pose continuity), OR transitions are seamless but the chain is a uniform repeated swing with no escalation/finisher, OR the cancel window is gated off clip Length minus a constant rather than a marker.",
+        "fail": "Clicking plays N separate clips back-to-back with visible snaps between them and/or a single repeated swing — the hallmark generic look."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328",
+          "https://devforum.roblox.com/t/revamped-animations-for-combatpractice/2249371",
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+          "https://devforum.roblox.com/t/melee-combo-animations/1758994",
+          "https://www.youtube.com/watch?v=8sdPq9mDLfE",
+          "https://devforum.roblox.com/t/sword-attack-animation-feedback/523593",
+          "https://www.wayline.io/blog/level-up-indie-game-melee-combat"
+        ]
+      }
+    },
+    {
+      "id": "combo-state-machine-with-input-buffering",
+      "order_index": 13,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Combos are a state machine with INPUT BUFFERING and a marker-defined cancel window: input pressed during an active swing is stored and auto-fired when the animation reaches the 'CancelOpen' marker (so players chain without frame-perfect timing); a debounce prevents an in-progress M1 from being canceled; and the combo index has a DUAL reset — it resets to 0 after the finisher (with an end-of-combo cooldown) AND on an idle timeout, implemented by capturing an m1-count in a task.spawn watcher and resetting only if the count hasn't changed.",
+      "above_generic_rationale": "This is the 'cancelable-combo-and-buffer-windows' killer system. Surface check is 'a combo index advances per click.' The depth check is BUFFERING + marker-gated CANCEL WINDOW + DUAL RESET: without buffering, players must press at the exact end frame, which feels unresponsive and is the #1 'cheap' tell. Buffering an input and releasing it on the CancelOpen marker ties responsiveness to the animation timeline rather than arbitrary timers, and the spawned-watcher idle reset (compare captured counter) is the nuance that makes 'stop for a second and the combo restarts from M1' work.",
+      "evidence_required": "A buffered next-input variable consumed at the CancelOpen marker; debounce guarding the active swing; reset path A on finisher with cooldown; reset path B via task.spawn capturing an m1-count and resetting only if unchanged after the window; combo index drives the index-named clip lookup.",
+      "concrete_fix": "Store bufferedInput=true on click during a swing, and in track:GetMarkerReachedSignal('CancelOpen') consume it to fire the next attack; add a task.spawn that snapshots m1Count, waits the reset window, and zeroes the index only if m1Count is unchanged.",
+      "grading": {
+        "pass": "Combos are a state machine where input during an active swing is buffered and auto-fired at the CancelOpen marker (no frame-perfect timing), a debounce guards the in-progress swing, and the index has a DUAL reset — after the finisher with a cooldown AND on idle timeout via a task.spawn watcher that resets only if the captured m1-count is unchanged.",
+        "partial": "A combo index advances per click and uses a marker for cancel, but input buffering is missing (requires precise end-frame presses) OR only one reset path exists (finisher-only or idle-only, not both).",
+        "fail": "A combo index advances per click with no input buffering and arbitrary-timer or no cancel window, so chaining requires frame-perfect presses and feels unresponsive."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://devforum.roblox.com/t/how-would-i-go-about-creating-animation-combos-for-melee-weapons/207267",
+          "https://www.youtube.com/watch?v=8sdPq9mDLfE"
+        ]
+      }
+    },
+    {
+      "id": "attack-layered-over-locomotion",
+      "order_index": 14,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "An upper-body attack is authored with NO keyframes on the legs (partial-rig) and blended over the lower-body run/walk track via AdjustWeight, so the character can swing WHILE moving; idle<->attack<->idle transitions crossfade via the fadeTime parameter on Play()/Stop() rather than popping.",
+      "above_generic_rationale": "This is the 'attack-layered-over-locomotion' killer system. Surface check is 'character can attack and also can walk.' The depth check is the PARTIAL-RIG + WEIGHT-BLEND mechanism: generic combat stops the character to play a full-body swing, breaking flow, and snaps between idle/attack/idle. Empty-legs keyframing plus weight blending produces move-and-attack (the action-game standard), and fadeTime crossfades remove the snap that screams unpolished. Depends on the priority-layering baseline to keep the upper-body attack overriding only the relevant joints.",
+      "evidence_required": "Attack clips have no leg keyframes (legs driven by locomotion); attack played with AdjustWeight blending over the run track; Play/Stop called with a non-zero fadeTime; verified the character keeps moving during the swing.",
+      "concrete_fix": "Delete the leg keyframes from the attack animation so it only affects arms/torso, and play it with attackTrack:Play(0.1) over the running locomotion track instead of stopping movement.",
+      "grading": {
+        "pass": "The upper-body attack is authored with no leg keyframes and blended over the locomotion track via AdjustWeight so the character swings while moving; idle<->attack transitions use a non-zero fadeTime crossfade; verified the character keeps moving during the swing.",
+        "partial": "The attack can play during movement but is a full-body clip that visibly disrupts the legs/locomotion, OR transitions pop because Play/Stop use zero fadeTime.",
+        "fail": "Attacking stops the character to play a full-body swing and snaps between idle/attack/idle."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/reference/engine/classes/AnimationTrack#WeightTarget",
+          "https://kitsblox.com/blog/fix-choppy-roblox-animations",
+          "https://create.roblox.com/docs/reference/engine/classes/AnimationTrack"
+        ]
+      }
+    },
+    {
+      "id": "client-predict-server-validate-hit-timing",
+      "order_index": 15,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Hit registration is committed to the RESPONSIVE-LOCAL / AUTHORITATIVE-DRIVEN model where the impact is felt the instant the swing connects on the attacker's frame, NOT on button-press and NOT after a server round-trip. The discriminating, prose-readable commitment is that the build ties the hit/impact to the CONTACT FRAME of the animation (marker-synced active frames driving the hitbox so registration happens exactly when the blade lands) rather than on Activated/swing-start or a generic timer — the prerequisite of any predict-locally model where feel is bound to the visual. A description that registers the hit on click/swing-start, on a wait()/Length timer, or over a whole-swing window (impact decoupled from the contact frame) FAILS. A description that ties hit registration to the marker-synced contact frame clears FAIL. PASS requires the explicit two-sided authority split: attacker's client runs the hitbox on input and requests via RemoteEvent, server independently RE-RUNS the hitbox and validates range/cooldown/state before TakeDamage, cosmetics FireAllClients, no client-trusted damage.",
+      "above_generic_rationale": "Surface check is 'the hit deals damage.' The systems-depth check is WHEN registration happens and WHO authorizes it: a hit that registers on button-press/whole-swing feels disconnected and is the generic tell, and damage trusted from the client is exploitable. Anchoring FAIL/PARTIAL on contact-frame-bound registration is recoverable from the great prose ('marker-synced active frames driving hitboxes') and explicitly negated by the mean ('active for the whole swing... on click'); the explicit predict+validate authority split remains the PASS ceiling so true server-authoritative netcode still out-scores mere correct timing.",
+      "evidence_required": "For PARTIAL: hit registration is tied to the marker-synced contact frame of the swing (impact fires exactly when the blade lands), not on click/swing-start, a wait()/Length timer, or a whole-swing window. For PASS additionally: the explicit authority split — attacker client runs the hitbox on input and requests via RemoteEvent, server re-runs the hitbox and validates range/cooldown/state before TakeDamage, cosmetics FireAllClients, no client-trusted damage.",
+      "concrete_fix": "Bind hit registration to the HitFrame contact marker so impact fires when the swing connects (not on click), then add a RemoteEvent request whose server handler re-runs the hitbox and validates range/cooldown/state before applying damage, with cosmetics via FireAllClients.",
+      "grading": {
+        "pass": "Hit registration runs on the attacker's client at the contact frame (responsive), a RemoteEvent requests the hit, and the server independently re-runs the hitbox and validates range/cooldown/state before applying damage/knockback; cosmetics FireAllClients and no damage is trusted from the client.",
+        "partial": "Hit registration is bound to the marker-synced contact frame (responsive, impact tied to the swing connecting) but the two-sided authority split is incomplete or unstated — no independent server re-check, or damage decided client-side.",
+        "fail": "Impact registers on click/swing-start, on a wait()/Length timer, or over a whole-swing window (decoupled from the contact frame), or damage is applied/trusted client-side with no server re-check."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/creating-a-battlegrounds-like-hitbox/3623640",
+          "https://devforum.roblox.com/t/battlegrounds-game-combat-system/3623649",
+          "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+          "https://devforum.roblox.com/t/best-method-for-a-melee-combat-system/2395078",
+          "https://www.youtube.com/watch?v=vPHa4poXS7I",
+          "https://www.youtube.com/watch?v=gxYSxENGp-E"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination because BOTH artifacts are silent on the client/server split, so the structural PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the prerequisite the great prose DOES commit ('marker-synced active frames driving hitboxes' = impact bound to the contact frame, the spine of any predict-locally model) and the mean explicitly negates ('hitbox active for the whole swing... plays start-to-finish on click', impact decoupled from contact). This separates the great's contact-frame-bound registration from the mean's swing-start/whole-swing registration, while preserving the full predict+server-validate split as the PASS ceiling."
+    },
+    {
+      "id": "coherent-knockback-modern-mover",
+      "order_index": 16,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Knockback moves BOTH parties coherently — the victim is pushed back along the hit vector while the attacker advances slightly to stay in combo range — applied as a bounded SERVER-side impulse via a modern force mover (LinearVelocity/VectorForce/AssemblyLinearVelocity with a tight time window, constraint removed after the duration), NOT client-applied and NOT deprecated BodyVelocity; magnitude scales by combo position (heavy finisher >> earlier hits) and resolves into a clean land/skid/recovery.",
+      "above_generic_rationale": "This is the knockback half of 'directional-hit-reactions-and-knockback.' Surface check is 'getting hit pushes you.' The depth check is COHERENT TWO-PARTY MOTION + MODERN BOUNDED MOVER + SCALING: naive knockback uses deprecated BodyVelocity/ApplyImpulse that behaves inconsistently with mass, shoves characters into the floor, and visibly desyncs from the hit; client-applied knockback is exploitable. Pushing the victim while pulling the attacker in keeps combos connected, a bounded server impulse with the right mover avoids the glitchy-launch/jitter look, and per-hit scaling with a heavy finisher gives the combo an escalating, punctuated ending instead of a flat shove. Direction from attacker HRP.CFrame.LookVector; remove the constraint after the impulse.",
+      "evidence_required": "Knockback applied server-side via LinearVelocity/VectorForce (no BodyVelocity, no client application); constraint added then removed after a tight duration (e.g. Debris); victim pushed along hit vector while attacker gets a small forward velocity; magnitude scaled by combo index with a stronger finisher; lands into a skid/recovery rather than a frozen shove.",
+      "concrete_fix": "Replace BodyVelocity with a server-created LinearVelocity (MaxForce high, VectorVelocity = hitDir * magnitude), Debris:AddItem it after ~0.15s, and pass an isFinisher flag that uses ~40 magnitude vs ~10 for earlier hits.",
+      "grading": {
+        "pass": "Knockback is a bounded server-side impulse via a modern mover (LinearVelocity/VectorForce/AssemblyLinearVelocity, constraint removed after a tight window) moving BOTH parties coherently (victim along the hit vector, attacker advancing to stay in range), with magnitude scaled by combo position (heavy finisher >> earlier hits) resolving into a clean land/skid/recovery.",
+        "partial": "Knockback uses a modern mover server-side but only pushes the victim (no coherent attacker advance) or is not scaled by combo position; OR it is coherent and scaled but applied via deprecated BodyVelocity or on the client.",
+        "fail": "Knockback uses deprecated BodyVelocity/ApplyImpulse or is client-applied, shoving characters inconsistently/into the floor and desyncing from the hit."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-to-make-proper-knockback-for-a-combat-system/3936670",
+          "https://devforum.roblox.com/t/best-way-to-create-a-knockback-system/3828925",
+          "https://devforum.roblox.com/t/adding-knockback-to-my-m1-combat-system/3377487",
+          "https://devforum.roblox.com/t/vectorforce-or-linearvelocity-for-knockback/1770132",
+          "https://www.youtube.com/watch?v=vPHa4poXS7I",
+          "https://www.youtube.com/watch?v=Ht6ZfibXpDs"
+        ]
+      }
+    },
+    {
+      "id": "head-gaze-targeting",
+      "order_index": 17,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Combat motion is committed to ADAPTING AT RUNTIME to the live opponent's position, not playing direction-blind canned frames. The discriminating, prose-readable commitment is that the fighter's reactions/orientation are described as chosen by the actual hit/opponent VECTOR at runtime (e.g. direction-aware reactions that read where the attack came from), so the character visibly orients to the live fight rather than playing one fixed angle-blind clip. A description that is direction-blind — 'one fixed flinch reaction regardless of hit direction', a canned clip whose head/orientation merely rides the body — FAILS. A description that commits to runtime, opponent-direction-aware orientation clears FAIL. PASS requires the dedicated gaze system: a LookAt-type IKControl on the head/aim chain with state-driven Weight (faded to full when a target is acquired/in combat, eased to zero on contact/recovery and when no target) so a single clip stays locked on the opponent at any relative angle, gaze held through wind-up and released after the strike.",
+      "above_generic_rationale": "Surface check is 'the head moves with the animation.' The systems-depth check is whether motion is computed from the live opponent's position at runtime versus baked at one authored angle — the generic tell is angle-blind canned frames that only read from the authored direction. Anchoring FAIL/PARTIAL on runtime opponent-direction awareness is recoverable from the great prose ('direction-aware hit reactions') and explicitly negated by the mean ('regardless of hit direction'); the state-driven LookAt IKControl remains the PASS ceiling so true head/aim target-lock still out-scores generic directional reactions.",
+      "evidence_required": "For PARTIAL: orientation/reaction is chosen at runtime by the live hit/opponent direction (the character reads where the attack/opponent is), not a single angle-blind canned clip. For PASS additionally: a LookAt-type IKControl on the head/aim chain with state-driven Weight (full in combat, eased to zero on contact/no-target) holding gaze on the opponent through wind-up and releasing after the strike, so one clip stays locked at any relative angle.",
+      "concrete_fix": "Make the character read the live opponent direction (already done for direction-aware reactions) and extend it to gaze: add a LookAt IKControl on the head/aim chain targeting the locked-on opponent, tweening Weight to full in combat and easing it out on contact and when no target — so a single clip stays focused at any angle.",
+      "grading": {
+        "pass": "Gaze is runtime-locked to the live target via a LookAt-type IKControl on the head/aim chain with state-driven Weight (full when a target is in combat, eased toward zero on contact/recovery and when no target), held through wind-up and released after the strike — one clip stays locked at any relative angle.",
+        "partial": "Combat motion adapts to the live opponent direction at runtime (e.g. direction-aware reactions reading the hit vector) but there is no dedicated head/aim gaze lock — orientation is reaction-level only, or any head-focus is hard-keyed at one authored angle.",
+        "fail": "Motion is direction-blind — a single canned clip / 'one fixed flinch regardless of direction' whose head merely rides the torso, reading correctly only at the authored angle."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=KneO6y3FebM",
+          "https://create.roblox.com/docs/reference/engine/classes/IKControl"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: both artifacts are silent on gaze, so the IKControl-LookAt PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest runtime-opponent-awareness commitment the great prose actually makes ('direction- and force-aware hit reactions' = orientation chosen by the live hit vector) versus the mean's explicit direction-blindness ('one fixed flinch reaction regardless of hit direction'). The mean's angle-blind canned clip fails; the great's direction-aware runtime orientation clears FAIL. The dedicated LookAt-IKControl gaze system is preserved as the PASS ceiling so a build with no actual head-lock still cannot reach full credit."
+    },
+    {
+      "id": "contextual-special-attack-geometry",
+      "order_index": 18,
+      "tier": "good",
+      "system_module": "combat",
+      "statement": "Attack timing and impact are committed to being LOCATED IN THE WORLD by the actual contact event, not floated as a generic clip detached from where the strike lands. The discriminating, prose-readable commitment is that the impact moment is spatially/temporally bound to the real contact — marker-synced active frames place the hitbox and impact SFX/VFX at the contact instant so feedback emanates from where the strike actually connects, rather than a whole-swing clip with impact decoupled from any contact point. A description that is a single generic click-swing whose hitbox is 'active for the whole swing' with no contact-located impact FAILS. A description that binds the hitbox and impact FX to the marker-synced contact frame (impact located at the strike) clears FAIL. PASS requires a true contextual SPECIAL/grounded attack interacting with world GEOMETRY: a ground-slam whose pose reaches the real impact point AND whose dust/radial shockwave/shake emanate from that raycast ground point (origin-correct), not a reused forward swing with character-centered VFX; committing to pose-at-impact OR origin-correct VFX but not both is the upper PARTIAL.",
+      "above_generic_rationale": "Surface check is 'an attack plays and damages.' The systems-depth check is whether the impact is anchored to where the strike actually lands versus a generic clip whose feedback floats independent of contact — the generic tell is whole-swing damage with character-centered, contact-blind FX. Anchoring FAIL/PARTIAL on contact-located impact is recoverable from the great prose (marker-synced active frames driving hitboxes/FX) and negated by the mean (whole-swing, no markers); the special-attack-meets-world-geometry build remains the PASS ceiling so generic melee with merely correct contact timing still can't reach full credit.",
+      "evidence_required": "For PARTIAL: the hitbox and impact SFX/VFX are bound to the marker-synced contact frame so feedback is located at the actual strike (not a whole-swing window with contact-blind, character-centered FX). For PASS additionally: a special/grounded attack interacting with world geometry — pose reaching the true impact point AND dust/shockwave/shake emanating from that raycast ground point (origin-correct), not a reused forward swing; one of the two alone is the upper PARTIAL.",
+      "concrete_fix": "Bind impact FX to the contact marker so they fire from the strike point (not the whole swing), then author a dedicated ground-slam whose hand reaches the floor and emit the dust/radial shockwave at the raycast ground-hit position rather than reusing the forward-punch clip with HRP-centered VFX.",
+      "grading": {
+        "pass": "A special/grounded attack interacts with real world geometry: its pose reaches the true impact point AND the dust/radial shockwave/shake emanate from that raycast ground hit point, not a reused forward-punch clip with character-centered VFX.",
+        "partial": "Impact is located at the marker-synced contact event (hitbox + FX fire from where the strike lands, not a whole-swing window) — OR a geometry-aware special exists with only one of pose-at-impact / origin-correct VFX — but no full pose-and-VFX-at-the-real-impact-point special attack.",
+        "fail": "A single generic forward click-swing whose hitbox is active for the whole swing with no contact-located impact and no special/grounded attack interacting with world geometry."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-on-my-first-ever-melee-combat-game/2487755"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: neither artifact described a special attack, so the geometry-aware PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest contact-location commitment the great prose makes ('marker-synced active frames driving hitboxes and impact SFX/VFX' = impact located at the contact event) versus the mean's explicit negation ('active for the whole swing (no marker-synced active frames)', impact unlocated). The mean's whole-swing generic clip fails; the great's contact-located impact clears FAIL. A genuine special-attack-meets-geometry build is preserved as the PASS ceiling."
+    },
+    {
+      "id": "synchronized-strength-scaled-channel-bus",
+      "order_index": 19,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "All impact feedback channels are committed to firing off ONE contact event and SCALING TOGETHER by a single attack-strength value — an impact bus, not independently-timed effects. The discriminating, prose-readable commitment is that the build describes hitstop, camera shake, VFX size, sound layer, knockback magnitude, and hit-react severity as all PROPORTIONAL to one 'how hard is this hit' scalar fired on the same contact frame, so a light jab and a heavy finisher feel categorically different across every channel. A description with no impact event and no per-strength scaling (effects absent or fixed — e.g. a single flinch, whole-swing hitbox, no hitstop) FAILS. A description that commits to a single shared strength value driving multiple feedback channels together clears FAIL. PASS requires the unified bus: one impact event/function carries the weight scalar and hitstop frames + shake magnitude + VFX scale + sound choice + knockback magnitude + hit-react severity all read from it on the same contact marker, verified that changing weight scales all channels.",
+      "above_generic_rationale": "The mean artifact has no impact event and no strength value at all (single flinch, whole-swing hitbox, no hitstop). The great artifact mentions 'force-aware' reactions/knockback but the original PASS gate (one shared scalar driving ALL channels off one marker) is unobservable in prose, so both scored fail. The fix makes the FAIL/PARTIAL boundary the commitment to a SHARED strength scalar driving MULTIPLE channels together — which the great's 'force-aware' framing gestures at and the mean (fixed/absent effects) cannot — reserving the full unified-bus-across-all-channels for PASS.",
+      "evidence_required": "For PARTIAL: description commits to a single attack-strength value that scales multiple feedback channels together off the contact frame (force-aware feedback, not fixed/independent effects). For PASS additionally: one impact event/function carries the weight scalar from which hitstop frames, shake magnitude, VFX scale, sound layer, knockback magnitude, and hit-react severity ALL read on the same contact marker, verified that changing weight scales every channel.",
+      "concrete_fix": "Route all on-hit feedback through one applyImpact(weight) dispatched from the contact marker, where hitstop, shake, VFX scale, sound, knockback, and hit-react severity are all functions of that one weight value.",
+      "grading": {
+        "pass": "A single impact event off the same contact marker carries one strength scalar, and hitstop length, shake magnitude, VFX scale, sound layer, knockback magnitude, and hit-react severity all read from it — verified that changing the weight scales every channel so light and heavy hits feel categorically different.",
+        "partial": "The description commits to a shared attack-strength value scaling multiple feedback channels together (force-aware), but they are not unified through one event/marker across ALL channels — some are independently timed or fixed.",
+        "fail": "No impact event and no strength scaling — feedback channels are absent or fixed (e.g. single flinch, whole-swing hitbox, no hitstop), so hits don't scale together."
+      },
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.jasondeheras.com/gamedesign/2021/4/23/how-do-3rd-person-melee-combat-games-communicate-game-and-hit-feel",
+          "https://www.wayline.io/blog/level-up-indie-game-melee-combat",
+          "https://mocaponline.com/blogs/mocap-news/sword-melee-animation-guide"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: the mean has no impact event and the great's 'force-aware' claim couldn't be credited because the PASS gate demanded a fully-unified bus across all six channels off one marker, invisible in prose — both fail. Rewrite inserts a PARTIAL tier for the shared-strength-scalar-drives-multiple-channels commitment (great affirms via 'force-aware'; mean's fixed/absent effects negate), keeping the all-channels unified bus as PASS."
+    },
+    {
+      "id": "graded-poise-gated-hit-reactions",
+      "order_index": 20,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Hit reactions are committed to being GRADED/SCALED by the hit, not a single binary flinch. The discriminating, prose-readable commitment is that the reaction is described as varying with the incoming hit's DIRECTION and FORCE (a stronger/heavier or differently-angled hit produces a categorically different reaction), so a light glancing hit and a heavy committed hit do not look identical. A description whose reaction is 'one fixed flinch reaction regardless of hit direction' (binary, invariant) FAILS. A description that commits to reactions graded by hit direction AND force/strength clears FAIL. PASS requires the full poise system: a punch/stagger/launch taxonomy branching by hit TYPE and direction, gated by a POISE/super-armor resource that decides whether a stagger interrupts (high-poise characters shrug off staggers so openings appear only on poise break), with light/medium hits blending a stumble with locomotion and only heavy/launch fully locking; force-scaled reaction strength without a poise resource or interruption taxonomy is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'a reaction plays on hit.' The systems-depth check is whether the reaction is a function of the hit (direction + force grading) versus one invariant flinch — the generic tell is the single fixed flinch. Anchoring FAIL/PARTIAL on the graded-by-direction-and-force commitment is recoverable from the great prose and explicitly negated by the mean ('regardless of hit direction'); the poise-resource-gated punch/stagger/launch taxonomy remains the PASS ceiling so a build with mere force scaling and no interruption gating cannot reach full credit.",
+      "evidence_required": "For PARTIAL: reactions are graded by both hit direction AND force/strength (heavier/differently-angled hits produce categorically different reactions, not one fixed flinch). For PASS additionally: a punch/stagger/launch taxonomy branching by hit type AND direction, gated by a Poise/super-armor stat (high-poise shrugs off staggers; openings appear only on poise break), with light/medium hits blending a stumble with locomotion (not freezing) and only heavy/launch fully locking.",
+      "concrete_fix": "Branch reactions on hit type and add a Poise attribute: punch = non-interrupting nudge blended with locomotion, stagger = directional flinch unless poise is high, launch = full lock — so the already direction-/force-aware reaction becomes a poise-gated taxonomy where openings appear only when poise breaks.",
+      "grading": {
+        "pass": "Reactions branch on a punch/stagger/launch taxonomy AND direction, gated by a Poise/super-armor stat: punch nudges without interrupting (stumble blends with locomotion), staggers interrupt unless poise is high, launches fully lock, and high-poise characters shrug off staggers so openings appear only on poise break.",
+        "partial": "Reactions are graded by hit direction AND force/strength (categorically different per hit, not a single flinch) but lack the poise-resource gating and the punch/stagger/launch interruption taxonomy — strength scales the reaction but nothing decides whether it interrupts.",
+        "fail": "A single binary flinch plays on every hit (e.g. 'one fixed flinch reaction regardless of hit direction'), invariant to hit direction and force."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-Ts9xF9Owe0"
+        ]
+      },
+      "change_reason": "Original scored the great's 'direction- and force-aware hit reactions' at fail alongside the mean's 'one fixed flinch', because the PASS gate demanded an explicit poise stat and punch/stagger/launch tiers absent from prose — zero discrimination. Rewrite keys the FAIL/PARTIAL boundary on the graded-by-direction-and-force COMMITMENT the great prose makes and the mean explicitly negates ('one fixed flinch reaction regardless of hit direction'). The full poise-gated taxonomy is preserved as the PASS ceiling so force-scaled-but-ungated reactions land at PARTIAL, not PASS."
+    },
+    {
+      "id": "block-parry-defensive-layer",
+      "order_index": 21,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Combat is committed to a defensive/counter-rhythm dimension that ties timing to the INCOMING strike, not a purely offensive loop. The discriminating, prose-readable commitment is that the build's timing windows are described as marker-synced and CANCELABLE/INTERRUPTIBLE — cancelable combo strings with input-buffered timing windows — establishing the frame-accurate window machinery (open/close on animation markers) that a parry/block layer is built from, applied to the give-and-take of an exchange rather than a single uninterruptible canned swing. A description that is a single canned swing with 'no combo or cancel windows' (no interruptible timing machinery at all) FAILS. A description that commits to marker-synced cancelable/buffered timing windows in the exchange clears FAIL. PASS requires the actual defensive layer: a block state PLUS a narrow parry window timed to just before the incoming contact frame, a distinct consistent parry-success cue, and a successful parry producing a meaningful outcome (stun/opening on the attacker) rather than only negating damage.",
+      "above_generic_rationale": "Surface check is 'attacks happen.' The systems-depth check is whether the exchange has interruptible, marker-synced timing windows (the substrate any defensive/parry layer requires) versus a single uninterruptible canned swing — the generic tell. Anchoring FAIL/PARTIAL on the cancelable-timing-window commitment is recoverable from the great prose and explicitly negated by the mean ('no combo or cancel windows'); the block + timed-parry-with-counter-opening layer remains the PASS ceiling so a build with offensive windows but no defense cannot reach full credit.",
+      "evidence_required": "For PARTIAL: the exchange has marker-synced, cancelable/input-buffered timing windows (interruptible windows that open/close on animation markers), not a single uninterruptible canned swing. For PASS additionally: a block state PLUS a narrow parry window timed to just before the incoming contact frame, a distinct consistent parry-success cue, and a successful parry producing a stun/opening on the attacker (not only damage negation).",
+      "concrete_fix": "Reuse the existing marker-synced cancelable-window machinery to add a defensive layer: a block state and a parry window opening ~0.15s before the incoming attack's contact frame; on a timed parry play a distinct success cue and apply a stun/opening to the attacker instead of damage to the victim.",
+      "grading": {
+        "pass": "Defense is a real layer: a block state plus a narrow parry window timed to just before the incoming contact frame, a distinct consistent parry-success cue, and a successful parry produces a meaningful outcome (stun/opening on the attacker) rather than only negating damage.",
+        "partial": "The exchange has marker-synced cancelable/input-buffered timing windows (interruptible window machinery, the substrate of a parry) but no actual defensive layer — no block state and no timed parry window reacting to the incoming strike.",
+        "fail": "Combat is a single uninterruptible canned swing with 'no combo or cancel windows' — no interruptible timing machinery and no block/parry at all."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+          "https://devforum.roblox.com/t/open-source-simple-combat-system-with-blocking-and-stun/2484521"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: neither artifact mentions defense, so the parry-window PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest timing-window commitment the great prose makes ('cancelable combo strings with input buffering and timing windows' = the frame-accurate, interruptible window machinery a parry is built on) versus the mean's explicit negation ('no combo or cancel windows', a single uninterruptible swing). The mean's no-window canned swing fails; the great's cancelable timing-window machinery clears FAIL. The actual block+timed-parry counter-layer is preserved as the PASS ceiling so an offense-only build with windows still can't reach full credit."
+    },
+    {
+      "id": "ragdoll-knockback-combo-extension-with-counterplay",
+      "order_index": 22,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Knockback is committed to being a TUNED COMBO/SPACING TOOL coupled to the combo flow, not a uniform incidental shove. The discriminating, prose-readable commitment is that knockback is described as direction-/force-aware AND woven into cancelable combo strings (so the displacement is part of the chain's spacing rather than a flat push), establishing knockback-as-a-combo-instrument. A description with no knockback, or a uniform shove with no combo-spacing intent, FAILS. A description that commits to direction-/force-aware knockback integrated with the combo strings (spacing-aware displacement) clears FAIL. PASS requires the full ragdoll-and-counterplay loop: per-move knockback magnitude/direction (sometimes randomized) tuned to EXTEND OR CLOSE combo range, strings ending in a ragdoll with a fixed un-actable window (~2s), and a directional ragdoll-cancel dash for victim counterplay, applied via modern movers (LinearVelocity/AssemblyLinearVelocity); knockback-as-combo-spacing with only a plain ragdoll/stun and no directional cancel is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'getting hit pushes you.' The systems-depth check is whether knockback is a designed combo/spacing instrument coupled to the chain (with ragdoll and counterplay) versus an incidental uniform shove or none at all. Anchoring FAIL/PARTIAL on the force-aware-knockback-woven-into-combos commitment is recoverable from the great prose and negated by the mean (no knockback, no combos); the per-move-tuned ragdoll-with-directional-cancel loop remains the PASS ceiling so plain combo-knockback without counterplay lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: knockback is direction-/force-aware AND integrated into the combo strings as spacing-aware displacement (part of the chain, not a flat incidental push). For PASS additionally: per-move knockback magnitude/direction (sometimes randomized) tuned to extend/close combo range, strings ending in a ragdoll with a fixed un-actable window (~2s), and a directional ragdoll-cancel dash for counterplay, via modern movers.",
+      "concrete_fix": "Tag each combo move with a knockback vector tuned for spacing (extend or close range), ragdoll the victim for ~2s on combo-enders, and add a directional ragdoll-cancel dash that restores control — using LinearVelocity, building on the existing force-aware-knockback-in-combos foundation rather than a uniform shove.",
+      "grading": {
+        "pass": "Per-move knockback magnitude/direction is tuned (sometimes randomized) to extend or close combo range, strings end in a ragdoll with a fixed un-actable window (~2s), and the victim has counterplay via a directional ragdoll-cancel dash — a momentum/positioning loop using modern movers.",
+        "partial": "Knockback is direction-/force-aware and woven into the combo strings as spacing-aware displacement (a combo instrument), but the loop is incomplete — no ragdoll, or a plain ragdoll/stun with no directional cancel, or no per-move spacing tuning.",
+        "fail": "No knockback (or a uniform incidental shove) with no combo-spacing intent and no ragdoll-with-counterplay."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://the-strongest-battlegrounds-rblx.fandom.com/wiki/Techniques"
+        ]
+      },
+      "change_reason": "Original scored the great's 'force-aware... knockback' at fail with the mean's no-knockback because the PASS gate demanded the full ragdoll + un-actable-window + directional-cancel loop, invisible in prose — zero discrimination. Rewrite keys the FAIL/PARTIAL boundary on the knockback-as-combo-tool COMMITMENT: the great prose couples 'force-aware knockback' to 'cancelable combo strings' (spacing-aware displacement), which the mean (no knockback, single canned swing, no combo) wholly lacks. The full ragdoll-with-counterplay loop is preserved as the PASS ceiling."
+    },
+    {
+      "id": "lag-compensated-rewind-netcode",
+      "order_index": 23,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Hit validation is committed to being TEMPORALLY GROUNDED in the attacker's view of the moment, not validated against a stale or whole-swing window. The discriminating, prose-readable commitment is that the build ties hit registration to the precise marker-synced contact frame (active-frame timing driving the hitbox), establishing the per-moment temporal anchor that lag compensation rewinds TO — versus a whole-swing window where 'when did this hit' is undefined and impossible to compensate. A description silent on timing precision OR registering over a whole-swing window ('active for the whole swing (no marker-synced active frames)') FAILS. A description that anchors hit registration to a precise marker-synced contact instant clears FAIL. PASS requires actual lag compensation: a server-side timestamped ring buffer (~1s/~60 entries) of player CFrames, rewinding targets to attackerTime minus ping/2 before re-running the validation hitbox, distinct from current-position validation, with cosmetics not rolled back on rejection.",
+      "above_generic_rationale": "Surface check is 'hits register.' The systems-depth check is whether the hit has a precise temporal anchor (a contact instant) that lag compensation can rewind to, versus a whole-swing smear where compensation is meaningless. Anchoring FAIL/PARTIAL on the marker-synced-contact-instant commitment is recoverable from the great prose and explicitly negated by the mean (whole-swing, no markers); the server-side position-history rewind-to-attacker-time mechanism remains the PASS ceiling so a build with precise timing but no rewment still can't reach full credit.",
+      "evidence_required": "For PARTIAL: hit registration is anchored to a precise marker-synced contact instant (active-frame timing driving the hitbox), not a whole-swing window — a defined moment that lag compensation could rewind to. For PASS additionally: a server-side timestamped ring buffer (~1s/~60 entries) of player CFrames, rewinding targets to attackerTime minus ping/2 before re-running the validation hitbox, distinct from current-position checks, cosmetics not rolled back on rejection.",
+      "concrete_fix": "Keep the precise marker-synced contact instant as the hit's timestamp, then add a per-player CFrame history ring buffer on the server and, on a hit request, reconstruct each target's position at the attacker's render time (minus half RTT) before running the validation hitbox.",
+      "grading": {
+        "pass": "The server keeps a timestamped ring buffer (~1s/~60 entries) of past player CFrames and rewinds targets to attackerTime minus ping/2 before re-running the validation hitbox, so high/low-ping players share the same fight; cosmetics stay on rejection — distinct from current-position validation.",
+        "partial": "Hit registration is anchored to a precise marker-synced contact instant (a defined hit moment compensable by rewind) but there is no server-side position history or rewind-to-attacker-time — the temporal anchor exists, the compensation does not.",
+        "fail": "Hit timing is a whole-swing window with no precise contact instant ('active for the whole swing (no marker-synced active frames)'), or netcode/lag-compensation is otherwise unaddressed — there is no defined moment to compensate."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://simplified.media/guides/roblox-combat-systems"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: both artifacts are silent on netcode, so the ring-buffer PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the temporal-precision prerequisite the great prose commits ('marker-synced active frames driving hitboxes' = a precise contact instant that rewind can target) versus the mean's explicit negation ('active for the whole swing (no marker-synced active frames)', no defined hit instant to compensate). The mean's whole-swing window fails; the great's precise contact-frame anchor clears FAIL. The full rewind ring-buffer mechanism is preserved as the PASS ceiling."
+    },
+    {
+      "id": "data-driven-attacks-collider-groups",
+      "order_index": 24,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Attacks are committed to being DATA/EVENT-CONFIGURED rather than one hardcoded static swing. The discriminating, prose-readable commitment is that the build authors attacks as cancelable combo strings whose hitboxes are OPENED by marker-synced active frames (animation events driving when the damage volume is live), i.e. attack behavior is configured by per-clip events and combo structure rather than a single hardcoded whole-swing box. A description that is 'a single canned swing' with one static hitbox 'active for the whole swing' (no events, no combo configuration) FAILS. A description that commits to combo-string attacks whose hitboxes are opened by animation-event-driven active frames clears FAIL. PASS requires the full data-driven architecture: per-attack parameters (damage, knockback magnitude/direction, combo flag, sub-goals, hit type) living in a module/data definition AND animation events opening specific NAMED collider groups for multi-hit/boss attacks; one of the two without the other is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'an attack has a hitbox.' The systems-depth check is whether attacks are configured by data and per-clip events (combo structure + event-opened hitboxes) versus one hardcoded static whole-swing box. Anchoring FAIL/PARTIAL on the event-driven-active-frame-hitbox-within-combos commitment is recoverable from the great prose and explicitly negated by the mean; the data-module-parameters + named-collider-groups architecture remains the PASS ceiling so a build with event-opened single hitboxes but no data definitions lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: attacks are cancelable combo strings whose hitboxes are opened by marker-synced animation-event active frames (when-live driven by per-clip events, not one hardcoded whole-swing box). For PASS additionally: per-attack parameters (damage/knockback/combo flag/sub-goals/hit type) living in a module/data definition AND animation events opening specific NAMED collider groups for multi-hit/boss attacks; one without the other is the upper PARTIAL.",
+      "concrete_fix": "Build on the event-opened combo hitboxes by moving per-attack constants into an AttackData module keyed by name and using animation markers like 'OpenColliderGroup:left_arm' to enable specific hitbox groups, instead of one hardcoded swing with a single static whole-swing box.",
+      "grading": {
+        "pass": "Attack parameters live in a data module/scriptable-object AND animation events open specific named collider groups during the attack, so multi-hitbox boss attacks and reusable behaviors are configured non-invasively without per-attack scripts.",
+        "partial": "Attacks are combo strings whose hitboxes are opened by animation-event active frames (event-configured timing within combo structure) — OR one of data-stored attack stats / event-opened named collider groups exists — but not the full both-halves data+collider-group architecture.",
+        "fail": "A single canned swing with one static whole-swing hitbox, no animation-event-driven hitbox opening, no combo configuration, and no data-driven definitions."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-Ts9xF9Owe0"
+        ]
+      },
+      "change_reason": "Original scored the great at fail with the mean's hardcoded single swing because the PASS gate demanded data modules + named collider groups, invisible in prose — zero discrimination. Rewrite keys the FAIL/PARTIAL boundary on the event-configured-attacks COMMITMENT the great prose makes ('cancelable combo strings' + 'marker-synced active frames driving hitboxes' = hitboxes opened by per-clip events within configured combo structure) versus the mean's explicit negation ('a single canned swing' / hitbox 'active for the whole swing (no marker-synced active frames)'). The data-module + named-collider-group architecture is preserved as the PASS ceiling."
+    },
+    {
+      "id": "weighted-behavior-brain-enemies",
+      "order_index": 25,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Combat actor decisions are committed to running through a STATE/SELECTION SYSTEM with gated, buffered transitions, not bespoke fire-and-forget logic. The discriminating, prose-readable commitment is that actions are chosen through a controller with cancel/timing WINDOWS and input buffering (cancelable combo strings with buffered, marker-gated transitions) — a real action-selection state machine where the next action is gated by conditions/windows rather than a single hardcoded behavior. A description that is a single canned action with 'no combo or cancel windows' (no selection system, no gated transitions) FAILS. A description that commits to a windowed, buffered action-selection controller clears FAIL. PASS requires the weighted behavior brain for ENEMIES: each candidate behavior has PRECONDITIONS and a WEIGHT, selection is a weighted roll among precondition-passing behaviors, and ONE reusable framework instantiates multiple distinct enemy types via data/weights — not bespoke per-enemy chase-and-touch scripts.",
+      "above_generic_rationale": "Surface check is 'an action happens.' The systems-depth check is whether actions flow through a condition-gated, buffered selection system (the substrate of any behavior brain) versus a single hardcoded behavior. Anchoring FAIL/PARTIAL on the windowed-buffered-action-selection commitment is recoverable from the great prose and explicitly negated by the mean ('no combo or cancel windows'); the precondition+weight roll reusable across enemy types remains the PASS ceiling so a player-only selection controller without an enemy behavior framework lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: actions are chosen through a controller with cancel/timing windows and input buffering (a gated, buffered action-selection state machine), not a single hardcoded behavior. For PASS additionally: an enemy behavior brain where each candidate has preconditions AND a weight, selection is a weighted roll among precondition-passing behaviors, and one reusable framework instantiates multiple distinct enemy types via data/weights.",
+      "concrete_fix": "Generalize the windowed/buffered action-selection controller into an enemy behavior brain: a behavior table ({condition, weight, action}) with a weighted picker that filters by precondition then rolls by weight, reused across enemy types via data — instead of bespoke per-enemy chase-and-touch logic.",
+      "grading": {
+        "pass": "Enemy decisions run off a weighted behavior brain: each behavior has preconditions and a weight, selection is a weighted roll among precondition-passing behaviors, and the same framework instantiates multiple distinct enemy types via data/weights — producing varied, readable pressure.",
+        "partial": "Actions flow through a windowed, input-buffered action-selection controller (gated, cancelable transitions — a real selection state machine) but there is no enemy-side precondition-gated weighted behavior brain reusable across multiple enemy types.",
+        "fail": "A single hardcoded action with 'no combo or cancel windows' — no action-selection system and no enemy behavior brain (or enemies merely chase and touch-damage via bespoke per-enemy scripts)."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-Ts9xF9Owe0"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: neither artifact described enemy AI, so the weighted-roll PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest action-selection-system commitment the great prose makes ('cancelable combo strings with input buffering and timing windows' = a gated, buffered action-selection state machine) versus the mean's explicit negation ('no combo or cancel windows', a single hardcoded action). The mean's no-window canned action fails; the great's windowed buffered selection controller clears FAIL. The reusable precondition-gated weighted behavior brain across enemy types is preserved as the PASS ceiling."
+    },
+    {
+      "id": "ikcontrol-reactive-limb-blending",
+      "order_index": 26,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "The rig is committed to RUNTIME-BLENDED, concurrently-layered limb motion rather than a single full-body baked clip. The discriminating, prose-readable commitment is that tracks blend and coexist at runtime — attacks layered over locomotion (upper body swinging while legs are driven by movement) plus concurrent direction-aware reactions — so limbs are driven by multiple weighted sources at once rather than one clip overriding the whole body. A description where 'the attack fully overrides movement' (one full-body baked clip at a time, no runtime blending) FAILS. A description that commits to attacks blended over locomotion / concurrent multi-track limb motion clears FAIL. PASS requires IKControl-driven RUNTIME limb ADAPTATION: a grab/weapon hand snapped onto the contact point during the contact window (Position/Transform IK with a Pole), and/or an IK-driven aim chain so one clip covers many angles, with Weight animated/tweened (not hard-set) and SmoothTime tuned; weighted track blending without any IK-driven adaptation to a runtime target is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'limbs animate.' The systems-depth check is whether limbs are driven by multiple weighted runtime sources (the substrate of IK-reactive blending) and whether they adapt to a runtime target via IK, versus one full-body baked clip. Anchoring FAIL/PARTIAL on the attack-layered-over-locomotion commitment is recoverable from the great prose and explicitly negated by the mean ('fully overrides movement'); the IKControl contact-snap/aim adaptation remains the PASS ceiling so a build with track blending but no runtime IK adaptation lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: limb motion is runtime-blended from multiple concurrent sources — attacks layered over locomotion (upper body over movement-driven legs) and/or concurrent direction-aware reactions — not one full-body clip overriding the whole body. For PASS additionally: IKControl-driven runtime adaptation — a grab/weapon hand snapped onto the contact point during the contact window (Position/Transform IK with a Pole) and/or an IK aim chain — with Weight animated/tweened and SmoothTime tuned.",
+      "concrete_fix": "Build on the over-locomotion blending by adding IKControl adaptation: for a finisher grab, a Transform IKControl with EndEffector=grab hand, Target on the victim, a Pole for elbow direction, tweening Weight 0->1->0 across the contact frames with a small SmoothTime.",
+      "grading": {
+        "pass": "IKControl is layered over keyframed animation with Weight animated/tweened (not hard-set) and SmoothTime tuned: Position/Transform IK snaps a grab/weapon hand onto the contact point during the contact window only, LookAt/aim IK covers varying angles, and a Pole prevents elbow/knee flips.",
+        "partial": "Limb motion is runtime-blended from concurrent sources (attacks layered over locomotion / concurrent reactions, multi-weighted tracks) but there is no IKControl-driven adaptation to a runtime target — limbs blend but cannot snap a hand onto a contact point or aim via IK.",
+        "fail": "A single full-body baked clip plays at a time where 'the attack fully overrides movement' — no runtime track blending and no IK adaptation."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://create.roblox.com/docs/reference/engine/classes/IKControl",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/reference/engine/classes/IKControl.yaml",
+          "https://devforum.roblox.com/t/inverse-kinematics-control-instance-for-animation-is-now-in-beta/1999010"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: both artifacts are silent on IKControl, so the Weight-animated-SmoothTime PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest runtime-limb-blending commitment the great prose makes ('attacks layered over locomotion so the character keeps moving' = concurrent multi-source limb motion) versus the mean's explicit negation ('the attack fully overrides movement', one full-body clip). The mean's full-override baked clip fails; the great's runtime track blending clears FAIL. The IKControl contact-snap/aim-adaptation system is preserved as the PASS ceiling so weighted blending without IK lands at PARTIAL."
+    },
+    {
+      "id": "procedural-foot-planting-ik",
+      "order_index": 27,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "Lower-body motion is committed to being DRIVEN BY LOCOMOTION underneath the action at runtime, not overridden by a baked full-body clip — the prerequisite for any per-foot procedural planting. The discriminating, prose-readable commitment is that attacks are layered over locomotion so the legs keep being driven by the movement system while the upper body acts (the lower body is a live, locomotion-driven layer, not frozen by the attack clip). A description where 'the attack fully overrides movement' (legs frozen by a baked clip, no live lower-body locomotion) FAILS. A description that commits to attacks layered over locomotion so the character keeps moving clears FAIL. PASS requires the procedural foot IK: per-foot downward raycasts feeding each foot's IK Target position + surface normal, lift/plant timed to the walk-cycle phase, and Weight blending planting out when airborne/dashing, so feet conform to slopes/stairs without sliding; locomotion-driven legs without per-foot raycast IK planting is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'feet move.' The systems-depth check is whether the lower body is a live locomotion-driven layer (the only thing per-foot IK can plant against) versus frozen by a baked clip, and then whether feet are raycast-grounded to terrain. Anchoring FAIL/PARTIAL on the attack-over-locomotion commitment is recoverable from the great prose and explicitly negated by the mean ('fully overrides movement'); the raycast-driven per-foot IK conforming to slopes/stairs remains the PASS ceiling so locomotion-driven legs without grounding IK land at PARTIAL.",
+      "evidence_required": "For PARTIAL: attacks are layered over locomotion so the legs remain driven by the movement system during the action (live, locomotion-driven lower body), not frozen by a full-body attack clip. For PASS additionally: per-foot downward raycasts feeding each foot's IK Target position + surface normal, lift/plant timed to the walk cycle, and Weight blending planting out when airborne/dashing, so feet conform to slopes/stairs without sliding.",
+      "concrete_fix": "Build on the locomotion-driven legs by adding per-foot grounding: raycast down from each foot, set the foot IKControl Target CFrame to hit.Position oriented by hit.Normal, drive Weight from the locomotion phase, and zero it when the Humanoid is in FreeFall.",
+      "grading": {
+        "pass": "Combat footwork uses per-foot procedural planting via IKControls: per-foot downward raycasts feed each foot's IK Target position and surface normal, lift/plant is timed to the walk-cycle phase, and Weight blends planting out when airborne/dashing — feet visibly conform to slopes/stairs without sliding.",
+        "partial": "Attacks are layered over locomotion so the lower body stays driven by the movement system during the action (live locomotion legs, the substrate for foot IK) but there is no per-foot raycast-driven IK planting — feet still slide/clip on slopes/stairs.",
+        "fail": "The attack fully overrides movement, freezing the legs with a baked full-body clip — no live locomotion-driven lower body and no foot IK at all."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/customizable-ikcontrol-footplanting-module/2173049",
+          "https://devforum.roblox.com/t/procedural-foot-planting-with-ikcontrols/2190661",
+          "https://devforum.roblox.com/t/simple-r15-ik-foot-planting-module/2786556"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: both artifacts are silent on foot IK, so the raycast-IK PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the prerequisite the great prose commits ('attacks layered over locomotion so the character keeps moving' = a live locomotion-driven lower body, the substrate foot-planting attaches to) versus the mean's explicit negation ('the attack fully overrides movement', legs frozen). The mean's leg-freezing override fails; the great's locomotion-driven legs clear FAIL. The per-foot raycast IK planting system is preserved as the PASS ceiling."
+    },
+    {
+      "id": "animationconstraint-physical-secondary-motion",
+      "order_index": 28,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "The build is committed to MULTIPLE WEIGHTED MOTION SOURCES coexisting and blending on the rig at runtime — the foundation any physically-driven secondary-motion layer must blend into — not a single baked clip the Animator plays alone. The discriminating, prose-readable commitment is that the rig runs concurrently-blended tracks (attacks layered over locomotion, plus concurrent direction-/force-aware reactions) so motion is composed from several weighted sources rather than one clip, demonstrating awareness that the Animator composites layered motion each frame. A description that is a single canned clip where 'the attack fully overrides movement' (one baked source, no layered compositing) FAILS. A description that commits to concurrently-blended multi-source rig motion clears FAIL. PASS requires AnimationConstraint-driven physical secondary motion on custom/weapon rigs: IsKinematic chosen deliberately (true for snap poses vs false for force-following with bounded MaxForce/MaxTorque on a reactive cape/flail/jiggle), authored with the knowledge that the Animator overwrites the constraint's Transform each frame so it cooperates rather than fights the animation pass; concurrent track blending without any AnimationConstraint force-driven secondary motion is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'the rig animates.' The systems-depth check is whether motion is composited from multiple weighted runtime sources (the regime where physical secondary motion must blend with, and not be stomped by, the animation pass) versus one baked clip. Anchoring FAIL/PARTIAL on the concurrent-multi-source-blending commitment is recoverable from the great prose and explicitly negated by the mean ('fully overrides movement'); AnimationConstraint with the Animator-overwrites-Transform gotcha handled remains the PASS ceiling so track blending without force-driven secondary motion lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: the rig runs concurrently-blended motion from multiple weighted sources (attacks layered over locomotion plus concurrent reactions), not a single baked clip overriding the whole body. For PASS additionally: AnimationConstraint on custom/weapon rigs with IsKinematic chosen deliberately (true for snap poses, false for force-following with bounded MaxForce/MaxTorque on a reactive cape/flail/jiggle), authored so it cooperates with the Animator's per-frame Transform overwrite rather than fighting it.",
+      "concrete_fix": "Build on the layered multi-source motion by adding physical secondary motion: for a reactive cape, an AnimationConstraint with IsKinematic=false and tuned MaxForce/MaxTorque, driving its Transform from the animation pass so the Animator's per-frame overwrite cooperates rather than nullifies it.",
+      "grading": {
+        "pass": "Custom rigs/weapons use AnimationConstraint for force-based secondary motion with IsKinematic chosen deliberately (true for snap poses, false for force-following with bounded MaxForce/MaxTorque), and the setup accounts for the Animator overwriting Transform each frame (PreAnimation->PreSimulation) so the constraint cooperates with rather than fights the animation pass.",
+        "partial": "The rig runs concurrently-blended motion from multiple weighted sources (attacks over locomotion, concurrent reactions — the compositing regime) but there is no AnimationConstraint-driven force-based secondary motion on custom/weapon rigs.",
+        "fail": "A single baked clip where 'the attack fully overrides movement' — one motion source, no layered compositing, and no AnimationConstraint secondary motion (Motor6D only)."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://create.roblox.com/docs/physics/constraints/animation",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/physics/constraints/animation.md",
+          "https://devforum.roblox.com/t/animationconstrainttransform-causing-animation-weightblending-conflicts/4661275"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: both artifacts are silent on AnimationConstraint, so the structural PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest layered-compositing commitment the great prose makes ('attacks layered over locomotion' + concurrent reactions = multiple weighted motion sources the Animator composites each frame, the exact regime where the Animator-overwrites-Transform issue lives) versus the mean's explicit negation ('the attack fully overrides movement', one baked source). The mean's single-source override fails; the great's concurrent blending clears FAIL. The AnimationConstraint force-driven secondary-motion system is preserved as the PASS ceiling."
+    },
+    {
+      "id": "dynamic-combat-camera-framing",
+      "order_index": 29,
+      "tier": "exceptional",
+      "system_module": "combat",
+      "statement": "The build is committed to a DEDICATED FELT-IMPACT/EMPHASIS LAYER that punctuates decisive contact moments, distinct from cosmetic-only animation. The discriminating, prose-readable commitment is hit-stop/freeze-frames on impact — a deliberate emphasis channel that interrupts normal flow at the decisive contact moment to sell weight — establishing the build cares about cinematic emphasis at climactic beats, not just playing clips. A description with no such emphasis layer ('no hit-stop or freeze on contact', motion plays start-to-finish uninterrupted) FAILS. A description that commits to hit-stop/freeze-frame emphasis on impact clears FAIL. PASS requires the DYNAMIC COMBAT CAMERA specifically: the camera snaps/tweens focus onto the target on combat-STATE events (openings, posture-breaks, finishers, including against objects/large enemies) for cinematic framing, then releases — a state-driven framing channel explicitly DISTINCT from per-hit impact shake/freeze; an impact-emphasis layer (hit-stop) with no state-driven camera framing is PARTIAL.",
+      "above_generic_rationale": "Surface check is 'effects play on hit.' The systems-depth check is whether the build has a deliberate emphasis layer that punctuates decisive moments, and specifically a state-driven CAMERA framing channel beyond per-hit shake. Anchoring FAIL/PARTIAL on the hit-stop-emphasis commitment is recoverable from the great prose and explicitly negated by the mean ('no hit-stop or freeze on contact'); the dynamic combat camera framing decisive combat-STATE moments remains the PASS ceiling so hit-stop without a camera-framing channel lands at PARTIAL.",
+      "evidence_required": "For PARTIAL: a deliberate decisive-moment emphasis layer exists — hit-stop/freeze-frames on impact that interrupt normal flow to sell weight (more than uninterrupted cosmetic playback). For PASS additionally: a dynamic camera that snaps/tweens focus onto the target on combat-state events (openings, posture-breaks, finishers, including against objects/large enemies) and releases — a state-driven framing channel explicitly distinct from per-hit impact shake/freeze.",
+      "concrete_fix": "Build on the hit-stop emphasis by adding a state-driven camera: on a posture-break or finisher event, tween the camera to frame attacker+target for the duration, then release — a cinematic focus channel distinct from the per-hit shake/freeze.",
+      "grading": {
+        "pass": "A dynamic camera snaps/tweens focus onto the target during decisive combat-state moments (openings, posture-breaks, finishers, including against objects/large enemies) for cinematic emphasis, then releases — distinct from the per-hit impact shake/freeze.",
+        "partial": "A deliberate decisive-moment emphasis layer exists (hit-stop/freeze-frames on impact selling weight) but there is no state-driven dynamic camera framing decisive moments — emphasis is feedback-only, not a camera channel.",
+        "fail": "No decisive-moment emphasis layer at all ('no hit-stop or freeze on contact', motion plays start-to-finish uninterrupted) and no state-driven camera framing."
+      },
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-Ts9xF9Owe0"
+        ]
+      },
+      "change_reason": "Original gave zero discrimination: neither artifact described a combat camera, so the state-driven-framing PASS gate failed both. Honest rewrite re-anchors the FAIL/PARTIAL boundary onto the nearest cinematic-emphasis commitment the great prose makes ('hit-stop/freeze-frames on impact' = a deliberate decisive-moment emphasis channel) versus the mean's explicit negation ('no hit-stop or freeze on contact'). The mean's emphasis-free flow fails; the great's hit-stop emphasis clears FAIL. The state-driven dynamic combat camera (distinct from per-hit shake/freeze) is preserved as the PASS ceiling so a build with hit-stop but no camera framing lands at PARTIAL."
+    }
+  ]
+}

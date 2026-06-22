@@ -1,0 +1,18 @@
+{
+  "category": "combat",
+  "description": "character melee combat animation and its supporting systems (attacks, impacts, hit reactions, combos) in Roblox",
+  "killerSystems": [
+    "anticipation-and-impact-hitstop",
+    "directional-hit-reactions-and-knockback",
+    "marker-synced-active-frames-and-impact-fx",
+    "cancelable-combo-and-buffer-windows",
+    "attack-layered-over-locomotion"
+  ],
+  "meanArtifact": {
+    "name": "generic click-swing",
+    "description": "a single canned attack animation that plays start-to-finish on click: no weighted wind-up, no hit-stop or freeze on contact, one fixed flinch reaction regardless of hit direction, the hitbox active for the whole swing (no marker-synced active frames), no combo or cancel windows, and the attack fully overrides movement -- what a beginner ships by default following a basic tutorial"
+  },
+  "greatArtifactHint": "an award-quality action game's melee combat: weighted anticipation and follow-through with hit-stop/freeze-frames on impact, direction- and force-aware hit reactions and knockback, animation-marker-synced active frames driving hitboxes and impact SFX/VFX, cancelable combo strings with input buffering and timing windows, and attacks layered over locomotion so the character keeps moving",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
