@@ -74,6 +74,39 @@ local function buildCases(): { Case }
 			and CaptureCore.elevationPitch(nil) == 20
 	end)
 
+	add("unionAABB of empty list is nil", function()
+		local c, s = CaptureCore.unionAABB({})
+		return c == nil and s == nil
+	end)
+
+	add("unionAABB of one box round-trips its center/size", function()
+		local c, s = CaptureCore.unionAABB({
+			{ center = Vector3.new(1, 2, 3), size = Vector3.new(4, 4, 4) },
+		})
+		if c == nil or s == nil then
+			return false, "nil for one box"
+		end
+		return approx(c.X, 1)
+			and approx(c.Y, 2)
+			and approx(c.Z, 3)
+			and approx(s.X, 4)
+			and approx(s.Y, 4)
+			and approx(s.Z, 4)
+	end)
+
+	add("unionAABB widens to cover offset + splayed boxes", function()
+		-- a box at the origin and a wide box offset on +X: union spans both extremes
+		local c, s = CaptureCore.unionAABB({
+			{ center = Vector3.new(0, 0, 0), size = Vector3.new(2, 2, 2) }, -- spans X[-1,1]
+			{ center = Vector3.new(10, 0, 0), size = Vector3.new(4, 2, 2) }, -- spans X[8,12]
+		})
+		if c == nil or s == nil then
+			return false, "nil union"
+		end
+		-- union X spans [-1, 12] -> size.X = 13, center.X = 5.5
+		return approx(s.X, 13) and approx(c.X, 5.5) and approx(s.Y, 2) and approx(s.Z, 2)
+	end)
+
 	return cases
 end
 

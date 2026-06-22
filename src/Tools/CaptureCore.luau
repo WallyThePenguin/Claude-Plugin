@@ -139,8 +139,9 @@ local function resolvePath(path: string): Instance?
 	return if node == game then nil else node
 end
 
--- Axis-aligned bounding box (center, size) over every BasePart under the given roots. nil if none.
-local function aabbOf(roots: { Instance }): (Vector3?, Vector3?)
+-- World-AABB (center, size) over every BasePart under the given roots (oriented part corners), nil if
+-- none. Reads parts (impure). Exposed for capture_animation's swept-extent measure pass.
+function CaptureCore.aabbOf(roots: { Instance }): (Vector3?, Vector3?)
 	local minV: Vector3? = nil
 	local maxV: Vector3? = nil
 	local function acc(part: BasePart)
@@ -183,6 +184,32 @@ local function aabbOf(roots: { Instance }): (Vector3?, Vector3?)
 	return (minV + maxV) / 2, (maxV - minV)
 end
 
+-- Pure: union a list of axis-aligned boxes given as { center, size }. Returns (center, size) of the
+-- union, or (nil, nil) for an empty list. Used to frame the SWEPT extent of an animation across its
+-- sampled poses (capture_animation) so action poses that exceed the resting box still fit. Mirrors
+-- aabbOf's min/max accumulation but over precomputed boxes (no DataModel reads -> unit-testable).
+function CaptureCore.unionAABB(boxes: { { center: Vector3, size: Vector3 } }): (Vector3?, Vector3?)
+	local minV: Vector3? = nil
+	local maxV: Vector3? = nil
+	for _, b in boxes do
+		local half = b.size / 2
+		local lo = b.center - half
+		local hi = b.center + half
+		if minV == nil or maxV == nil then
+			minV, maxV = lo, hi
+		else
+			minV =
+				Vector3.new(math.min(minV.X, lo.X), math.min(minV.Y, lo.Y), math.min(minV.Z, lo.Z))
+			maxV =
+				Vector3.new(math.max(maxV.X, hi.X), math.max(maxV.Y, hi.Y), math.max(maxV.Z, hi.Z))
+		end
+	end
+	if minV == nil or maxV == nil then
+		return nil, nil
+	end
+	return (minV + maxV) / 2, (maxV - minV)
+end
+
 -- Resolve the target into (center, size, errString). A path string, or (nil/empty) the current
 -- Studio Selection. Unions the bounding boxes of all resolved instances' BaseParts.
 function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
@@ -203,7 +230,7 @@ function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
 				"nothing selected — select a part/model in Studio or pass a target path."
 		end
 	end
-	local center, size = aabbOf(roots)
+	local center, size = CaptureCore.aabbOf(roots)
 	if center == nil or size == nil then
 		return nil, nil, "target has no parts to frame (no BasePart found)."
 	end
