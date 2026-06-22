@@ -51,6 +51,28 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("addTo identity contract: same table on invalid text, NEW table on a capped add", function()
+		-- This invariant is what Learnings.add relies on (identity, not count) to know whether to persist:
+		-- a count check would wrongly treat a valid add into a FULL bucket as "nothing added".
+		local same: { Learnings.Entry } = { { id = 1, text = "x", createdAt = 0 } }
+		local invalidOut = (Learnings.addTo(same, "", 1))
+		if invalidOut ~= same then
+			return false, "invalid text should return the SAME table identity"
+		end
+		local full: { Learnings.Entry } = {}
+		for i = 1, Learnings.MAX_PER_CATEGORY do
+			full = (Learnings.addTo(full, "lesson " .. i, 100 + i))
+		end
+		local capped = (Learnings.addTo(full, "one more", 999))
+		if capped == full then
+			return false, "a valid add into a full bucket must return a NEW table, not the same one"
+		end
+		if #capped ~= Learnings.MAX_PER_CATEGORY then
+			return false, "capped add should stay at the cap: " .. tostring(#capped)
+		end
+		return true
+	end)
+
 	add("forgetFrom removes the matching id", function()
 		local entries: { Learnings.Entry } =
 			{ { id = 1, text = "a", createdAt = 0 }, { id = 2, text = "b", createdAt = 0 } }

@@ -271,7 +271,10 @@ function Learnings.add(self: Learnings, category: any, text: any): string
 	end
 	local entries = self:loadBucket(c)
 	local updated, note = Learnings.addTo(entries, text, os.time())
-	if #updated == #entries then
+	-- Identity, NOT count: addTo returns the SAME table on invalid text and a NEW table on success.
+	-- A count check would wrongly match a VALID add into a full bucket (append+FIFO-drop nets the same
+	-- length) and silently skip the SetSetting, losing the learning.
+	if updated == entries then
 		-- nothing added (invalid text) -> don't touch storage/index
 		return note .. " [" .. c .. "]"
 	end
