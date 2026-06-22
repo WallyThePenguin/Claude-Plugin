@@ -11,7 +11,8 @@
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
 -- create_instance, destroy_instance, place_relative, capture, capture_angles, capture_animation,
 -- dispatch_subagents, update_tasks, remember, forget, dispatch_writers, use_skill, save_skill,
--- delete_skill, add_keyframe, list_clip, remove_keyframe, clear_clip, export_animation, evaluate, learn, unlearn.
+-- delete_skill, add_keyframe, list_clip, remove_keyframe, clear_clip, export_animation, evaluate, learn, unlearn,
+-- import_animation.
 -- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
 -- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 
@@ -36,6 +37,7 @@ local CameraRigTool = require(script.CameraRig)
 local RigTool = require(script.Rig)
 local IkTool = require(script.Ik)
 local AnimateTool = require(script.Animate)
+local ImportTool = require(script.Import)
 local EvaluateTool = require(script.Evaluate)
 
 local Tools = {}
@@ -133,6 +135,9 @@ for _, descriptor in IkTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in AnimateTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in ImportTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in EvaluateTool.descriptors :: { Descriptor } do
