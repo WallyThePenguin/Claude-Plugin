@@ -11,7 +11,7 @@
 -- registry. Final registry: run_luau, get_tree, search, get_properties, get_output, set_property,
 -- create_instance, destroy_instance, place_relative, capture, capture_angles, capture_animation,
 -- dispatch_subagents, update_tasks, remember, forget, dispatch_writers, use_skill, save_skill,
--- delete_skill, add_keyframe, list_clip, remove_keyframe, clear_clip, export_animation, evaluate.
+-- delete_skill, add_keyframe, list_clip, remove_keyframe, clear_clip, export_animation, evaluate, learn, unlearn.
 -- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
 -- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 
@@ -24,6 +24,7 @@ local CaptureTool = require(script.Capture)
 local SubagentsTool = require(script.Subagents)
 local TasksTool = require(script.Tasks)
 local MemoryTool = require(script.Memory)
+local LearningsTool = require(script.Learnings)
 local WritersTool = require(script.Writers)
 local SkillsTool = require(script.Skills)
 -- NB: the module is DestroyInstance (NOT Destroy) — `script.Destroy` resolves to the built-in
@@ -102,6 +103,9 @@ for _, descriptor in TasksTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in MemoryTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in LearningsTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in WritersTool.descriptors :: { Descriptor } do
