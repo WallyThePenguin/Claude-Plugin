@@ -284,11 +284,40 @@ local function runAnimation(input: any, context: any): (any, boolean)
 		startT, endT = 0, length
 	end
 
+	-- Frame to the SWEPT extent, not the resting pose: action poses (splayed limbs, jumps) exceed
+	-- rig:GetBoundingBox() measured at rest, so a measure PRE-PASS steps the same sample times and unions
+	-- the rig's world AABB across all poses, then frames ONCE to that union scaled by zoom. The pass only
+	-- steps joints (no screenshots), so it's cheap, and it runs inside the saved-state window restored below.
+	local zoom = if type(args.zoom) == "number" and args.zoom > 0 then args.zoom else 1.1
 	local preset = CaptureCore.PRESETS[string.lower(tostring(args.angle))]
 		or CaptureCore.PRESETS.front
-	local boundCF, boundSize = (rig :: Model):GetBoundingBox()
+	local boxes: { { center: Vector3, size: Vector3 } } = {}
+	pcall(function()
+		for i = 0, frames - 1 do
+			local t = startT + (endT - startT) * (i / (frames - 1))
+			animTrack.TimePosition = t
+			animator:StepAnimations(0)
+			CaptureCore.settle(1)
+			local c, s = CaptureCore.aabbOf({ rig })
+			if c ~= nil and s ~= nil then
+				table.insert(boxes, { center = c, size = s })
+			end
+		end
+	end)
+	local sweptCenter, sweptSize = CaptureCore.unionAABB(boxes)
+	if sweptCenter == nil or sweptSize == nil then
+		-- Degenerate measure (no parts found): fall back to today's resting-box framing.
+		local boundCF, boundSize = (rig :: Model):GetBoundingBox()
+		sweptCenter, sweptSize = boundCF.Position, boundSize
+	end
 	CaptureCore.setCamera(
-		CaptureCore.frameCFrame(boundCF.Position, boundSize, preset.yaw, preset.pitch, 1)
+		CaptureCore.frameCFrame(
+			sweptCenter :: Vector3,
+			sweptSize :: Vector3,
+			preset.yaw,
+			preset.pitch,
+			zoom
+		)
 	)
 
 	local since = os.time() - 2
@@ -398,7 +427,7 @@ Capture.descriptors = {
 			.. "registers + plays the clip and samples frames across time (no upload). Inputs: rig (path or "
 			.. "selection), clip OR animation, frames (default 8), startTime/endTime (seconds; default full "
 			.. "clip), angle (front/back/left/right/top/bottom/iso). LOOK at the frames and iterate. Restores "
-			.. "your working pose when done.",
+			.. "your working pose when done. It auto-frames the whole motion's extent (so action poses aren't cropped); pass zoom (>1 pulls back, <1 pushes in) to adjust.",
 		inputSchema = {
 			type = "object",
 			properties = {
@@ -426,6 +455,10 @@ Capture.descriptors = {
 				angle = {
 					type = "string",
 					description = "A preset angle (front/back/left/right/top/bottom/iso).",
+				},
+				zoom = {
+					type = "number",
+					description = "Distance scale of the auto-fit framing (default 1.1). >1 pulls the camera back, <1 pushes in.",
 				},
 			},
 		},
