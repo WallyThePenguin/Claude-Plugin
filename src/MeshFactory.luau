@@ -6,6 +6,8 @@
 
 local MeshFactory = {}
 
+local AssetService = game:GetService("AssetService")
+
 export type Geometry = { vertices: { Vector3 }, triangles: { { number } } }
 
 -- ---- pure ----
@@ -77,6 +79,122 @@ function MeshFactory.rockClusterLayout(size: number, seed: number): { RockPiece 
 		}
 	end
 	return pieces
+end
+
+-- ---- impure (live-verified) ----
+
+-- Build a MeshPart from a Geometry via EditableMesh. Anchored + colored. (Content is a Luau global;
+-- Content.fromObject wraps the EditableMesh — verified callable at PluginSecurity in edit.)
+function MeshFactory.buildMeshPart(
+	geometry: Geometry,
+	color: Color3,
+	material: Enum.Material
+): BasePart
+	local em = AssetService:CreateEditableMesh()
+	local ids: { number } = {}
+	for i, v in geometry.vertices do
+		ids[i] = em:AddVertex(v)
+	end
+	for _, t in geometry.triangles do
+		em:AddTriangle(ids[t[1]], ids[t[2]], ids[t[3]])
+	end
+	local mp = AssetService:CreateMeshPartAsync(Content.fromObject(em))
+	mp.Anchored = true
+	mp.Color = color
+	mp.Material = material
+	return mp
+end
+
+export type PineParams = { height: number?, tiers: number?, color: Color3? }
+
+-- A stylized pine: a Cylinder trunk + `tiers` stacked EditableMesh cones. Built at the origin, base y=0.
+function MeshFactory.buildPine(params: PineParams): Model
+	local height = if type(params.height) == "number" then params.height :: number else 10
+	local tiers = if type(params.tiers) == "number"
+		then math.clamp(params.tiers :: number, 1, 5)
+		else 3
+	local color = if typeof(params.color) == "Color3"
+		then params.color :: Color3
+		else Color3.fromRGB(60, 116, 60)
+	local model = Instance.new("Model")
+	model.Name = "Pine"
+	local trunkH = height * 0.28
+	local trunk = Instance.new("Part")
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Anchored = true
+	trunk.Size = Vector3.new(trunkH, height * 0.12, height * 0.12)
+	trunk.CFrame = CFrame.new(0, trunkH / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+	trunk.Color = Color3.fromRGB(96, 66, 42)
+	trunk.Material = Enum.Material.Wood
+	trunk.Parent = model
+	local canopyBottom = trunkH * 0.7
+	local span = height - canopyBottom
+	for i = 0, tiers - 1 do
+		local frac = i / tiers
+		local geo = MeshFactory.coneGeometry(
+			(1 - frac * 0.55) * height * 0.34,
+			span * (0.55 + 0.12 * (1 - frac)),
+			9
+		)
+		local cone = MeshFactory.buildMeshPart(
+			geo,
+			color:Lerp(Color3.fromRGB(122, 170, 96), frac * 0.35),
+			Enum.Material.Grass
+		)
+		cone.CFrame = CFrame.new(0, canopyBottom + span * frac, 0)
+		cone.Parent = model
+	end
+	return model
+end
+
+export type RockParams = { size: number?, color: Color3?, seed: number? }
+
+-- A clustered-block rock boulder (Rock material), deterministically varied by seed. Base y~0.
+function MeshFactory.buildRock(params: RockParams): Model
+	local size = if type(params.size) == "number" then params.size :: number else 3
+	local seed = if type(params.seed) == "number" then params.seed :: number else 1
+	local model = Instance.new("Model")
+	model.Name = "Rock"
+	for _, piece in MeshFactory.rockClusterLayout(size, seed) do
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = piece.size
+		p.CFrame = CFrame.new(piece.offset)
+			* CFrame.Angles(math.rad(piece.rot.X), math.rad(piece.rot.Y), math.rad(piece.rot.Z))
+		p.Color = if typeof(params.color) == "Color3" then params.color :: Color3 else piece.color
+		p.Material = Enum.Material.Rock
+		p.Parent = model
+	end
+	return model
+end
+
+-- Generate a Model from a text prompt via Cube. (Model, nil) on success, (nil, err) on failure.
+function MeshFactory.generateViaCube(prompt: string): (Model?, string?)
+	local GenerationService = game:GetService("GenerationService")
+	local ok, result = pcall(function()
+		return GenerationService:GenerateModelAsync(
+			{ TextPrompt = prompt },
+			{ PredefinedSchema = "Body1" }
+		)
+	end)
+	if not ok then
+		return nil, "Cube generation failed (rate-limited ~5/min, beta): " .. tostring(result)
+	end
+	if typeof(result) ~= "Instance" then
+		return nil, "Cube returned no model (type " .. typeof(result) .. ")"
+	end
+	return result :: Model, nil
+end
+
+-- Scale `model` to `height` (if given) then ground its AABB base at `position`.
+function MeshFactory.groundModel(model: Model, position: Vector3, height: number?)
+	if height ~= nil then
+		local _, size = model:GetBoundingBox()
+		model:ScaleTo(MeshFactory.scaleFactorForHeight(size.Y, height))
+	end
+	local cf, size = model:GetBoundingBox()
+	local base = cf.Position - Vector3.new(0, size.Y / 2, 0)
+	model:PivotTo(model:GetPivot() + (position - base))
 end
 
 return MeshFactory
