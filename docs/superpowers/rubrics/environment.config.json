@@ -1,0 +1,18 @@
+{
+  "category": "environment",
+  "description": "Roblox 3D environment / map / level art -- worlds and sets built from Parts/MeshParts/Models with Terrain, lighting, materials and set dressing (lobbies, dungeons, biomes, towns, showcase builds)",
+  "killerSystems": [
+    "composition-sightlines-and-landmark-guided-flow",
+    "material-texture-and-pbr-surface-craft",
+    "lighting-atmosphere-and-mood",
+    "modular-kit-and-layered-set-dressing-density",
+    "scale-readability-and-performance-optimization"
+  ],
+  "meanArtifact": {
+    "name": "default gray-box map",
+    "description": "A flat baseplate with a handful of default-Plastic-material Parts placed by hand, default lighting and skybox, no Terrain sculpting, no textures/SurfaceAppearance/PBR materials, no set dressing or props, no intentional composition or focal landmarks, no atmosphere or post-effects -- what a beginner ships by default following a basic building tutorial"
+  },
+  "greatArtifactHint": "An award-quality Roblox environment: intentional composition with framed sightlines and focal landmarks guiding player flow; a reusable modular kit plus dense layered set dressing and props for believability; crafted PBR materials/SurfaceAppearance and texture variation (no default plastic); sculpted Terrain blended with the builds; rich lighting with Atmosphere, fog, color-graded post-effects and placed emissive/point lights for mood; human-scale proportions and readable navigation; and performance via mesh instancing, part reuse and StreamingEnabled",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}

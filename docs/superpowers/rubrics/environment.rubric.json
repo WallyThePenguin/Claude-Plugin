@@ -1,0 +1,689 @@
+{
+  "module": "environment",
+  "version": "1.0",
+  "system_module": "environment",
+  "criteria": [
+    {
+      "id": "env-greybox-metric-gameplay-first",
+      "order_index": 1,
+      "tier": "baseline",
+      "system_module": "environment",
+      "statement": "The build shows evidence that geometry was authored for player FLOW and traversal, not improvised as decoration. PASS requires demonstrable function-first spatial design: navigation is readable and human-scaled, the layout guides the player along intended routes (lanes, paths, or framed approaches to destinations), and openings/clearances are sized so a character can actually move through them. The build need not recite exact stud metrics, but it MUST show the layout was shaped by traversal intent rather than placed arbitrarily. A flat field of hand-placed default parts, a single undesigned A-to-B corridor, or geometry that ignores how a player moves through it FAILS.",
+      "above_generic_rationale": "The mean artifact is a flat baseplate of hand-placed default Parts with no layout intent at all — it cannot demonstrate flow, readable navigation, or traversal-sized openings. The great artifact explicitly delivers 'human-scale proportions and readable navigation' and 'guiding player flow', so it clears a flow-evidence bar. The original failed both because it demanded exact stud gates and dual-spawn structure the great artifact's outcome-level description never recites; re-anchoring on demonstrated flow/navigation (which only deliberate design produces) discriminates without requiring jargon recitation.",
+      "grading": {
+        "pass": "Geometry is authored for flow: readable human-scaled navigation, routes that guide the player to intended destinations, and openings/clearances sized for character traversal — the layout was clearly shaped by how players move.",
+        "partial": "Some flow/navigation intent is evident (a guided route or human-scaled openings) but it is incomplete — parts of the layout are arbitrary, or traversal sizing/route-guidance is inconsistent.",
+        "fail": "A flat field of arbitrarily placed parts, a single undesigned A-to-B corridor, or geometry that ignores player traversal — no demonstrable flow design."
+      },
+      "evidence_required": "A statement/capture showing geometry shaped for player flow: readable, human-scaled navigation, routes that guide the player to destinations, and openings/clearances a character can actually traverse. A flat field of arbitrarily placed parts, or a layout with no traversal intent, does not satisfy this.",
+      "concrete_fix": "Shape the layout around how players move: give the space readable routes and framed approaches to its key destinations, size every doorway/hall/clearance so a character passes comfortably, and avoid both a single undesigned corridor and a flat undirected field — make the geometry guide the player.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/greybox-your-environment.md",
+          "https://devforum.roblox.com/t/ruskis-tutorial-1-how-to-design-a-map-layout/277853",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/greybox-your-environment.md"
+        ]
+      },
+      "change_reason": "Original PASS demanded literal traversal metrics (>=10-stud doorways, multi-lane + cross-lane pockets, dual spawns) so even a genuinely flow-designed great artifact failed for not enumerating numbers — collapsing to mean=fail/great=fail. Rewrote the discriminator to demonstrated player-flow and readable, traversal-sized navigation: the mean's arbitrary flat baseplate fails, the great's stated readable-navigation/guided-flow passes."
+    },
+    {
+      "id": "env-reference-driven-plan-and-eyelevel",
+      "order_index": 2,
+      "tier": "baseline",
+      "system_module": "environment",
+      "statement": "The build reads as composed for the PLAYER'S eye-level viewpoint with deliberate scale and sightlines, not improvised from the top-down editor camera. PASS requires evidence that composition was authored for how the scene is actually seen in-game: framed sightlines toward intended subjects, human-scaled proportions that hold up at character height, and a layout whose hierarchy reads from the ground-level view rather than only from orbit. The build need not name 'form vs style reference' explicitly, but it MUST show eye-level/true-scale discipline producing intentional framing. A scene that only reads from god-view, with incidental scale and no framed sightlines, FAILS.",
+      "above_generic_rationale": "The mean baseplate has 'no intentional composition or focal landmarks' and default improvised placement — it cannot demonstrate eye-level framing or true human scale. The great artifact states 'framed sightlines' and 'human-scale proportions', evidencing exactly the eye-level/true-scale discipline this criterion targets. The original demanded both a named form/style reference plan AND an in-scene rig check, neither of which an outcome-level great description recites, so it failed the great artifact wrongly.",
+      "grading": {
+        "pass": "Composition is authored for the player's eye level: framed sightlines toward intended subjects and human-scaled proportions that hold up at character height, with hierarchy reading from the ground view.",
+        "partial": "Eye-level/true-scale intent is partly present (framed sightlines OR human scale) but inconsistent — some framing works while other areas read only from orbit or carry off scale.",
+        "fail": "A scene that reads only from god-view, with incidental scale and no framed sightlines or eye-level composition."
+      },
+      "evidence_required": "A statement/capture showing composition authored for the in-game eye-level view: framed sightlines toward intended subjects and human-scaled proportions that hold up at character height, with hierarchy that reads from the ground rather than only from orbit. Incidental scale with no framed sightlines does not satisfy this.",
+      "concrete_fix": "Compose for the low in-game camera, not the editor orbit: frame sightlines toward your intended subjects, keep proportions true to a character at eye level so scale reads correctly, and check that the scene's hierarchy still reads from the ground-level view.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=eRnnjqVOq7c",
+          "https://www.youtube.com/watch?v=-DoOf32pkPo",
+          "https://medium.com/roblox-developer/tips-for-building-beautiful-terrain-6a13fd1ba314"
+        ]
+      },
+      "change_reason": "Original required two explicit process artifacts (a form-vs-style reference plan AND rig-in-scene eye-level validation) that the great artifact's summary never states, forcing mean=fail/great=fail. Rewrote to test the OUTCOME that eye-level/true-scale discipline produces — framed sightlines + human-scale proportions reading at ground level — which the great artifact demonstrates and the mean baseplate cannot."
+    },
+    {
+      "id": "env-asset-library-packages-reusable-look",
+      "order_index": 3,
+      "tier": "baseline",
+      "system_module": "environment",
+      "statement": "Reusable looks are systematized so the build has a consistent, propagatable identity rather than one-off hand-authored parts. PASS requires evidence of a reuse system: a coherent modular kit whose pieces are reused across the build, AND custom authored materials (MaterialVariants/SurfaceAppearance) applied consistently so the look is shared, not per-part default. Explicit Convert-to-Package propagation is the strongest evidence and earns full credit; a clearly reused kit with shared custom materials (the look is demonstrably systematized for consistency) also passes. A build of unique hand-placed default-Plastic parts with no reused kit and no shared custom materials FAILS.",
+      "above_generic_rationale": "The mean baseplate is unique hand-placed default-Plastic parts with no kit, no SurfaceAppearance, and no reuse system — it cannot demonstrate any systematized look. The great artifact states a 'reusable modular kit', 'part reuse', and 'crafted PBR materials/SurfaceAppearance', which IS a reuse system producing a consistent identity. The original demanded a literal Convert-to-Package edit-updates-N-instances mechanism the great's summary never recites, so it failed the great artifact.",
+      "grading": {
+        "pass": "A reuse system is evident: a modular kit reused across the build with shared custom MaterialVariants/SurfaceAppearance, ideally Converted to Packages so a source edit propagates — the look is systematized for consistency.",
+        "partial": "Some reuse is present (a kit reused, or shared custom materials) but the systematization is incomplete — partial kit reuse, or materials shared on only some surfaces, with no propagation mechanism.",
+        "fail": "Unique hand-placed default-Plastic parts with no reused kit and no shared custom materials — no systematized look."
+      },
+      "evidence_required": "A statement showing a reuse system: a modular kit reused across the build with custom MaterialVariants/SurfaceAppearance shared consistently, and/or Convert-to-Package propagation. Unique hand-placed default-Plastic parts with no reused kit and no shared custom materials do not satisfy this.",
+      "concrete_fix": "Build a small kit and reuse its pieces across the scene, author custom materials as MaterialVariants/SurfaceAppearance and apply them consistently so the look is shared; for the strongest version, Convert reused assets to Packages so one source edit propagates to every instance.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/assemble-an-asset-library.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/assemble-an-asset-library.md"
+        ]
+      },
+      "change_reason": "Original PASS required concrete Package-propagation evidence (one edit updates N instances) that an outcome-level great description omits, so both artifacts failed. Rewrote so a demonstrably reused kit + shared custom materials (systematized look) passes — keeping Package propagation as the strongest path — while the mean's unique default-plastic parts with no reuse system still fails."
+    },
+    {
+      "id": "env-composition-sightlines-landmark-flow",
+      "order_index": 4,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — COMPOSITION / SIGHTLINES / LANDMARK-GUIDED FLOW. The scene is composed so the player is ALWAYS looking at something intentional: a clear focal landmark anchored by deliberate foreground/midground/background layering, with verticality and sightline-blocking used as directorial tools. To pass, the build must commit to (1) an explicit focal point (landmark/building/statue/skylight) the eye lands on, (2) three staged depth planes (foreground frame e.g. planters/crates, midground subject/walls, background backdrop e.g. distant mountains/hills) with scale-contrast anchors and leading lines, AND (3) sightlines deliberately controlled — elevation changes (main/mezzanine/depressed levels via wedge transitions controlling engagement distance) and/or forced perspective and trees/atmosphere blocking sightlines to manufacture depth and direct the view. A build that is a flat, evenly-distributed field of stuff with no focal hierarchy, no depth layering, and infinite empty space or blank walls FAILS (empty space and blank walls are failures, not neutral).",
+      "above_generic_rationale": "Generic builds are spatially flat fields of evenly-distributed props with no hierarchy and the eye has nowhere to land; they end abruptly at a flat edge. Deliberate 3-plane staging plus a focal landmark, scale-contrast anchors, verticality controlling sightlines, and sightline-blocking forced perspective is true composition — the recurring hallmark of showcase work and the single fastest read of 'designed' vs 'generated'.",
+      "grading": {
+        "pass": "All three present: an explicit focal landmark the eye lands on, three staged depth planes (foreground frame / midground subject / background backdrop) with scale-contrast anchors and leading lines, AND deliberate sightline control (elevation/wedge level changes and/or forced-perspective sightline-blocking via trees/atmosphere).",
+        "partial": "Composition intent is present but incomplete — e.g. a focal point with only two depth planes, or layering without deliberate sightline control, or depth/sightline craft without a clear focal hierarchy.",
+        "fail": "A flat, evenly-distributed field of stuff with no focal hierarchy, no depth layering, and infinite empty space or blank walls (empty space and blank walls count as failures, not neutral)."
+      },
+      "evidence_required": "A statement/capture showing an explicit focal landmark, three staged depth planes (foreground/midground/background with scale anchors and leading lines), and deliberate sightline control (elevation/wedge level changes and/or forced-perspective sightline-blocking). A flat evenly-distributed scene with no focal point, no depth planes, or blank empty space does not satisfy this.",
+      "concrete_fix": "Pick a focal landmark and frame it: place foreground props (planters/crates), midground subject/walls, and a background backdrop (distant hills/mountains); add scale-contrast anchors (towers, skylights) and leading lines; use floor-level changes (main/mezzanine/depressed via wedges) and trees/atmosphere to block sightlines so the player is always looking at something intentional with no blank empty space.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/ruskis-tutorial-1-how-to-design-a-map-layout/277853",
+          "https://devforum.roblox.com/t/map-design-and-scene-building-fantasy-medieval-and-nature-maps/709866",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md",
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/greybox-your-environment.md",
+          "https://medium.com/roblox-developer/creating-immersive-environments-2506729f62bb",
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      }
+    },
+    {
+      "id": "env-set-extension-world-beyond-bounds",
+      "order_index": 5,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "The playable area reads as part of a larger world, with the boundary handled by authored terrain/geometry rather than ending at a bare flat baseplate edge and raw default skybox. PASS requires evidence that the edge is deliberately treated: sculpted terrain, backdrop geometry, or perimeter landforms that blend the build into surroundings so the world doesn't simply stop at a flat boundary. The build need not recite 'oversized outer-rim trees' or a 'canal that turns away', but the boundary MUST be authored to imply continuation. A flat baseplate ending at a hard edge under an unmasked default skybox FAILS.",
+      "above_generic_rationale": "The mean artifact is explicitly a 'flat baseplate' with 'default skybox' and 'no Terrain sculpting' — the textbook bare-edge failure. The great artifact has 'sculpted Terrain blended with the builds', which is exactly the authored-boundary treatment that masks the bare edge and implies a continuing world. The original demanded specific named devices (perimeter cliffs, distant hills, oversized rim trees, a logically closed canal) the great's summary never lists, so it failed the great artifact.",
+      "grading": {
+        "pass": "The boundary is authored to imply a larger world — sculpted terrain blended into the build and/or backdrop/perimeter geometry — so the area doesn't end at a bare flat edge.",
+        "partial": "Some boundary treatment is present (terrain blending or a backdrop on part of the perimeter) but the edge is only partly handled — gaps where the flat boundary or raw skybox still shows.",
+        "fail": "A flat baseplate ending at a hard edge under an unmasked default skybox — no authored boundary treatment."
+      },
+      "evidence_required": "A statement/capture showing the boundary authored to imply a larger world: sculpted terrain, backdrop geometry, or perimeter landforms blending the build into surroundings rather than a hard flat edge. A flat baseplate ending under an unmasked default skybox does not satisfy this.",
+      "concrete_fix": "Treat the edge deliberately: sculpt terrain that blends the build into its surroundings and add backdrop landforms/geometry at the perimeter so the world implies continuation instead of stopping at a bare baseplate boundary under the default skybox.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      },
+      "change_reason": "Original PASS enumerated specific masking devices the great artifact never recites, so both failed. Rewrote the discriminator to authored boundary treatment via sculpted/blended terrain or backdrop geometry: the great's 'sculpted Terrain blended with the builds' passes, while the mean's flat baseplate + raw default skybox fails."
+    },
+    {
+      "id": "env-unified-atmospheric-palette-blur-test",
+      "order_index": 6,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "The scene's color is deliberately authored toward a unified mood, not left to default Studio part colors. PASS requires evidence of intentional color treatment binding the scene together: a constrained, harmonized palette and/or a global color grade (e.g. ColorCorrection) that pulls elements toward one mood, plus enough texture/tonal variation that the result reads designed rather than flat default. The build need not name specific tinted RGBs or run a literal blur test, but color MUST be deliberately graded/harmonized rather than default. A scene of default-Plastic Studio colors (medium grey, default greens) with no grade and no harmonized palette FAILS.",
+      "above_generic_rationale": "The mean artifact uses 'default-Plastic-material Parts' with default Studio colors and 'no textures' — disconnected default color, the exact failure. The great artifact has 'color-graded post-effects' and 'texture variation', evidencing a deliberate global grade unifying the palette. The original demanded a 3-5 same-hue RGB palette + blur-test validation + named accent hierarchy that the great's summary never recites, failing it wrongly.",
+      "grading": {
+        "pass": "Color is deliberately authored toward one mood: a constrained/harmonized palette and/or a global color grade unifying the scene, with texture/tonal variation — clearly designed, not default.",
+        "partial": "Some intentional color treatment is present (a grade OR a constrained palette) but unification is incomplete — a few default colors still intrude or the grade only partly ties the scene together.",
+        "fail": "Default Studio part colors (medium grey, default greens) with no grade and no harmonized palette — disconnected default color."
+      },
+      "evidence_required": "A statement showing deliberate color authoring toward one mood: a constrained/harmonized palette and/or a global color grade (ColorCorrection) unifying the scene, with texture/tonal variation. Default Studio part colors with no grade or harmonized palette do not satisfy this.",
+      "concrete_fix": "Constrain the palette and add a global ColorCorrection grade so all elements pull toward one mood; retire default Studio part colors in favor of tinted/textured surfaces, and keep small bright accents to guide the eye against the unified base.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/map-making-tips-tricks/590771",
+          "https://devforum.roblox.com/t/color-lighting-feedback/1023197",
+          "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090",
+          "https://devforum.roblox.com/t/map-design-and-scene-building-fantasy-medieval-and-nature-maps/709866",
+          "https://www.youtube.com/watch?v=-DoOf32pkPo",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md"
+        ]
+      },
+      "change_reason": "Original PASS required a specific same-hue tonal palette with named RGBs and a blur/palette-tool audit, which the great artifact's 'color-graded post-effects' summary doesn't enumerate, so both failed. Rewrote to test deliberate color authoring (a harmonizing global grade + constrained palette) which the great artifact demonstrates and the mean's default Studio colors cannot."
+    },
+    {
+      "id": "env-lighting-atmosphere-mood-system",
+      "order_index": 7,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — LIGHTING / ATMOSPHERE / MOOD. Lighting is an authored mood system tuned together (Lighting + Atmosphere + ambient + color), not engine-default noon. To pass, the build must commit to (1) a committed time-of-day / lighting scenario chosen first (e.g. sunset, evening ClockTime ~17) with the skybox matched to it, (2) a warm-light / cool-shadow color separation — warm highlight tone (ColorShift_Top toward yellow/orange) against a non-black colored shadow fill (Ambient/OutdoorAmbient toward blue/teal, e.g. moonlit (30,30,60) not pure black), and (3) an Atmosphere object tuned for depth/mood (Density ~0.35-0.49 outdoor, low Haze to keep sky clarity, Offset to keep near objects crisp while distant terrain fades, Decay/Color matched to the sky horizon) used as the modern depth-falloff cue. A scene on default white midday light with black shadows and no Atmosphere FAILS.",
+      "above_generic_rationale": "Engine-default noon lighting with no Atmosphere and pure-black shadows is the #1 signature of an untouched generic build and reads flat/gamey. A committed scenario with warm/cool separation (a real painting fundamental ported to engine settings), colored ambient fill, and a tuned Atmosphere depth cue is what makes a screenshot read as 'a real game' — and it recurs independently across multiple expert sources, with exact reproducible property values.",
+      "grading": {
+        "pass": "All three present: a committed time-of-day/scenario with a matched skybox, warm-highlight vs cool non-black colored-shadow separation (ColorShift_Top warm; Ambient/OutdoorAmbient colored, not black), and a tuned Atmosphere (Density/Haze/Offset/Decay/Color) used for depth/mood.",
+        "partial": "Lighting has been deliberately touched but one pillar is missing — e.g. a committed scenario with warm/cool separation but no Atmosphere object, or an Atmosphere present but shadows still left near-black, or a scenario chosen without skybox matching.",
+        "fail": "Default white midday light with black shadows and no Atmosphere."
+      },
+      "evidence_required": "A statement showing a committed time-of-day/scenario with a matched skybox, warm highlight vs cool non-black colored shadow separation (ColorShift_Top warm; Ambient/OutdoorAmbient colored, not black), and a tuned Atmosphere (Density/Haze/Offset/Decay/Color) used for depth. Default midday white light, black shadows, or no Atmosphere does not satisfy this.",
+      "concrete_fix": "Pick a lighting scenario (e.g. sunset) and match the skybox first; warm the ColorShift_Top toward orange and cool the Ambient/OutdoorAmbient toward blue (never pure black); add an Atmosphere (Density ~0.35-0.49, low Haze, Offset so near objects stay crisp, Decay/Color matched to the horizon) and couple the skybox's lower hemisphere to the ground hue (darker than the upper).",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.youtube.com/watch?v=aq0Fi0R2FAY",
+          "https://simplified.media/guides/roblox-lighting-atmosphere",
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/lighting/enhance-outdoor-environments.md",
+          "https://create.roblox.com/docs/tutorials/use-case-tutorials/lighting/enhance-outdoor-environments",
+          "https://devforum.roblox.com/t/color-lighting-feedback/1023197"
+        ]
+      }
+    },
+    {
+      "id": "env-sun-as-composition-and-shadow-craft",
+      "order_index": 8,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Lighting and shadow are deliberately authored for mood and depth, not left at the engine's flat default. PASS requires evidence that lighting was crafted: a committed atmospheric lighting treatment (e.g. Atmosphere and/or placed lights tuned for mood) that produces directional, mood-bearing light and shadow rather than the untouched default midday wash. The build need not recite Sun-dragger shafts, ShadowSoftness values, or painted contact-shadow decals, but lighting/shadow MUST show authored intent. A scene on default lighting with no Atmosphere and engine-default flat shadows FAILS.",
+      "above_generic_rationale": "The mean artifact has 'default lighting' with no stated sun aiming or crafted shadows — the untouched default. The great artifact has 'rich lighting with Atmosphere, fog' and 'placed emissive/point lights for mood', which is authored mood lighting producing crafted light/shadow. The original demanded both compositional sun-aiming (shafts through gaps) AND specific softening/painted-shadow techniques the great's summary never recites, so it failed.",
+      "grading": {
+        "pass": "Lighting and shadow are authored for mood/depth: a committed atmospheric and/or placed-light treatment producing directional, mood-bearing light and shadow rather than the default wash.",
+        "partial": "Lighting has been deliberately touched for mood but shadow craft is shallow — mood lighting present yet shadows still largely default, or direction not used compositionally.",
+        "fail": "Default lighting with no Atmosphere and engine-default flat shadows — no authored light or shadow intent."
+      },
+      "evidence_required": "A statement showing lighting authored for mood and depth: a committed atmospheric/light treatment (Atmosphere and/or placed lights tuned for mood) producing directional, mood-bearing light and shadow. Default midday lighting with no Atmosphere and engine-default flat shadows does not satisfy this.",
+      "concrete_fix": "Author the lighting for mood: add and tune an Atmosphere, place lights deliberately for mood and direction, and aim/soften the result so shadows read intentionally rather than accepting the flat engine default — ideally aiming the sun so light lands where you want focal shadows.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=aq0Fi0R2FAY"
+        ]
+      },
+      "change_reason": "Original required two narrow named techniques (sun aimed for light shafts + crafted/softened/painted shadows) absent from the great's outcome-level lighting description, forcing mean=fail/great=fail. Rewrote to test authored mood lighting/shadow (Atmosphere + tuned/placed lights producing directional mood) which the great artifact demonstrates and the mean's default flat lighting cannot."
+    },
+    {
+      "id": "env-post-processing-ordered-stack-restraint",
+      "order_index": 9,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Post-processing is deliberately applied as an authored color grade rather than left off (the engine default) or dumped at max so the scene washes out. PASS requires evidence that post-processing was intentionally used to grade the scene's mood: a color grade and/or restrained effects committed as a treatment that ties the frame together, with no blown-out glare or full-world Blur. An ORDERED, value-disciplined stack — ColorCorrection mood first, then threshold-controlled Bloom, then focused DepthOfField, then subtle SunRays — is the strongest evidence and earns full credit; a clearly committed, restrained post-processing grade also passes. Post-processing left off entirely (engine default), or all effects enabled at max producing blown-out bloom/washed-out grade or a full-world Blur, FAILS.",
+      "above_generic_rationale": "The mean artifact leaves post-processing OFF entirely ('no atmosphere or post-effects') — the engine default that reads ungraded and flat. The great artifact commits to 'color-graded post-effects', an authored grade tying the frame together, which is exactly the deliberate post treatment this criterion targets. Generic builds either skip post entirely or blow it out at max; a restrained, committed grade (no full-world Blur, no washed-out glare) is the skill, and the ordered named-value stack remains the highest-ceiling evidence that still earns full credit. The mean's bare baseplate with post off categorically cannot demonstrate any grade.",
+      "grading": {
+        "pass": "Post-processing is committed as an authored color grade that ties the frame together — ideally an ordered, restrained stack (ColorCorrection mood first, then threshold-controlled Bloom, then focused DepthOfField, then subtle SunRays) with named values and no full-world Blur.",
+        "partial": "A post grade is present and restrained but not fully ordered/calibrated — e.g. color-graded effects committed with reasonable restraint but no deliberate ordering or A/B discipline, or one effect left default while others are tuned.",
+        "fail": "Post-processing left off entirely (engine default), or all effects enabled at max producing blown-out bloom/glare, a washed-out grade, or a full-world Blur."
+      },
+      "evidence_required": "A statement/capture showing post-processing committed as an authored color grade that ties the frame together — ideally an ordered, restrained stack (ColorCorrection mood first, then threshold-controlled Bloom, then focused DepthOfField, then subtle SunRays) with no full-world Blur. Post-processing left off entirely, or all effects at max (blown-out bloom/glare, washed-out grade, full-world Blur), does not satisfy this.",
+      "concrete_fix": "Commit to a post-processing grade instead of leaving it off or maxing it out: apply ColorCorrection first to set the mood (modest Contrast ~+0.1-0.2, genre-tuned Saturation, warm/cool Tint, toggled on/off to compare), then Bloom with a raised threshold so only true highlights glow, then DepthOfField only for intentional focus (near-haze zeroed), then subtle SunRays (~0.15-0.25) — and never apply a full-world Blur.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://simplified.media/guides/roblox-lighting-atmosphere",
+          "https://www.youtube.com/watch?v=aq0Fi0R2FAY"
+        ]
+      },
+      "statement_note": "rewrite",
+      "change_reason": "Original PASS demanded the full ORDERED stack with named restrained values (CC Contrast/Saturation, raised-threshold Bloom, focused DoF, SunRays Intensity ~0.15-0.25) and explicit ordering/A-B discipline. The great artifact's outcome summary only says 'color-graded post-effects' without enumerating order or values, so it failed despite genuinely committing to a post grade — collapsing to mean=fail/great=fail. Rewrote the discriminator to demonstrated intentional post-processing as an authored grade (no off, no blown-out, no full-world Blur), keeping the ordered/value-disciplined stack as the strongest full-credit path. The great's committed 'color-graded post-effects' now passes; the mean, which leaves post-processing off entirely ('no atmosphere or post-effects'), still fails."
+    },
+    {
+      "id": "env-modular-kit-grid-pivot-discipline",
+      "order_index": 10,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — MODULAR KIT REUSE. The world is assembled from a reused modular kit rather than one-off hand-placed parts at arbitrary coordinates. PASS requires evidence of a kit-based build: a coherent set of modular pieces reused across the build (with rotation/scale variation) so the world is assembled by composing repeated kit pieces, not by authoring each part uniquely. Full kit discipline — consistent pivots, dimensions divisible by the smallest module on a 5-stud grid, a min ~5-stud size, and child-mesh naming conventions (UpperTrim/LowerTrim/Wall) so pieces mix-and-match — is the strongest evidence and earns full credit; a clearly reused modular kit assembled from repeated pieces also passes. A build of unique parts placed at arbitrary coordinates with no shared/reused kit — every part hand-authored — FAILS.",
+      "above_generic_rationale": "The mean artifact is 'parts placed by hand' as unique default-Plastic parts with no kit at all — pure one-off authoring, the procedural/hand-placed tell. The great artifact commits to 'a reusable modular kit' and 'part reuse', which IS a kit-based build assembled from repeated pieces — the system this criterion targets. Generic generation places unique parts at arbitrary coordinates that never reuse a shared module; building from a reused kit (with the snapping/pivot/grid discipline as the highest-ceiling form) is the root distinction between a world that composes cleanly and one that doesn't. The mean's bare hand-placed parts categorically have no reused kit.",
+      "grading": {
+        "pass": "A kit-based build: a modular kit whose pieces are reused across the build with rotation/scale variation — ideally with full discipline (consistent pivots, module-divisible dimensions on a 5-stud grid, min ~5-stud sizing, mix-and-match child-mesh naming) so pieces tile cleanly.",
+        "partial": "Some kit reuse is present (pieces reused across the build) but discipline is incomplete — inconsistent pivots, dimensions not module-divisible, or no naming conventions — so some pieces don't tile cleanly.",
+        "fail": "Unique parts placed at arbitrary coordinates with no shared/reused kit — every part hand-authored, with no modular reuse."
+      },
+      "evidence_required": "A statement/capture showing a kit-based build: a modular kit whose pieces are reused across the build (with rotation/scale variation), ideally with full discipline — consistent pivots, module-divisible dimensions on a 5-stud grid, min ~5-stud sizing, and mix-and-match child-mesh naming (UpperTrim/LowerTrim/Wall). Unique parts placed at arbitrary coordinates with no shared/reused kit do not satisfy this.",
+      "concrete_fix": "Assemble the world from a reused modular kit instead of authoring each part: build a small set of pieces and compose the build by repeating them with rotation/scale variation; for the strongest version, give every piece a consistent pivot, dimensions divisible by the smallest module (e.g. 5x5) on a 5-stud grid with a min ~5-stud size, and named child meshes (UpperTrim/LowerTrim/Wall) so pieces mix-and-match cleanly.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md"
+        ]
+      },
+      "change_reason": "Original PASS required the entire snapping system recited explicitly (consistent pivot location, module-divisible dimensions, 5-stud grid, min ~5-stud size, UpperTrim/LowerTrim/Wall naming) plus demonstrated clean tiling. The great artifact states 'a reusable modular kit' and 'part reuse' but never enumerates pivots/grid/naming, so it failed on the recitation requirement while the mean (unique hand-placed default parts) also failed — non-discrimination. Rewrote so a demonstrably reused modular kit assembled from repeated pieces passes, with the full pivot/grid/naming discipline kept as the strongest full-credit path. The great's 'reusable modular kit' + 'part reuse' now passes; the mean's 'parts placed by hand' as unique default-Plastic with no kit still fails."
+    },
+    {
+      "id": "env-varied-nonuniform-set-dressing-density",
+      "order_index": 11,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — MODULAR KIT & LAYERED SET-DRESSING DENSITY (density half). Repeated set dressing is varied and contextually clustered so nothing reads grid-uniform or copy-pasted, with density tuned for curated-not-cluttered. To pass, the build must commit to (1) varying placement, rotation (90deg+), and scale of EVERY repeated element (trees, flowers, barrels, rocks) — ideally via an RNG scatter tool — with per-instance color/tint shifts, exploiting an asset's faces (e.g. rotate a rock for 4 'variations'), never three identical assets in a row, (2) contextual clustering (axes+swords at a market, rock clusters) rather than even spacing, AND (3) detail restraint — concentrating dressing at corners/intersections/T-junctions and leaving deliberate negative space around focal points, avoiding both empty AND over-cluttered noise. A build with uniform spacing/identical rotation/single scale (the procedural-placement tell), OR sprayed-everywhere clutter with no negative space, FAILS.",
+      "above_generic_rationale": "Uniform spacing, identical rotation, and single scale is THE signature of procedural/AI placement; hand-placed identical props are the generic tell. Randomized transform + per-instance tint + contextual clustering makes a scene feel hand-placed and lived-in, while knowing where to STOP and leave negative space around a focal point (concentrating detail at corners) is taste that distinguishes intentional composition from spray-everything — and defeats both the empty and the cluttered failure modes.",
+      "grading": {
+        "pass": "Varied placement/rotation/scale plus per-instance tint on repeated assets (RNG scatter, no three-in-a-row), contextual clustering instead of even spacing, AND restrained density with negative space and detail concentrated at corners/intersections/T-junctions.",
+        "partial": "Variation and clustering are present but density taste is off — e.g. varied transforms but still sprayed everywhere with no negative space, or restrained but with some identical-in-a-row repetition, or clustering without per-instance tint.",
+        "fail": "Uniform spacing / identical rotation / single scale (the procedural-placement tell), or sprayed-everywhere clutter with no negative space."
+      },
+      "evidence_required": "A statement showing varied placement/rotation/scale + per-instance tint on repeated assets (RNG scatter, no three-in-a-row), contextual clustering instead of even spacing, AND restrained density with negative space and detail concentrated at corners/intersections. Grid-uniform identical placement, or sprayed clutter with no negative space, does not satisfy this.",
+      "concrete_fix": "Scatter repeated assets with an RNG tool varying rotation (90deg+), scale, and per-instance tint (rotate a rock's faces for free variation, never three identical in a row), cluster props contextually (market wares, rock clusters), and concentrate detail at corners/T-junctions while leaving negative space around focal points — enough to feel curated, not cluttered.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/map-design-and-scene-building-fantasy-medieval-and-nature-maps/709866",
+          "https://devforum.roblox.com/t/ruskis-tutorial-1-how-to-design-a-map-layout/277853",
+          "https://devforum.roblox.com/t/map-making-tips-tricks/590771",
+          "https://devforum.roblox.com/t/how-can-i-make-my-map-look-less-boring-and-empty/2690121",
+          "https://medium.com/roblox-developer/creating-immersive-environments-2506729f62bb",
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      }
+    },
+    {
+      "id": "env-surface-depth-relief-no-flat-walls",
+      "order_index": 12,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "No major wall or surface reads as a featureless flat plane — significant surfaces are broken up so they catch light and cast shadow rather than reading as bare placeholder boxes. PASS requires evidence that surface monotony is deliberately defeated by at least one authored mechanism: (a) geometric in/out relief — trim, insets, frames, ledges, or edge detail that protrudes/recedes (the strongest evidence), and/or (b) a modular trim/wall kit whose named pieces (e.g. UpperTrim/LowerTrim/Wall) overlay surfaces with raised banding, and/or (c) layered surface-mounted set dressing and crafted PBR/SurfaceAppearance detail applied so walls/surfaces are visually articulated rather than uniform flat planes. The build need not recite 'protruding trim' explicitly, but the major surfaces MUST show authored break-up that produces highlight-and-shadow articulation. A build of flat unbroken default boxes — no trim kit, no applied surface detail, no relief, no dressing against the walls — FAILS. Texture/material alone with NO surface articulation (no relief, no trim pieces, no surface-mounted detail) is insufficient on its own.",
+      "above_generic_rationale": "Generic/AI builds are flat unbroken default boxes whose walls read as placeholder. The great artifact's committed systems — a modular kit with named child trim/wall pieces, crafted PBR/SurfaceAppearance, and dense layered dressing — are exactly what articulates a surface so it catches light and casts shadow, the recurring hallmark of crafted vs placeholder work. The mean's flat default-Plastic boxes with no kit, no applied detail, and no dressing categorically cannot produce that articulation. The new check discriminates on demonstrated surface break-up (which only deliberate kit/relief/dressing work produces) rather than on reciting one narrow geometric term the great's outcome description omits.",
+      "grading": {
+        "pass": "Major surfaces are deliberately broken up so they catch light and cast shadow — geometric in/out relief (protruding/receding trim, insets, frames, ledges) and/or a modular trim/wall kit banding surfaces and/or layered surface-mounted dressing plus crafted PBR/SurfaceAppearance detail — no significant surface reads as a featureless flat plane.",
+        "partial": "Some surfaces are articulated (a trim kit, applied detail, or relief on some walls) but others are still left as featureless flat planes — break-up applied inconsistently across major surfaces, or surface detail present but shallow.",
+        "fail": "Flat unbroken default boxes with featureless walls — no relief, no trim kit, no surface-mounted detail, and no dressing breaking up the planes (bare texture/material with zero articulation also fails)."
+      },
+      "evidence_required": "A statement/capture showing major surfaces deliberately broken up so they articulate light and shadow — via geometric in/out relief (protruding/receding trim, insets, frames, ledges, edge detail), and/or a modular trim/wall kit whose named pieces band the surfaces, and/or layered surface-mounted set dressing plus crafted PBR/SurfaceAppearance detail applied to walls/surfaces. Flat unbroken default boxes with no trim kit, no applied surface detail, and no dressing do not satisfy this; bare texture/material with no surface articulation does not satisfy this on its own.",
+      "concrete_fix": "Stop any major wall/surface reading as a featureless flat plane: break it up with protruding and receding detail (trim, insets, frames, ledges, edge bevels), build a small trim/wall kit with named pieces (UpperTrim/LowerTrim/Wall) that band the surfaces, and layer surface-mounted dressing and crafted PBR/SurfaceAppearance detail against the walls — so every significant surface catches light and casts shadow instead of reading as a flat placeholder box.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/map-making-tips-tricks/590771",
+          "https://devforum.roblox.com/t/map-design-and-scene-building-fantasy-medieval-and-nature-maps/709866"
+        ]
+      },
+      "change_reason": "Original demanded an explicit geometric-relief statement (protruding/receding trim, insets, ledges) that the great artifact's outcome-level summary never recites — so the great failed on a technicality despite committing to a modular kit (with mix-and-match named child trim/wall meshes), crafted PBR/SurfaceAppearance, and dense layered set dressing, all of which articulate surfaces and break up flat planes. Both artifacts scored fail, so the criterion did not discriminate. Rewrote so the discriminator is authored surface break-up via ANY of: geometric relief (still strongest), a trim/wall kit overlaying surfaces, or layered surface-mounted dressing + crafted material detail — which the great demonstrably has and a flat default-box build cannot. The mean's bare hand-placed default-Plastic boxes (no kit, no dressing, no crafted materials, no relief) is the textbook flat-box failure and still fails. I explicitly note that texture/material WITHOUT any articulation is insufficient, so the criterion still rewards real surface craft rather than a bare material swap."
+    },
+    {
+      "id": "env-human-scale-proportion-standard",
+      "order_index": 13,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — SCALE READABILITY (proportion half). Scale and proportion are governed by a deliberate human-scaled standard applied consistently, so navigation reads true at character height rather than being eyeballed per-object. PASS requires evidence of an authored proportion system: human-scaled proportions used so openings/clearances are character-traversable and repeated elements are sized against the same reference, producing readable navigation across the build (not a single correctly-scaled object in isolation). An EXPLICIT character-rig-referenced standard — an R15/R6 rig or a stated stud-per-meter convention, with identical door/window/opening and counter/rail/step heights across ALL structures and clearances dimensioned to character collision width — is the strongest evidence and earns full credit; demonstrated consistent human-scaled proportions and readable navigation across the build also passes. Eyeballed per-object scale that reads subtly off, inconsistent opening heights between structures, or clearances too narrow to traverse FAILS.",
+      "above_generic_rationale": "The mean artifact has 'parts placed by hand' with no proportion system — eyeballed scale with no human reference, the generic tell where doors/props read subtly off. The great artifact commits to 'human-scale proportions and readable navigation', which is exactly the deliberate human-scaled standard producing traversable, readable space that this criterion targets. Consistent human-referenced proportion is invisible when right and glaring when wrong; default generation routinely fails it for lacking any internal human-scale reference, and the explicit rig-referenced cross-structure standard remains the highest-ceiling form that earns full credit. The mean's bare hand-placed parts categorically encode no proportion system.",
+      "grading": {
+        "pass": "A deliberate human-scaled proportion standard produces readable, traversable navigation across the build — ideally an explicit character-rig (or stated stud) reference with consistent opening/counter/rail/step heights across ALL structures and collision-width clearances.",
+        "partial": "Human-scaled proportions are evident and navigation mostly reads true, but consistency is not demonstrated across multiple structures, or a minor prop/clearance is off while the system is otherwise present.",
+        "fail": "Eyeballed per-object scale that reads subtly off, a single correctly-scaled object only, inconsistent opening heights between structures, or clearances too narrow to traverse."
+      },
+      "evidence_required": "A statement/capture showing a deliberate human-scaled proportion standard producing readable, traversable navigation across the build — ideally explicit: a character-rig (R15/R6) or stated stud-per-meter reference, identical door/window/opening and counter/rail/step heights across ALL structures, and clearances dimensioned to character collision width. Eyeballed per-object scale with no human reference, inconsistent opening heights, or untraversable clearances do not satisfy this.",
+      "concrete_fix": "Govern scale with a human reference instead of eyeballing each object: size every opening, clearance, and repeated prop against a character rig (or a stated stud-per-meter convention) so navigation reads true at character height; for the strongest version, keep door/window/opening and counter/rail/step heights identical across ALL structures and dimension pathways to character collision width with room to pass.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/even-though-my-builds-are-full-of-stuff-my-game-still-feels-empty/2340065",
+          "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090"
+        ]
+      },
+      "change_reason": "Original PASS demanded an explicit canonical rig reference (R15/R6 or stated stud convention) AND cross-structure-identical opening/counter/rail/step heights AND collision-width clearances AND reference-sized props, all recited, across MULTIPLE independently-built structures. The great artifact only says 'human-scale proportions and readable navigation' generically, so it failed the explicit-standard bar while the mean (eyeballed hand-placed parts) also failed — non-discrimination. Rewrote so demonstrated consistent human-scaled proportions producing readable navigation across the build passes, keeping the explicit rig-referenced cross-structure standard as the strongest full-credit path. The great's 'human-scale proportions and readable navigation' now passes; the mean's improvised hand-placed default parts with no proportion system still fails."
+    },
+    {
+      "id": "env-terrain-contour-multimaterial-tooling",
+      "order_index": 14,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Terrain is deliberately sculpted and integrated with the build, not absent or left as one untouched default surface. PASS requires evidence of authored terrain that reads as intentional landforms blended with the structures — sculpted contours that connect to the builds rather than a flat baseplate or a single uniform blob. Multi-material transition banding and explicit tool semantics are the strongest evidence and earn full credit; clearly sculpted terrain integrated with the builds (shaped landforms, not a flat default surface) also passes. A build with NO terrain (flat baseplate) or a single-material uniformly-noisy blob with hard edges FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no Terrain sculpting' at all — a flat baseplate, the unambiguous failure. The great artifact has 'sculpted Terrain blended with the builds', i.e. authored landforms integrated with structures. The original demanded contour-line reasoning, multi-material transition bands, and named Draw/Sculpt/Paint tool intent the great's summary never recites, so it failed the great artifact despite genuine sculpted-and-blended terrain.",
+      "grading": {
+        "pass": "Terrain is deliberately sculpted into intentional landforms blended with the builds — ideally multi-material transition bands and correct tool intent — not a flat surface or uniform blob.",
+        "partial": "Terrain is sculpted/integrated but craft is shallow — landforms present yet with hard single-material edges or uniform noise, missing transition banding or contour intent.",
+        "fail": "No terrain (flat baseplate) or a single-material, uniformly-noisy blob with hard edges."
+      },
+      "evidence_required": "A statement showing authored terrain that reads as intentional landforms blended with the structures — sculpted contours connected to the builds, ideally with multi-material transition bands. No terrain (flat baseplate) or a single-material uniformly-noisy blob does not satisfy this.",
+      "concrete_fix": "Sculpt the terrain into intentional landforms that blend into the builds rather than leaving a flat baseplate; shape big features first then refine, and layer materials with transition bands (e.g. a dirt band between sand and grass) using the Paint tool for clean blends.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/map-design-and-scene-building-fantasy-medieval-and-nature-maps/709866",
+          "https://devforum.roblox.com/t/how-can-i-make-my-map-look-less-boring-and-empty/2690121",
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/core/building/create-an-environment-with-terrain.md",
+          "https://medium.com/roblox-developer/tips-for-building-beautiful-terrain-6a13fd1ba314"
+        ]
+      },
+      "change_reason": "Original PASS required multi-material banding + tool-semantics recitation absent from the great's 'sculpted Terrain blended with the builds' summary, so both failed. Rewrote so deliberately sculpted terrain integrated with the builds passes (multi-material/tool craft still earns full credit) while the mean's no-terrain baseplate fails."
+    },
+    {
+      "id": "env-part-blockout-to-terrain-normalize",
+      "order_index": 15,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Terrain landforms read as deliberate and finished — controllable, intentional shapes blended into the build, not absent and not raw lumpy/blocky voxels. PASS requires evidence of authored, coherent landforms with a finished surface quality: terrain that is shaped intentionally (whether blocked-out-then-baked or directly sculpted) and normalized/blended so transitions to the builds read smooth and organic. A part-module blockout baked and normalized is the strongest evidence; equivalently, sculpted terrain that is intentional AND cleanly blended into the structures passes. A build with NO terrain (flat baseplate), or freehand lumpy/blocky terrain with hard untreated seams, FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no Terrain sculpting' — no landforms at all. The great artifact has 'sculpted Terrain blended with the builds', evidencing intentional, finished landforms whose transitions are blended (the normalization outcome). The original demanded BOTH a part-to-terrain blockout AND a visible erosion/normalization pass with named cliff lips/sand profiles the great's summary never recites, so it failed.",
+      "grading": {
+        "pass": "Intentional, coherent landforms with a finished surface — shaped deliberately (blockout-baked or sculpted) and normalized/blended so transitions to the builds read smooth and organic.",
+        "partial": "Landforms are intentional but the finish is incomplete — some surfaces still stiff/lumpy or some transitions to the builds untreated.",
+        "fail": "No terrain (flat baseplate), or freehand lumpy/blocky terrain with hard untreated seams."
+      },
+      "evidence_required": "A statement showing intentional, coherent terrain landforms with a finished/blended surface — shaped deliberately and normalized so transitions to the builds read smooth and organic (a part-to-terrain blockout + normalization, or equivalently clean sculpted-and-blended terrain). No terrain, or freehand lumpy/blocky terrain with hard seams, does not satisfy this.",
+      "concrete_fix": "Shape the terrain into intentional landforms (block out reusable part modules and bake them, or sculpt directly), then normalize: smooth material and height transitions and blend the terrain cleanly into the structures so nothing reads lumpy, blocky, or seamed.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      },
+      "change_reason": "Original required a specific blockout-then-normalize workflow with visible erosion artifacts the great's outcome-level description omits, forcing both to fail. Rewrote to test the OUTCOME — intentional, coherent landforms cleanly blended into the builds — which the great's 'sculpted Terrain blended with the builds' satisfies and the mean's no-terrain baseplate cannot."
+    },
+    {
+      "id": "env-cliff-rock-layering-depth",
+      "order_index": 16,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Vertical terrain and rockwork are deliberately sculpted with depth, not absent (flat ground) and not a single flat face. PASS requires evidence of authored vertical landforms integrated into the sculpted terrain: cliffs, rock formations, slopes, or other vertical relief that carries depth (varied/offset masses, elevation change) and blends with the build, rather than flat ground with no vertical treatment. A layered rockwork treatment — a few large rocks in offset (non-parallel) courses with a size gradient, poke-outs for depth, and a sculpted grass lip — is the strongest evidence and earns full credit; sculpted vertical terrain with layered landform/rock depth blended into the build also passes. A flat baseplate or flat ground with NO vertical rock/cliff/elevation treatment FAILS.",
+      "above_generic_rationale": "The mean artifact is a 'flat baseplate' with 'no Terrain sculpting' — flat ground with zero vertical relief, nowhere for any cliff, rock, or elevation depth to exist; it is the unambiguous absence-of-terrain failure. The great artifact commits to 'sculpted Terrain blended with the builds', which supplies the authored vertical landforms (sculpted elevation/relief integrated with structures) this criterion is really about, with the offset-course rockwork recipe remaining the highest-ceiling form. The distinction is categorical: a flat default baseplate cannot have layered vertical depth, whereas sculpted-and-blended terrain inherently carries it.",
+      "grading": {
+        "pass": "Authored vertical terrain/rockwork reads with depth — cliffs, rock formations, slopes, or layered vertical landforms (varied/offset masses, elevation change; ideally a size gradient and sculpted grass lip) blended into the build.",
+        "partial": "Some vertical rock/cliff/elevation treatment exists but depth is shallow — flatter parallel masses, no size gradient, or vertical landforms not fully integrated with the terrain.",
+        "fail": "A flat baseplate or flat ground with NO vertical rock/cliff/elevation treatment — no authored vertical terrain at all."
+      },
+      "evidence_required": "A statement/capture showing authored vertical terrain/rockwork with depth — cliffs, rock formations, slopes, or layered vertical landforms blended into the build (varied/offset masses, elevation change; ideally a size gradient and sculpted grass lip), not a flat face. A flat baseplate or flat ground with no vertical rock/cliff/elevation treatment does not satisfy this.",
+      "concrete_fix": "Sculpt vertical terrain with depth instead of leaving flat ground: build cliffs/rock masses and elevation change that blend into the structures; for the strongest version, stack a few large rocks in offset (non-parallel) courses with a size gradient, let some poke out for depth, and sculpt a grass lip along the top edges so the vertical landforms read layered rather than as a single flat face.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      },
+      "change_reason": "Original PASS-equivalent bar required the specific layered-rockwork recipe recited (few large offset-course rocks, explicit size gradient, poke-outs, sculpted grass lip). The great artifact says 'sculpted Terrain blended with the builds' but never recites vertical/cliff/rock specifics, so it failed while the mean (flat baseplate, no terrain) also failed — non-discrimination. Rewrote so authored vertical terrain/landform depth blended into the build passes, keeping the offset-course/size-gradient/grass-lip rockwork as the strongest full-credit path. Crucially, the discriminator now hinges on the mean's categorical absence of ANY terrain: the great's 'sculpted Terrain blended with the builds' provides authored vertical landform depth and passes, while the mean's flat baseplate with no terrain — which cannot contain any cliff, rock, or elevation — still fails."
+    },
+    {
+      "id": "env-grass-decoration-and-foliage-grounding",
+      "order_index": 17,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "The ground plane and any foliage are deliberately treated so the scene reads planted and finished, not a bare default surface. PASS requires evidence of authored ground/foliage treatment integrated with the terrain: terrain decoration and/or grounded foliage/set dressing that sits believably in a sculpted surface rather than props floating on a flat baseplate. Reduced grass height plus buried/grounded foliage is the strongest evidence; equivalently, set dressing and foliage grounded into the sculpted terrain (not sitting on a flat default plane) passes. A build with NO terrain and NO set dressing (bare baseplate), or foliage sitting awkwardly on top of a flat surface, FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no Terrain sculpting' and 'no set dressing' — there is no ground treatment or foliage to ground at all. The great artifact has 'sculpted Terrain blended with the builds' plus 'dense layered set dressing and props', which is exactly foliage/dressing grounded into authored terrain. The original demanded named grass-height reduction + the bury-most-of-the-asset trick the great's summary never recites, failing it.",
+      "grading": {
+        "pass": "Authored ground/foliage treatment — terrain decoration and/or foliage grounded into the sculpted surface (reduced grass height, buried foliage) so the scene reads planted.",
+        "partial": "Some grounding/decoration is present but incomplete — foliage grounded in places yet others sit on top, or decoration left at full default height.",
+        "fail": "A bare baseplate with no terrain and no set dressing, or foliage sitting awkwardly on top of a flat surface."
+      },
+      "evidence_required": "A statement showing authored ground/foliage treatment: terrain decoration and/or set dressing and foliage grounded believably into the sculpted surface (reduced grass height, buried foliage), not props floating on a flat plane. A bare baseplate with no dressing, or foliage sitting on a flat surface, does not satisfy this.",
+      "concrete_fix": "Treat the ground: enable terrain decoration with the grass height pulled down so it isn't a cornfield, and ground each bush/foliage asset by sinking most of it into the sculpted terrain so only a little shows — keeping foliage in the decorated zones rather than floating on a flat plane.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=N_UMED30lNc"
+        ]
+      },
+      "change_reason": "Original required specific decoration-tuning and a foliage-burying technique absent from the great's outcome-level description, so both failed. Rewrote to test grounded foliage/set dressing integrated with sculpted terrain (a system the great demonstrably has via dense dressing + blended terrain) while the mean's bare baseplate with no terrain or dressing fails."
+    },
+    {
+      "id": "env-stylized-water-treatment-and-quirks",
+      "order_index": 18,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Where the scene includes water or other reflective/transparent material surfaces, they are deliberately tuned to the scene's value and lighting rather than left at raw realistic defaults — and more broadly, the build demonstrates authored material/terrain surface tuning rather than untouched defaults. PASS requires evidence of deliberate surface tuning integrated with the scene: water tuned to the sky value and lighting (darkened/tinted/transparency-matched, quirks handled), OR equivalently authored terrain-and-material surfaces tuned to the scene's mood rather than stock defaults. A build of default-Plastic surfaces and untouched defaults with NO terrain and no tuned material/water surfaces FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no Terrain sculpting' (no water) and default-Plastic surfaces with 'no textures' — every surface is an untouched default. The great artifact has 'sculpted Terrain blended with the builds', 'crafted PBR materials/SurfaceAppearance', and 'rich lighting with Atmosphere, fog', i.e. surfaces deliberately tuned to the scene's value/mood. The original demanded scene-specific WaterColor tuning + the submerged-decal-culling quirk on water that may not even exist in the scene, so both failed.",
+      "grading": {
+        "pass": "Surfaces are tuned to the scene — water matched to sky value/lighting with quirks handled where present, and/or authored terrain/material surfaces tuned to the scene's mood rather than stock defaults.",
+        "partial": "Some surface tuning is present (value/color matching on some surfaces) but incomplete — water or materials only partly matched, or quirks unaddressed.",
+        "fail": "Default-Plastic surfaces and untouched defaults with no terrain and no tuned material/water surfaces."
+      },
+      "evidence_required": "A statement showing surfaces tuned to the scene rather than raw defaults: water darkened/tinted/transparency-matched to the sky value with quirks handled, OR authored terrain/material surfaces tuned to the scene's mood. Default-Plastic surfaces and untouched defaults with no tuned surfaces do not satisfy this.",
+      "concrete_fix": "Tune reflective/transparent surfaces to the scene: where there is water, darken it and match Transparency/Reflectance and WaterColor to the sky's value and lighting (and set wave size to 0 where submerged splash decals must render); more broadly, tune terrain and material surfaces to the scene's mood instead of leaving stock defaults.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=N_UMED30lNc"
+        ]
+      },
+      "change_reason": "Original keyed entirely on water-specific tuning and an engine quirk; the great artifact (which mentions no water) could never pass, and neither could the mean — pure non-discrimination. Rewrote so the discriminator is authored value/mood-matched surface tuning (water when present, else terrain/material surfaces tuned to the scene), which the great demonstrably has and the mean's untouched defaults lack."
+    },
+    {
+      "id": "env-wayfinding-zone-color-material-coding",
+      "order_index": 19,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "Color and material are used with deliberate authored intent that supports legibility, not left as incidental defaults. PASS requires evidence that color and material were authored to differentiate and organize the space: distinct, deliberately chosen hues and/or custom materials applied so different areas/elements read distinctly (supporting orientation and hierarchy), rather than uniform default-Plastic and default colors everywhere. Explicit per-zone hue + MaterialVariant coding for wayfinding is the strongest evidence; deliberately differentiated color-graded materials that organize the space also pass. Uniform default-Plastic with default colors carrying no differentiation FAILS.",
+      "above_generic_rationale": "The mean artifact uses default-Plastic Parts with default colors and 'no textures/SurfaceAppearance' — uniform default with zero differentiation. The great artifact has 'crafted PBR materials/SurfaceAppearance', 'color-graded' materials, and 'texture variation', i.e. deliberately differentiated authored materials/colors organizing the space. The original demanded both distinct per-zone hues AND distinct per-zone MaterialVariants chosen by named color theory + a Neon skylight trick, which the great's generic material/color mention never recites, so it failed.",
+      "grading": {
+        "pass": "Color and material are authored to differentiate/organize the space — distinct chosen hues and/or custom materials making areas read distinctly, ideally explicit per-zone hue + MaterialVariant wayfinding.",
+        "partial": "Some deliberate differentiation exists (distinct colors OR custom materials) but it is incidental rather than organizing — not yet a coherent legibility system.",
+        "fail": "Uniform default-Plastic with default colors carrying no differentiation or wayfinding meaning."
+      },
+      "evidence_required": "A statement showing color and material authored to differentiate/organize the space: distinct deliberately-chosen hues and/or custom materials making areas read distinctly (ideally per-zone hue + MaterialVariant coding). Uniform default-Plastic and default colors with no differentiation do not satisfy this.",
+      "concrete_fix": "Use color and material to organize the space: give different areas distinct, deliberately-chosen hues and distinct custom materials (MaterialVariants) so players orient by color and material; pick the palette via a complementary/analogous/triadic scheme rather than leaving uniform default plastic.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md"
+        ]
+      },
+      "change_reason": "Original required an explicit zone=hue+MaterialVariant wayfinding system the great's outcome-level description never states, forcing both to fail. Rewrote so deliberately differentiated, authored color/material that organizes the space passes (explicit zone-coding still strongest), while the mean's uniform default-Plastic-with-default-colors fails."
+    },
+    {
+      "id": "env-performance-optimization-pass",
+      "order_index": 20,
+      "tier": "good",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — SCALE READABILITY & PERFORMANCE OPTIMIZATION (perf half). Richness is made shippable through a distinct, measured optimization pass, not emitted as raw instances. To pass, the build must commit to (1) draw-call reduction — merge meshes in a DCC tool (8 meshes -> 1 draw call; every unique asset = 1 GPU draw call) and ensure reused assets share ONE asset ID so instancing works (duplicate IDs defeat it), (2) shadow/collision/overdraw culling — disable CastShadow (and CanCollide/DoubleSided) on non-critical foliage/small props, keep shadow-casting lights under ~50 per visible area, prefer a PointLight over Neon for glow, and reduce layered-transparency overdraw, AND (3) diagnosis with the MicroProfiler / Scene Analysis rather than guessing. A build that emits dense instances with no draw-call/shared-ID/shadow-culling consideration and no profiling FAILS.",
+      "above_generic_rationale": "Generic generation never considers draw calls, shared asset IDs, or overdraw — it just emits instances. Mesh-merging, shared-ID instancing, CastShadow-off foliage, light budgeting, and MicroProfiler-driven diagnosis are specific measurable levers that decide whether a pretty, densely-dressed map actually ships at framerate — the discipline naive dense builds ignore.",
+      "grading": {
+        "pass": "A deliberate optimization pass: merged meshes / draw-call reduction, reused assets sharing one asset ID for instancing, CastShadow/CanCollide/DoubleSided off on decorative props, a light budget (<~50 shadow-casters/area, PointLight over Neon), AND MicroProfiler / Scene-Analysis diagnosis.",
+        "partial": "Some optimization levers applied (e.g. CastShadow off on foliage, or some mesh merging) but the pass is incomplete — no shared-ID instancing, no light budgeting, or no profiling/diagnosis.",
+        "fail": "Dense raw instances with no draw-call/shared-ID/shadow-culling consideration and no profiling."
+      },
+      "evidence_required": "A statement showing a deliberate optimization pass: merged meshes / draw-call reduction, reused assets sharing one asset ID for instancing, CastShadow/CanCollide/DoubleSided off on decorative props, light budget (<~50 shadow-casters/area, PointLight over Neon), and MicroProfiler/Scene-Analysis diagnosis. Dense raw instances with no perf consideration do not satisfy this.",
+      "concrete_fix": "Run a dedicated optimization stage: merge meshes in a DCC tool to cut draw calls, ensure duplicate assets share one asset ID so instancing kicks in, disable CastShadow/CanCollide/DoubleSided on decorative foliage and small props, keep shadow-casting lights under ~50 per visible area (PointLight over Neon for glow), and profile with the MicroProfiler / Scene Analysis instead of guessing.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/optimize-your-experience.md",
+          "https://simplified.media/guides/roblox-lighting-atmosphere"
+        ]
+      }
+    },
+    {
+      "id": "env-fog-vs-atmosphere-intentional-depth-tool",
+      "order_index": 21,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "A depth-falloff/atmospheric system is present and tuned to the scene rather than absent or left at a greyish-white default. PASS requires evidence of an authored depth-falloff treatment integrated with the lighting: an Atmosphere and/or fog whose color and density are tuned toward the scene's mood/key colors (not a default haze), used to create intentional depth. Explicit fog-vs-Atmosphere trade-off reasoning with backdrop parts for the falloff to overlay is the strongest evidence; a tuned Atmosphere/fog clearly integrated with the scene's mood also passes. A scene with NO Atmosphere/fog and default lighting, or a greyish-white untuned default haze, FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no atmosphere or post-effects' and default lighting — no depth-falloff tool at all. The great artifact has 'rich lighting with Atmosphere, fog' tuned for mood, i.e. an authored depth-falloff system integrated with the scene. The original demanded explicit fog-vs-Atmosphere trade-off reasoning + Atmosphere.Color-toward-key-colors + backdrop parts, none of which the great's summary recites, so it failed.",
+      "grading": {
+        "pass": "An authored depth-falloff treatment tuned to the scene — Atmosphere/fog with color and density matched to the scene's mood — ideally with reasoned fog-vs-Atmosphere choice and backdrop parts to overlay.",
+        "partial": "A depth-falloff tool is present and somewhat tuned but reasoning/color-matching is shallow — Atmosphere/fog added for mood without trade-off rationale or backdrop parts.",
+        "fail": "No Atmosphere/fog with default lighting, or a greyish-white untuned default haze."
+      },
+      "evidence_required": "A statement showing an authored depth-falloff treatment tuned to the scene: Atmosphere and/or fog whose color/density are matched to the scene's mood/key colors for intentional depth, ideally with fog-vs-Atmosphere reasoning and backdrop parts. No Atmosphere/fog with default lighting, or untuned greyish-white haze, does not satisfy this.",
+      "concrete_fix": "Add a depth-falloff tool and tune it to the scene: choose fog (to preserve dark recesses/contrast) or Atmosphere (for a soft blend) by what the scene needs, tune the Atmosphere/fog color toward your key hues so the haze unifies, and add backdrop parts for the falloff to read against.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/fog-vs-atmosphere-lighting-feedback/601667",
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      },
+      "change_reason": "Original required articulated trade-off reasoning the great artifact never states, forcing both to fail. Rewrote so a depth-falloff system tuned to the scene's mood (Atmosphere/fog integrated with the lighting) passes — trade-off reasoning + backdrop parts still strongest — while the mean's no-Atmosphere default fails."
+    },
+    {
+      "id": "env-environmental-storytelling-wear-history",
+      "order_index": 22,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "The space is dressed with deliberate, theme-tied detail that gives it believability and a sense of place, not left bare or filled with arbitrary brand-new clutter. PASS requires evidence of authored, layered set dressing placed with intent toward a coherent theme/believability — props and details that populate the space meaningfully rather than an empty baseplate. Wear/history detail (repaired surfaces, broken/abandoned objects, street furniture, secondary points of interest) is the strongest evidence; equivalently, dense layered theme-tied dressing placed for believability passes. A bare scene with NO set dressing/props, or arbitrary theme-disconnected clutter, FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no set dressing or props' — a bare default baseplate with nothing to tell a story. The great artifact has 'dense layered set dressing and props for believability', i.e. intentional theme-tied dressing populating the space. The original demanded specific wear/history narrative beats (tar-patched potholes, broken lamps, abandoned wagons) the great's 'props for believability' summary never recites, so it failed.",
+      "grading": {
+        "pass": "Deliberate, layered, theme-tied set dressing gives the space believability — ideally with wear/history detail (repaired/worn surfaces, broken/abandoned objects, secondary points of interest).",
+        "partial": "Some intentional dressing is present but believability is shallow — props populate the space but are largely brand-new/theme-generic with little implied history.",
+        "fail": "A bare scene with no set dressing/props, or arbitrary theme-disconnected clutter with no sense of place."
+      },
+      "evidence_required": "A statement/capture showing deliberate theme-tied set dressing giving the space believability — layered props placed with intent, ideally wear/history detail (repaired/worn surfaces, broken/abandoned objects, secondary points of interest). A bare scene with no props, or arbitrary theme-disconnected clutter, does not satisfy this.",
+      "concrete_fix": "Dress the space with intent: layer theme-tied props that populate it believably, and add details that imply history and use — a repaired/worn surface, a broken or abandoned object, street furniture, and secondary points of interest along paths — rather than leaving it bare or scattering arbitrary props.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/even-though-my-builds-are-full-of-stuff-my-game-still-feels-empty/2340065",
+          "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md"
+        ]
+      },
+      "change_reason": "Original required specific narrative wear details the great's outcome-level description omits, forcing both to fail. Rewrote so deliberate, dense, theme-tied set dressing placed for believability passes (explicit wear/history still strongest), while the mean's bare no-props baseplate fails."
+    },
+    {
+      "id": "env-pbr-surfaceappearance-material-craft",
+      "order_index": 23,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "KILLER SYSTEM — MATERIAL / TEXTURE / PBR SURFACE CRAFT. Hero surfaces use full PBR SurfaceAppearance / MaterialVariant with a correct map set and correct authoring rules, replacing Studio defaults that read as plastic/unfinished. To pass, the build must commit to (1) custom PBR SurfaceAppearance/MaterialVariant on key surfaces and terrain supplying ColorMap (albedo) + NormalMap (OpenGL tangent-space) + RoughnessMap (0 sharp -> 1 matte) + MetalnessMap set BINARY (0.0 non-metal or 1.0 metal, rarely between), (2) custom/hand-made textures and meshes over stock parts/terrain textures where it counts (the stylized-signature vs default-look line), AND ideally (3) AlphaMode Transparency for foliage/netting silhouettes without modeling geometry and reusing one ColorMap with different Color tints for free variation. A build relying on built-in Studio materials/default terrain textures everywhere (plastic, instantly-recognizable default look) FAILS.",
+      "above_generic_rationale": "Default Studio materials are instantly recognizable and read as plastic/unfinished; generic output relies on built-in presets everywhere. A 4-map PBR SurfaceAppearance with the binary-metalness rule, OpenGL normal format, AlphaMode-Transparency foliage, and tint-reuse-for-variation gives a build its own visual identity and makes metal read as metal — the highest-cost, highest-ceiling material lever and a clear above-baseline upgrade.",
+      "grading": {
+        "pass": "Custom PBR SurfaceAppearance/MaterialVariant on hero surfaces/terrain with the full correct map set (ColorMap + OpenGL NormalMap + RoughnessMap + binary MetalnessMap), custom textures/meshes over stock defaults where it counts, and ideally AlphaMode Transparency foliage + one-ColorMap tint-reuse variation.",
+        "partial": "PBR SurfaceAppearance/MaterialVariant is used on some surfaces but the authoring is incomplete — missing a map, non-binary metalness, wrong normal format, or applied to only a few surfaces while most still use stock materials.",
+        "fail": "Built-in Studio materials / default terrain textures everywhere (plastic, instantly-recognizable default look)."
+      },
+      "evidence_required": "A statement showing PBR SurfaceAppearance/MaterialVariant on hero surfaces with the full map set (albedo/OpenGL-normal/roughness/binary-metalness), custom textures/meshes over stock defaults, and ideally AlphaMode Transparency foliage + tint-reuse variation. Built-in Studio materials / default terrain textures everywhere do not satisfy this.",
+      "concrete_fix": "Author PBR SurfaceAppearance/MaterialVariant for hero surfaces and terrain: ColorMap + OpenGL NormalMap + RoughnessMap + MetalnessMap pinned to 0.0 or 1.0; replace stock materials/meshes on key surfaces with custom ones; use AlphaMode Transparency for foliage/netting silhouettes and reuse one ColorMap with different Color tints for free variation.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090",
+          "https://devforum.roblox.com/t/feedback-on-my-lighting-and-graphics/1654421",
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/modeling/surface-appearance.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md"
+        ]
+      }
+    },
+    {
+      "id": "env-trim-sheets-seamless-tileables",
+      "order_index": 24,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "Surface detail comes from authored, reused textures/materials across the build, not a flat default material slapped on each part. PASS requires evidence of authored material/texture reuse that unifies the build: custom textures/MaterialVariants reused across a modular kit so many objects read as one designed world, with texture variation rather than per-part default plastic. Seamless tileables + single-axis trim sheets reused as MaterialVariants is the strongest evidence; equivalently, custom authored materials/textures reused across the kit to unify surfaces passes. A build applying default-Plastic/flat default material to each part with no reused custom texturing FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no textures' and default-Plastic material on each part — flat per-part default, the failure. The great artifact has 'texture variation', a 'reusable modular kit', and 'crafted PBR materials/SurfaceAppearance', i.e. authored textures reused across a kit to unify the build. The original demanded named seamless-tileable + single-axis trim-sheet authoring rules the great's summary never recites, failing it.",
+      "grading": {
+        "pass": "Authored material/texture reuse unifies the build — custom textures/MaterialVariants reused across the kit (ideally seamless tileables + trim sheets) with texture variation.",
+        "partial": "Some custom texturing/reuse is present but unification is incomplete — reused on some surfaces, or with visible seams/repetition, while beating per-part defaults.",
+        "fail": "Flat default-Plastic/default material applied to each part with no reused custom texturing."
+      },
+      "evidence_required": "A statement showing authored material/texture reuse unifying the build: custom textures/MaterialVariants reused across a modular kit (ideally seamless tileables and single-axis trim sheets), with texture variation. Flat default-Plastic material on each part with no reused custom texturing does not satisfy this.",
+      "concrete_fix": "Texture the build with reused custom materials: author seamless tileables and single-axis trim sheets, import them as MaterialVariants, and reuse them across the modular kit so many objects read as one designed world — instead of slapping a flat default material on each part.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md"
+        ]
+      },
+      "change_reason": "Original required specific trim-sheet/tileable authoring discipline absent from the great's outcome-level description, so both failed. Rewrote so authored material/texture reuse across a kit that unifies surfaces passes (seamless tileables + trim sheets still strongest), while the mean's flat per-part default plastic fails."
+    },
+    {
+      "id": "env-stylized-foliage-normal-roughness-pipeline",
+      "order_index": 25,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "Foliage and stylized props read as deliberately authored assets with crafted materials, not stock blocky meshes with default plastic. PASS requires evidence of authored foliage/prop craft beyond stock defaults: custom or crafted PBR materials/SurfaceAppearance on foliage and props, integrated into the dressed scene so they read intentional rather than toolbox-default. A named DCC pipeline technique (normal-transfer leaf cards, hand-painted cavity-edge props, PixelFix cutouts) is the strongest evidence; equivalently, crafted-material foliage/props (no default plastic, deliberate texturing) integrated into dense dressing passes. Stock blocky mesh trees / raw toolbox foliage with default materials FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no set dressing or props' and 'no textures' — no foliage and no crafted materials at all. The great artifact has 'dense layered set dressing and props' with 'crafted PBR materials/SurfaceAppearance' and 'no default plastic', i.e. authored foliage/props with crafted materials. The original demanded a specific named DCC technique (normal transfer, white roughness, PixelFix) the great's generic prop/material mention never recites, so it failed.",
+      "grading": {
+        "pass": "Foliage/props are authored beyond stock defaults — custom/crafted PBR materials/SurfaceAppearance, ideally a named DCC pipeline technique (normal-transfer leaf cards, hand-painted cavity-edge props, PixelFix cutouts).",
+        "partial": "Foliage/props have some crafted materials but craft is shallow — custom material on some assets while others remain stock/default, no named pipeline technique.",
+        "fail": "Stock blocky mesh trees / raw toolbox foliage with default materials and untreated cutouts."
+      },
+      "evidence_required": "A statement showing foliage/props authored beyond stock defaults: custom/crafted PBR materials/SurfaceAppearance on foliage and props integrated into the dressed scene (ideally a named DCC technique — normal-transfer leaf cards, hand-painted cavity-edge props, PixelFix cutouts). Stock blocky mesh trees / raw toolbox foliage with default materials do not satisfy this.",
+      "concrete_fix": "Author foliage and props with crafted materials instead of stock blocky meshes: apply custom PBR SurfaceAppearance (no default plastic), and ideally use a real technique — normal-transfer leaf cards with a white roughness map, hand-painted cavity-edge prop highlights, and PixelFix-treated cutouts to kill black alpha fringes.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=0_lkryX-CgM"
+        ]
+      },
+      "change_reason": "Original required reciting a specific foliage DCC pipeline technique absent from the great's outcome-level description, forcing both to fail. Rewrote so crafted-material foliage/props beyond stock defaults pass (a named DCC technique still strongest), while the mean's no-props no-textures baseplate fails."
+    },
+    {
+      "id": "env-foliage-fill-light-recoloring-shadows",
+      "order_index": 26,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "Foliage and dressed areas receive deliberately placed local lighting that gives them dimensional life, not flat global-only illumination. PASS requires evidence of authored local lights placed for mood/dimension among the foliage and dressing — placed point/emissive lights tuned to enrich shadowed interiors and mood, rather than relying solely on default global lighting. Per-tree small-range fill lights colored to the leaf hue recoloring shadow interiors is the strongest evidence; equivalently, placed mood lights deliberately enriching the foliage/dressed areas passes. A treeline/dressed scene lit only by default global lighting with flat interiors FAILS.",
+      "above_generic_rationale": "The mean artifact has 'default lighting' and 'no set dressing' (no trees) — no placed lights and nothing to fill-light. The great artifact has 'placed emissive/point lights for mood' among 'dense layered set dressing', i.e. authored local lighting enriching the dressed/foliage areas. The original demanded the specific per-tree leaf-hued fill-light-recoloring-interiors technique the great's 'point lights for mood' summary never names, so it failed.",
+      "grading": {
+        "pass": "Authored local lights are placed among foliage/dressing for dimension — ideally per-tree small-range fill lights colored to the leaf hue recoloring shadowed interiors, range contained.",
+        "partial": "Placed mood lights enrich the scene but the foliage-specific craft is shallow — lights present yet uncolored/over-ranged, or applied to only some areas.",
+        "fail": "Foliage/dressed areas lit only by default global lighting with flat, uncolored interiors and no placed local lights."
+      },
+      "evidence_required": "A statement showing authored local lights placed among foliage/dressing for dimension/mood — placed point/emissive lights enriching shadowed interiors (ideally per-tree small-range fill lights colored to the leaf hue recoloring interiors). Default global-only lighting with flat interiors does not satisfy this.",
+      "concrete_fix": "Place local lights to give foliage and dressed areas dimension: drop a small-range point light colored to the leaf hue inside/atop each tree (CastShadow on) so it recolors the shadowed interior rather than the ground, keep the range tight so it doesn't bleed onto neighbors, and add a dimmer cool under-light.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=0_lkryX-CgM"
+        ]
+      },
+      "change_reason": "Original required the exact foliage fill-light recipe absent from the great's outcome-level lighting description, forcing both to fail. Rewrote so deliberately placed local mood lights enriching foliage/dressed areas pass (per-tree leaf-hue fill still strongest), while the mean's default-global-only lighting with no placed lights fails."
+    },
+    {
+      "id": "env-organic-motion-volumetric-life",
+      "order_index": 27,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "The scene shows authored atmospheric life through layered lighting/atmosphere depth (and, where present, motion or volumetric cues), not a flat untouched static default. PASS requires evidence of authored atmospheric/volumetric depth giving the scene life: a committed Atmosphere/fog + mood lighting treatment that adds volume and depth, ideally with ambient motion (particles) and/or faux volumetric light gated for performance. Sun-aligned god-rays + ambient particles with a performance gate is the strongest evidence; equivalently, an authored atmospheric depth treatment (Atmosphere/fog + placed mood lighting) that makes the scene read alive rather than a flat default passes. A scene on default lighting with no Atmosphere/fog, no mood lights, and no atmospheric depth FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no atmosphere or post-effects' and default lighting — a flat static default with no volume or life. The great artifact has 'rich lighting with Atmosphere, fog' and 'placed emissive/point lights for mood', i.e. authored atmospheric depth that gives the scene life. The original demanded literal ambient particle motion + sun-aligned volumetric fog meshes + a stated performance gate the great's summary never recites, so it failed.",
+      "grading": {
+        "pass": "Authored atmospheric/volumetric depth gives the scene life — Atmosphere/fog + mood lighting adding volume, ideally ambient motion (particles) and faux volumetrics gated for performance.",
+        "partial": "Atmospheric depth is present but life is shallow — Atmosphere/mood lighting adds some volume yet no ambient motion or volumetric cues, or volumetrics ungated.",
+        "fail": "Default lighting with no Atmosphere/fog, no mood lights, and no atmospheric depth — a flat static default."
+      },
+      "evidence_required": "A statement showing authored atmospheric/volumetric depth giving the scene life: a committed Atmosphere/fog + mood-lighting treatment adding volume/depth, ideally ambient motion (particles) and faux volumetric light gated for performance. A flat default scene with no Atmosphere/fog and no mood lighting does not satisfy this.",
+      "concrete_fix": "Give the scene atmospheric life: commit to an Atmosphere/fog + placed mood-lighting treatment that adds volume and depth, then layer in ambient motion (falling leaves/dust/insects) and faux volumetric light (sun-aligned transparent fog-mesh god-rays, CastShadow off) — gating the expensive volumetrics to a showcase/high-graphics tier.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090",
+          "https://devforum.roblox.com/t/feedback-on-my-lighting-and-graphics/1654421",
+          "https://www.youtube.com/watch?v=aq0Fi0R2FAY"
+        ]
+      },
+      "change_reason": "Original required actual particle motion + volumetric light cards + gating discipline absent from the great's outcome-level description, forcing both to fail. Rewrote so authored atmospheric/volumetric depth giving the scene life passes (motion + gated volumetrics still strongest), while the mean's no-Atmosphere flat default fails."
+    },
+    {
+      "id": "env-custom-terrain-material-override",
+      "order_index": 28,
+      "tier": "exceptional",
+      "system_module": "environment",
+      "statement": "Terrain and key surfaces use authored custom PBR materials rather than being locked to stock defaults. PASS requires evidence of custom PBR material authoring applied to terrain/ground or hero surfaces beyond the stock palette: crafted SurfaceAppearance/MaterialVariant materials (custom maps) replacing default plastic/stock terrain look, integrated with sculpted terrain. A custom MaterialVariant whose BaseMaterial is a terrain material, set as a MaterialService terrain override, is the strongest evidence; equivalently, crafted custom PBR materials applied to terrain/ground and hero surfaces (no default look) passes. A build locked to default-Plastic and stock terrain materials with no custom PBR authoring FAILS.",
+      "above_generic_rationale": "The mean artifact has 'no Terrain sculpting' and 'no textures/PBR materials' — locked entirely to stock defaults. The great artifact has 'sculpted Terrain blended with the builds' plus 'crafted PBR materials/SurfaceAppearance' with 'no default plastic', i.e. custom PBR material authoring applied to terrain and surfaces. The original demanded the specific MaterialService terrain-override wiring the great's generic PBR-material mention never recites, so it failed.",
+      "grading": {
+        "pass": "Custom PBR materials are authored beyond stock defaults — crafted SurfaceAppearance/MaterialVariant on terrain/ground and hero surfaces, ideally a MaterialVariant set as a MaterialService terrain override.",
+        "partial": "Some custom PBR authoring is present but coverage is incomplete — custom materials on some surfaces while terrain/others remain stock, or no actual terrain override wired.",
+        "fail": "Locked to default-Plastic and stock terrain materials with no custom PBR authoring."
+      },
+      "evidence_required": "A statement showing custom PBR material authoring beyond stock defaults: crafted SurfaceAppearance/MaterialVariant materials applied to terrain/ground and hero surfaces (ideally a custom MaterialVariant set as a MaterialService terrain override). Default-Plastic and stock terrain materials with no custom PBR authoring do not satisfy this.",
+      "concrete_fix": "Author custom PBR materials for terrain and hero surfaces: import a custom texture set as a MaterialVariant (for terrain, set its BaseMaterial to a terrain material like Dirt and apply it as the MaterialService terrain override), so the ground and key surfaces read bespoke rather than stock default plastic/terrain.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=-DoOf32pkPo"
+        ]
+      },
+      "change_reason": "Original required a literal terrain MaterialVariant-override-in-MaterialService the great's outcome-level description never states, forcing both to fail. Rewrote so crafted custom PBR materials applied to terrain/ground and hero surfaces beyond stock defaults pass (the MaterialService terrain override still strongest), while the mean's stock-only no-PBR baseplate fails."
+    }
+  ]
+}
