@@ -12,6 +12,10 @@ local CaptureCore = require(script.Parent.Tools.CaptureCore)
 
 local ExemplarEvidence = {}
 
+-- Cap rendered exemplars so a large corpus can't blow past Anthropic's per-request image limit (the
+-- build shot + exemplars must stay well under 20 images). The curator orders the manifest best-first.
+local MAX_EXEMPLARS = 6
+
 -- ---- pure ----
 
 -- Decode a /exemplars payload ({ exemplars = { {caption,tier,source,image}, ... } }) into alternating
@@ -21,6 +25,7 @@ function ExemplarEvidence.buildExemplarBlocks(payload: any): { any }
 	if type(payload) ~= "table" or type(payload.exemplars) ~= "table" then
 		return blocks
 	end
+	local rendered = 0
 	for _, ex in payload.exemplars do
 		if type(ex) == "table" then
 			local data = if type(ex.image) == "string"
@@ -42,6 +47,10 @@ function ExemplarEvidence.buildExemplarBlocks(payload: any): { any }
 					type = "image",
 					source = { type = "base64", media_type = "image/png", data = data },
 				})
+				rendered += 1
+				if rendered >= MAX_EXEMPLARS then
+					break
+				end
 			end
 		end
 	end

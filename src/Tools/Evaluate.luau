@@ -217,19 +217,17 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 	-- Visual evidence (calibration anchoring): the build's own capture + curated exemplar images, folded
 	-- into the SAME grade call. Best-effort — ANY failure degrades to the text-only grade (no hard fail).
 	local cfg = if type(context) == "table" then context.config else nil
-	local wantCapture = not (type(args) == "table" and args.capture == false)
+	local wantVisual = args.capture ~= false
 	local imageBlocks: { any } = {}
-	if cfg ~= nil then
-		if wantCapture then
-			local buildBlocks = ExemplarEvidence.captureSubject(subject, cfg)
-			if buildBlocks ~= nil and #buildBlocks > 0 then
-				table.insert(imageBlocks, {
-					type = "text",
-					text = "\n=== AGENT'S BUILD (live capture — grade what you SEE) ===",
-				})
-				for _, b in buildBlocks do
-					table.insert(imageBlocks, b)
-				end
+	if cfg ~= nil and wantVisual then
+		local buildBlocks = ExemplarEvidence.captureSubject(subject, cfg)
+		if buildBlocks ~= nil and #buildBlocks > 0 then
+			table.insert(imageBlocks, {
+				type = "text",
+				text = "\n=== AGENT'S BUILD (live capture — grade what you SEE) ===",
+			})
+			for _, b in buildBlocks do
+				table.insert(imageBlocks, b)
 			end
 		end
 		local exemplarBlocks = ExemplarEvidence.fetchExemplars(args.category, cfg)
@@ -311,8 +309,8 @@ Evaluate.descriptors = {
 			.. "omit to use the selection), design (YOUR summary of the architecture you built — what owns "
 			.. "routing, IK, layering, etc.). Returns fails-first criteria with the fix for each; address "
 			.. "them and re-evaluate."
-			.. " It also CAPTURES the subject and shows the grader curated reference images of great work, "
-			.. "so visually-anchorable craft is judged on what it SEES (set capture=false to skip).",
+			.. " When the sidecar is running, it also CAPTURES the subject and shows the grader curated reference images of great work, "
+			.. "so visually-anchorable craft is judged on what it SEES (set capture=false for a text-only grade).",
 		inputSchema = {
 			type = "object",
 			properties = {

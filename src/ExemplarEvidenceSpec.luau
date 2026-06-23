@@ -62,6 +62,16 @@ local function buildCases(): { Case }
 		return #blocks == 2 and string.find(blocks[1].text, "reference", 1, true) ~= nil
 	end)
 
+	add("caps at MAX_EXEMPLARS exemplars", function()
+		local many = {}
+		for i = 1, 9 do
+			table.insert(many, { caption = "e" .. i, tier = "good", image = "QQ" })
+		end
+		local blocks = ExemplarEvidence.buildExemplarBlocks({ exemplars = many })
+		-- 6 exemplars * 2 blocks (text + image) each = 12
+		return #blocks == 12
+	end)
+
 	return cases
 end
 
