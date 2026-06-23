@@ -8,10 +8,14 @@ local MeshFactory = {}
 
 export type Geometry = { vertices: { Vector3 }, triangles: { { number } } }
 
+-- ---- pure ----
+
 -- A cone: apex at (0,height,0); a base ring of `segments` verts at y=0, radius `radius`; a base center.
 -- Vertex order: [1]=apex, [2]=baseCenter, [3..2+segments]=ring. Triangles index into that list: a side
--- fan (apex, ring[i], ring[i+1]) + a base cap (center, ring[i+1], ring[i]), wound so faces point
--- outward/down. PURE (no DataModel) -> unit-testable.
+-- fan (apex, ring[i], ring[i+1]) + a base cap (center, ring[i+1], ring[i]). This is the winding that
+-- EditableMesh:AddTriangle renders SOLID / outward-visible (verified live — EditableMesh uses CW vertex
+-- order for outward faces, so sides show from outside the cone and the base from below). Requires
+-- segments >= 3 (a valid cone base; smaller values yield degenerate triangles). PURE (no DataModel).
 function MeshFactory.coneGeometry(radius: number, height: number, segments: number): Geometry
 	local vertices: { Vector3 } = {}
 	local triangles: { { number } } = {}

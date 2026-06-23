@@ -38,6 +38,7 @@ local function buildCases(): { Case }
 	add("scaleFactorForHeight", function()
 		return MeshFactory.scaleFactorForHeight(2, 10) == 5
 			and MeshFactory.scaleFactorForHeight(0, 10) == 1
+			and MeshFactory.scaleFactorForHeight(-3, 10) == 1
 	end)
 
 	add("rockClusterLayout: 3 pieces, deterministic by seed, seed varies output", function()
@@ -52,6 +53,18 @@ local function buildCases(): { Case }
 		end
 		if a[1].size == c[1].size then
 			return false, "seed had no effect"
+		end
+		return true
+	end)
+
+	add("coneGeometry triangle indices are all in [1, #vertices]", function()
+		local g = MeshFactory.coneGeometry(2, 5, 7)
+		for _, t in g.triangles do
+			for _, idx in t do
+				if idx < 1 or idx > #g.vertices then
+					return false, "out-of-range index " .. tostring(idx)
+				end
+			end
 		end
 		return true
 	end)
