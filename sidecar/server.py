@@ -1,6 +1,7 @@
 """Studio Agent sidecar — localhost-only capture-file server + dev bridge.
 
 GET  /captures?count=N&since=<epoch>[&b64=1]  -> {"images":[...],"returned":N,"shortfall":bool}
+GET  /exemplars?category=<cat>[&b64=1]        -> {"exemplars":[...],"returned":N}
 POST /agent      {"kind":"tool"|"luau"|"prompt", ...}     -> {"id":N}
 GET  /agent/pending                                       -> the queued command (and clears it) or {}
 POST /agent/result {"id":N, ...result}                    -> {"ok":true}
@@ -18,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import capture
+import exemplars
 from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
@@ -51,6 +53,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/captures":
             return self._captures(qs)
+        if parsed.path == "/exemplars":
+            return self._exemplars(qs)
         if parsed.path == "/agent/pending":
             return self._json(200, STORE.take_pending() or {})
         if parsed.path == "/agent/result":
@@ -85,6 +89,15 @@ class Handler(BaseHTTPRequestHandler):
             STORE.set_logs(body.get("lines", []))
             return self._json(200, {"ok": True})
         return self._json(404, {"error": "not found"})
+
+    def _exemplars(self, qs):
+        category = qs.get("category", [""])[0]
+        want_b64 = qs.get("b64", ["0"])[0] in ("1", "true")
+        try:
+            items = exemplars.exemplars_for(category, want_b64=want_b64)
+        except Exception as exc:  # noqa: BLE001
+            return self._json(500, {"error": str(exc)})
+        self._json(200, {"exemplars": items, "returned": len(items)})
 
     def _captures(self, qs):
         try:
