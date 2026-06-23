@@ -2,12 +2,12 @@
   "version": 1,
   "exemplars": [
     {
-      "id": "env-crafted-scene",
+      "id": "env-rpg-lobby",
       "category": "environment",
-      "file": "environment/env-crafted-scene.png",
+      "file": "environment/env-rpg-lobby.png",
       "license": "own",
-      "source": "agent-seed (built + captured via the bridge, 2026-06-23)",
-      "caption": "Eye-level composition; varied crafted materials (grass, cobblestone, wood planks, slate, rock), a placed warm light, Atmosphere + post-processing - above the flat-Plastic greybox default.",
+      "source": "agent-built via the bridge (Cube text-to-3D generated meshes composed + lit), 2026-06-23",
+      "caption": "Stylized RPG hub plaza: custom generated meshes (timber cottage, market cart, stone well, barrels, crates, lantern posts, pine trees) on a cobblestone plaza with a bonfire focal; warm/cool dawn lighting, Atmosphere + ColorCorrection + Bloom, eye-level 3/4 composition with foreground/midground/background depth.",
       "criterion_id": null,
       "tier": "good"
     }
