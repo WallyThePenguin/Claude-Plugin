@@ -13,6 +13,7 @@ local HttpService = game:GetService("HttpService")
 local RubricCatalog = require(script.Parent.Parent.RubricCatalog)
 local EvaluateReport = require(script.Parent.Parent.EvaluateReport)
 local GuiEvidence = require(script.Parent.Parent.GuiEvidence)
+local EnvEvidence = require(script.Parent.Parent.EnvEvidence)
 local Path = require(script.Parent.Path)
 
 local Evaluate = {}
@@ -72,6 +73,10 @@ local function gatherStructural(subject: Instance?): string
 		local guiEv = GuiEvidence.gather(subject)
 		if guiEv ~= "" then
 			table.insert(parts, guiEv)
+		end
+		local envEv = EnvEvidence.gather(subject)
+		if envEv ~= "" then
+			table.insert(parts, envEv)
 		end
 	else
 		table.insert(
