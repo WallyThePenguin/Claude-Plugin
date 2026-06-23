@@ -12,6 +12,7 @@ local HttpService = game:GetService("HttpService")
 
 local RubricCatalog = require(script.Parent.Parent.RubricCatalog)
 local EvaluateReport = require(script.Parent.Parent.EvaluateReport)
+local GuiEvidence = require(script.Parent.Parent.GuiEvidence)
 local Path = require(script.Parent.Path)
 
 local Evaluate = {}
@@ -68,6 +69,10 @@ local function gatherStructural(subject: Instance?): string
 						else "NO locomotion-relevant instances found"
 				)
 		)
+		local guiEv = GuiEvidence.gather(subject)
+		if guiEv ~= "" then
+			table.insert(parts, guiEv)
+		end
 	else
 		table.insert(
 			parts,
