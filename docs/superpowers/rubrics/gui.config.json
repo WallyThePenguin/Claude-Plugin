@@ -1,0 +1,18 @@
+{
+  "category": "gui",
+  "description": "Roblox game UI / GUI design -- on-screen interfaces built from ScreenGui/Frame/TextLabel/TextButton/ImageLabel/ScrollingFrame with UIListLayout/UIGridLayout/UICorner/UIPadding/UIAspectRatioConstraint (menus, HUDs, shops, inventories, settings screens)",
+  "killerSystems": [
+    "responsive-scale-based-layout-across-screen-sizes",
+    "visual-hierarchy-and-consistent-design-system",
+    "interactive-feedback-and-tweened-motion",
+    "readability-contrast-and-touch-target-accessibility",
+    "layout-driven-composition-not-hand-positioned-offsets"
+  ],
+  "meanArtifact": {
+    "name": "default gray-box GUI",
+    "description": "A ScreenGui of plain Frames and TextLabels positioned with fixed pixel OFFSETS (no scale, no AnchorPoint) so it breaks on other screen sizes; default gray/white colors, one default font size, square corners, no padding or spacing rhythm; static TextButtons with no hover/press feedback and no transitions; elements hand-placed by absolute position rather than laid out -- what a beginner ships by default following a basic GUI tutorial"
+  },
+  "greatArtifactHint": "An award-quality Roblox game UI: fully responsive scale-based layout (AnchorPoint + UDim2 scale + UIAspectRatioConstraint/UISizeConstraint) that holds on phone, tablet and desktop; a real design system with a constrained palette, a consistent type scale and spacing rhythm, and consistent UICorner radius + UIPadding; clear visual hierarchy guiding the eye to the primary action; polished interactive feedback with hover and press states and tweened open/close/hover transitions (juice); strong readability and contrast with adequate touch-target sizes and clear affordances; and a clean UIListLayout/UIGridLayout-driven structure with reusable component templates instead of hand-positioned offsets",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
