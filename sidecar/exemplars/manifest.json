@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "exemplars": [
+    {
+      "id": "env-crafted-scene",
+      "category": "environment",
+      "file": "environment/env-crafted-scene.png",
+      "license": "own",
+      "source": "agent-seed (built + captured via the bridge, 2026-06-23)",
+      "caption": "Eye-level composition; varied crafted materials (grass, cobblestone, wood planks, slate, rock), a placed warm light, Atmosphere + post-processing - above the flat-Plastic greybox default.",
+      "criterion_id": null,
+      "tier": "good"
+    }
+  ]
+}
