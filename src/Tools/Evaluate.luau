@@ -203,10 +203,13 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 		)
 
 	local gradeTool = EvaluateReport.buildGradeTool(rubric)
+	-- 8192 (the model max), not 4096: a large rubric's forced grade response (one entry per criterion +
+	-- cited evidence) overflows 4096 once the rubric passes ~30 criteria (the 35-criterion gui rubric
+	-- truncated to an empty result at 4096; combat's 29 just fit). Smaller rubrics use less, unaffected.
 	local gradeInput, rawText, res = (anthropic :: any):requestStructured({
 		messages = { { role = "user", content = content } },
 		tool = gradeTool,
-		maxTokens = 4096,
+		maxTokens = 8192,
 	})
 	-- A result is USABLE only if it carries a non-empty grades array. A forced tool_choice does NOT
 	-- guarantee non-empty arguments (and the proxy may not honor it), so a non-nil-but-empty/degenerate
