@@ -40,6 +40,16 @@ def main():
                          "criterion_id": "no-such"}], known, exists)
     fails += _check("criterion_id not in category rejected", not ok)
 
+    ok, _ = v.validate([{"category": "gui", "file": "gui/b.png", "license": "own"}], known, exists)
+    fails += _check("missing id rejected", not ok)
+
+    ok, _ = v.validate([{"id": "e6", "category": "gui", "file": "gui/b.png",
+                         "license": "own", "tier": "amazing"}], known, exists)
+    fails += _check("bad tier rejected", not ok)
+
+    ok, _ = v.validate(None, known, exists)
+    fails += _check("non-list exemplars rejected", not ok)
+
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
     sys.exit(1 if fails else 0)
 

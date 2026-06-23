@@ -27,11 +27,17 @@ def known_criteria():
             continue
         module = r.get("module")
         if isinstance(module, str):
-            out[module] = {c.get("id") for c in r.get("criteria", []) if isinstance(c, dict)}
+            out[module] = {
+                c.get("id")
+                for c in r.get("criteria", [])
+                if isinstance(c, dict) and c.get("id") is not None
+            }
     return out
 
 
 def validate(exemplars, known, file_exists):
+    if not isinstance(exemplars, list):
+        return False, [f"exemplars must be an array (got {type(exemplars).__name__})"]
     errors = []
     seen = set()
     for i, ex in enumerate(exemplars):
@@ -39,8 +45,11 @@ def validate(exemplars, known, file_exists):
             errors.append(f"exemplar {i} is not an object")
             continue
         cid = ex.get("id")
-        if not cid or cid in seen:
-            errors.append(f"exemplar {i}: missing/duplicate id: {cid}")
+        if not cid:
+            errors.append(f"exemplar {i}: missing id")
+            continue  # no stable identity — skip this entry's remaining checks
+        if cid in seen:
+            errors.append(f"{cid}: duplicate id")
         seen.add(cid)
         cat = ex.get("category")
         if cat not in known:
