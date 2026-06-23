@@ -14,6 +14,7 @@ local RubricCatalog = require(script.Parent.Parent.RubricCatalog)
 local EvaluateReport = require(script.Parent.Parent.EvaluateReport)
 local GuiEvidence = require(script.Parent.Parent.GuiEvidence)
 local EnvEvidence = require(script.Parent.Parent.EnvEvidence)
+local ExemplarEvidence = require(script.Parent.Parent.ExemplarEvidence)
 local Path = require(script.Parent.Path)
 
 local Evaluate = {}
@@ -146,6 +147,12 @@ local INSTRUCTION = "You are a STRICT quality-rubric grader. Grade EACH criterio
 	.. "exceptional/ceiling extras are also met. You MUST call submit_grade with exactly one entry per "
 	.. "criterion id."
 
+local VISUAL_INSTRUCTION = "You are ALSO shown the build's own screenshot and reference images of GREAT "
+	.. "work in this category. Use the references to CALIBRATE the bar for the visually-anchorable "
+	.. "criteria (composition, material/lighting craft, layout/typography, pose readability) and judge "
+	.. "the build's screenshot against that bar. Do NOT grade by visual similarity to any single "
+	.. "reference image — the per-criterion rubric text remains the spine; the images make the bar concrete."
+
 local function runEvaluate(input: any, context: any): (string, boolean)
 	local rubrics = if type(context) == "table" then context.rubrics else nil
 	if rubrics == nil then
@@ -193,7 +200,7 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 	local learned = if learningsStore ~= nil
 		then (learningsStore :: any):forCategory(args.category)
 		else ""
-	local content = INSTRUCTION
+	local text = INSTRUCTION
 		.. "\n\n=== RUBRIC ===\n"
 		.. RubricCatalog.render(rubric)
 		.. "\n\n=== DESIGN CLAIM (agent's account of what it built) ===\n"
@@ -206,6 +213,48 @@ local function runEvaluate(input: any, context: any): (string, boolean)
 					.. learned
 				else ""
 		)
+
+	-- Visual evidence (calibration anchoring): the build's own capture + curated exemplar images, folded
+	-- into the SAME grade call. Best-effort — ANY failure degrades to the text-only grade (no hard fail).
+	local cfg = if type(context) == "table" then context.config else nil
+	local wantCapture = not (type(args) == "table" and args.capture == false)
+	local imageBlocks: { any } = {}
+	if cfg ~= nil then
+		if wantCapture then
+			local buildBlocks = ExemplarEvidence.captureSubject(subject, cfg)
+			if buildBlocks ~= nil and #buildBlocks > 0 then
+				table.insert(imageBlocks, {
+					type = "text",
+					text = "\n=== AGENT'S BUILD (live capture — grade what you SEE) ===",
+				})
+				for _, b in buildBlocks do
+					table.insert(imageBlocks, b)
+				end
+			end
+		end
+		local exemplarBlocks = ExemplarEvidence.fetchExemplars(args.category, cfg)
+		if exemplarBlocks ~= nil and #exemplarBlocks > 0 then
+			table.insert(imageBlocks, {
+				type = "text",
+				text = "\n=== REFERENCE: what GREAT looks like in this category "
+					.. "(calibrate the BAR to these; do NOT grade by similarity to any single image) ===",
+			})
+			for _, b in exemplarBlocks do
+				table.insert(imageBlocks, b)
+			end
+		end
+	end
+
+	-- With images present, prepend the visual-calibration instruction and send ARRAY content; otherwise
+	-- send the text-only path exactly as before (a plain string).
+	local content: any = text
+	if #imageBlocks > 0 then
+		local blocks: { any } = { { type = "text", text = VISUAL_INSTRUCTION .. "\n\n" .. text } }
+		for _, b in imageBlocks do
+			table.insert(blocks, b)
+		end
+		content = blocks
+	end
 
 	local gradeTool = EvaluateReport.buildGradeTool(rubric)
 	-- 8192 (the model max), not 4096: a large rubric's forced grade response (one entry per criterion +
@@ -261,7 +310,9 @@ Evaluate.descriptors = {
 			.. "(e.g. 'locomotion'), subject (instance path to the build to dump for structural evidence; "
 			.. "omit to use the selection), design (YOUR summary of the architecture you built — what owns "
 			.. "routing, IK, layering, etc.). Returns fails-first criteria with the fix for each; address "
-			.. "them and re-evaluate.",
+			.. "them and re-evaluate."
+			.. " It also CAPTURES the subject and shows the grader curated reference images of great work, "
+			.. "so visually-anchorable craft is judged on what it SEES (set capture=false to skip).",
 		inputSchema = {
 			type = "object",
 			properties = {
@@ -276,6 +327,10 @@ Evaluate.descriptors = {
 				design = {
 					type = "string",
 					description = "Your architectural summary of what you built (claims the judge verifies vs structure).",
+				},
+				capture = {
+					type = "boolean",
+					description = "Capture the subject and grade it VISUALLY against curated exemplar images (default true). Set false for a text-only grade (e.g. no sidecar / purely architectural checks).",
 				},
 			},
 			required = { "category" },
