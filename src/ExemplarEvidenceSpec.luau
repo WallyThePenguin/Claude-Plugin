@@ -38,6 +38,9 @@ local function buildCases(): { Case }
 		if string.find(blocks[1].text, "crafted slope", 1, true) == nil then
 			return false, "caption missing"
 		end
+		if string.find(blocks[1].text, "(own)", 1, true) == nil then
+			return false, "source missing: " .. blocks[1].text
+		end
 		if blocks[2].type ~= "image" or blocks[2].source.data ~= "QUJD" then
 			return false, "image block wrong"
 		end
@@ -51,7 +54,7 @@ local function buildCases(): { Case }
 				{ caption = "ok", image = "QQ" },
 			},
 		})
-		return #blocks == 2 and blocks[2].source.data == "QQ"
+		return #blocks == 2 and blocks[2].type == "image" and blocks[2].source.data == "QQ"
 	end)
 
 	add("missing tier defaults to 'reference'", function()

@@ -94,12 +94,13 @@ function ExemplarEvidence.captureSubject(subject: Instance?, config: any): ({ an
 	if center == nil or size == nil then
 		return nil, "subject has no parts to frame (no BasePart found)"
 	end
+	local iso = CaptureCore.PRESETS.iso
 	local saved = CaptureCore.saveCamera()
 	local since = os.time() - 2
 	local triggered = false
 	local okAll = pcall(function()
 		CaptureCore.setCamera(
-			CaptureCore.frameCFrame(center :: Vector3, size :: Vector3, 35, 20, 1)
+			CaptureCore.frameCFrame(center :: Vector3, size :: Vector3, iso.yaw, iso.pitch, 1)
 		)
 		CaptureCore.settle(2)
 		triggered = CaptureCore.triggerCapture()
