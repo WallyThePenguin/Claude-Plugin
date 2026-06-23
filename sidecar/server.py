@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
             items = exemplars.exemplars_for(category, want_b64=want_b64)
         except Exception as exc:  # noqa: BLE001
             return self._json(500, {"error": str(exc)})
-        self._json(200, {"exemplars": items, "returned": len(items)})
+        return self._json(200, {"exemplars": items, "returned": len(items)})
 
     def _captures(self, qs):
         try:

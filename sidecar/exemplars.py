@@ -30,8 +30,8 @@ def load_manifest():
             data = json.load(f)
     except (OSError, ValueError):
         return []
-    exemplars = data.get("exemplars") if isinstance(data, dict) else None
-    return exemplars if isinstance(exemplars, list) else []
+    items = data.get("exemplars") if isinstance(data, dict) else None
+    return items if isinstance(items, list) else []
 
 
 def exemplars_for(category, want_b64=False):
@@ -47,6 +47,8 @@ def exemplars_for(category, want_b64=False):
             if not isinstance(rel, str):
                 continue
             try:
+                # `rel` is repo-controlled (the manifest is gated by scripts/validate_exemplars.py) and the
+                # server binds localhost-only, so no path-traversal sanitization is applied here.
                 with open(os.path.join(exemplars_dir(), rel), "rb") as f:
                     entry["image"] = base64.b64encode(f.read()).decode("ascii")
             except OSError:
