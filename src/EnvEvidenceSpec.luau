@@ -30,7 +30,6 @@ local function buildCases(): { Case }
 			surfaceAppearance = 1,
 			lights = 3,
 			atmosphere = true,
-			technology = "Future",
 			postEffects = 2,
 		}
 		local out = EnvEvidence.summarize(s)
@@ -43,9 +42,7 @@ local function buildCases(): { Case }
 		if string.find(out, "3 placed lights", 1, true) == nil then
 			return false, "lights: " .. out
 		end
-		if
-			string.find(out, "Atmosphere=yes, Technology=Future, 2 post-effects", 1, true) == nil
-		then
+		if string.find(out, "Atmosphere=yes, 2 post-effects", 1, true) == nil then
 			return false, "lighting: " .. out
 		end
 		return true

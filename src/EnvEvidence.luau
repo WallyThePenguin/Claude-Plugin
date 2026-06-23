@@ -27,7 +27,6 @@ export type Stats = {
 	surfaceAppearance: number,
 	lights: number,
 	atmosphere: boolean,
-	technology: string,
 	postEffects: number,
 }
 
@@ -43,7 +42,7 @@ function EnvEvidence.summarize(s: Stats): string
 	return string.format(
 		"Environment structure: %d BaseParts (%d MeshParts, %d Models); materials: %d/%d parts use a crafted "
 			.. "(non-Plastic) material, %d SurfaceAppearance; %d placed lights; lighting: Atmosphere=%s, "
-			.. "Technology=%s, %d post-effects (ColorCorrection/Bloom/SunRays/DepthOfField/Blur).",
+			.. "%d post-effects (ColorCorrection/Bloom/SunRays/DepthOfField/Blur).",
 		s.totalParts,
 		s.meshes,
 		s.models,
@@ -52,7 +51,6 @@ function EnvEvidence.summarize(s: Stats): string
 		s.surfaceAppearance,
 		s.lights,
 		(if s.atmosphere then "yes" else "no"),
-		s.technology,
 		s.postEffects
 	)
 end
@@ -96,7 +94,6 @@ function EnvEvidence.gather(subject: Instance): string
 		surfaceAppearance = surfaceAppearance,
 		lights = lights,
 		atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") ~= nil,
-		technology = Lighting.Technology.Name,
 		postEffects = postEffects,
 	}
 	return EnvEvidence.summarize(stats)
