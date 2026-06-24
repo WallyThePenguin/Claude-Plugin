@@ -1,6 +1,12 @@
 # Studio Agent — Procedural surface textures (`paint_texture`) design (2026-06-23)
 
-**Status:** approved in brainstorming, ready for an implementation plan.
+**Status:** SHIPPED + bridge-verified. **REVISION (2026-06-23, during the dogfood):** the **MeshPart path
+was DROPPED — `paint_texture` is PARTS-ONLY.** A procedural tiling pattern maps to a MeshPart's arbitrary
+UVs and SMEARS (verified live — a tile grid looked awful on a Cube barrel); tiling (`StudsPerTile`) only
+works on Part faces. So a MeshPart target is now REJECTED with a message pointing to `generate_mesh` for
+meshes. All "MeshPart → TextureContent" references below are SUPERSEDED by this rule. (Also fixed in the
+dogfood: bricks are now ~2:1 not square, and `authorImage` clamps each draw-op to the canvas because
+`DrawRectangle` errors on out-of-bounds/negative/zero-size rects.)
 **Goal:** Give the agent a curated tool to author CUSTOM procedural surface textures in Luau (brick, planks,
 tile, checker, grunge) and apply them durably to a Part or MeshPart — so it can make greybox Parts and
 custom meshes look CRAFTED without Cube or external assets. Fills the environment rubric's "surface

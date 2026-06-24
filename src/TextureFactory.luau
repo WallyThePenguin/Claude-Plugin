@@ -210,16 +210,14 @@ function TextureFactory.persistImage(em: EditableImage, name: string): (number?,
 	return assetId :: number, nil
 end
 
--- Apply a durable Image asset to `target`. A MeshPart gets its writable TextureContent set; any other
--- BasePart gets a tiling Texture on all six faces (clearing prior Texture children first so a re-paint
--- REPLACES rather than stacks). Returns a human-readable mode descriptor. TextureContent is writable
--- (verified this session). THROWS on failure (callers pcall).
+-- Apply a durable Image asset to `target` (a PART) as a tiling Texture on all six faces — clearing prior
+-- Texture children first so a re-paint REPLACES rather than stacks. A Texture tiles by StudsPerTile so it
+-- reads as a material. MeshParts are REJECTED upstream (in the tool's resolveTarget): a procedural pattern
+-- maps to a mesh's arbitrary UVs and smears (verified live — a tile grid looked awful on a Cube barrel),
+-- and a Texture's StudsPerTile tiling only applies to Part faces. Returns a mode descriptor. THROWS on
+-- failure (callers pcall).
 function TextureFactory.applyTexture(target: BasePart, imageId: number, scale: number): string
 	local content = Content.fromUri("rbxassetid://" .. tostring(imageId))
-	if target:IsA("MeshPart") then
-		(target :: MeshPart).TextureContent = content
-		return "MeshPart.TextureContent"
-	end
 	for _, ch in target:GetChildren() do
 		if ch:IsA("Texture") then
 			ch:Destroy()
