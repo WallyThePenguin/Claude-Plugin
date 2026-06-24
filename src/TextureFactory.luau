@@ -177,7 +177,17 @@ function TextureFactory.authorImage(ops: { DrawOp }): EditableImage
 	local img = AssetService:CreateEditableImage({ Size = Vector2.new(TILE, TILE) })
 	local over = Enum.ImageCombineType.Overwrite
 	for _, op in ops do
-		img:DrawRectangle(op.pos, op.size, op.color, 0, over)
+		-- Clamp each rect to the drawable [0, TILE] canvas. DrawRectangle ERRORS on a negative position,
+		-- on a rect extending past the canvas, and on a zero/negative extent (all verified live). The pure
+		-- generators express intent in continuous coords (e.g. a running-bond brick starts at -brickW for
+		-- the wrap); the rasterizer clips that to the canvas as the visible partial.
+		local x0 = math.max(0, op.pos.X)
+		local y0 = math.max(0, op.pos.Y)
+		local x1 = math.min(TILE, op.pos.X + op.size.X)
+		local y1 = math.min(TILE, op.pos.Y + op.size.Y)
+		if x1 > x0 and y1 > y0 then
+			img:DrawRectangle(Vector2.new(x0, y0), Vector2.new(x1 - x0, y1 - y0), op.color, 0, over)
+		end
 	end
 	return img
 end
