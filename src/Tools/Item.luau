@@ -62,10 +62,11 @@ local function runMakeTool(input: any, _context: any): (any, boolean)
 		end
 	end
 	return string.format(
-		"make_tool OK: '%s' at %s (Handle + %d part(s), unanchored + welded). Equip + fit it with grip_tool.",
+		"make_tool OK: '%s' at %s (%d part(s): a Handle + %d welded, all unanchored). Equip + fit it with grip_tool.",
 		t.Name,
 		t:GetFullName(),
-		partCount
+		partCount,
+		math.max(0, partCount - 1)
 	),
 		false
 end
