@@ -40,6 +40,7 @@ local EXPECTED_RELAY = {
 	"generate_mesh",
 	"author_mesh",
 	"save_mesh",
+	"paint_texture",
 	"capture",
 	"capture_angles",
 	"capture_animation",
