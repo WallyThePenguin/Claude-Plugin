@@ -197,13 +197,14 @@ local function runSave(input: any, _context: any): (string, boolean)
 	local swapped, pending, failed = 0, 0, 0
 	local ids: { string } = {}
 	local firstErr: string? = nil
+	local texPersisted, texFailed = 0, 0
+	local firstTexErr: string? = nil
 	local function doPersist()
 		for i, mp in parts do
-			local assetId, didSwap, err =
-				MeshFactory.persistMeshPart(mp, mp.Name .. "_" .. tostring(i))
-			if assetId ~= nil then
-				table.insert(ids, tostring(assetId))
-				if didSwap then
+			local result = MeshFactory.persistMeshPart(mp, mp.Name .. "_" .. tostring(i))
+			if result.meshAssetId ~= nil then
+				table.insert(ids, tostring(result.meshAssetId))
+				if result.swapped then
 					swapped += 1
 				else
 					pending += 1
@@ -211,7 +212,18 @@ local function runSave(input: any, _context: any): (string, boolean)
 			else
 				failed += 1
 				if firstErr == nil then
-					firstErr = err
+					firstErr = result.err
+				end
+			end
+			local tex = result.texture
+			if tex ~= nil then
+				if tex.err == nil then
+					texPersisted += 1
+				else
+					texFailed += 1
+					if firstTexErr == nil then
+						firstTexErr = tex.err
+					end
 				end
 			end
 		end
@@ -240,6 +252,13 @@ local function runSave(input: any, _context: any): (string, boolean)
 	end
 	if failed > 0 then
 		msg = msg .. string.format(" — %d FAILED (%s)", failed, tostring(firstErr))
+	end
+	if texPersisted > 0 then
+		msg = msg .. string.format(" — %d texture(s) persisted", texPersisted)
+	end
+	if texFailed > 0 then
+		msg = msg
+			.. string.format(" — %d texture(s) FAILED (%s)", texFailed, tostring(firstTexErr))
 	end
 	return msg, (swapped == 0 and pending == 0)
 end

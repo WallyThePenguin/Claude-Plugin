@@ -220,42 +220,72 @@ function MeshFactory.groundModel(model: Model, position: Vector3, height: number
 	model:PivotTo(model:GetPivot() + (position - base))
 end
 
+export type TextureResult = { imageId: number?, err: string? }
+export type PersistResult = {
+	meshAssetId: number?,
+	swapped: boolean,
+	err: string?,
+	texture: TextureResult?,
+}
+
 -- Persist a session-backed MeshPart (Cube/EditableMesh geometry; MeshId=="") to a durable creator-OWNED
 -- Mesh asset and SWAP the in-scene part for one loaded from that asset, so it survives Play/save/ship.
--- Returns (assetId, swapped, err): swapped=true means the in-scene part IS now durable; swapped=false
--- with a non-nil assetId means the asset uploaded but a fresh-asset load failed (likely pending
--- moderation) so the part was NOT replaced yet. MeshContent/MeshId are not writable, so we REPLACE the
--- part rather than repoint it. Needs the "CreateAssetAsync Lua API" Studio beta flag.
-function MeshFactory.persistMeshPart(mp: MeshPart, name: string): (number?, boolean, string?)
+-- ALSO persists the part's generated TEXTURE: a Cube mesh's texture lives in MeshPart.TextureContent
+-- (SourceType "Opaque" while session-backed); the swapped durable part starts textureless, so we extract
+-- an EditableImage from the ORIGINAL part, upload it via CreateAssetAsync(Image), and set the durable
+-- part's WRITABLE TextureContent to the new owned Image asset (verified live). Returns a PersistResult:
+-- swapped=true means the in-scene part IS now durable; a non-nil meshAssetId with swapped=false means the
+-- mesh uploaded but a fresh-asset load failed (pending moderation) so the part was NOT replaced yet (and
+-- the texture is deferred to the next run). `texture` is nil when the part had no texture; otherwise it
+-- carries imageId (success) or err (the geometry still persisted; only the texture step failed).
+-- MeshContent/MeshId are not writable, so we REPLACE the part; TextureContent IS writable, so the texture
+-- needs no swap. Needs the "CreateAssetAsync Lua API" Studio beta flag.
+function MeshFactory.persistMeshPart(mp: MeshPart, name: string): PersistResult
 	local em: EditableMesh? = nil
 	local okEx = pcall(function()
 		em = AssetService:CreateEditableMeshAsync(mp.MeshContent)
 	end)
 	if not okEx or em == nil then
-		return nil, false, "could not extract geometry from the MeshPart"
+		return {
+			meshAssetId = nil,
+			swapped = false,
+			err = "could not extract geometry from the MeshPart",
+			texture = nil,
+		}
 	end
+	-- Classify the texture from the LIVE original part, before any swap/destroy.
+	local texClass = MeshFactory.classifyTexture(mp.TextureContent.SourceType.Name)
 	-- Verified beta shape: CreateAssetAsync returns (Enum.CreateAssetResult, assetId:number).
 	local okSave, result, assetId = pcall(function()
 		return AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh, { Name = name })
 	end)
 	if not okSave then
-		return nil,
-			false,
-			"CreateAssetAsync failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
-				.. tostring(result)
+		return {
+			meshAssetId = nil,
+			swapped = false,
+			err = "CreateAssetAsync failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
+				.. tostring(result),
+			texture = nil,
+		}
 	end
 	if result ~= Enum.CreateAssetResult.Success or type(assetId) ~= "number" then
-		return nil, false, "upload not successful (result=" .. tostring(result) .. ")"
+		return {
+			meshAssetId = nil,
+			swapped = false,
+			err = "upload not successful (result=" .. tostring(result) .. ")",
+			texture = nil,
+		}
 	end
 	local id = assetId :: number
-	local durable: BasePart? = nil
+	local durable: MeshPart? = nil
 	local okLoad = pcall(function()
 		durable = AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. tostring(id)))
 	end)
 	if not okLoad or durable == nil then
-		return id, false, nil
+		-- Mesh uploaded but not yet loadable (pending moderation): no durable part to texture; defer both.
+		return { meshAssetId = id, swapped = false, err = nil, texture = nil }
 	end
-	local d = durable :: BasePart
+	local d = durable :: MeshPart
 	d.CFrame = mp.CFrame
 	d.Size = mp.Size
 	d.Color = mp.Color
@@ -266,12 +296,43 @@ function MeshFactory.persistMeshPart(mp: MeshPart, name: string): (number?, bool
 	d.CanCollide = mp.CanCollide
 	d.Anchored = mp.Anchored
 	d.Name = mp.Name
+	-- Texture step: reattach the generated texture onto the durable part. Reads the ORIGINAL mp (alive
+	-- until the destroy below). Whole step is pcall-wrapped -> a failure degrades to geometry-only.
+	local texture: TextureResult? = nil
+	if texClass == "persist" then
+		local okTex, texErr = pcall(function()
+			local imgEm = AssetService:CreateEditableImageAsync(mp.TextureContent)
+			local tResult, imageId = AssetService:CreateAssetAsync(
+				imgEm,
+				Enum.AssetType.Image,
+				{ Name = name .. "_tex" }
+			)
+			if tResult ~= Enum.CreateAssetResult.Success or type(imageId) ~= "number" then
+				error("image upload not successful (result=" .. tostring(tResult) .. ")")
+			end
+			d.TextureContent = Content.fromUri("rbxassetid://" .. tostring(imageId))
+			texture = { imageId = imageId :: number }
+		end)
+		if not okTex then
+			texture = { err = "texture persist failed: " .. tostring(texErr) }
+		end
+	elseif texClass == "carry" then
+		-- Already-durable texture: copy the reference across the swap (no upload).
+		local okCarry = pcall(function()
+			d.TextureContent = mp.TextureContent
+		end)
+		if okCarry then
+			texture = {}
+		else
+			texture = { err = "texture carry failed" }
+		end
+	end
 	for _, ch in mp:GetChildren() do
 		ch.Parent = d
 	end
 	d.Parent = mp.Parent
 	mp:Destroy()
-	return id, true, nil
+	return { meshAssetId = id, swapped = true, err = nil, texture = texture }
 end
 
 return MeshFactory
