@@ -1,8 +1,9 @@
 --!strict
--- MeshFactory: the custom-mesh engine. PURE geometry helpers (coneGeometry, scaleFactorForHeight,
--- rockClusterLayout) are unit-tested in MeshFactorySpec; the impure builders (EditableMesh assembly,
--- Cube generation, grounding) are added in Task 2 and are live-verified. Backs generate_mesh +
--- author_mesh. See docs/superpowers/specs/2026-06-23-custom-mesh-tools-design.md.
+-- MeshFactory: the custom-mesh engine. PURE helpers (coneGeometry, scaleFactorForHeight,
+-- rockClusterLayout, classifyTexture) are unit-tested in MeshFactorySpec; the impure builders
+-- (EditableMesh assembly, Cube generation, grounding, persistMeshPart) are live-verified. Backs
+-- generate_mesh + author_mesh + save_mesh. See docs/superpowers/specs/2026-06-23-custom-mesh-tools-design.md
+-- and docs/superpowers/specs/2026-06-23-cube-texture-persistence-design.md.
 
 local MeshFactory = {}
 
