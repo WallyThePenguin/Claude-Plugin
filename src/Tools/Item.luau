@@ -35,7 +35,24 @@ local function runMakeTool(input: any, _context: any): (any, boolean)
 	end
 	local handleHint: Instance? = nil
 	if type(args.handle) == "string" and args.handle ~= "" then
-		handleHint = Path.resolve(args.handle)
+		local hinst, herr = Path.resolve(args.handle)
+		if hinst == nil then
+			return "make_tool: handle '" .. tostring(args.handle) .. "' did not resolve" .. (if herr
+					~= nil
+				then " — " .. herr
+				else ""),
+				true
+		end
+		if not hinst:IsA("BasePart") then
+			return "make_tool: handle '" .. tostring(args.handle) .. "' is not a BasePart", true
+		end
+		if hinst ~= target and not hinst:IsDescendantOf(target :: Instance) then
+			return "make_tool: handle must be a part of the target (got "
+				.. hinst:GetFullName()
+				.. ")",
+				true
+		end
+		handleHint = hinst
 	end
 	local toolName = if type(args.name) == "string" then args.name else nil
 	local tool: Tool?, err: string?

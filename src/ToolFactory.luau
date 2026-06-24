@@ -1,8 +1,8 @@
 --!strict
 -- ToolFactory: the handheld-item engine. PURE gripCFrame (intuitive offset/rot -> a Tool.Grip CFrame) is
 -- unit-tested in ToolFactorySpec; the impure toolify/resolveRig/equip/applyGrip (build the Tool + Handle +
--- welds, equip on a rig, set the live grip) are added in Task 2 and are live-verified. Backs make_tool +
--- grip_tool. See docs/superpowers/specs/2026-06-24-handheld-item-creation-design.md.
+-- welds, equip on a rig, set the live grip) are live-verified. Backs make_tool + grip_tool. See
+-- docs/superpowers/specs/2026-06-24-handheld-item-creation-design.md.
 
 local ToolFactory = {}
 
