@@ -111,13 +111,14 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		tool.Name,
 		theRig.Name
 	)
-	-- frame the Handle (the held item) + capture so the agent SEES the grip
+	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
+	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
+	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)
 	local r = if type(context) == "table" then context.cameraRig else nil
-	local handle = tool:FindFirstChild("Handle")
-	if r == nil or handle == nil then
-		return note .. " (no camera/Handle here — capture it yourself)", false
+	if r == nil then
+		return note .. " (no camera here — capture it yourself)", false
 	end
-	local state, ferr = r:focus((handle :: Instance):GetFullName())
+	local state, ferr = r:focus(theRig:GetFullName())
 	if state == nil then
 		return note .. " (couldn't frame: " .. tostring(ferr) .. ")", false
 	end
