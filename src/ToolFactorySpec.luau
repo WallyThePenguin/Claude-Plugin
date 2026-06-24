@@ -36,9 +36,17 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("gripCFrame: partial fields default to 0", function()
-		local g = ToolFactory.gripCFrame({ y = 5 }, { rz = 0 })
-		return g.Position == Vector3.new(0, 5, 0)
+	add("gripCFrame: partial fields default to 0 (offset y only; rot rx only)", function()
+		local g = ToolFactory.gripCFrame({ y = 5 }, { rx = 45 })
+		if g.Position ~= Vector3.new(0, 5, 0) then
+			return false, "offset partial wrong: " .. tostring(g.Position)
+		end
+		-- only rx set -> a pure X-axis rotation leaves the world X axis unchanged (ry/rz defaulted to 0)
+		local vx = g:VectorToWorldSpace(Vector3.new(1, 0, 0))
+		if math.abs(vx.X - 1) > 0.01 or math.abs(vx.Y) > 0.01 or math.abs(vx.Z) > 0.01 then
+			return false, "rot not pure-X (ry/rz didn't default): " .. tostring(vx)
+		end
+		return true
 	end)
 
 	return cases
