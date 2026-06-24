@@ -84,7 +84,8 @@ end
 -- ---- impure (live-verified) ----
 
 -- Build a MeshPart from a Geometry via EditableMesh. Anchored + colored. (Content is a Luau global;
--- Content.fromObject wraps the EditableMesh — verified callable at PluginSecurity in edit.)
+-- Content.fromObject wraps the EditableMesh — verified callable at PluginSecurity in edit.) THROWS on an
+-- EditableMesh/CreateMeshPartAsync failure (quota/engine); callers must pcall — Tools.dispatch does.
 function MeshFactory.buildMeshPart(
 	geometry: Geometry,
 	color: Color3,
@@ -170,8 +171,8 @@ end
 
 -- Generate a Model from a text prompt via Cube. (Model, nil) on success, (nil, err) on failure.
 function MeshFactory.generateViaCube(prompt: string): (Model?, string?)
-	local GenerationService = game:GetService("GenerationService")
 	local ok, result = pcall(function()
+		local GenerationService = game:GetService("GenerationService")
 		return GenerationService:GenerateModelAsync(
 			{ TextPrompt = prompt },
 			{ PredefinedSchema = "Body1" }
@@ -193,6 +194,7 @@ function MeshFactory.groundModel(model: Model, position: Vector3, height: number
 		model:ScaleTo(MeshFactory.scaleFactorForHeight(size.Y, height))
 	end
 	local cf, size = model:GetBoundingBox()
+	-- size.Y == 0 (a geometry-less model) degrades to placing the pivot at `position` — acceptable.
 	local base = cf.Position - Vector3.new(0, size.Y / 2, 0)
 	model:PivotTo(model:GetPivot() + (position - base))
 end
