@@ -4,6 +4,8 @@
 -- return a summary. Destructive (DataModel writes); RELAY (classified in RelaySpec). Parent-only.
 
 local Selection = game:GetService("Selection")
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local RunService = game:GetService("RunService")
 
 local MeshFactory = require(script.Parent.Parent.MeshFactory)
 
@@ -47,9 +49,29 @@ local function parseColor(c: any): Color3?
 		and type(c.g) == "number"
 		and type(c.b) == "number"
 	then
-		return Color3.fromRGB(c.r, c.g, c.b)
+		return Color3.fromRGB(
+			math.clamp(math.round(c.r), 0, 255),
+			math.clamp(math.round(c.g), 0, 255),
+			math.clamp(math.round(c.b), 0, 255)
+		)
 	end
 	return nil
+end
+
+-- Ground the (already-built, unparented) model, then parent it under an undoable ChangeHistory
+-- recording in edit mode — so an agent-placed mesh is Ctrl-Z-undoable like the other create tools.
+-- The yielding build happens BEFORE this, so no yield occurs inside the recording.
+local function placeRecorded(model: Model, position: Vector3, height: number?, label: string)
+	MeshFactory.groundModel(model, position, height)
+	if RunService:IsEdit() then
+		local rid = ChangeHistoryService:TryBeginRecording(label)
+		model.Parent = workspace
+		if rid ~= nil then
+			ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
+		end
+	else
+		model.Parent = workspace
+	end
 end
 
 local function runGenerate(input: any, _context: any): (string, boolean)
@@ -62,12 +84,12 @@ local function runGenerate(input: any, _context: any): (string, boolean)
 		return "generate_mesh: " .. tostring(err), true
 	end
 	model.Name = if type(args.name) == "string" and args.name ~= "" then args.name else "GenMesh"
-	MeshFactory.groundModel(
+	placeRecorded(
 		model,
 		resolvePosition(args),
-		if type(args.height) == "number" then args.height else nil
+		if type(args.height) == "number" then args.height else nil,
+		"generate_mesh"
 	)
-	model.Parent = workspace
 	local meshes = 0
 	for _, d in model:GetDescendants() do
 		if d:IsA("MeshPart") then
@@ -96,25 +118,28 @@ local function runAuthor(input: any, _context: any): (string, boolean)
 		return "author_mesh requires { kind = 'pine'|'rock', name?, position?, height?/tiers?/size?/seed?/color? }",
 			true
 	end
-	local model: Model
-	if kind == "pine" then
-		model = MeshFactory.buildPine({
-			height = args.height,
-			tiers = args.tiers,
-			color = parseColor(args.color),
-		})
-	else
-		model = MeshFactory.buildRock({
+	local ok, result = pcall(function(): Model
+		if kind == "pine" then
+			return MeshFactory.buildPine({
+				height = args.height,
+				tiers = args.tiers,
+				color = parseColor(args.color),
+			})
+		end
+		return MeshFactory.buildRock({
 			size = args.size,
 			seed = args.seed,
 			color = parseColor(args.color),
 		})
+	end)
+	if not ok then
+		return "author_mesh: mesh build failed — " .. tostring(result), true
 	end
+	local model = result :: Model
 	if type(args.name) == "string" and args.name ~= "" then
 		model.Name = args.name
 	end
-	MeshFactory.groundModel(model, resolvePosition(args), nil)
-	model.Parent = workspace
+	placeRecorded(model, resolvePosition(args), nil, "author_mesh")
 	return "author_mesh OK: '" .. model.Name .. "' (" .. kind .. ") at " .. model:GetFullName(),
 		false
 end
@@ -157,7 +182,7 @@ Mesh.descriptors = {
 	{
 		name = "author_mesh",
 		description = "Build a clean PROCEDURAL ORGANIC mesh — the natural shapes Cube botches. kind='pine' "
-			.. "(cylinder trunk + stacked EditableMesh cones) or 'rock' (clustered boulders). Inputs: kind "
+			.. "(a stylized low-poly pine tree) or 'rock' (a low-poly boulder cluster). Inputs: kind "
 			.. "(required), name?, position? ({x,y,z}; else selection/origin); pine params height?/tiers?/color? "
 			.. "({r,g,b}); rock params size?/seed?/color?. Compose scenes from generate_mesh (man-made) + "
 			.. "author_mesh (organic) + Parts + crafted lighting.",
