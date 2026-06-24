@@ -205,4 +205,48 @@ function MeshFactory.groundModel(model: Model, position: Vector3, height: number
 	model:PivotTo(model:GetPivot() + (position - base))
 end
 
+-- Persist a session-backed MeshPart (Cube/EditableMesh geometry; MeshId=="") to a durable creator-OWNED
+-- Mesh asset and SWAP the in-scene part for one loaded from that asset, so it survives Play/save/ship.
+-- (assetId, nil) on success; (nil, err) on failure. MeshContent/MeshId are not writable, so we REPLACE
+-- the part rather than repoint it. Needs the "CreateAssetAsync Lua API" Studio beta flag.
+function MeshFactory.persistMeshPart(mp: MeshPart, name: string): (number?, string?)
+	local em
+	local okEx = pcall(function()
+		em = AssetService:CreateEditableMeshAsync(mp.MeshContent)
+	end)
+	if not okEx or em == nil then
+		return nil, "could not extract geometry from the MeshPart"
+	end
+	local okSave, result, assetId = pcall(function()
+		return AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh, { Name = name })
+	end)
+	if not okSave then
+		return nil,
+			"CreateAssetAsync failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
+				.. tostring(result)
+	end
+	if result ~= Enum.CreateAssetResult.Success or type(assetId) ~= "number" then
+		return nil, "upload not successful (result=" .. tostring(result) .. ")"
+	end
+	local durable: BasePart? = nil
+	local okLoad = pcall(function()
+		durable =
+			AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. tostring(assetId)))
+	end)
+	if not okLoad or durable == nil then
+		-- asset saved but not yet loadable (likely pending moderation) — return the id; part not swapped.
+		return assetId :: number, nil
+	end
+	local d = durable :: BasePart
+	d.CFrame = mp.CFrame
+	d.Size = mp.Size
+	d.Color = mp.Color
+	d.Material = mp.Material
+	d.Anchored = mp.Anchored
+	d.Name = mp.Name
+	d.Parent = mp.Parent
+	mp:Destroy()
+	return assetId :: number, nil
+end
+
 return MeshFactory

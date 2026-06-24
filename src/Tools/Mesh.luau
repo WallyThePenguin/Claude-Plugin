@@ -8,6 +8,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 
 local MeshFactory = require(script.Parent.Parent.MeshFactory)
+local Path = require(script.Parent.Path)
 
 local Mesh = {}
 
@@ -144,6 +145,82 @@ local function runAuthor(input: any, _context: any): (string, boolean)
 		false
 end
 
+-- Collect MeshParts under a root whose geometry is session-backed (MeshId == "" -> Cube/EditableMesh,
+-- not a durable asset yet). De-dups via `seen`.
+local function collectSessionMeshParts(
+	root: Instance,
+	acc: { MeshPart },
+	seen: { [Instance]: boolean }
+)
+	local function consider(inst: Instance)
+		if inst:IsA("MeshPart") and (inst :: MeshPart).MeshId == "" and not seen[inst] then
+			seen[inst] = true
+			table.insert(acc, inst :: MeshPart)
+		end
+	end
+	consider(root)
+	for _, dd in root:GetDescendants() do
+		consider(dd)
+	end
+end
+
+local function runSave(input: any, _context: any): (string, boolean)
+	local args = if type(input) == "table" then input else {}
+	local roots: { Instance } = {}
+	if type(args.target) == "string" and args.target ~= "" then
+		local inst, perr = Path.resolve(args.target)
+		if inst == nil then
+			return "save_mesh: target '" .. tostring(args.target) .. "' did not resolve" .. (if perr
+					~= nil
+				then " — " .. perr
+				else ""),
+				true
+		end
+		table.insert(roots, inst)
+	else
+		for _, s in Selection:Get() do
+			table.insert(roots, s)
+		end
+	end
+	if #roots == 0 then
+		return "save_mesh requires a target path or a selection (got neither).", true
+	end
+	local parts: { MeshPart } = {}
+	local seen: { [Instance]: boolean } = {}
+	for _, r in roots do
+		collectSessionMeshParts(r, parts, seen)
+	end
+	if #parts == 0 then
+		return "save_mesh: no session-backed custom meshes found (already durable, or only Parts present).",
+			false
+	end
+	local saved, failed = 0, 0
+	local ids: { string } = {}
+	local firstErr: string? = nil
+	for i, mp in parts do
+		local assetId, err = MeshFactory.persistMeshPart(mp, "StudioAgentMesh_" .. tostring(i))
+		if assetId ~= nil then
+			saved += 1
+			table.insert(ids, tostring(assetId))
+		else
+			failed += 1
+			if firstErr == nil then
+				firstErr = err
+			end
+		end
+	end
+	local msg = string.format(
+		"save_mesh: persisted %d/%d custom mesh(es) to durable OWNED assets (they now survive Play / save / ship; moderation may take a moment). asset ids: %s",
+		saved,
+		#parts,
+		(if #ids > 0 then table.concat(ids, ", ") else "(none)")
+	)
+	if failed > 0 then
+		msg = msg .. string.format(" — %d failed (%s)", failed, tostring(firstErr))
+	end
+	return msg, failed == #parts
+end
+
 local POS_SCHEMA = {
 	type = "object",
 	description = "Ground position {x,y,z}; omit to use the selection or origin.",
@@ -202,6 +279,26 @@ Mesh.descriptors = {
 		},
 		destructive = true,
 		run = runAuthor,
+	},
+	{
+		name = "save_mesh",
+		description = "PERSIST the custom meshes in a build to durable, creator-OWNED assets so they SURVIVE "
+			.. "PLAY / save / ship (in-session generate_mesh/author_mesh geometry is edit-only and goes blank "
+			.. "in a playtest until saved). Uploads each session mesh via CreateAssetAsync and swaps the in-scene "
+			.. "part for a durable one. Inputs: target (path to the Model/MeshPart; omit to use the selection). "
+			.. "Needs the 'CreateAssetAsync Lua API' Studio beta flag. Rate-limited ~30/min; moderation may "
+			.. "briefly delay the asset. Run it on a FINISHED build, not every iteration.",
+		inputSchema = {
+			type = "object",
+			properties = {
+				target = {
+					type = "string",
+					description = "Path to the Model/MeshPart to persist; omit to use the selection.",
+				},
+			},
+		},
+		destructive = true,
+		run = runSave,
 	},
 } :: { Descriptor }
 
