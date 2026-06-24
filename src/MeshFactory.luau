@@ -184,7 +184,13 @@ function MeshFactory.generateViaCube(prompt: string): (Model?, string?)
 	if typeof(result) ~= "Instance" then
 		return nil, "Cube returned no model (type " .. typeof(result) .. ")"
 	end
-	return result :: Model, nil
+	local model = result :: Model
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+		end
+	end
+	return model, nil
 end
 
 -- Scale `model` to `height` (if given) then ground its AABB base at `position`.
