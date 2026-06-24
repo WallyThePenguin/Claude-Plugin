@@ -57,6 +57,22 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("classifyTexture maps SourceType name -> action", function()
+		if MeshFactory.classifyTexture("Opaque") ~= "persist" then
+			return false, "Opaque should persist"
+		end
+		if MeshFactory.classifyTexture("Uri") ~= "carry" then
+			return false, "Uri should carry"
+		end
+		if MeshFactory.classifyTexture("None") ~= "none" then
+			return false, "None should be none"
+		end
+		if MeshFactory.classifyTexture("Object") ~= "none" then
+			return false, "unexpected value should be none (safe skip)"
+		end
+		return true
+	end)
+
 	add("coneGeometry triangle indices are all in [1, #vertices]", function()
 		local g = MeshFactory.coneGeometry(2, 5, 7)
 		for _, t in g.triangles do

@@ -44,6 +44,21 @@ function MeshFactory.scaleFactorForHeight(currentHeight: number, targetHeight: n
 	return targetHeight / currentHeight
 end
 
+-- Classify a MeshPart's TextureContent for persistence by its SourceType NAME. "persist" = a
+-- session-backed texture ("Opaque") to upload; "carry" = an already-durable texture ("Uri") to copy
+-- across the swap; "none" = no texture ("None") or any unexpected value -> a safe skip. PURE (a
+-- string->string map) -> unit-testable. Verified live: a Cube MeshPart's texture lives in
+-- MeshPart.TextureContent with SourceType "Opaque" while session-backed (NOT a SurfaceAppearance, NOT
+-- TextureID); a procedural author_mesh part has "None".
+function MeshFactory.classifyTexture(sourceTypeName: string): string
+	if sourceTypeName == "Opaque" then
+		return "persist"
+	elseif sourceTypeName == "Uri" then
+		return "carry"
+	end
+	return "none"
+end
+
 -- Deterministic pseudo-random in [0,1) from (seed, i). PURE (no math.random global) -> testable.
 local function prand(seed: number, i: number): number
 	local x = math.sin(seed * 127.1 + i * 311.7) * 43758.5453
