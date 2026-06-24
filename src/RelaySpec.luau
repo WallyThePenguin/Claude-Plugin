@@ -39,6 +39,7 @@ local EXPECTED_RELAY = {
 	"place_relative",
 	"generate_mesh",
 	"author_mesh",
+	"save_mesh",
 	"capture",
 	"capture_angles",
 	"capture_animation",
