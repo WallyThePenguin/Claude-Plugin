@@ -207,46 +207,56 @@ end
 
 -- Persist a session-backed MeshPart (Cube/EditableMesh geometry; MeshId=="") to a durable creator-OWNED
 -- Mesh asset and SWAP the in-scene part for one loaded from that asset, so it survives Play/save/ship.
--- (assetId, nil) on success; (nil, err) on failure. MeshContent/MeshId are not writable, so we REPLACE
--- the part rather than repoint it. Needs the "CreateAssetAsync Lua API" Studio beta flag.
-function MeshFactory.persistMeshPart(mp: MeshPart, name: string): (number?, string?)
-	local em
+-- Returns (assetId, swapped, err): swapped=true means the in-scene part IS now durable; swapped=false
+-- with a non-nil assetId means the asset uploaded but a fresh-asset load failed (likely pending
+-- moderation) so the part was NOT replaced yet. MeshContent/MeshId are not writable, so we REPLACE the
+-- part rather than repoint it. Needs the "CreateAssetAsync Lua API" Studio beta flag.
+function MeshFactory.persistMeshPart(mp: MeshPart, name: string): (number?, boolean, string?)
+	local em: EditableMesh? = nil
 	local okEx = pcall(function()
 		em = AssetService:CreateEditableMeshAsync(mp.MeshContent)
 	end)
 	if not okEx or em == nil then
-		return nil, "could not extract geometry from the MeshPart"
+		return nil, false, "could not extract geometry from the MeshPart"
 	end
+	-- Verified beta shape: CreateAssetAsync returns (Enum.CreateAssetResult, assetId:number).
 	local okSave, result, assetId = pcall(function()
 		return AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh, { Name = name })
 	end)
 	if not okSave then
 		return nil,
+			false,
 			"CreateAssetAsync failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
 				.. tostring(result)
 	end
 	if result ~= Enum.CreateAssetResult.Success or type(assetId) ~= "number" then
-		return nil, "upload not successful (result=" .. tostring(result) .. ")"
+		return nil, false, "upload not successful (result=" .. tostring(result) .. ")"
 	end
+	local id = assetId :: number
 	local durable: BasePart? = nil
 	local okLoad = pcall(function()
-		durable =
-			AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. tostring(assetId)))
+		durable = AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. tostring(id)))
 	end)
 	if not okLoad or durable == nil then
-		-- asset saved but not yet loadable (likely pending moderation) — return the id; part not swapped.
-		return assetId :: number, nil
+		return id, false, nil
 	end
 	local d = durable :: BasePart
 	d.CFrame = mp.CFrame
 	d.Size = mp.Size
 	d.Color = mp.Color
 	d.Material = mp.Material
+	d.Transparency = mp.Transparency
+	d.Reflectance = mp.Reflectance
+	d.CastShadow = mp.CastShadow
+	d.CanCollide = mp.CanCollide
 	d.Anchored = mp.Anchored
 	d.Name = mp.Name
+	for _, ch in mp:GetChildren() do
+		ch.Parent = d
+	end
 	d.Parent = mp.Parent
 	mp:Destroy()
-	return assetId :: number, nil
+	return id, true, nil
 end
 
 return MeshFactory

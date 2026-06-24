@@ -194,31 +194,54 @@ local function runSave(input: any, _context: any): (string, boolean)
 		return "save_mesh: no session-backed custom meshes found (already durable, or only Parts present).",
 			false
 	end
-	local saved, failed = 0, 0
+	local swapped, pending, failed = 0, 0, 0
 	local ids: { string } = {}
 	local firstErr: string? = nil
-	for i, mp in parts do
-		local assetId, err = MeshFactory.persistMeshPart(mp, "StudioAgentMesh_" .. tostring(i))
-		if assetId ~= nil then
-			saved += 1
-			table.insert(ids, tostring(assetId))
-		else
-			failed += 1
-			if firstErr == nil then
-				firstErr = err
+	local function doPersist()
+		for i, mp in parts do
+			local assetId, didSwap, err =
+				MeshFactory.persistMeshPart(mp, mp.Name .. "_" .. tostring(i))
+			if assetId ~= nil then
+				table.insert(ids, tostring(assetId))
+				if didSwap then
+					swapped += 1
+				else
+					pending += 1
+				end
+			else
+				failed += 1
+				if firstErr == nil then
+					firstErr = err
+				end
 			end
 		end
 	end
+	if RunService:IsEdit() then
+		local rid = ChangeHistoryService:TryBeginRecording("save_mesh")
+		doPersist()
+		if rid ~= nil then
+			ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
+		end
+	else
+		doPersist()
+	end
 	local msg = string.format(
-		"save_mesh: persisted %d/%d custom mesh(es) to durable OWNED assets (they now survive Play / save / ship; moderation may take a moment). asset ids: %s",
-		saved,
+		"save_mesh: %d/%d mesh(es) now DURABLE in the scene (survive Play / save / ship). asset ids: %s",
+		swapped,
 		#parts,
 		(if #ids > 0 then table.concat(ids, ", ") else "(none)")
 	)
-	if failed > 0 then
-		msg = msg .. string.format(" — %d failed (%s)", failed, tostring(firstErr))
+	if pending > 0 then
+		msg = msg
+			.. string.format(
+				" — %d uploaded but PENDING moderation (not swapped yet; re-run save_mesh shortly to make them durable)",
+				pending
+			)
 	end
-	return msg, failed == #parts
+	if failed > 0 then
+		msg = msg .. string.format(" — %d FAILED (%s)", failed, tostring(firstErr))
+	end
+	return msg, (swapped == 0 and pending == 0)
 end
 
 local POS_SCHEMA = {
