@@ -8,6 +8,8 @@
 
 local TextureFactory = {}
 
+local AssetService = game:GetService("AssetService")
+
 local TILE = 256 -- authored image resolution (px)
 
 export type DrawOp = { pos: Vector2, size: Vector2, color: Color3 }
@@ -164,6 +166,64 @@ function TextureFactory.buildPattern(kind: string, primary: Color3?, secondary: 
 		return TextureFactory.checkerPattern(TILE, d.n, p, s)
 	end
 	return TextureFactory.noisePattern(TILE, d.n, p, s, 1)
+end
+
+-- ---- impure (live-verified) ----
+
+-- Author a TILE x TILE EditableImage by drawing each op as an opaque rectangle. THROWS on an
+-- EditableImage/draw failure (callers pcall). (CreateEditableImage + DrawRectangle verified at
+-- PluginSecurity in edit this session.)
+function TextureFactory.authorImage(ops: { DrawOp }): EditableImage
+	local img = AssetService:CreateEditableImage({ Size = Vector2.new(TILE, TILE) })
+	local over = Enum.ImageCombineType.Overwrite
+	for _, op in ops do
+		img:DrawRectangle(op.pos, op.size, op.color, 0, over)
+	end
+	return img
+end
+
+-- Upload the EditableImage to a durable, creator-OWNED Image asset. (id, nil) on success, (nil, err) on
+-- failure. Needs the "CreateAssetAsync Lua API" Studio beta flag. Verified shape: (Enum.CreateAssetResult,
+-- assetId:number).
+function TextureFactory.persistImage(em: EditableImage, name: string): (number?, string?)
+	local ok, result, assetId = pcall(function()
+		return AssetService:CreateAssetAsync(em, Enum.AssetType.Image, { Name = name })
+	end)
+	if not ok then
+		return nil,
+			"CreateAssetAsync(Image) failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
+				.. tostring(result)
+	end
+	if result ~= Enum.CreateAssetResult.Success or type(assetId) ~= "number" then
+		return nil, "image upload not successful (result=" .. tostring(result) .. ")"
+	end
+	return assetId :: number, nil
+end
+
+-- Apply a durable Image asset to `target`. A MeshPart gets its writable TextureContent set; any other
+-- BasePart gets a tiling Texture on all six faces (clearing prior Texture children first so a re-paint
+-- REPLACES rather than stacks). Returns a human-readable mode descriptor. TextureContent is writable
+-- (verified this session). THROWS on failure (callers pcall).
+function TextureFactory.applyTexture(target: BasePart, imageId: number, scale: number): string
+	local content = Content.fromUri("rbxassetid://" .. tostring(imageId))
+	if target:IsA("MeshPart") then
+		(target :: MeshPart).TextureContent = content
+		return "MeshPart.TextureContent"
+	end
+	for _, ch in target:GetChildren() do
+		if ch:IsA("Texture") then
+			ch:Destroy()
+		end
+	end
+	for _, face in Enum.NormalId:GetEnumItems() do
+		local tex = Instance.new("Texture")
+		tex.Face = face
+		tex.StudsPerTileU = scale
+		tex.StudsPerTileV = scale
+		tex.TextureContent = content
+		tex.Parent = target
+	end
+	return "Texture x6 @ StudsPerTile=" .. tostring(scale)
 end
 
 return TextureFactory
