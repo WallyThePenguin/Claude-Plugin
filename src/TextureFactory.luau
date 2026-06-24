@@ -50,7 +50,7 @@ function TextureFactory.bricksPattern(
 	local ops: { DrawOp } =
 		{ { pos = Vector2.new(0, 0), size = Vector2.new(tile, tile), color = mortar } }
 	local rowH = tile / rows
-	local brickW = tile / rows
+	local brickW = rowH * 2 -- classic ~2:1 brick (wider than tall); running-bond wrap below is width-agnostic
 	local gap = math.max(2, tile * 0.012)
 	for r = 0, rows - 1 do
 		local offset = if r % 2 == 1 then brickW / 2 else 0
