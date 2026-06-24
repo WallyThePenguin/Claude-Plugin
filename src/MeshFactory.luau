@@ -317,7 +317,9 @@ function MeshFactory.persistMeshPart(mp: MeshPart, name: string): PersistResult
 			texture = { err = "texture persist failed: " .. tostring(texErr) }
 		end
 	elseif texClass == "carry" then
-		-- Already-durable texture: copy the reference across the swap (no upload).
+		-- Already-durable texture: copy the reference across the swap (no upload). The result encodes
+		-- four states unambiguously: {imageId=N}=uploaded, {err=...}=failed, {}=carried (durable no-op),
+		-- texture=nil=no texture.
 		local okCarry = pcall(function()
 			d.TextureContent = mp.TextureContent
 		end)

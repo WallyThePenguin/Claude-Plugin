@@ -217,13 +217,14 @@ local function runSave(input: any, _context: any): (string, boolean)
 			end
 			local tex = result.texture
 			if tex ~= nil then
-				if tex.err == nil then
-					texPersisted += 1
-				else
+				if tex.err ~= nil then
 					texFailed += 1
 					if firstTexErr == nil then
 						firstTexErr = tex.err
 					end
+				elseif tex.imageId ~= nil then
+					-- count only an actual upload; a "carry" (durable ref copied, no upload) is a no-op here
+					texPersisted += 1
 				end
 			end
 		end
