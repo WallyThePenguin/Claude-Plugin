@@ -37,6 +37,8 @@ local EXPECTED_RELAY = {
 	"create_instance",
 	"destroy_instance",
 	"place_relative",
+	"generate_mesh",
+	"author_mesh",
 	"capture",
 	"capture_angles",
 	"capture_animation",
