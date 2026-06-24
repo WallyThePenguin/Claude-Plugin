@@ -25,4 +25,114 @@ function ToolFactory.gripCFrame(offset: Vec3ish?, rot: Rotish?): CFrame
 	return CFrame.new(ox, oy, oz) * CFrame.Angles(math.rad(rx), math.rad(ry), math.rad(rz))
 end
 
+-- ---- impure (live-verified) ----
+
+-- Collect a target's BaseParts: the part itself, or every BasePart under a Model.
+local function collectParts(target: Instance): { BasePart }
+	local parts: { BasePart } = {}
+	if target:IsA("BasePart") then
+		table.insert(parts, target :: BasePart)
+	else
+		for _, d in target:GetDescendants() do
+			if d:IsA("BasePart") then
+				table.insert(parts, d :: BasePart)
+			end
+		end
+	end
+	return parts
+end
+
+-- Resolve the Handle: a `handleHint` if it's one of `parts`; else the only part; else the Model's
+-- PrimaryPart (if in parts); else the first part.
+local function resolveHandle(parts: { BasePart }, target: Instance, handleHint: Instance?): BasePart
+	if handleHint ~= nil and handleHint:IsA("BasePart") then
+		for _, p in parts do
+			if p == handleHint then
+				return p
+			end
+		end
+	end
+	if #parts == 1 then
+		return parts[1]
+	end
+	if target:IsA("Model") and (target :: Model).PrimaryPart ~= nil then
+		local pp = (target :: Model).PrimaryPart
+		for _, p in parts do
+			if p == pp then
+				return p
+			end
+		end
+	end
+	return parts[1]
+end
+
+-- Turn a built Part/Model into an equippable Tool. (Tool?, err?). The Handle is renamed "Handle"; every
+-- other part is WeldConstraint'd to it; all parts are unanchored; an emptied Model wrapper is destroyed.
+-- THROWS only on an engine failure (callers pcall); returns (nil, err) for a bad target.
+function ToolFactory.toolify(
+	target: Instance,
+	handleHint: Instance?,
+	toolName: string?
+): (Tool?, string?)
+	local parts = collectParts(target)
+	if #parts == 0 then
+		return nil, "no BaseParts under the target to make a Tool from"
+	end
+	local handle = resolveHandle(parts, target, handleHint)
+	local tool = Instance.new("Tool")
+	tool.Name = if toolName ~= nil and toolName ~= "" then toolName else target.Name
+	tool.RequiresHandle = true
+	tool.CanBeDropped = true
+	handle.Anchored = false
+	handle.Name = "Handle"
+	for _, p in parts do
+		if p ~= handle then
+			p.Anchored = false
+			local wc = Instance.new("WeldConstraint")
+			wc.Part0 = handle
+			wc.Part1 = p
+			wc.Parent = handle
+			p.Parent = tool
+		end
+	end
+	handle.Parent = tool
+	tool.Parent = workspace
+	if target:IsA("Model") and target ~= tool then
+		target:Destroy()
+	end
+	return tool, nil
+end
+
+-- Resolve a rig: an explicit Model with a Humanoid, else the first workspace Model with a Humanoid +
+-- RightHand. (Model?, err?).
+function ToolFactory.resolveRig(rigInst: Instance?): (Model?, string?)
+	if
+		rigInst ~= nil
+		and rigInst:IsA("Model")
+		and rigInst:FindFirstChildOfClass("Humanoid") ~= nil
+	then
+		return rigInst :: Model, nil
+	end
+	for _, d in workspace:GetChildren() do
+		if
+			d:IsA("Model")
+			and d:FindFirstChildOfClass("Humanoid") ~= nil
+			and d:FindFirstChild("RightHand") ~= nil
+		then
+			return d :: Model, nil
+		end
+	end
+	return nil, "no rig found — spawn one first with spawn_rig"
+end
+
+-- Equip: parent the Tool to the rig (Roblox auto-welds the Handle to the hand in edit — verified live).
+function ToolFactory.equip(tool: Tool, rig: Model)
+	tool.Parent = rig
+end
+
+-- Set the live grip CFrame (re-positions the Handle without re-equip — verified live).
+function ToolFactory.applyGrip(tool: Tool, grip: CFrame)
+	tool.Grip = grip
+end
+
 return ToolFactory
