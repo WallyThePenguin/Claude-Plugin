@@ -77,10 +77,11 @@ local function runPaint(input: any, _context: any): (string, boolean)
 	-- author + upload (yields) BEFORE the ChangeHistory recording
 	local ops =
 		TextureFactory.buildPattern(kind, parseColor(args.primary), parseColor(args.secondary))
-	local okA, em = pcall(TextureFactory.authorImage, ops)
+	local okA, imgOrErr = pcall(TextureFactory.authorImage, ops)
 	if not okA then
-		return "paint_texture: authoring failed — " .. tostring(em), true
+		return "paint_texture: authoring failed — " .. tostring(imgOrErr), true
 	end
+	local em = imgOrErr :: EditableImage
 	local imageId, perr = TextureFactory.persistImage(em, kind .. "_tex")
 	if imageId == nil then
 		return "paint_texture: " .. tostring(perr), true
