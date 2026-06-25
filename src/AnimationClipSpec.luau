@@ -164,6 +164,10 @@ local function buildCases(): { Case }
 		if bad ~= nil or berr == nil then
 			return false, "unknown preset should error"
 		end
+		local upper, uerr = AnimationClip.scopedJointSet("upperBody")
+		if upper == nil or #upper ~= 8 then
+			return false, "upperBody should return 8 names: " .. tostring(uerr or #upper)
+		end
 		return true
 	end)
 

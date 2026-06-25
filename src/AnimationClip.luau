@@ -69,7 +69,8 @@ end
 -- (it drives no joint). Returns the root Pose (parent it to a Keyframe), or nil if there is no rig root.
 -- `includeSet` (optional): when given, recurse ONLY into children whose name is in the set, pruning the
 -- rest of the tree — so a scoped clip (scoped joints + their ancestor carriers) drives only those joints
--- and a sibling branch (e.g. the legs) is omitted entirely. nil = the full tree (all joints).
+-- and a sibling branch (e.g. the legs) is omitted entirely. nil = the full tree (all joints). The root
+-- part is always emitted as the tree anchor; the set gates its children, not itself.
 function AnimationClip.buildPoseTree(
 	rig: Instance,
 	transformsMap: { [string]: CFrame },
@@ -121,8 +122,16 @@ local SCOPE_PRESETS: { [string]: { string } } = {
 function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
 	local names = SCOPE_PRESETS[preset]
 	if names == nil then
+		local known: { string } = {}
+		for k in SCOPE_PRESETS do
+			table.insert(known, k)
+		end
+		table.sort(known)
 		return nil,
-			"unknown scope preset '" .. tostring(preset) .. "' (presets: rightArm, upperBody)"
+			"unknown scope preset '" .. tostring(preset) .. "' (presets: " .. table.concat(
+				known,
+				", "
+			) .. ")"
 	end
 	-- return a copy so a caller can't mutate the shared preset table
 	local out: { string } = {}
@@ -133,9 +142,10 @@ function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
 end
 
 -- Expand a set of scoped CHILD-part names to also include every ANCESTOR part up to the root, so the
--- Pose tree can nest the scoped joints under their parents. The ancestors are "carriers" (posed at rest
--- since they are unposed at snapshot time) that only hold the hierarchy; sibling branches (e.g. the
--- legs, the other arm) are NOT added, so a higher-priority scoped clip overrides only the scoped joints.
+-- Pose tree can nest the scoped joints under their parents. The ancestors are "carriers" (posed with
+-- their current Motor6D.Transform — identity at rest, non-identity if that joint happens to be rotated)
+-- that only hold the hierarchy; sibling branches (e.g. the legs, the other arm) are NOT added, so a
+-- higher-priority scoped clip overrides only the scoped joints.
 -- Returns a part-name -> true set.
 function AnimationClip.scopeIncludeSet(rig: Instance, names: { string }): { [string]: boolean }
 	local parentOf: { [string]: string } = {}
