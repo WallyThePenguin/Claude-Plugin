@@ -33,6 +33,40 @@ local function miniRig(): Instance
 	return model
 end
 
+-- A branched rig to test joint-scoping: HRP -> LowerTorso -> { UpperTorso -> { RightUpperArm ->
+-- RightLowerArm, LeftUpperArm }, RightUpperLeg }. The right arm + spine carriers should survive a
+-- rightArm scope; the left arm + leg branches should be pruned.
+local function branchedRig(): Instance
+	local model = Instance.new("Model")
+	local function part(name: string): BasePart
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Parent = model
+		return p
+	end
+	local hrp = part("HumanoidRootPart")
+	local lower = part("LowerTorso")
+	local upper = part("UpperTorso")
+	local rua = part("RightUpperArm")
+	local rla = part("RightLowerArm")
+	local leftArm = part("LeftUpperArm")
+	local rightLeg = part("RightUpperLeg")
+	local function joint(name: string, p0: BasePart, p1: BasePart)
+		local m = Instance.new("Motor6D")
+		m.Name = name
+		m.Part0 = p0
+		m.Part1 = p1
+		m.Parent = p0
+	end
+	joint("Root", hrp, lower)
+	joint("Waist", lower, upper)
+	joint("RightShoulder", upper, rua)
+	joint("RightElbow", rua, rla)
+	joint("LeftShoulder", upper, leftArm)
+	joint("RightHip", lower, rightLeg)
+	return model
+end
+
 local function findPose(root: Instance, name: string): Instance?
 	if root.Name == name and root:IsA("Pose") then
 		return root
@@ -107,6 +141,65 @@ local function buildCases(): { Case }
 		end
 		if (upper :: Pose).CFrame ~= mark then
 			return false, "UpperTorso CFrame not applied"
+		end
+		return true
+	end)
+
+	add("scopedJointSet rightArm returns the right-arm parts; unknown errors", function()
+		local names, err = AnimationClip.scopedJointSet("rightArm")
+		if names == nil then
+			return false, "rightArm returned nil: " .. tostring(err)
+		end
+		if #names ~= 3 then
+			return false, "expected 3 names, got " .. tostring(#names)
+		end
+		local set: { [string]: boolean } = {}
+		for _, n in names do
+			set[n] = true
+		end
+		if not (set.RightUpperArm and set.RightLowerArm and set.RightHand) then
+			return false, "missing an arm part"
+		end
+		local bad, berr = AnimationClip.scopedJointSet("nope")
+		if bad ~= nil or berr == nil then
+			return false, "unknown preset should error"
+		end
+		return true
+	end)
+
+	add("scopeIncludeSet adds ancestor carriers and omits siblings", function()
+		local rig = branchedRig()
+		local set = AnimationClip.scopeIncludeSet(rig, { "RightUpperArm", "RightLowerArm" })
+		if not (set.RightUpperArm and set.RightLowerArm) then
+			return false, "scoped parts missing"
+		end
+		if not (set.UpperTorso and set.LowerTorso and set.HumanoidRootPart) then
+			return false, "ancestor carriers missing"
+		end
+		if set.LeftUpperArm or set.RightUpperLeg then
+			return false, "a sibling branch leaked into the include set"
+		end
+		return true
+	end)
+
+	add("buildPoseTree with an includeSet prunes sibling branches", function()
+		local rig = branchedRig()
+		local set = AnimationClip.scopeIncludeSet(rig, { "RightUpperArm", "RightLowerArm" })
+		local tree = AnimationClip.buildPoseTree(rig, {}, set)
+		if tree == nil then
+			return false, "no tree"
+		end
+		if findPose(tree, "RightLowerArm") == nil then
+			return false, "scoped RightLowerArm pose missing"
+		end
+		if findPose(tree, "UpperTorso") == nil then
+			return false, "carrier UpperTorso pose missing"
+		end
+		if findPose(tree, "LeftUpperArm") ~= nil then
+			return false, "LeftUpperArm should be pruned"
+		end
+		if findPose(tree, "RightUpperLeg") ~= nil then
+			return false, "RightUpperLeg should be pruned"
 		end
 		return true
 	end)

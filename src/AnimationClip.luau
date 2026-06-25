@@ -67,7 +67,14 @@ end
 -- Build the nested Pose tree for one keyframe. Pose.Name = the CHILD part name; Pose.CFrame =
 -- transformsMap[childName] (the joint's Motor6D.Transform) or identity. The root part's pose is identity
 -- (it drives no joint). Returns the root Pose (parent it to a Keyframe), or nil if there is no rig root.
-function AnimationClip.buildPoseTree(rig: Instance, transformsMap: { [string]: CFrame }): Instance?
+-- `includeSet` (optional): when given, recurse ONLY into children whose name is in the set, pruning the
+-- rest of the tree — so a scoped clip (scoped joints + their ancestor carriers) drives only those joints
+-- and a sibling branch (e.g. the legs) is omitted entirely. nil = the full tree (all joints).
+function AnimationClip.buildPoseTree(
+	rig: Instance,
+	transformsMap: { [string]: CFrame },
+	includeSet: { [string]: boolean }?
+): Instance?
 	local childrenOf = AnimationClip.adjacency(rig)
 	local root = AnimationClip.rigRoot(rig)
 	if root == nil then
@@ -82,13 +89,70 @@ function AnimationClip.buildPoseTree(rig: Instance, transformsMap: { [string]: C
 		pose.EasingStyle = Enum.PoseEasingStyle.Linear
 		for _, m in (childrenOf[part] or {}) do
 			local child = (m :: Motor6D).Part1 :: Instance
-			if not visited[child] then
+			if not visited[child] and (includeSet == nil or includeSet[child.Name]) then
 				makePose(child).Parent = pose
 			end
 		end
 		return pose
 	end
 	return makePose(root)
+end
+
+-- ---- joint scoping (arm-only / partial-body authoring) ----
+
+-- A joint-scope preset -> the CHILD-part names a clip should drive (Pose.Name keys). For item use-anims,
+-- "rightArm" keys ONLY the right-arm chain, so an Action-priority swing overrides just the arm while
+-- lower-priority locomotion drives the unkeyed legs/torso. "upperBody" adds the left arm, torso twist,
+-- and head. Returns (names, nil) or (nil, err) for an unknown preset. PURE -> unit-tested.
+local SCOPE_PRESETS: { [string]: { string } } = {
+	rightArm = { "RightUpperArm", "RightLowerArm", "RightHand" },
+	upperBody = {
+		"RightUpperArm",
+		"RightLowerArm",
+		"RightHand",
+		"LeftUpperArm",
+		"LeftLowerArm",
+		"LeftHand",
+		"UpperTorso",
+		"Head",
+	},
+}
+
+function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
+	local names = SCOPE_PRESETS[preset]
+	if names == nil then
+		return nil,
+			"unknown scope preset '" .. tostring(preset) .. "' (presets: rightArm, upperBody)"
+	end
+	-- return a copy so a caller can't mutate the shared preset table
+	local out: { string } = {}
+	for _, n in names do
+		table.insert(out, n)
+	end
+	return out, nil
+end
+
+-- Expand a set of scoped CHILD-part names to also include every ANCESTOR part up to the root, so the
+-- Pose tree can nest the scoped joints under their parents. The ancestors are "carriers" (posed at rest
+-- since they are unposed at snapshot time) that only hold the hierarchy; sibling branches (e.g. the
+-- legs, the other arm) are NOT added, so a higher-priority scoped clip overrides only the scoped joints.
+-- Returns a part-name -> true set.
+function AnimationClip.scopeIncludeSet(rig: Instance, names: { string }): { [string]: boolean }
+	local parentOf: { [string]: string } = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
+			parentOf[(d.Part1 :: Instance).Name] = (d.Part0 :: Instance).Name
+		end
+	end
+	local set: { [string]: boolean } = {}
+	for _, n in names do
+		local cur: string? = n
+		while cur ~= nil and not set[cur] do
+			set[cur] = true
+			cur = parentOf[cur]
+		end
+	end
+	return set
 end
 
 -- ---- clip storage (rig/AnimSaves/<clipName> -- the Animation Editor convention) ----
@@ -211,10 +275,14 @@ end
 -- ---- mutations (the tool wraps these in a ChangeHistory recording) ----
 
 -- Snapshot the rig's CURRENT pose into the clip at `time` (replacing any keyframe at that time slot).
+-- `scopeNames` (optional): a list of CHILD-part names to key — when given (non-empty), the keyframe
+-- includes Poses ONLY for those joints + their ancestor carriers (see scopeIncludeSet), so the clip
+-- drives only the scoped joints (arm-only / partial-body). nil/empty = key all joints (full body).
 function AnimationClip.snapshotKeyframe(
 	rig: Instance,
 	clipName: string,
-	time: number
+	time: number,
+	scopeNames: { string }?
 ): (string, boolean)
 	if AnimationClip.rigRoot(rig) == nil then
 		return "no Motor6D rig found under " .. rig.Name .. " (spawn_rig or select a rig).", false
@@ -226,7 +294,11 @@ function AnimationClip.snapshotKeyframe(
 			kf:Destroy()
 		end
 	end
-	local pose = AnimationClip.buildPoseTree(rig, AnimationClip.currentTransforms(rig))
+	local includeSet: { [string]: boolean }? = nil
+	if scopeNames ~= nil and #scopeNames > 0 then
+		includeSet = AnimationClip.scopeIncludeSet(rig, scopeNames)
+	end
+	local pose = AnimationClip.buildPoseTree(rig, AnimationClip.currentTransforms(rig), includeSet)
 	if pose == nil then
 		return "could not build a pose for " .. rig.Name, false
 	end
