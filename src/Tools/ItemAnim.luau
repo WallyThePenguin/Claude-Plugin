@@ -60,6 +60,13 @@ local function getAnimator()
 end
 
 local function play(clipName, looped, priority)
+	local prev = tracks[clipName]
+	if prev then
+		pcall(function()
+			prev:Stop()
+		end)
+		tracks[clipName] = nil
+	end
 	local anims = Tool:FindFirstChild("Anims")
 	local ks = anims and anims:FindFirstChild(clipName)
 	if not ks then
