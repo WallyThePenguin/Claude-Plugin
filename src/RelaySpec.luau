@@ -60,6 +60,7 @@ local EXPECTED_RELAY = {
 	"clear_clip",
 	"export_animation",
 	"import_animation",
+	"bind_animation",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
