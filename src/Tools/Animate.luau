@@ -41,6 +41,43 @@ local function clipName(args: any): string
 	return if type(args.clip) == "string" and args.clip ~= "" then args.clip else DEFAULT_CLIP
 end
 
+-- Resolve the optional `scope` input to a list of CHILD-part names (or nil = key ALL joints). Accepts a
+-- preset name ("rightArm"/"upperBody") or an explicit array of part names. Returns (names?, note, err?):
+-- an unknown preset -> err; an empty/whitespace scope -> (nil, note) so add_keyframe falls back to all
+-- joints with a heads-up.
+local function resolveScope(scope: any): ({ string }?, string, string?)
+	if scope == nil then
+		return nil, "", nil
+	end
+	if type(scope) == "string" then
+		if scope == "" then
+			return nil, "", nil
+		end
+		local names, serr = AnimationClip.scopedJointSet(scope)
+		if names == nil then
+			return nil, "", serr
+		end
+		return names,
+			"scope="
+				.. scope
+				.. " (keys only the scoped joints; the rest keep their own animation).",
+			nil
+	end
+	if type(scope) == "table" then
+		local list: { string } = {}
+		for _, v in scope do
+			if type(v) == "string" and v ~= "" then
+				table.insert(list, v)
+			end
+		end
+		if #list == 0 then
+			return nil, "scope was empty — keyed ALL joints.", nil
+		end
+		return list, "scope=" .. tostring(#list) .. " explicit joint(s).", nil
+	end
+	return nil, "", nil
+end
+
 -- Wrap a DataModel mutation in an undoable ChangeHistory recording (edit only). Refuses if a recording
 -- is already open (TryBeginRecording -> nil) rather than mutating inside an alien recording, matching the
 -- structured writers (create_instance).
@@ -67,12 +104,19 @@ local function runAdd(input: any, _context: any): (string, boolean)
 		return "add_keyframe: " .. tostring(err), true
 	end
 	local clip = clipName(args)
+	local scopeNames, scopeNote, scopeErr = resolveScope(args.scope)
+	if scopeErr ~= nil then
+		return "add_keyframe: " .. scopeErr, true
+	end
 	local time = if type(args.time) == "number"
 		then args.time
 		else AnimationClip.appendTime(rig, clip)
 	local text, ok = recorded("Add keyframe", function()
-		return AnimationClip.snapshotKeyframe(rig :: Instance, clip, time)
+		return AnimationClip.snapshotKeyframe(rig :: Instance, clip, time, scopeNames)
 	end)
+	if scopeNote ~= "" then
+		text = scopeNote .. "\n" .. text
+	end
 	return text, not ok
 end
 
@@ -157,8 +201,11 @@ Animate.descriptors = {
 			.. "rig first (pose_joint / ik_reach), then call this to capture that pose at `time` seconds "
 			.. "into a clip (a KeyframeSequence saved under rig/AnimSaves/<clip>, the Animation Editor's "
 			.. "folder). Repeat per keypose to build the motion. Inputs: rig (path or selection), clip "
-			.. "(default 'AgentClip'), time (seconds; omit to append after the last keyframe). Re-snapshots "
-			.. "replace any keyframe already at that time. Then use capture_animation to SEE it.",
+			.. "(default 'AgentClip'), time (seconds; omit to append after the last keyframe), scope "
+			.. "(optional — keys only a subset of joints: 'rightArm' for an item swing/use clip so the "
+			.. "legs/torso keep their own animation, 'upperBody', or an array of joint child-part names; "
+			.. "omit for a full-body clip). Re-snapshots replace any keyframe already at that time. Then "
+			.. "use capture_animation to SEE it.",
 		inputSchema = {
 			type = "object",
 			properties = {
@@ -167,6 +214,11 @@ Animate.descriptors = {
 				time = {
 					type = "number",
 					description = "Keyframe time in seconds (omit = append).",
+				},
+				scope = {
+					description = "Joint scope: 'rightArm' (key only the right-arm chain — use for "
+						.. "item swing/use clips so the legs/torso keep their own animation), 'upperBody', "
+						.. "or an array of joint child-part names. Omit to key ALL joints (full-body).",
 				},
 			},
 		},
