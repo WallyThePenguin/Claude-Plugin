@@ -12,7 +12,7 @@
 -- create_instance, destroy_instance, place_relative, capture, capture_angles, capture_animation,
 -- dispatch_subagents, update_tasks, remember, forget, dispatch_writers, use_skill, save_skill,
 -- delete_skill, add_keyframe, list_clip, remove_keyframe, clear_clip, export_animation, evaluate, learn, unlearn,
--- import_animation, generate_mesh, author_mesh, save_mesh, paint_texture, make_tool, grip_tool.
+-- import_animation, generate_mesh, author_mesh, save_mesh, paint_texture, make_tool, grip_tool, bind_animation.
 -- web_fetch/web_search are NOT custom tools — they are Anthropic SERVER-side tools appended by
 -- schemas()/schemasFor() (executed by the API, never dispatched locally; see SERVER_TOOL_TYPES below).
 
@@ -42,6 +42,7 @@ local EvaluateTool = require(script.Evaluate)
 local MeshTool = require(script.Mesh)
 local TextureTool = require(script.Texture)
 local ItemTool = require(script.Item)
+local ItemAnimTool = require(script.ItemAnim)
 
 local Tools = {}
 
@@ -153,6 +154,9 @@ for _, descriptor in TextureTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ItemTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in ItemAnimTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 
