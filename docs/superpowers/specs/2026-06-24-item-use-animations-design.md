@@ -1,141 +1,156 @@
-# Studio Agent — Item use-animations (`bind_animation`) design (2026-06-24)
+# Studio Agent — Item use-animations (`bind_animation`) design (2026-06-24, research-grounded rev)
 
-**Status:** approved in brainstorming, ready for an implementation plan.
-**Goal:** Make a handheld item ANIMATE WHEN USED — equip plays an idle-hold, activate plays a swing/use
-animation, and the welded item moves with the arm. This is the "good merge of meshes + animations" — sub-
-project #2 of the interactive-items roadmap (memory `studio-agent-interactive-items-roadmap`), building on
-#1 (`make_tool`/`grip_tool`). It binds authored animations to a `Tool` so the item works in a playtest,
-with NO publishing required for the build/test loop.
+**Status:** approved in brainstorming (revised after a playtest + a 103-agent deep-research pass), ready for
+an implementation plan.
+**Goal:** Make a handheld item ANIMATE CORRECTLY WHEN USED — equip plays a looping idle-hold, activate plays
+a swing/use animation that moves ONLY the arm (the legs keep walking), and the welded item swings with it.
+Sub-project #2 of the interactive-items roadmap (memory `studio-agent-interactive-items-roadmap`), on #1
+(`make_tool`/`grip_tool`). Targets the in-Studio build/preview loop (no publishing); shipping/multiplayer
+publishing is a flagged follow-up.
 
-## 1. Background (verified this session via the bridge)
+## 0. Why this rev — the playtest taught us two things
 
-- **A welded item follows arm animations.** The item's Handle is welded to `RightHand` (the `RightGrip`
-  weld from #1); arm animations move the hand via `Motor6D`, and a weld's part rigidly follows its anchor.
-  PROVEN: posing the rig's right arm (`ik_reach`) swung the held sword forward with it (a rest→strike
-  pose visibly moved the blade).
-- **No-publish playback exists + is proven in edit.** `src/AnimationClip.luau`'s `register` uses
-  `KeyframeSequenceProvider:RegisterKeyframeSequence(ks)` → a LOCAL content-hash AnimationId (no upload);
-  `capture_animation` (`src/Tools/Capture.luau`) sets `Animation.AnimationId = <that id>` →
-  `Animator:LoadAnimation(anim)` → plays. So an authored `KeyframeSequence` plays through the real
-  `Animator` with NO published asset. (Runtime use of this path is confirmed at BUILD time below.)
-- **Authoring already works.** The animation engine (`add_keyframe` flip-book → `KeyframeSequence` under
-  `rig/AnimSaves`, `capture_animation` filmstrip) authors + previews clips; with the item equipped, the
-  preview shows the item moving.
+A first spike (a Tool that played an authored clip via `RegisterKeyframeSequence` on the client) was
+playtested. RESULT: **the no-publish playback DID fire at runtime** (the core mechanism works in solo
+Studio), but (a) the clip **stiffened the WHOLE body** (it keyed every joint), and (b) the Cube Handle mesh
+**broke in Play** (transient mesh). A deep-research pass (cited Roblox docs, adversarially verified) then
+established the correct approach below.
 
-**Key reframe:** the new work is the BINDING (play the authored clip on Tool events at runtime), not the
-authoring (done) or the follow-the-arm mechanism (proven). The playback reuses the proven no-publish
-`RegisterKeyframeSequence` → `Animator` path.
+## 1. Background — verified facts (deep-research, 2026-06-24; cited to create.roblox.com + DevForum)
 
-## 2. Settled decisions (from brainstorming)
+- **The Animator blends PER JOINT, high-to-low by priority** (same priority blends by weight, per-joint sum
+  &lt;1.0). An "arm-only" clip = **OMIT the Pose for the leg/torso joints** in the `KeyframeSequence`; a
+  higher-priority swing then overrides only the keyed arm joints while lower-priority locomotion drives the
+  unkeyed legs. **This is the supported partial-body path** — the research explicitly REFUTED needing
+  per-frame `Motor6D.Transform` hacks. (Source: AnimationPriority enum docs; "how to not allow animation on
+  a specific limb".)
+- **Seven priority levels, low→high:** `Core`(value 1000, lowest-effective, Roblox defaults), `Idle`(0),
+  `Movement`, `Action`, `Action2`, `Action3`, `Action4`. Higher overrides lower per joint. **Tool: idle-hold
+  at `Idle` (looping); swing at `Action`; combos `Action2-4`.**
+- **`Animator:LoadAnimation`** is the API — `Humanoid:LoadAnimation` / `AnimationController:LoadAnimation`
+  are DEPRECATED (staff, 2020). The `Animator` handles playback AND replication.
+- **Where to play (replication):** for the PLAYER'S OWN character, **start tool animations on the CLIENT
+  (a LocalScript)** — client-started animations on an `Animator` under the server-spawned `Character`'s
+  `Humanoid` auto-replicate to the server and all clients. (NPCs/objects must be started on the SERVER.)
+  Priority changes don't auto-replicate.
+- **No-publish playback is STUDIO-ONLY.** `KeyframeSequenceProvider:RegisterKeyframeSequence(ks)` returns a
+  TEMPORARY ContentId usable as `Animation.AnimationId`, but it does NOT replicate to other players and
+  **does NOT work outside Studio**. Great for the in-Studio build/preview loop; a SHIPPED item needs a
+  PUBLISHED `AnimationId` (Open Cloud / KeyframeSequence upload).
+- **Tool events:** `Equipped` (play idle), `Unequipped` (stop idle; also fires on death/drop/destroy),
+  `Activated` (fire swing; does NOT fire if Ctrl is held), `Deactivated` (on release).
+- **Custom Handle mesh persistence:** a Cube/EditableMesh Handle is TRANSIENT until uploaded —
+  `AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh)` persists it to a permanent AssetId (the existing
+  `save_mesh` path; BETA, local-plugin only, ~30/min). Persist the Handle so it doesn't go blank/break in
+  Play.
+- **`Tool.Grip`** is one CFrame (GripUp/Right/Forward basis + GripPos offset) that adjusts the `RightGrip`
+  weld IN PLACE — confirms #1's `grip_tool` is correct.
 
-- **Playback = the no-publish Animator path** (recommended over both the raw-Motor6D-replay and the
-  published-asset options): a generated Tool script REGISTERS the carried `KeyframeSequence`
-  (`RegisterKeyframeSequence`, no upload) → `Animator:LoadAnimation` → `Play`. It uses the real Animator
-  (priority/blending: an Action-priority swing overrides a Movement-priority idle) and avoids the publish
-  wall. **Publishing the animations via Open Cloud is the robust upgrade for SHIPPED MULTIPLAYER** (noted,
-  not required for the build/test loop).
-- **The Tool is self-contained:** the authored `KeyframeSequence`(s) are COPIED into the Tool (as children
-  under a `Anims` folder), so the item carries its own animations and the runtime script registers them
-  locally.
-- **Scope = idle-hold + one use/swing**, bound to Equipped/Activated. Combos, hit detection (#4), and the
-  full behavior state machine (#3) are out.
+## 2. Settled decisions
+
+- **Arm-only (joint-scoped) authoring** — the fix for "stiffens my whole body": the use/idle clips key ONLY
+  a scoped joint set (default the right-arm chain: `RightShoulder`/`RightElbow`, optionally the `Waist` for
+  a body twist), OMITTING legs/left-arm/head. So `add_keyframe`'s all-joints snapshot gains a **joint
+  scope**.
+- **Priorities:** idle = `Idle` (looping); use = `Action`.
+- **Runtime = a LocalScript on the client** (player tools), using `Animator:LoadAnimation`.
+- **Dev-loop no-publish; shipping-publish is a flagged follow-up.** v1 plays via `RegisterKeyframeSequence`
+  (works in the in-Studio loop). A SHIPPED/multiplayer item needs published AnimationIds (Open Cloud) — OUT
+  of v1, flagged as the next sub-project (needs a scoped API key).
+- **Persist the Handle:** `save_mesh` the item's custom-mesh Handle so it survives Play (or the item breaks
+  like the spike did).
+- **Self-contained Tool:** the authored `KeyframeSequence`(s) are copied INTO the Tool (under `Anims/`); the
+  runtime LocalScript registers + plays them.
 
 ## 3. Behavior
 
-### Authoring (existing tools, item-aware)
-The agent builds the item (#1: `generate_mesh`/`paint_texture` → `make_tool` → `grip_tool`), then authors
-the animations on the rig WHILE it holds the item: `ik_reach`/`pose_joint` the arm per keypose →
-`add_keyframe {clip}` → `capture_animation {clip}` to preview (the held item moves in the filmstrip). Two
-clips: an `idle` (a held-ready pose, looped) and a `use` (a swing/thrust, Action).
+### 3a. Joint-scoped authoring (animation-engine change)
+`add_keyframe` gains an optional **`scope`** (a joint-set preset — `"rightArm"` default for use-anims, or an
+explicit joint-name list). When set, the snapshot includes Poses ONLY for those joints (+ the minimal
+parent chain needed for the hierarchy), OMITTING the rest, so the resulting `KeyframeSequence` drives only
+the scoped joints. The agent poses the arm (`ik_reach`/`pose_joint`) per keypose and `add_keyframe
+{clip, scope:"rightArm"}`; `capture_animation` previews (the legs/body stay at rest in the filmstrip —
+the arm-only proof). Two clips: `idle` (a held-ready arm pose, looped, `Idle` priority) and `use` (a swing,
+`Action`).
 
-### `bind_animation(tool, event, clip, rig?)` — the new tool
-- `tool` (required) — path to the `Tool` (from `make_tool`).
-- `event` (required) — `"idle"` (plays on Equipped, looped) | `"use"` (plays on Activated, Action priority).
-- `clip` (required) — the authored clip name under `rig/AnimSaves` (default rig = the one holding the tool,
-  else a `rig` path).
-- Behavior: resolve the `KeyframeSequence` for `clip`; COPY it into `tool/Anims/<event>` (replacing any
-  prior); ensure the Tool has the generated runtime `Script` (`tool/ItemAnimRuntime`, written/updated
-  idempotently) that wires the events. Returns a summary (which event→clip is bound, the clips present).
-- The generated runtime `Script` (a Script or LocalScript in the Tool — whichever the build-time
-  verification confirms `RegisterKeyframeSequence`+`Animator` plays in; runs in a playtest): on `Tool.Equipped`,
-  resolve the character's `Humanoid`/`Animator`, register + `LoadAnimation` the `idle` KeyframeSequence,
-  `:Play()` it (looped); on `Tool.Unequipped`, stop it; on `Tool.Activated`, register + play the `use`
-  clip once (Action priority) — the Animator blends it over the idle, and the welded Handle follows.
-  Reads the carried `KeyframeSequence`s from `tool/Anims/*`; uses `RegisterKeyframeSequence` (no asset id
-  needed).
+### 3b. `bind_animation(tool, event, clip, rig?)`
+- `tool` (required) — the `Tool` (from `make_tool`); `event` — `"idle"` (Equipped, looped, Idle) | `"use"`
+  (Activated, Action); `clip` — an authored clip under `rig/AnimSaves`.
+- Copies the clip's `KeyframeSequence` into `tool/Anims/<event>` (setting `Loop`/`Priority` per event);
+  writes/refreshes the runtime **LocalScript** (`tool/ItemAnimRuntime`, idempotent) that on the client:
+  `Tool.Equipped` → register+`Animator:LoadAnimation`+`Play` the idle (looped); `Tool.Unequipped` → stop;
+  `Tool.Activated` → register+play the use clip once (`Action`, overrides idle on the arm joints). Returns a
+  summary + a reminder to `save_mesh` the Handle + that shipping needs published AnimationIds.
 
-### Build-time verification of the runtime path
-Before relying on it, VERIFY at build time (bridge probe) that `RegisterKeyframeSequence` →
-`LoadAnimation` → `Play` actually animates the rig in a RunService-stepped context (it works in edit via
-`capture_animation`; confirm the registered id loads + plays so the generated runtime script's mechanism
-is sound). The full Tool.Activated-in-playtest behavior is confirmed by a USER playtest (the bridge is
-edit-only; client-play script behavior can't be auto-captured).
+### Verification boundary
+Edit: I author (arm-only) + `capture_animation`-preview (legs stay put) + confirm the Tool carries the
+clips + the LocalScript. Runtime (equip→idle, click→swing, arm-only, item swings): the USER playtests (the
+bridge is edit-only). Shipping/multiplayer: needs the Open Cloud publish follow-up.
 
 ## 4. Architecture / modules
 
+### Changed
+- **`src/AnimationClip.luau`** — `snapshotKeyframe` (and `add_keyframe`'s call) gain a `scope` (joint-name
+  set): build the Pose subtree for only those joints, omitting the rest. A pure `scopedJointSet(preset)`
+  helper (preset→joint names; e.g. `rightArm` = the R15 right-arm Motor6D names) is unit-tested in
+  `AnimationClipSpec`.
+- **`src/Tools/Animate.luau`** — `add_keyframe` gains a `scope` input (default unset = all joints, current
+  behavior; `"rightArm"`/`"upperBody"`/a list for use-anims).
+
 ### New
-- **`src/Tools/ItemAnim.luau`** — the `bind_animation` descriptor: resolve tool + clip + rig, copy the
-  KeyframeSequence into `tool/Anims/<event>`, write/refresh the runtime `Script` from a template string,
-  return a summary. Destructive (DataModel writes); RELAY; parent-only.
-- **The runtime `Script` template** (a Luau source string the tool writes into the Tool) — the
-  Equipped/Activated/Unequipped handler using `RegisterKeyframeSequence` + `Animator`. Kept as a clearly-
-  delimited multi-line string constant in `ItemAnim.luau` (one responsibility: the runtime behavior).
+- **`src/Tools/ItemAnim.luau`** — the `bind_animation` descriptor + the runtime LocalScript template
+  (a delimited Luau source string: Equipped/Unequipped/Activated handlers, `Animator:LoadAnimation`,
+  `RegisterKeyframeSequence`, Idle/Action priority). Destructive; RELAY; parent-only.
+
+### Changed (wiring)
+- `Tools/init.luau` (require+append), `RelaySpec.luau` (`bind_animation`→EXPECTED_RELAY + `add_keyframe`
+  unchanged classification), `SystemPrompt.luau` (extend "# Building handheld items": author ARM-ONLY idle
+  + use clips, `bind_animation`, `save_mesh` the Handle, note shipping needs published anims).
 
 ### Reused
-- `src/AnimationClip.luau` (`register` = `RegisterKeyframeSequence`; clip lookup under `rig/AnimSaves`),
-  the animation engine (`add_keyframe`/`capture_animation`), `make_tool`/`grip_tool` (#1), `Path.resolve`,
-  the ChangeHistory-recorded edit + RELAY patterns.
-
-### Changed
-- **`src/Tools/init.luau`** — require + append `ItemAnimTool.descriptors`; comment-list entry.
-- **`src/RelaySpec.luau`** — add `bind_animation` to `EXPECTED_RELAY`.
-- **`src/SystemPrompt.luau`** — extend "# Building handheld items": after `grip_tool`, author idle + use
-  clips on the held rig, then `bind_animation(tool, event, clip)` so the item animates on equip/use; note
-  it plays unpublished (no upload) and that publishing is the multiplayer-ship upgrade.
+- `AnimationClip.register` (`RegisterKeyframeSequence`), the animation engine + `capture_animation`,
+  `make_tool`/`grip_tool`/`save_mesh` (#1 + mesh persistence), `Path.resolve`, ChangeHistory + RELAY.
 
 ## 5. Error handling, limits, edge cases
 
-- **Total:** every `bind_animation` path is pcall-wrapped → `(string, isError)`; never throws.
-- **Missing clip / not a Tool / no rig:** clear errors.
-- **Re-bind:** copying a clip into `tool/Anims/<event>` replaces the prior; the runtime Script is rewritten
-  idempotently (same template) so re-binding is safe.
-- **Priority:** idle = `Movement`/`Idle` priority (looped); use = `Action` (overrides idle while playing).
-  The authored clips carry their priority (`add_keyframe` sets `Action` by default — the idle clip may need
-  a lower priority; the tool can set the looped/priority on the copied KeyframeSequence).
-- **Runtime only:** the animations play in a PLAYTEST (scripts don't run in edit); the edit-mode
-  `capture_animation` preview is the author-time check. A capture can't show the runtime Tool behavior.
-- **Multiplayer:** `RegisterKeyframeSequence` is client/session-local; for replicated multiplayer the
-  animations should be PUBLISHED (Open Cloud) — out of v1 scope, noted in the tool output + prompt.
+- **Total:** every path pcall-wrapped → `(string, isError)`.
+- **Scope:** an unknown `scope` preset → error listing presets; an empty scope → falls back to all-joints
+  (current behavior) with a note.
+- **Idle vs use priority:** the copied `KeyframeSequence` gets `Priority` set per event (Idle vs Action) so
+  the use overrides the idle ON THE ARM only (legs unaffected).
+- **Handle not persisted:** `bind_animation` warns if the Tool's Handle is a session mesh (`MeshId==""`) —
+  it will break in Play; tell the agent to `save_mesh` first.
+- **Runtime-only:** scripts run in a PLAYTEST; the edit `capture_animation` is the author-time check.
+- **Multiplayer/ship:** `RegisterKeyframeSequence` is Studio-solo-only — flagged; publishing (Open Cloud) is
+  the follow-up.
 
 ## 6. Testing & acceptance gate
 
-- **Static, each task:** `stylua src` ; `selene src` (0/0) ; `rojo build …` ; `RelaySpec` no-drift green
-  (covering `bind_animation`).
-- **Bridge build-time verification:** confirm `RegisterKeyframeSequence` → `LoadAnimation` → `Play` loads
-  + advances an authored clip on the rig (it underpins the runtime script).
-- **Bridge dogfood (author + bind):** build a sword → `make_tool`/`grip_tool`; author an `idle` + a `use`
-  (swing) clip on the held rig; `capture_animation` each → READ the filmstrips (the sword moves with the
-  arm); `bind_animation {tool, event:"idle", clip:...}` + `{event:"use", clip:...}` → confirm
-  `tool/Anims/idle`+`use` KeyframeSequences exist and the `ItemAnimRuntime` Script is present + references
-  them.
-- **USER playtest (the runtime gate):** equip the Tool in Play → the idle-hold plays; click → the swing
-  plays and the sword swings. (Can't be auto-captured — the user confirms, like the GREY-bug Play check.)
+- **Static/spec:** `stylua`/`selene` 0/0; `rojo build`; `RelaySpec` no-drift (covers `bind_animation`);
+  `AnimationClipSpec` covers `scopedJointSet`.
+- **Bridge dogfood:** build + `save_mesh` a sword item; author an arm-only `use` swing (`scope:"rightArm"`)
+  + an `idle` → `capture_animation` → READ: the arm swings while **the legs/torso stay at rest** (the
+  arm-only proof, the fix for the stiffening); `bind_animation` both → confirm `tool/Anims/idle`+`use` +
+  the `ItemAnimRuntime` LocalScript reference them, idle Loop=true/Idle priority, use Action.
+- **USER playtest (runtime gate):** equip → idle-hold; walk → legs animate while the arm holds; click → the
+  swing fires on the arm only and the sword swings; the Handle is NOT blank (persisted). (Confirmed by the
+  user, like the GREY-bug Play check.)
 
 ## 7. Scope & non-goals
 
-**In (v1):** `bind_animation` (idle + use), the runtime Script template, the build-time + playtest
-verification, RelaySpec + SystemPrompt.
+**In (v1):** joint-scoped `add_keyframe` (+ `scopedJointSet` spec), `bind_animation` + the runtime
+LocalScript, the `save_mesh`-the-Handle reminder/guard, RelaySpec + SystemPrompt, the dogfood + playtest.
 
 **Out (deferred):**
-- **Combo chains / multiple use animations / directional swings** — one `use` clip in v1.
-- **Hit detection / damage on swing** (#4) and the **full behavior state machine** (#3 — v1 is the minimal
-  equip→idle / activate→use wiring, not a general SM).
-- **Open Cloud publishing** for replicated multiplayer (the robust ship upgrade; needs a scoped API key).
-- **Animation authoring helpers** (curated swing-arc templates) — the existing keypose engine is used as-is.
+- **Open Cloud animation publishing** (shipped/multiplayer real AnimationIds) — the flagged NEXT follow-up
+  (needs a scoped API key); v1 is the in-Studio loop.
+- **Combos / multiple swings / directional attacks** — one `use` clip in v1.
+- **Hit detection / damage** (#4) and the **full behavior state machine** (#3).
+- **Additive layering** beyond per-joint priority (not needed; per-joint priority is the supported path).
 
 ## 8. Build / verify loop (unchanged)
 
-`stylua src ; selene src ; rojo build …` (selene 0/0). A plugin code change needs `.\build.ps1` + a USER
-Studio restart. Drive the dogfood via `scripts/studio-agent.ps1` (keep bridge Luau ASCII-only; Studio
-FOCUSED for captures). Execute with **superpowers:subagent-driven-development**. Commit per task; don't
-push. Verify by LOOKING (edit) + a USER playtest (runtime).
+`stylua src ; selene src ; rojo build …` (selene 0/0). Plugin code change → `.\build.ps1` + USER restart.
+Drive via `scripts/studio-agent.ps1` (ASCII Luau; Studio FOCUSED). Execute with
+**superpowers:subagent-driven-development**. Commit per task; don't push. Verify by LOOKING (edit) + a USER
+playtest (runtime).
