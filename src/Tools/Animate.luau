@@ -75,7 +75,7 @@ local function resolveScope(scope: any): ({ string }?, string, string?)
 		end
 		return list, "scope=" .. tostring(#list) .. " explicit joint(s).", nil
 	end
-	return nil, "", nil
+	return nil, "", "scope must be a string preset or an array of joint names, got " .. type(scope)
 end
 
 -- Wrap a DataModel mutation in an undoable ChangeHistory recording (edit only). Refuses if a recording
