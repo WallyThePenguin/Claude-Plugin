@@ -1,6 +1,7 @@
 --!strict
 -- AnimationClipSpec: in-Studio self-test for the PURE AnimationClip logic (no spawn/web). Builds a tiny
--- synthetic Motor6D rig with Instance.new and asserts adjacency/rigRoot/buildPoseTree + normalizeTime.
+-- synthetic Motor6D rig with Instance.new and asserts adjacency/rigRoot/buildPoseTree + normalizeTime
+-- / scopedJointSet / buildScopedPoses.
 -- Run via temporarily adding `require(script.AnimationClipSpec).run()` to init.server.luau.
 
 local AnimationClip = require(script.Parent.AnimationClip)
@@ -34,8 +35,8 @@ local function miniRig(): Instance
 end
 
 -- A branched rig to test joint-scoping: HRP -> LowerTorso -> { UpperTorso -> { RightUpperArm ->
--- RightLowerArm, LeftUpperArm }, RightUpperLeg }. The right arm + spine carriers should survive a
--- rightArm scope; the left arm + leg branches should be pruned.
+-- RightLowerArm, LeftUpperArm }, RightUpperLeg }. A rightArm scope keys ONLY the right-arm chain;
+-- the ancestor carriers (spine) AND the left-arm/leg branches are all omitted.
 local function branchedRig(): Instance
 	local model = Instance.new("Model")
 	local function part(name: string): BasePart
@@ -199,6 +200,13 @@ local function buildCases(): { Case }
 		local tops = AnimationClip.buildScopedPoses(rig, {}, { "RightUpperArm", "LeftUpperArm" })
 		if #tops ~= 2 then
 			return false, "expected 2 top-level poses, got " .. tostring(#tops)
+		end
+		local names: { [string]: boolean } = {}
+		for _, p in tops do
+			names[p.Name] = true
+		end
+		if not (names.RightUpperArm and names.LeftUpperArm) then
+			return false, "tops should be RightUpperArm + LeftUpperArm"
 		end
 		return true
 	end)
