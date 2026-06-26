@@ -5,6 +5,7 @@
 #   .\studio-agent.ps1 prompt '<text>'
 #   .\studio-agent.ps1 logs
 #   .\studio-agent.ps1 reload                          hot-reload the plugin (no Studio restart)
+#   .\studio-agent.ps1 play start|stop|eval|capture|act <arg>   drive a self-running playtest
 #   .\studio-agent.ps1 capture [outfile.png]
 param(
     [Parameter(Mandatory = $true)][string]$Command,
@@ -63,6 +64,22 @@ switch ($Command) {
         }
         if (-not $done) { "reload: timed out waiting for the plugin (is Studio open with the bridge active?)" }
     }
+    "play" {
+        $payload = @{ cmd = $Arg1 }
+        if ($Arg2) { $payload.arg = $Arg2 }
+        $r = Invoke-RestMethod -Method Post -Uri "$base/play" -Body ($payload | ConvertTo-Json -Compress) -ContentType "application/json"
+        $id = $r.id
+        $deadline = (Get-Date).AddSeconds(150)
+        $res = $null
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 400
+            $res = Invoke-RestMethod -Method Get -Uri "$base/play/result?id=$id"
+            if ($res.PSObject.Properties.Name -contains "ok") { break }
+        }
+        if ($res -and ($res.PSObject.Properties.Name -contains "ok")) {
+            "ok=$($res.ok)"; $res.result; if ($res.error) { "ERROR: $($res.error)" }
+        } else { "play: timed out (id=$id) -- is a test running / the PlayBridge polling?" }
+    }
     "capture" {
         $out = if ($Arg1) { $Arg1 } else { Join-Path $env:TEMP "studio-agent-capture.png" }
         $r = Invoke-RestMethod -Method Get -Uri "$base/captures?count=1&b64=1"
@@ -70,5 +87,5 @@ switch ($Command) {
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($r.images[0]))
         "saved $out"
     }
-    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|capture)" }
+    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|play|capture)" }
 }
