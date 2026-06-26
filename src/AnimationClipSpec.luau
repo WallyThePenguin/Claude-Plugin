@@ -151,14 +151,14 @@ local function buildCases(): { Case }
 		if names == nil then
 			return false, "rightArm returned nil: " .. tostring(err)
 		end
-		if #names ~= 3 then
-			return false, "expected 3 names, got " .. tostring(#names)
+		if #names ~= 4 then
+			return false, "expected 4 names, got " .. tostring(#names)
 		end
 		local set: { [string]: boolean } = {}
 		for _, n in names do
 			set[n] = true
 		end
-		if not (set.RightUpperArm and set.RightLowerArm and set.RightHand) then
+		if not (set.RightUpperArm and set.RightLowerArm and set.RightHand and set.Head) then
 			return false, "missing an arm part"
 		end
 		local bad, berr = AnimationClip.scopedJointSet("nope")
@@ -172,41 +172,53 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("buildScopedPoses keys only the scoped chain, omitting carriers + siblings", function()
-		local rig = branchedRig()
-		local tops = AnimationClip.buildScopedPoses(rig, {}, { "RightUpperArm", "RightLowerArm" })
-		if #tops ~= 1 then
-			return false, "expected 1 top-level pose, got " .. tostring(#tops)
-		end
-		local top = tops[1]
-		if top.Name ~= "RightUpperArm" then
-			return false, "top should be RightUpperArm, got " .. top.Name
-		end
-		if findPose(top, "RightLowerArm") == nil then
-			return false, "RightLowerArm should nest under RightUpperArm"
-		end
-		for _, bad in
-			{ "UpperTorso", "LowerTorso", "HumanoidRootPart", "LeftUpperArm", "RightUpperLeg" }
-		do
-			if top.Name == bad or findPose(top, bad) ~= nil then
-				return false, bad .. " should be omitted"
+	add(
+		"buildScopedPoses includes the scoped chain + ancestor carriers, pruning siblings",
+		function()
+			local rig = branchedRig()
+			local tops = AnimationClip.buildScopedPoses(
+				rig,
+				{},
+				{ "RightUpperArm", "RightLowerArm" }
+			)
+			if #tops ~= 1 then
+				return false, "expected a single root top, got " .. tostring(#tops)
 			end
+			local top = tops[1]
+			if top.Name ~= "HumanoidRootPart" then
+				return false, "the top should be the rig root HumanoidRootPart, got " .. top.Name
+			end
+			-- scoped joints present
+			if findPose(top, "RightUpperArm") == nil or findPose(top, "RightLowerArm") == nil then
+				return false, "scoped arm poses missing"
+			end
+			-- ancestor carriers present (so the clip plays via RegisterKeyframeSequence)
+			if findPose(top, "UpperTorso") == nil or findPose(top, "LowerTorso") == nil then
+				return false, "ancestor carrier poses missing"
+			end
+			-- sibling branches pruned
+			if findPose(top, "LeftUpperArm") ~= nil or findPose(top, "RightUpperLeg") ~= nil then
+				return false, "a sibling branch leaked in"
+			end
+			return true
 		end
-		return true
-	end)
+	)
 
-	add("buildScopedPoses returns multiple tops for a disconnected scope", function()
+	add("buildScopedPoses nests two scoped branches under their shared carrier", function()
 		local rig = branchedRig()
 		local tops = AnimationClip.buildScopedPoses(rig, {}, { "RightUpperArm", "LeftUpperArm" })
-		if #tops ~= 2 then
-			return false, "expected 2 top-level poses, got " .. tostring(#tops)
+		if #tops ~= 1 then
+			return false, "expected a single root top, got " .. tostring(#tops)
 		end
-		local names: { [string]: boolean } = {}
-		for _, p in tops do
-			names[p.Name] = true
+		local top = tops[1]
+		if findPose(top, "RightUpperArm") == nil or findPose(top, "LeftUpperArm") == nil then
+			return false, "both scoped arms should be present"
 		end
-		if not (names.RightUpperArm and names.LeftUpperArm) then
-			return false, "tops should be RightUpperArm + LeftUpperArm"
+		if findPose(top, "UpperTorso") == nil then
+			return false, "the shared UpperTorso carrier should be present"
+		end
+		if findPose(top, "RightUpperLeg") ~= nil then
+			return false, "the leg branch should be pruned"
 		end
 		return true
 	end)

@@ -98,7 +98,7 @@ end
 -- lower-priority locomotion drives the unkeyed legs/torso. "upperBody" adds the left arm, torso twist,
 -- and head. Returns (names, nil) or (nil, err) for an unknown preset. PURE -> unit-tested.
 local SCOPE_PRESETS: { [string]: { string } } = {
-	rightArm = { "RightUpperArm", "RightLowerArm", "RightHand" },
+	rightArm = { "RightUpperArm", "RightLowerArm", "RightHand", "Head" },
 	upperBody = {
 		"RightUpperArm",
 		"RightLowerArm",
@@ -133,14 +133,13 @@ function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
 	return out, nil
 end
 
--- Build the Poses for a SCOPED clip: one Pose per scoped CHILD-part that exists on the rig, nested under
--- its parent-part's Pose when that parent is ALSO scoped, otherwise returned as a TOP-LEVEL pose (the
--- caller parents each to the Keyframe). Ancestor carriers are OMITTED entirely -- the Animator matches
--- Poses to Motor6Ds by NAME, so the chain to the root isn't needed, and omitting it means the clip drives
--- ONLY the scoped joints (the torso/legs/head keep their own lower-priority animation). Including identity
--- carriers would instead force those joints to rest -- the playtest "head points up while walking" bug.
--- Returns the list of top-level Poses (may be >1 for a disconnected scope; empty if none of the scoped
--- names exist on the rig).
+-- Build the Poses for a SCOPED clip: the scoped CHILD-parts PLUS their ancestor "carriers" back to the
+-- rig root, nested as a tree; sibling branches (the legs, the other arm) are pruned. The carrier chain is
+-- REQUIRED -- the Animator only applies a Pose that is nested under the root chain (a top-level pose is
+-- ignored by RegisterKeyframeSequence playback). Carriers sit at their captured transform (identity at
+-- rest), which holds the torso upright; the scoped joints (e.g. the arm + Head) carry the motion -- keying
+-- the Head level is what keeps the head from over-rotating while the torso is held upright. Returns the
+-- top-level Pose(s) for the caller to parent to the Keyframe (normally one: the rig root).
 function AnimationClip.buildScopedPoses(
 	rig: Instance,
 	transformsMap: { [string]: CFrame },
@@ -150,25 +149,34 @@ function AnimationClip.buildScopedPoses(
 	for _, n in scopeNames do
 		scopeSet[n] = true
 	end
-	-- child-part name -> parent-part name; and which part names actually exist as a Motor6D Part1
+	-- child-part name -> parent-part name
 	local parentOf: { [string]: string } = {}
-	local existing: { [string]: boolean } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
-			local childName = (d.Part1 :: Instance).Name
-			parentOf[childName] = (d.Part0 :: Instance).Name
-			existing[childName] = true
+			parentOf[(d.Part1 :: Instance).Name] = (d.Part0 :: Instance).Name
 		end
 	end
-	local poseByName: { [string]: Instance } = {}
+	-- include = the scoped parts that exist, plus every ancestor up to the root (the carriers)
+	local include: { [string]: boolean } = {}
 	for name in scopeSet do
-		if existing[name] then
-			local pose = Instance.new("Pose")
-			pose.Name = name
-			pose.CFrame = transformsMap[name] or CFrame.identity
-			pose.EasingStyle = Enum.PoseEasingStyle.Linear
-			poseByName[name] = pose
+		if parentOf[name] ~= nil or scopeSet[name] then
+			-- walk up from the scoped part adding it + each ancestor (a part with no parent entry is a
+			-- root and is still added by the first iteration)
+			local cur: string? = name
+			while cur ~= nil and not include[cur] do
+				include[cur] = true
+				cur = parentOf[cur]
+			end
 		end
+	end
+	-- create a Pose for each included part, then nest each under its parent's pose (or collect as a top)
+	local poseByName: { [string]: Instance } = {}
+	for name in include do
+		local pose = Instance.new("Pose")
+		pose.Name = name
+		pose.CFrame = transformsMap[name] or CFrame.identity
+		pose.EasingStyle = Enum.PoseEasingStyle.Linear
+		poseByName[name] = pose
 	end
 	local tops: { Instance } = {}
 	for name, pose in poseByName do
