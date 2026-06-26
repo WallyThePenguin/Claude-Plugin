@@ -179,8 +179,10 @@ local function tick(deps: any)
 	end
 end
 
--- Start the bridge. No-op unless EDIT mode AND config.devBridge. Localhost-only, plugin-only.
-function DevBridge.start(deps: any)
+-- Start the bridge. No-op unless EDIT mode AND config.devBridge. Localhost-only, plugin-only. The loop
+-- belongs to a generation: it checks `lifecycle.cancelled` each tick and exits when a hot-reload swaps in
+-- a new generation, so reloads never leave a second loop polling.
+function DevBridge.start(deps: any, lifecycle: any)
 	if not RunService:IsEdit() then
 		return
 	end
@@ -189,10 +191,11 @@ function DevBridge.start(deps: any)
 	end
 	task.spawn(function()
 		print("[StudioAgent] dev bridge active (sidecar " .. sidecarUrl(deps) .. ")")
-		while true do
+		while not lifecycle.cancelled do
 			pcall(tick, deps)
 			task.wait(deps.config:getDevBridgePollInterval())
 		end
+		print("[StudioAgent] dev bridge loop stopped (generation reloaded)")
 	end)
 end
 
