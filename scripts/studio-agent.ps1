@@ -4,6 +4,7 @@
 #   .\studio-agent.ps1 luau '<luau code>'
 #   .\studio-agent.ps1 prompt '<text>'
 #   .\studio-agent.ps1 logs
+#   .\studio-agent.ps1 reload                          hot-reload the plugin (no Studio restart)
 #   .\studio-agent.ps1 capture [outfile.png]
 param(
     [Parameter(Mandatory = $true)][string]$Command,
@@ -46,6 +47,22 @@ switch ($Command) {
         $r = Invoke-RestMethod -Method Get -Uri "$base/logs"
         $r.lines | ForEach-Object { "[$($_.kind)] $($_.text)" }
     }
+    "reload" {
+        $r = Invoke-RestMethod -Method Post -Uri "$base/reload" -Body "{}" -ContentType "application/json"
+        $id = $r.id
+        $deadline = (Get-Date).AddSeconds(30)
+        $done = $false
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+            $res = Invoke-RestMethod -Method Get -Uri "$base/reload/result?id=$id"
+            if ($res.PSObject.Properties.Name -contains "ok") {
+                if ($res.ok) { "reload ok" } else { "reload FAILED: $($res.error)" }
+                $done = $true
+                break
+            }
+        }
+        if (-not $done) { "reload: timed out waiting for the plugin (is Studio open with the bridge active?)" }
+    }
     "capture" {
         $out = if ($Arg1) { $Arg1 } else { Join-Path $env:TEMP "studio-agent-capture.png" }
         $r = Invoke-RestMethod -Method Get -Uri "$base/captures?count=1&b64=1"
@@ -53,5 +70,5 @@ switch ($Command) {
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($r.images[0]))
         "saved $out"
     }
-    default { "unknown command: $Command (use tool|luau|prompt|logs|capture)" }
+    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|capture)" }
 }
