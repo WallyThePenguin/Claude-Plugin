@@ -20,6 +20,7 @@ local RubricStore = require(script.Parent.RubricStore)
 local CameraRig = require(script.Parent.CameraRig)
 local Relay = require(script.Parent.Relay)
 local DevBridge = require(script.Parent.DevBridge)
+local PlayBridge = require(script.Parent.PlayBridge)
 local HotReload = require(script.Parent.HotReload)
 
 local Main = {}
@@ -74,6 +75,7 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 	end
 
 	DevBridge.start(deps, lifecycle)
+	PlayBridge.start(deps, lifecycle)
 
 	-- Mount the panel fresh this generation (clear any stale content first), and re-mount if Studio
 	-- clears the widget on an edit<->play transition.
