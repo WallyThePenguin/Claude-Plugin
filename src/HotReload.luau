@@ -159,9 +159,12 @@ function HotReload.reload(
 				ms.Parent = parent
 				target = ms
 			end
-			pcall(function()
+			local okWrite = pcall(function()
 				(target :: any).Source = e.source
 			end)
+			if not okWrite then
+				warn("[StudioAgent] hot-reload: failed to write source for " .. e.path)
+			end
 		end
 	end
 
@@ -211,6 +214,9 @@ end
 -- not a generation's deps. `pluginScript` is the bootstrap Script (its children are the module tree).
 function HotReload.startSupervisor(pluginScript: Instance, config: any, runtime: any, ctx: any)
 	if not RunService:IsEdit() then
+		return
+	end
+	if not config:getDevBridge() then
 		return
 	end
 	task.spawn(function()
