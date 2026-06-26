@@ -9,7 +9,7 @@ GET  /agent/result?id=N                                   -> the result, or {"st
 POST /logs        {"lines":[...]}                          -> {"ok":true}
 GET  /logs                                                 -> {"lines":[...]}
 POST /reload                                              -> {"id":N}  (flags a hot-reload)
-GET  /reload/pending                                      -> {"requested":bool,"id":N,"sources":{...}}
+GET  /reload/pending                                      -> {"requested":bool,"id":N,"sources":{...}} | {"requested":true,"id":N,"error":str}
 POST /reload/result {"id":N,"ok":bool,"error":?}          -> {"ok":true}
 GET  /reload/result?id=N                                  -> the reload outcome, or {"status":"pending"}
 

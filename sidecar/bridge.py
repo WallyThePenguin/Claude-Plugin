@@ -1,5 +1,5 @@
 """Dev-bridge state for the Studio Agent sidecar: a thread-safe in-memory command queue (single slot,
-single-flight to match the agent loop), a results map, and the latest pushed Output logs. Pure stdlib."""
+single-flight to match the agent loop), a results map, and the latest pushed Output logs, plus a single-slot hot-reload flag + reload-result map. Pure stdlib."""
 
 import threading
 
@@ -48,7 +48,7 @@ class Store:
             return list(self._logs)
 
     def request_reload(self) -> int:
-        """Flag a reload (separate from the command queue). Returns its id."""
+        """Flag a reload (separate from the command queue), overwriting any unclaimed one — single-flight. Returns its id."""
         with self._lock:
             self._reload_counter += 1
             self._reload = {"id": self._reload_counter}
