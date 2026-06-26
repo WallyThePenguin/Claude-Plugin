@@ -147,6 +147,15 @@ local function doAct(verb)
 			return "activated " .. tool.Name
 		end
 		return "no equipped tool"
+	elseif verb == "camera" then
+		local cam = workspace.CurrentCamera
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if cam and hrp then
+			cam.CameraType = Enum.CameraType.Scriptable
+			cam.CFrame = CFrame.lookAt(hrp.Position + hrp.CFrame.LookVector * 7 + Vector3.new(0, 1.5, 0), hrp.Position + Vector3.new(0, 1, 0))
+			return "camera set"
+		end
+		return "no camera/char"
 	end
 	return "unknown act: " .. tostring(verb)
 end
