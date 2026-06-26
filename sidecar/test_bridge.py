@@ -37,6 +37,21 @@ def test_submit_overwrites_single_slot():
     assert s.take_pending()["tool"] == "b"  # latest wins (single-flight)
 
 
+def test_request_reload_then_take_clears():
+    s = Store()
+    rid = s.request_reload()
+    assert rid == 1
+    assert s.take_reload() == {"id": 1}
+    assert s.take_reload() is None  # cleared after taking
+
+
+def test_reload_result_roundtrip():
+    s = Store()
+    s.put_reload_result(3, {"ok": True})
+    assert s.get_reload_result(3) == {"ok": True}
+    assert s.get_reload_result(4) is None
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

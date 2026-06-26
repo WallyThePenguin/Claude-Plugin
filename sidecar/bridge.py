@@ -11,6 +11,9 @@ class Store:
         self._pending = None  # the one queued command, or None
         self._results = {}     # id -> result dict
         self._logs = []        # latest pushed log entries
+        self._reload = None       # {"id": N} when a reload is requested, else None
+        self._reload_counter = 0
+        self._reload_results = {}  # reload id -> result dict
 
     def submit(self, command: dict) -> int:
         """Queue a command (overwriting any unclaimed one — single-flight). Returns its id."""
@@ -43,3 +46,25 @@ class Store:
     def get_logs(self) -> list:
         with self._lock:
             return list(self._logs)
+
+    def request_reload(self) -> int:
+        """Flag a reload (separate from the command queue). Returns its id."""
+        with self._lock:
+            self._reload_counter += 1
+            self._reload = {"id": self._reload_counter}
+            return self._reload_counter
+
+    def take_reload(self):
+        """Return the pending reload request and clear it, or None."""
+        with self._lock:
+            r = self._reload
+            self._reload = None
+            return r
+
+    def put_reload_result(self, reload_id: int, result: dict):
+        with self._lock:
+            self._reload_results[int(reload_id)] = result
+
+    def get_reload_result(self, reload_id: int):
+        with self._lock:
+            return self._reload_results.get(int(reload_id))

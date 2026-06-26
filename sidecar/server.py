@@ -8,6 +8,10 @@ POST /agent/result {"id":N, ...result}                    -> {"ok":true}
 GET  /agent/result?id=N                                   -> the result, or {"status":"pending"}
 POST /logs        {"lines":[...]}                          -> {"ok":true}
 GET  /logs                                                 -> {"lines":[...]}
+POST /reload                                              -> {"id":N}  (flags a hot-reload)
+GET  /reload/pending                                      -> {"requested":bool,"id":N,"sources":{...}}
+POST /reload/result {"id":N,"ok":bool,"error":?}          -> {"ok":true}
+GET  /reload/result?id=N                                  -> the reload outcome, or {"status":"pending"}
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -24,6 +28,21 @@ from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
+SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+
+
+def read_src_sources() -> dict:
+    """Read every src/**/*.luau into {relativePosixPath: source}. Used by the hot-reload channel; the
+    sidecar must be run from source (not the frozen exe) for src/ to resolve."""
+    sources = {}
+    for root, _dirs, files in os.walk(SRC_DIR):
+        for name in files:
+            if name.endswith(".luau"):
+                full = os.path.join(root, name)
+                rel = os.path.relpath(full, SRC_DIR).replace(os.sep, "/")
+                with open(full, "r", encoding="utf-8") as fh:
+                    sources[rel] = fh.read()
+    return sources
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -66,6 +85,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, result if result is not None else {"status": "pending"})
         if parsed.path == "/logs":
             return self._json(200, {"lines": STORE.get_logs()})
+        if parsed.path == "/reload/pending":
+            r = STORE.take_reload()
+            if r is None:
+                return self._json(200, {"requested": False})
+            try:
+                sources = read_src_sources()
+            except Exception as exc:  # noqa: BLE001
+                return self._json(200, {"requested": True, "id": r["id"], "error": str(exc)})
+            return self._json(200, {"requested": True, "id": r["id"], "sources": sources})
+        if parsed.path == "/reload/result":
+            try:
+                rid = int(qs.get("id", ["0"])[0])
+            except ValueError:
+                return self._json(400, {"error": "bad id"})
+            res = STORE.get_reload_result(rid)
+            return self._json(200, res if res is not None else {"status": "pending"})
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -87,6 +122,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
         if parsed.path == "/logs":
             STORE.set_logs(body.get("lines", []))
+            return self._json(200, {"ok": True})
+        if parsed.path == "/reload":
+            return self._json(200, {"id": STORE.request_reload()})
+        if parsed.path == "/reload/result":
+            rid = body.get("id")
+            if not isinstance(rid, int):
+                return self._json(400, {"error": "reload result needs an integer id"})
+            STORE.put_reload_result(rid, body)
             return self._json(200, {"ok": True})
         return self._json(404, {"error": "not found"})
 
