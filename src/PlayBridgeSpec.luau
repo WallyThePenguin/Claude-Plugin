@@ -1,6 +1,6 @@
 --!strict
--- PlayBridgeSpec: pure tests for PlayBridge.actSnippet (the act-verb -> Luau-snippet expansion). No
--- sidecar/play. Run: luau 'return tostring(require(script.Parent.PlayBridgeSpec).run())'.
+-- PlayBridgeSpec: pure tests for PlayBridge's only pure-ish exported helper, cleanupTestScripts (the
+-- templates are strings). No sidecar/play. Run: luau 'return tostring(require(script.Parent.PlayBridgeSpec).run())'.
 
 local PlayBridge = require(script.Parent.PlayBridge)
 
@@ -13,30 +13,10 @@ local function buildCases(): { Case }
 		table.insert(cases, { name = name, fn = fn })
 	end
 
-	add("actSnippet: known verbs return a non-empty snippet", function()
-		for _, v in { "equip", "walk", "stop", "activate" } do
-			local s = PlayBridge.actSnippet(v, nil)
-			if type(s) ~= "string" or s == "" then
-				return false, v .. " returned no snippet"
-			end
-		end
-		return true
-	end)
-
-	add("actSnippet: equip references EquipTool, activate references Activate", function()
-		local e = PlayBridge.actSnippet("equip", nil) :: string
-		local a = PlayBridge.actSnippet("activate", nil) :: string
-		if string.find(e, "EquipTool", 1, true) == nil then
-			return false, "equip snippet missing EquipTool"
-		end
-		if string.find(a, "Activate", 1, true) == nil then
-			return false, "activate snippet missing Activate"
-		end
-		return true
-	end)
-
-	add("actSnippet: an unknown verb returns nil", function()
-		return PlayBridge.actSnippet("fly", nil) == nil, "unknown verb should be nil"
+	add("cleanupTestScripts is callable + idempotent (no error when nothing to clean)", function()
+		local ok1 = pcall(PlayBridge.cleanupTestScripts)
+		local ok2 = pcall(PlayBridge.cleanupTestScripts)
+		return ok1 and ok2, "cleanupTestScripts should never error"
 	end)
 
 	return cases

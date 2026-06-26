@@ -1,8 +1,12 @@
 --!strict
--- PlayBridge: drive a Studio PLAYTEST from the shell over the sidecar /play channel (no F5). The EDIT
--- generation handles `start` (task.spawn StudioTestService:ExecutePlayModeAsync; a `playing` flag keeps it
--- from grabbing the in-test loop's commands). The serverplay/clientplay generation runs the in-test loop:
--- eval/capture/act/stop, with an idle auto-EndTest so a test can never strand the editor. Lifecycle-aware
+-- PlayBridge: drive a Studio PLAYTEST from the shell over the sidecar /play channel (no F5, no desktop
+-- control). LIVE-VERIFIED design: the plugin does NOT load inside a StudioTestService test, so the EDIT
+-- generation handles `play start` by (1) injecting a server-poller Script + a client-handler LocalScript +
+-- a RemoteEvent into the place, (2) task.spawn-ing StudioTestService:ExecutePlayModeAsync (which yields the
+-- edit DM until the test ends), then cleaning the injected instances up. The injected SERVER poller polls
+-- /play (in-test HTTP works once "Allow HTTP Requests" is on), drives the character (EquipTool/Move work
+-- server-side), and relays capture (client-only) + act to the CLIENT handler over the RemoteEvent; `stop`
+-- calls EndTest. A `playing` flag keeps the edit loop from competing while a test runs. Lifecycle-aware
 -- (hot-reloads with Main). See docs/superpowers/specs/2026-06-26-play-mode-bridge-design.md.
 
 local HttpService = game:GetService("HttpService")
@@ -12,44 +16,209 @@ local Relay = require(script.Parent.Relay)
 
 local PlayBridge = {}
 
--- ---- pure (unit-tested) ----
+local RELAY_NAME = "StudioAgentPlayRelay"
+local SERVER_NAME = "StudioAgentPlayServer"
+local CLIENT_NAME = "StudioAgentPlayClient"
 
--- Expand an `act` verb (+ optional arg) into a Luau snippet run in the play DM. Drives the local
--- character via the Humanoid/Tool API. Unknown verb -> nil. PURE.
-function PlayBridge.actSnippet(verb: string, _arg: string?): string?
-	if verb == "equip" then
-		return [[
-local p = game:GetService("Players").LocalPlayer
-local char = p.Character
-local hum = char and char:FindFirstChildOfClass("Humanoid")
-local tool = p:FindFirstChild("Backpack") and p.Backpack:FindFirstChildOfClass("Tool")
-if hum and tool then hum:EquipTool(tool) return "equipped " .. tool.Name end
-return "no humanoid/tool to equip"]]
-	elseif verb == "walk" then
-		return [[
-local p = game:GetService("Players").LocalPlayer
-local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
-if hum then hum:Move(p.Character.PrimaryPart and p.Character.PrimaryPart.CFrame.LookVector or Vector3.new(0,0,-1), false) return "walking" end
-return "no humanoid"]]
-	elseif verb == "stop" then
-		return [[
-local p = game:GetService("Players").LocalPlayer
-local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
-if hum then hum:Move(Vector3.new(0,0,0), false) return "stopped" end
-return "no humanoid"]]
-	elseif verb == "activate" then
-		return [[
-local p = game:GetService("Players").LocalPlayer
-local char = p.Character
-local tool = char and char:FindFirstChildOfClass("Tool")
-if tool then tool:Activate() return "activated " .. tool.Name end
-return "no equipped tool"]]
+-- ---- the injected SERVER poller (runs in the test's server DM; HTTP works there) ----
+local SERVER_SRC = [==[
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StudioTestService = game:GetService("StudioTestService")
+local base = "__BASE__"
+local relay = ReplicatedStorage:WaitForChild("StudioAgentPlayRelay", 10)
+
+local responses = {}
+if relay then
+	relay.OnServerEvent:Connect(function(_plr, reqId, result)
+		responses[reqId] = result
+	end)
+end
+local reqCounter = 0
+-- Relay an action to the client and wait (up to 8s) for its response.
+local function client(action, arg)
+	if relay == nil then
+		return "no relay"
 	end
-	return nil
+	reqCounter = reqCounter + 1
+	local id = reqCounter
+	relay:FireAllClients(id, action, arg)
+	local deadline = os.clock() + 8
+	while responses[id] == nil and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	local r = responses[id]
+	responses[id] = nil
+	return r or "client timeout"
 end
 
--- ---- impure HTTP (sidecar) ----
+local function post(id, ok, result)
+	pcall(function()
+		HttpService:RequestAsync({
+			Url = base .. "/play/result",
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json" },
+			Body = HttpService:JSONEncode({ id = id, ok = ok, result = result }),
+		})
+	end)
+end
 
+while true do
+	local ok, res = pcall(function()
+		return HttpService:RequestAsync({ Url = base .. "/play/pending", Method = "GET" })
+	end)
+	if ok and res.Success then
+		local cmd = nil
+		pcall(function()
+			cmd = HttpService:JSONDecode(res.Body)
+		end)
+		if type(cmd) == "table" and cmd.cmd ~= nil then
+			if cmd.cmd == "stop" then
+				post(cmd.id, true, "stopping")
+				task.wait(0.2)
+				pcall(function()
+					StudioTestService:EndTest("stopped")
+				end)
+				return
+			elseif cmd.cmd == "capture" then
+				post(cmd.id, true, client("capture", nil))
+			elseif cmd.cmd == "act" then
+				post(cmd.id, true, client("act", cmd.arg))
+			elseif cmd.cmd == "eval" then
+				post(cmd.id, true, client("eval", cmd.arg))
+			else
+				post(cmd.id, false, "unknown play cmd: " .. tostring(cmd.cmd))
+			end
+		end
+	end
+	task.wait(0.4)
+end
+]==]
+
+-- ---- the injected CLIENT handler (owns the character + the viewport) ----
+local CLIENT_SRC = [==[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local CaptureService = game:GetService("CaptureService")
+local relay = ReplicatedStorage:WaitForChild("StudioAgentPlayRelay", 10)
+local plr = Players.LocalPlayer
+
+local function doCapture()
+	local done = false
+	pcall(function()
+		CaptureService:CaptureScreenshot(function()
+			done = true
+		end)
+	end)
+	local deadline = os.clock() + 5
+	while not done and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	return "captured"
+end
+
+local function doAct(verb)
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if verb == "equip" then
+		local backpack = plr:FindFirstChild("Backpack")
+		local tool = backpack and backpack:FindFirstChildOfClass("Tool")
+		if hum and tool then
+			hum:EquipTool(tool)
+			return "equipped " .. tool.Name
+		end
+		return "no humanoid/tool"
+	elseif verb == "walk" then
+		if hum and char and char.PrimaryPart then
+			hum:Move(char.PrimaryPart.CFrame.LookVector, false)
+			return "walking"
+		end
+		return "no humanoid"
+	elseif verb == "walkstop" then
+		if hum then
+			hum:Move(Vector3.zero, false)
+			return "stopped walking"
+		end
+		return "no humanoid"
+	elseif verb == "activate" then
+		local tool = char and char:FindFirstChildOfClass("Tool")
+		if tool then
+			tool:Activate()
+			return "activated " .. tool.Name
+		end
+		return "no equipped tool"
+	end
+	return "unknown act: " .. tostring(verb)
+end
+
+if relay then
+	relay.OnClientEvent:Connect(function(reqId, action, arg)
+		local result
+		if action == "capture" then
+			result = doCapture()
+		elseif action == "act" then
+			result = doAct(arg)
+		elseif action == "eval" then
+			local fn, err = loadstring(tostring(arg))
+			if fn then
+				local ok, r = pcall(fn)
+				result = "eval " .. tostring(ok) .. ": " .. tostring(r)
+			else
+				result = "eval compile error: " .. tostring(err)
+			end
+		else
+			result = "unknown action: " .. tostring(action)
+		end
+		relay:FireServer(reqId, result)
+	end)
+end
+]==]
+
+-- Inject the relay + server + client scripts into the place (idempotent: remove any prior copies first).
+local function injectTestScripts(base: string)
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ServerScriptService = game:GetService("ServerScriptService")
+	local StarterPlayer = game:GetService("StarterPlayer")
+	local starterScripts = StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts")
+	PlayBridge.cleanupTestScripts()
+	local relay = Instance.new("RemoteEvent")
+	relay.Name = RELAY_NAME
+	relay.Parent = ReplicatedStorage
+	local server = Instance.new("Script")
+	server.Name = SERVER_NAME
+	server.Source = string.gsub(SERVER_SRC, "__BASE__", base)
+	server.Parent = ServerScriptService
+	if starterScripts ~= nil then
+		local client = Instance.new("LocalScript")
+		client.Name = CLIENT_NAME
+		client.Source = CLIENT_SRC
+		client.Parent = starterScripts
+	end
+end
+
+function PlayBridge.cleanupTestScripts()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ServerScriptService = game:GetService("ServerScriptService")
+	local StarterPlayer = game:GetService("StarterPlayer")
+	local starterScripts = StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts")
+	for _, pair in
+		{
+			{ ReplicatedStorage, RELAY_NAME },
+			{ ServerScriptService, SERVER_NAME },
+			{ starterScripts, CLIENT_NAME },
+		}
+	do
+		local container = pair[1]
+		if container ~= nil then
+			local old = (container :: Instance):FindFirstChild(pair[2] :: string)
+			if old ~= nil then
+				old:Destroy()
+			end
+		end
+	end
+end
+
+-- ---- impure HTTP (the edit loop) ----
 local function httpGetJson(url: string): (any?, string?)
 	local ok, res = pcall(function()
 		return HttpService:RequestAsync({ Url = url, Method = "GET" })
@@ -81,8 +250,7 @@ local function httpPostJson(url: string, body: any)
 	end)
 end
 
--- ---- edit-side: handle `start` ----
-
+-- ---- edit-side: handle `play start` (inject -> ExecutePlayModeAsync -> cleanup) ----
 local playing = false
 
 function PlayBridge.startEditLoop(deps: any, lifecycle: any)
@@ -98,20 +266,9 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 					local c = cmd :: any
 					if c.cmd == "start" then
 						playing = true
-						task.spawn(function()
-							local StudioTestService = game:GetService("StudioTestService")
-							local okRun, result = pcall(function()
-								return (StudioTestService :: any):ExecutePlayModeAsync({
-									studioAgentPlay = true,
-								})
-							end)
-							playing = false
-							httpPostJson(base .. "/play/result", {
-								id = c.id,
-								ok = okRun,
-								result = "test ended: " .. tostring(result),
-							})
-						end)
+						injectTestScripts(base)
+						-- POST the ack BEFORE the spawn: ExecutePlayModeAsync yields the whole edit DM, so
+						-- a post after it would not flush until the test ends.
 						httpPostJson(
 							base .. "/play/result",
 							{
@@ -120,6 +277,21 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 								result = "play starting (ExecutePlayModeAsync)",
 							}
 						)
+						task.spawn(function()
+							local StudioTestService = game:GetService("StudioTestService")
+							local okRun, result = pcall(function()
+								return (StudioTestService :: any):ExecutePlayModeAsync({
+									studioAgentPlay = true,
+								})
+							end)
+							playing = false
+							PlayBridge.cleanupTestScripts()
+							httpPostJson(base .. "/play/result", {
+								id = c.id,
+								ok = okRun,
+								result = "test ended: " .. tostring(result),
+							})
+						end)
 					else
 						httpPostJson(
 							base .. "/play/result",
@@ -137,47 +309,11 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 	end)
 end
 
--- ---- in-test: poll + dispatch (Task 5 fills eval/capture/act; this skeleton PROBES then EndTests) ----
-
-function PlayBridge.startTestLoop(deps: any, lifecycle: any, mode: string)
-	local base = deps.config:getSidecarUrl()
-	task.spawn(function()
-		-- PROBE (resolves the client/server + DM-topology unknowns): report mode + whether THIS copy can
-		-- reach the sidecar.
-		local probeOk = httpGetJson(base .. "/play/pending") ~= nil
-		httpPostJson(base .. "/logs", {
-			lines = {
-				{
-					kind = "play-probe",
-					text = ("[PlayBridge] mode=%s canPoll=%s server=%s client=%s"):format(
-						mode,
-						tostring(probeOk),
-						tostring(RunService:IsServer()),
-						tostring(RunService:IsClient())
-					),
-				},
-			},
-		})
-		-- Idle auto-EndTest: end the test after ~30s with no command, so it never strands the editor.
-		local deadline = os.clock() + 30
-		while not lifecycle.cancelled and os.clock() < deadline do
-			-- Task 5 replaces this body with the real eval/capture/act/stop dispatch.
-			task.wait(0.5)
-		end
-		if mode == "serverplay" then
-			pcall(function()
-				(game:GetService("StudioTestService") :: any):EndTest("idle-timeout")
-			end)
-		end
-	end)
-end
-
 function PlayBridge.start(deps: any, lifecycle: any)
-	local mode = Relay.mode()
-	if mode == "edit" then
+	-- Only the EDIT generation runs the loop; the plugin does not load inside the test (the injected
+	-- scripts do the in-test work). serverplay/clientplay generations are a no-op here.
+	if Relay.mode() == "edit" then
 		PlayBridge.startEditLoop(deps, lifecycle)
-	elseif mode == "serverplay" or mode == "clientplay" then
-		PlayBridge.startTestLoop(deps, lifecycle, mode)
 	end
 end
 
