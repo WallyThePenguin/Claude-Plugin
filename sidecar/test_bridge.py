@@ -52,6 +52,22 @@ def test_reload_result_roundtrip():
     assert s.get_reload_result(4) is None
 
 
+def test_play_submit_take_clears():
+    s = Store()
+    pid = s.play_submit({"cmd": "start"})
+    assert pid == 1
+    cmd = s.play_take_pending()
+    assert cmd["id"] == 1 and cmd["cmd"] == "start"
+    assert s.play_take_pending() is None
+
+
+def test_play_result_roundtrip():
+    s = Store()
+    s.play_put_result(5, {"ok": True, "result": "x"})
+    assert s.play_get_result(5) == {"ok": True, "result": "x"}
+    assert s.play_get_result(6) is None
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

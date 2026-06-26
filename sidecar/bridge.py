@@ -1,5 +1,5 @@
 """Dev-bridge state for the Studio Agent sidecar: a thread-safe in-memory command queue (single slot,
-single-flight to match the agent loop), a results map, and the latest pushed Output logs, plus a single-slot hot-reload flag + reload-result map. Pure stdlib."""
+single-flight to match the agent loop), a results map, and the latest pushed Output logs, plus a single-slot hot-reload flag + reload-result map, plus a single-slot playtest command channel + result map. Pure stdlib."""
 
 import threading
 
@@ -14,6 +14,9 @@ class Store:
         self._reload = None       # {"id": N} when a reload is requested, else None
         self._reload_counter = 0
         self._reload_results = {}  # reload id -> result dict
+        self._play = None       # the one queued play command, or None
+        self._play_counter = 0
+        self._play_results = {}  # play command id -> result dict
 
     def submit(self, command: dict) -> int:
         """Queue a command (overwriting any unclaimed one — single-flight). Returns its id."""
@@ -68,3 +71,26 @@ class Store:
     def get_reload_result(self, reload_id: int):
         with self._lock:
             return self._reload_results.get(int(reload_id))
+
+    def play_submit(self, command: dict) -> int:
+        """Queue a play command (its own single-slot channel, separate from /agent). Returns its id."""
+        with self._lock:
+            self._play_counter += 1
+            cmd = dict(command)
+            cmd["id"] = self._play_counter
+            self._play = cmd
+            return self._play_counter
+
+    def play_take_pending(self):
+        with self._lock:
+            cmd = self._play
+            self._play = None
+            return cmd
+
+    def play_put_result(self, command_id: int, result: dict):
+        with self._lock:
+            self._play_results[int(command_id)] = result
+
+    def play_get_result(self, command_id: int):
+        with self._lock:
+            return self._play_results.get(int(command_id))

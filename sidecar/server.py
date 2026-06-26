@@ -12,6 +12,10 @@ POST /reload                                              -> {"id":N}  (flags a 
 GET  /reload/pending                                      -> {"requested":bool,"id":N,"sources":{...}} | {"requested":true,"id":N,"error":str}
 POST /reload/result {"id":N,"ok":bool,"error":?}          -> {"ok":true}
 GET  /reload/result?id=N                                  -> the reload outcome, or {"status":"pending"}
+POST /play {"cmd":...}                                    -> {"id":N}  (a playtest command)
+GET  /play/pending                                        -> the queued play command (and clears it) or {}
+POST /play/result {"id":N, ...}                           -> {"ok":true}
+GET  /play/result?id=N                                    -> the play command result, or {"status":"pending"}
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -101,6 +105,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "bad id"})
             res = STORE.get_reload_result(rid)
             return self._json(200, res if res is not None else {"status": "pending"})
+        if parsed.path == "/play/pending":
+            return self._json(200, STORE.play_take_pending() or {})
+        if parsed.path == "/play/result":
+            try:
+                cid = int(qs.get("id", ["0"])[0])
+            except ValueError:
+                return self._json(400, {"error": "bad id"})
+            res = STORE.play_get_result(cid)
+            return self._json(200, res if res is not None else {"status": "pending"})
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -130,6 +143,14 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(rid, int):
                 return self._json(400, {"error": "reload result needs an integer id"})
             STORE.put_reload_result(rid, body)
+            return self._json(200, {"ok": True})
+        if parsed.path == "/play":
+            return self._json(200, {"id": STORE.play_submit(body)})
+        if parsed.path == "/play/result":
+            cid = body.get("id")
+            if not isinstance(cid, int):
+                return self._json(400, {"error": "play result needs an integer id"})
+            STORE.play_put_result(cid, body)
             return self._json(200, {"ok": True})
         return self._json(404, {"error": "not found"})
 
