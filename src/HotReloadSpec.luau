@@ -84,6 +84,32 @@ local function buildCases(): { Case }
 			"intermediate folder not created or wrong target"
 	end)
 
+	add("resolvePath: a bare root init.luau has no folder-module (nil)", function()
+		local c = sampleContainer()
+		local parent, child = HotReload.resolvePath(c, "init.luau")
+		return parent == nil and child == nil, "bare init.luau should map to (nil,nil)"
+	end)
+
+	add("resolvePath: a non-.luau path is skipped (nil)", function()
+		local c = sampleContainer()
+		local parent, child = HotReload.resolvePath(c, "README.md")
+		return parent == nil and child == nil, "a non-.luau path should map to (nil,nil)"
+	end)
+
+	add("newLifecycle: cancel twice is idempotent", function()
+		local lc = HotReload.newLifecycle()
+		local count = 0
+		lc:add({
+			Disconnect = function()
+				count += 1
+			end,
+		} :: any)
+		lc:cancel()
+		lc:cancel()
+		return lc.cancelled and count == 1 and #lc.connections == 0,
+			"double cancel should disconnect once; count=" .. tostring(count)
+	end)
+
 	add("newLifecycle: cancel sets the flag and disconnects connections", function()
 		local lc = HotReload.newLifecycle()
 		local disconnected = false
