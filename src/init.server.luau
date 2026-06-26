@@ -1,9 +1,13 @@
 --!strict
--- StudioAgent bootstrap. Creates the persistent toolbar + dock widget (these survive hot-reloads —
--- Studio dedupes them by name/id), then runs the reloadable Main. (Task 5 adds the hot-reload
--- supervisor loop; until then this is a plain refactor that behaves exactly like before.)
+-- StudioAgent bootstrap (STABLE — the only file that needs a Studio restart when changed; kept tiny).
+-- Creates the persistent toolbar + dock widget (Studio dedupes them by name/id, so they survive hot-
+-- reloads), runs generation 1 of the reloadable Main, and starts the hot-reload supervisor: a `reload`
+-- from the shell makes the sidecar hand over the current src/, and HotReload swaps in fresh code with NO
+-- restart. See docs/superpowers/specs/2026-06-26-dev-bridge-hot-reload-design.md.
 
 local Main = require(script.Main)
+local HotReload = require(script.HotReload)
+local Config = require(script.Config)
 
 local toolbar = plugin:CreateToolbar("Claude Agent")
 local button =
@@ -15,6 +19,13 @@ local info =
 local widget = plugin:CreateDockWidgetPluginGuiAsync("StudioAgentWidget", info)
 widget.Title = "Claude Agent"
 
-Main.run({ plugin = plugin, toolbar = toolbar, button = button, widget = widget })
+local ctx = { plugin = plugin, toolbar = toolbar, button = button, widget = widget }
+local runtime = { lifecycle = nil :: any, container = nil :: any }
 
-print("[StudioAgent] bootstrap loaded")
+-- Generation 1: run the real Main directly (its source is already current; no clone needed).
+runtime.lifecycle = Main.run(ctx)
+
+-- Hot-reload supervisor (stable; survives a failed reload so a fixed reload recovers).
+HotReload.startSupervisor(script, Config.new(plugin), runtime, ctx)
+
+print("[StudioAgent] bootstrap loaded (hot-reload supervisor active)")
