@@ -8,6 +8,7 @@
 
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local ScriptEditorService = game:GetService("ScriptEditorService")
 
 local HotReload = {}
 
@@ -159,11 +160,28 @@ function HotReload.reload(
 				ms.Parent = parent
 				target = ms
 			end
-			local okWrite = pcall(function()
-				(target :: any).Source = e.source
+			-- The clone already carries the current source; only write when it actually changed. This
+			-- also skips a needless large-source write for unchanged generated files (e.g. BuiltinRubrics).
+			local current: string? = nil
+			pcall(function()
+				current = (target :: any).Source
 			end)
-			if not okWrite then
-				warn("[StudioAgent] hot-reload: failed to write source for " .. e.path)
+			if current ~= e.source then
+				-- Direct .Source caps at 200000 chars; fall back to ScriptEditorService for larger sources
+				-- (e.g. the ~426KB generated BuiltinRubrics). UpdateSourceAsync works on the unparented clone.
+				local okWrite = pcall(function()
+					(target :: any).Source = e.source
+				end)
+				if not okWrite then
+					okWrite = pcall(function()
+						ScriptEditorService:UpdateSourceAsync(target :: any, function()
+							return e.source
+						end)
+					end)
+				end
+				if not okWrite then
+					warn("[StudioAgent] hot-reload: failed to write source for " .. e.path)
+				end
 			end
 		end
 	end
