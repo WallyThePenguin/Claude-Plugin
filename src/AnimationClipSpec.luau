@@ -171,39 +171,34 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("scopeIncludeSet adds ancestor carriers and omits siblings", function()
+	add("buildScopedPoses keys only the scoped chain, omitting carriers + siblings", function()
 		local rig = branchedRig()
-		local set = AnimationClip.scopeIncludeSet(rig, { "RightUpperArm", "RightLowerArm" })
-		if not (set.RightUpperArm and set.RightLowerArm) then
-			return false, "scoped parts missing"
+		local tops = AnimationClip.buildScopedPoses(rig, {}, { "RightUpperArm", "RightLowerArm" })
+		if #tops ~= 1 then
+			return false, "expected 1 top-level pose, got " .. tostring(#tops)
 		end
-		if not (set.UpperTorso and set.LowerTorso and set.HumanoidRootPart) then
-			return false, "ancestor carriers missing"
+		local top = tops[1]
+		if top.Name ~= "RightUpperArm" then
+			return false, "top should be RightUpperArm, got " .. top.Name
 		end
-		if set.LeftUpperArm or set.RightUpperLeg then
-			return false, "a sibling branch leaked into the include set"
+		if findPose(top, "RightLowerArm") == nil then
+			return false, "RightLowerArm should nest under RightUpperArm"
+		end
+		for _, bad in
+			{ "UpperTorso", "LowerTorso", "HumanoidRootPart", "LeftUpperArm", "RightUpperLeg" }
+		do
+			if top.Name == bad or findPose(top, bad) ~= nil then
+				return false, bad .. " should be omitted"
+			end
 		end
 		return true
 	end)
 
-	add("buildPoseTree with an includeSet prunes sibling branches", function()
+	add("buildScopedPoses returns multiple tops for a disconnected scope", function()
 		local rig = branchedRig()
-		local set = AnimationClip.scopeIncludeSet(rig, { "RightUpperArm", "RightLowerArm" })
-		local tree = AnimationClip.buildPoseTree(rig, {}, set)
-		if tree == nil then
-			return false, "no tree"
-		end
-		if findPose(tree, "RightLowerArm") == nil then
-			return false, "scoped RightLowerArm pose missing"
-		end
-		if findPose(tree, "UpperTorso") == nil then
-			return false, "carrier UpperTorso pose missing"
-		end
-		if findPose(tree, "LeftUpperArm") ~= nil then
-			return false, "LeftUpperArm should be pruned"
-		end
-		if findPose(tree, "RightUpperLeg") ~= nil then
-			return false, "RightUpperLeg should be pruned"
+		local tops = AnimationClip.buildScopedPoses(rig, {}, { "RightUpperArm", "LeftUpperArm" })
+		if #tops ~= 2 then
+			return false, "expected 2 top-level poses, got " .. tostring(#tops)
 		end
 		return true
 	end)

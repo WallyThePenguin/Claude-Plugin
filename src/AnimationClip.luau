@@ -67,15 +67,7 @@ end
 -- Build the nested Pose tree for one keyframe. Pose.Name = the CHILD part name; Pose.CFrame =
 -- transformsMap[childName] (the joint's Motor6D.Transform) or identity. The root part's pose is identity
 -- (it drives no joint). Returns the root Pose (parent it to a Keyframe), or nil if there is no rig root.
--- `includeSet` (optional): when given, recurse ONLY into children whose name is in the set, pruning the
--- rest of the tree — so a scoped clip (scoped joints + their ancestor carriers) drives only those joints
--- and a sibling branch (e.g. the legs) is omitted entirely. nil = the full tree (all joints). The root
--- part is always emitted as the tree anchor; the set gates its children, not itself.
-function AnimationClip.buildPoseTree(
-	rig: Instance,
-	transformsMap: { [string]: CFrame },
-	includeSet: { [string]: boolean }?
-): Instance?
+function AnimationClip.buildPoseTree(rig: Instance, transformsMap: { [string]: CFrame }): Instance?
 	local childrenOf = AnimationClip.adjacency(rig)
 	local root = AnimationClip.rigRoot(rig)
 	if root == nil then
@@ -90,7 +82,7 @@ function AnimationClip.buildPoseTree(
 		pose.EasingStyle = Enum.PoseEasingStyle.Linear
 		for _, m in (childrenOf[part] or {}) do
 			local child = (m :: Motor6D).Part1 :: Instance
-			if not visited[child] and (includeSet == nil or includeSet[child.Name]) then
+			if not visited[child] then
 				makePose(child).Parent = pose
 			end
 		end
@@ -141,28 +133,53 @@ function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
 	return out, nil
 end
 
--- Expand a set of scoped CHILD-part names to also include every ANCESTOR part up to the root, so the
--- Pose tree can nest the scoped joints under their parents. The ancestors are "carriers" (posed with
--- their current Motor6D.Transform — identity at rest, non-identity if that joint happens to be rotated)
--- that only hold the hierarchy; sibling branches (e.g. the legs, the other arm) are NOT added, so a
--- higher-priority scoped clip overrides only the scoped joints.
--- Returns a part-name -> true set.
-function AnimationClip.scopeIncludeSet(rig: Instance, names: { string }): { [string]: boolean }
+-- Build the Poses for a SCOPED clip: one Pose per scoped CHILD-part that exists on the rig, nested under
+-- its parent-part's Pose when that parent is ALSO scoped, otherwise returned as a TOP-LEVEL pose (the
+-- caller parents each to the Keyframe). Ancestor carriers are OMITTED entirely -- the Animator matches
+-- Poses to Motor6Ds by NAME, so the chain to the root isn't needed, and omitting it means the clip drives
+-- ONLY the scoped joints (the torso/legs/head keep their own lower-priority animation). Including identity
+-- carriers would instead force those joints to rest -- the playtest "head points up while walking" bug.
+-- Returns the list of top-level Poses (may be >1 for a disconnected scope; empty if none of the scoped
+-- names exist on the rig).
+function AnimationClip.buildScopedPoses(
+	rig: Instance,
+	transformsMap: { [string]: CFrame },
+	scopeNames: { string }
+): { Instance }
+	local scopeSet: { [string]: boolean } = {}
+	for _, n in scopeNames do
+		scopeSet[n] = true
+	end
+	-- child-part name -> parent-part name; and which part names actually exist as a Motor6D Part1
 	local parentOf: { [string]: string } = {}
+	local existing: { [string]: boolean } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
-			parentOf[(d.Part1 :: Instance).Name] = (d.Part0 :: Instance).Name
+			local childName = (d.Part1 :: Instance).Name
+			parentOf[childName] = (d.Part0 :: Instance).Name
+			existing[childName] = true
 		end
 	end
-	local set: { [string]: boolean } = {}
-	for _, n in names do
-		local cur: string? = n
-		while cur ~= nil and not set[cur] do
-			set[cur] = true
-			cur = parentOf[cur]
+	local poseByName: { [string]: Instance } = {}
+	for name in scopeSet do
+		if existing[name] then
+			local pose = Instance.new("Pose")
+			pose.Name = name
+			pose.CFrame = transformsMap[name] or CFrame.identity
+			pose.EasingStyle = Enum.PoseEasingStyle.Linear
+			poseByName[name] = pose
 		end
 	end
-	return set
+	local tops: { Instance } = {}
+	for name, pose in poseByName do
+		local parentName = parentOf[name]
+		if parentName ~= nil and poseByName[parentName] ~= nil then
+			pose.Parent = poseByName[parentName]
+		else
+			table.insert(tops, pose)
+		end
+	end
+	return tops
 end
 
 -- ---- clip storage (rig/AnimSaves/<clipName> -- the Animation Editor convention) ----
@@ -285,9 +302,10 @@ end
 -- ---- mutations (the tool wraps these in a ChangeHistory recording) ----
 
 -- Snapshot the rig's CURRENT pose into the clip at `time` (replacing any keyframe at that time slot).
--- `scopeNames` (optional): a list of CHILD-part names to key — when given (non-empty), the keyframe
--- includes Poses ONLY for those joints + their ancestor carriers (see scopeIncludeSet), so the clip
--- drives only the scoped joints (arm-only / partial-body). nil/empty = key all joints (full body).
+-- `scopeNames` (optional): a list of CHILD-part names to key -- when given (non-empty), the keyframe gets
+-- Poses ONLY for those joints (see buildScopedPoses), so the clip drives only the scoped joints (arm-only
+-- / partial-body); ancestor carriers are omitted. nil/empty = key all joints (full body). If the scope
+-- matches no joints on the rig, falls back to a full-body snapshot.
 function AnimationClip.snapshotKeyframe(
 	rig: Instance,
 	clipName: string,
@@ -304,17 +322,26 @@ function AnimationClip.snapshotKeyframe(
 			kf:Destroy()
 		end
 	end
-	local includeSet: { [string]: boolean }? = nil
-	if scopeNames ~= nil and #scopeNames > 0 then
-		includeSet = AnimationClip.scopeIncludeSet(rig, scopeNames)
-	end
-	local pose = AnimationClip.buildPoseTree(rig, AnimationClip.currentTransforms(rig), includeSet)
-	if pose == nil then
-		return "could not build a pose for " .. rig.Name, false
-	end
+	local transforms = AnimationClip.currentTransforms(rig)
 	local kf = Instance.new("Keyframe")
 	kf.Time = t
-	pose.Parent = kf
+	local scopedPoses: { Instance } = {}
+	if scopeNames ~= nil and #scopeNames > 0 then
+		scopedPoses = AnimationClip.buildScopedPoses(rig, transforms, scopeNames)
+	end
+	if #scopedPoses > 0 then
+		for _, pose in scopedPoses do
+			pose.Parent = kf
+		end
+	else
+		-- full-body (no scope, or the scope matched nothing on this rig)
+		local root = AnimationClip.buildPoseTree(rig, transforms)
+		if root == nil then
+			kf:Destroy()
+			return "could not build a pose for " .. rig.Name, false
+		end
+		root.Parent = kf
+	end
 	ks:AddKeyframe(kf) -- AddKeyframe, NOT bare .Parent (the spike: bare .Parent leaves length=0)
 	return AnimationClip.summary(rig, clipName), true
 end
