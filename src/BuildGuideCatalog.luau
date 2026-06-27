@@ -174,7 +174,7 @@ end
 function BuildGuideCatalog.render(guide: Guide): string
 	local header = "# Build guide: " .. guide.module .. " (v" .. guide.version .. ")"
 	if guide.rubric_version ~= "" then
-		header ..= " — targets the " .. guide.module .. " rubric (v" .. guide.rubric_version .. ")"
+		header ..= " — targets the rubric (v" .. guide.rubric_version .. ")"
 	end
 	local out: { string } = { header }
 	if guide.overview ~= "" then
