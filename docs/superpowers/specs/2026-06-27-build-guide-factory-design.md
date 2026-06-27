@@ -153,8 +153,10 @@ above-generic **step** critic → critique-source priority in the sweep.
 - `src/Tools/init.luau` — `require(script.BuildGuides)` and register its descriptors (mirrors lines 35/132).
   Parent-only: NOT added to the subagent/writer allowlists; a child's context carries no `buildGuides`, so
   the tool no-ops gracefully for a child (same contract as `use_rubric`).
-- `src/RelaySpec.luau` — add `use_build_guide` to the parent-only relay manifest; the no-drift count goes
-  15 → 16. The Spec must stay green (16/16).
+- `src/Relay.luau` + `src/RelaySpec.luau` — classify `use_build_guide` as LOCAL (parent-only, like
+  `use_rubric`): add `use_build_guide = true` to `Relay.LOCAL_TOOLS` and `"use_build_guide"` to
+  `RelaySpec.EXPECTED_LOCAL`. All RelaySpec cases stay green (the no-drift case validates that every
+  registered custom tool is classified).
 - `src/SystemPrompt.luau` — add the tool one-liner (mirrors line 30), add a `# Build guides` catalog section
   marker (mirrors `# Quality rubrics` at line 93), and update the build flow (§6).
 
@@ -201,7 +203,8 @@ Coverage: M/N rubric criteria addressed.
   order, criterion/tool annotations, coverage line), `catalogBlock` (one line per guide, "" when empty),
   `findByCategory` (normalized match + miss). Runnable from the bridge with no restart
   (`require(script.Parent.BuildGuideCatalogSpec).run()`).
-- **`RelaySpec` no-drift** — 16/16 after adding `use_build_guide`.
+- **`RelaySpec` all-green** — `use_build_guide` classified LOCAL (`Relay.LOCAL_TOOLS` +
+  `EXPECTED_LOCAL`); the no-drift case passes (the new tool is classified, registered, and parent-only).
 - **`selene` 0/0**, **`rojo build` green** after every change.
 - **Factory coverage gate** — each generated guide reports `coverage.criteria_addressed/criteria_total` in
   provenance; the target is full coverage (any `uncovered` entry is surfaced, not hidden).
