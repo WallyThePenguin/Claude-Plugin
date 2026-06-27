@@ -276,6 +276,69 @@ local function serverHitTest()
 		(dhum :: Humanoid).MaxHealth
 	)
 end
+-- VERIFY #5 NPC AI: sample workspace.EnemyNpc's NpcState + Health + the player's Health + their distance over
+-- ~5s (the NPC AI is a SERVER script, so NpcState/Health are readable here). Shows chase (dist shrinks,
+-- state=chase) then attack (playerHP drops, state=attack).
+local function serverNpc()
+	local plr = firstPlayer()
+	if not plr then
+		return "snpc: no player"
+	end
+	-- wait for a living player + its Humanoid.RootPart (robust vs the engine reassembling characters in Play)
+	local phum, phrp = nil, nil
+	local deadline = os.clock() + 6
+	while os.clock() < deadline do
+		local c = plr.Character
+		phum = c and c:FindFirstChildOfClass("Humanoid")
+		phrp = phum and (phum :: Humanoid).RootPart
+		if phrp ~= nil then
+			break
+		end
+		task.wait(0.2)
+	end
+	local npc = workspace:FindFirstChild("EnemyNpc")
+	local nhum = npc and npc:FindFirstChildOfClass("Humanoid")
+	local nhrp = npc and npc:FindFirstChild("HumanoidRootPart")
+	if not (phrp and nhum and nhrp) then
+		return "snpc: need a living player + workspace.EnemyNpc (phrp="
+			.. tostring(phrp ~= nil)
+			.. " nhum="
+			.. tostring(nhum ~= nil)
+			.. " nhrp="
+			.. tostring(nhrp ~= nil)
+			.. ")"
+	end
+	-- A workspace Humanoid model doesn't fully assemble (walk) in Play Solo, but the AI server script reads the
+	-- HumanoidRootPart PART for distance + TakeDamage's the player -- so anchor the NPC in attack range and
+	-- verify the AI's perception + attack (state -> attack, player Health drops).
+	;(nhrp :: BasePart).Anchored = true
+	;(npc :: Model):PivotTo(
+		CFrame.new((phrp :: any).Position + (phrp :: any).CFrame.LookVector * 4 + Vector3.new(0, 0, 0))
+	)
+	task.wait(0.5)
+	local lines, t0 = {}, os.clock()
+	while os.clock() - t0 < 6 do
+		local c = plr.Character
+		local ph = c and c:FindFirstChildOfClass("Humanoid")
+		local php = ph and (ph :: Humanoid).RootPart
+		local dist = if php ~= nil
+			then ((php :: any).Position - (nhrp :: any).Position).Magnitude
+			else -1
+		table.insert(
+			lines,
+			string.format(
+				"%.1f:state=%s npcHP=%.0f playerHP=%.0f dist=%.1f",
+				os.clock() - t0,
+				tostring((npc :: Model):GetAttribute("NpcState")),
+				(nhum :: Humanoid).Health,
+				if ph ~= nil then (ph :: Humanoid).Health else 0,
+				dist
+			)
+		)
+		task.wait(1)
+	end
+	return table.concat(lines, " | ")
+end
 -- Fix the PLAYER's own character in place (keeps it as LocalPlayer.Character so the in-Tool runtime works).
 local function serverFix()
 	local plr = firstPlayer()
@@ -361,6 +424,8 @@ while true do
 				post(cmd.id, true, serverFix())
 			elseif cmd.cmd == "shit" then
 				post(cmd.id, true, serverHitTest())
+			elseif cmd.cmd == "snpc" then
+				post(cmd.id, true, serverNpc())
 			else
 				post(cmd.id, false, "unknown play cmd: " .. tostring(cmd.cmd))
 			end

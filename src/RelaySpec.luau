@@ -63,6 +63,7 @@ local EXPECTED_RELAY = {
 	"bind_animation",
 	"bind_behavior",
 	"bind_hitbox",
+	"make_npc",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
