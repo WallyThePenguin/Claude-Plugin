@@ -1,0 +1,513 @@
+{
+  "module": "combat",
+  "system_module": "combat",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "Great Roblox combat is a TIMING + FEEDBACK system, not a pile of attack clips. Everything hangs off one spine: named animation event markers (HitStart/HitEnd/CancelOpen/Contact) read via AnimationTrack:GetMarkerReachedSignal — so the hitbox, VFX, SFX, hitstop, knockback, and cancel windows all fire off the SAME frame the blade visibly connects, and stay in sync even when you AdjustSpeed for hitstop. Build in this order: (1) rig + a combat STANCE state machine (non-combat<->combat) with a complete clip set; (2) per-attack anticipation->contact->follow-through animations at Action priority, authored upper-body-only so they layer over locomotion; (3) marker-driven active-frame hitboxes (swept, not .Touched) detected client-side for feel and re-validated server-side for authority; (4) the full impact stack on the contact marker — layered audio, camera-facing VFX burst, strength-scaled hitstop, directional flinch, hitstun + force-coupled knockback; (5) a cancelable combo state machine with input buffering. The exceptional tier is reached by routing every feedback channel through ONE strength-scaled impact bus, grading reactions by direction+force (poise), adding a defensive/parry counter-rhythm, weaving knockback into combo spacing, and tying server validation to the marker contact frame. The agent's stock tools (make_tool, grip_tool, bind_animation, bind_behavior, bind_hitbox, make_npc) cover the skeleton, but bind_behavior/bind_hitbox use TIMER windows + radius sweeps — to clear the rubric you replace those timing/detection internals with marker-driven, swept versions authored via add_keyframe events and run_luau.",
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "Stand up a rigged fighter with a real combat STANCE state machine, a complete clip set, attacks/reactions/dodges/locomotion that coexist by priority, marker-driven event timing, an active-frame (not .Touched) swept hitbox, and layered role-aware impact audio whose connect sound fires on the contact marker.",
+      "steps": [
+        {
+          "id": "b1",
+          "order_index": 1,
+          "instruction": "Build the fighter on an R15 + Motor6D rig FIRST, before any combat code. Use spawn_rig to drop a clean R15 block rig (15 Motor6D-joined joints — full articulation for believable melee). If the build needs the player avatar, force the classic Motor6D path: under the Avatar Joint Upgrade an R15 char spawns with AnimationConstraints+BallSocketConstraints and ZERO Motor6Ds, which silently ignore the Motor6D animation channel your clips drive. Verify with run_luau that the rig has Motor6D joints (not WeldConstraints/AnimationConstraints) before posing anything.",
+          "tools": [
+            "spawn_rig",
+            "run_luau",
+            "create_instance"
+          ],
+          "addresses_criteria": [
+            "ikcontrol-reactive-limb-blending",
+            "procedural-foot-planting-ik",
+            "animationconstraint-physical-secondary-motion"
+          ],
+          "pitfalls": "The Avatar Joint Upgrade rig and a WeldConstraint rig look identical in the viewport but the animation channel shows NO keyframe tracks / a stuck T-pose because the limbs are not Motor6D-joined. Probe joint types with run_luau and convert to a classic Motor6D rig before wasting time animating."
+        },
+        {
+          "id": "b2",
+          "order_index": 2,
+          "instruction": "Author the COMBAT IDLE as a first-class held ARMED stance and make it the BASE of an explicit non-combat<->combat state seam — not a flat attack-clip list, and not generic locomotion authoring. (1) With add_keyframe author a dedicated combat idle: a settled held guard/fighting stance (bent weapon-side elbow, weapon up across the body, weight forward) authored as its own clip, plus a subtle breathing/weight-shift keypose so it reads as a LIVING guard, not a frozen T-pose; copy keyframe 0 to the end so it loops seamlessly. This clip is the v=0 ARMED base state. (2) Author the attack swing and the hit-react clips arm-scoped (add_keyframe {scope='rightArm'} / 'upperBody') so they override ONLY the keyed arm/upper-body joints at a higher priority and ride ON TOP of the held idle and the lower-priority locomotion — do NOT re-author the walk/run here (locomotion is owned by the locomotion module and is the generic floor); reference it only as the lower-priority Movement layer the combat idle composes over. (3) Make weapon draw the explicit entry into the armed stance: make_tool + grip_tool so the weapon sits right in the fist, then commit the stance TRANSITION as the load-bearing seam — drawing/equipping the tool ENTERS the combat idle (it plays and PERSISTS as the looped base layer between swings), and sheathing/unequipping EXITS it (returns to the non-combat default). State that the combat idle is the base ARMED state that every swing/hit-react overrides on the keyed joints and returns to, so the fighter never snaps from 'fighting' to 'standing straight'. Reject your own output if it is only a list of attack clips with no persistent held combat idle, if it re-authors generic walk/run as the deliverable, or if it grips a tool without committing the draw-enters-stance / sheath-exits-stance transition. Verify the held stance reads as a guard and persists between swings (capture/playtest the equip-hold-swing-return loop), not just that the swing plays.",
+          "tools": [
+            "add_keyframe",
+            "make_tool",
+            "grip_tool",
+            "spawn_rig"
+          ],
+          "addresses_criteria": [
+            "complete-combat-clip-set"
+          ],
+          "pitfalls": "Shipping only attack clips with no dedicated combat idle makes the fighter snap from 'fighting' to 'standing straight' between swings — a jarring disconnect. Hold the combat idle as the base state; the rubric wants an explicit non-combat<->combat stance, not a clip list."
+        },
+        {
+          "id": "b3",
+          "order_index": 3,
+          "instruction": "Wire the non-combat<->combat STANCE STATE MACHINE that ENTERS/EXITS on a signal. Use bind_behavior to give the tool the equipped->idle / activate->windup->active->cooldown->idle timed machine, and drive the combat-stance entry off weapon draw (Tool.Equipped / target acquired / first input). bind_behavior exposes the ItemState attribute + StateChanged BindableEvent — that is your combat state channel. With run_luau, gate attacks so they can't start unless in combat stance and not Stunned/mid-recovery.",
+          "tools": [
+            "bind_behavior",
+            "run_luau",
+            "make_tool"
+          ],
+          "addresses_criteria": [
+            "complete-combat-clip-set",
+            "weighted-behavior-brain-enemies",
+            "block-parry-defensive-layer"
+          ],
+          "pitfalls": "bind_behavior's default windup/active/cooldown are TIMER-based, not marker-based — fine for the stance skeleton, but for combat FEEL you will replace the active window with a marker-driven one in the Good tier (step g3). Re-activation while busy must be ignored (the cooldown anti-spam gate) or the machine desyncs."
+        },
+        {
+          "id": "b4",
+          "order_index": 4,
+          "instruction": "Bake NAMED EVENT MARKERS into every combat clip and make ALL gameplay events fire off them — never off wait()/task.delay/track.Length. Author markers at the exact frames: 'HitStart' where the blade begins cutting, 'HitEnd' where it leaves the arc, 'Contact' at the single impact frame, 'CancelOpen' where the next combo step may chain. At runtime connect track:GetMarkerReachedSignal('HitStart'/'HitEnd'/'Contact'/'CancelOpen') via run_luau. Markers stay synced even when you AdjustSpeed (hitstop), making the animation the single source of truth for timing.",
+          "tools": [
+            "add_keyframe",
+            "bind_animation",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "marker-driven-event-timing",
+            "swept-active-frame-hitbox-no-touched"
+          ],
+          "pitfalls": "GetMarkerReachedSignal only fires on the SAME peer and the SAME AnimationTrack instance that actually plays the clip — it does NOT fire on the server for a client-started track. Connect on whichever peer owns the playing track; do active-frame detection on the client that plays the anim and validate the hit on the server."
+        },
+        {
+          "id": "b5",
+          "order_index": 5,
+          "instruction": "Commit hit detection to an ACTIVE-FRAME SWEPT model gated by HitStart/HitEnd — never .Touched or one static part. Replace bind_hitbox's radius-sweep internals (or wrap them) via run_luau: clear an 'alreadyHit' set on the HitStart marker, then EACH active frame between HitStart and HitEnd run a swept query — for a blade, place Attachments ~1 stud apart along it and raycast between each attachment's previous-frame and current-frame position; for wide sweeps call workspace:GetPartBoundsInBox/GetPartsInPart with OverlapParams filtered to character hitboxes. The volume is LIVE only inside the narrow window and DEAD during windup/recovery.",
+          "tools": [
+            "bind_hitbox",
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "swept-active-frame-hitbox-no-touched",
+            "marker-driven-event-timing",
+            "data-driven-attacks-collider-groups"
+          ],
+          "pitfalls": "A single .Touched part or one raycast per frame TUNNELS through targets on fast swings (the classic 'my sword passed through them'). Sweep between previous-and-current frame positions. Forgetting the per-swing alreadyHit set ticks damage every frame the box overlaps; always filter out the attacker's own character or they hit themselves."
+        },
+        {
+          "id": "b6",
+          "order_index": 6,
+          "instruction": "Make four combat animation tracks COEXIST via deliberate per-clip AnimationPriority and partial-rig weight blending, then VERIFY coexistence — do not stop at assigning numbers. (1) Assign priority per clip: attack=Action4, victim hit-react=Action3 (so a flinch does NOT cancel the attacker's in-progress swing), dodge=Action2, locomotion=Movement. (2) Author every attack with add_keyframe scoped to UPPER-BODY joints ONLY — zero leg/lower-torso keyframes — so the Movement walk keeps driving the legs through per-joint weight-normalized blending; blend the attack over locomotion via AdjustWeight and crossfade idle<->attack with a non-zero fadeTime on Play/Stop (no popping). (3) Set priority on the AnimationTrack at runtime via run_luau (or bake it into the clip) — NOT on the Animation instance, which won't apply. (4) VERIFY the two coexistence outcomes, don't assume them: while the attack plays, the character must keep walking (no moonwalk/T-slide, legs still driven by the walk), and a victim hit-react at Action3 must visibly play WITHOUT cutting the attacker's Action4 swing short. Scope honesty: this step delivers concurrent multi-track blending only; it does NOT author IKControl, per-foot raycasts, contact-point hand snapping, or surface-normal foot planting, so it must NOT claim the exceptional IK criteria — it provides only the live locomotion-driven lower-body substrate those would later build on. REJECT as generic if the build merely plays one full-body attack clip, leaves any priority at default, includes leg keyframes in the attack, sets priority on the Animation instance, or skips the move-while-swinging / flinch-doesn't-cancel verification.",
+          "tools": [
+            "add_keyframe",
+            "bind_animation",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "animation-priority-layering-coexist",
+            "attack-layered-over-locomotion",
+            "ikcontrol-reactive-limb-blending",
+            "procedural-foot-planting-ik"
+          ],
+          "pitfalls": "If the attack clip has leg keyframes, an Action attack fully overrides the walk and the character moonwalks/T-slides while attacking — strip lower-body keyframes. Setting priority too low (Movement or below) lets the walk override the attack ('it still shows walking'). Setting priority on the Animation instance alone won't apply — set it on the AnimationTrack."
+        },
+        {
+          "id": "b7",
+          "order_index": 7,
+          "instruction": "Layer ROLE-AWARE impact audio and fire the CONNECT sound on the contact-frame marker. Author three sound roles via create_instance/set_property: a whoosh on swing start, a distinct thud/crunch/clang on connect, and a recognizable consistent parry/block cue. Play the whoosh when the attack fires, but trigger the connect sound from the 'Contact' (or HitStart) GetMarkerReachedSignal — clone it onto the victim HRP, Play, Debris-clean. Randomize PlaybackSpeed +/- a few percent so repeats don't grate; match pitch to weight (bright crack = light, bass thud = heavy).",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "layered-impact-sound-on-contact",
+            "marker-driven-event-timing"
+          ],
+          "pitfalls": "Firing the connect sound on swing START (or a fixed wait) makes it land before the blade visibly connects — instantly reads as broken. Drive it off the contact marker. A single un-varied sound becomes grating fast; vary PlaybackSpeed. Sound is the highest-leverage feel investment — do not skimp."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "Make every strike read as WEIGHTED and FAIR: timing-asymmetry skeleton with strength-scaled hitstop, whole-body weight transfer, per-attack eased pacing, directional additive flinches, real hitstun + coherent two-party knockback, a marker-synced multi-channel impact FX stack, a connected/cancelable combo with input buffering, and responsive-local/authoritative-driven hit registration.",
+      "steps": [
+        {
+          "id": "g1",
+          "order_index": 1,
+          "instruction": "Author each attack on a DELIBERATE timing-asymmetry skeleton with WHOLE-BODY weight transfer. Using add_keyframe build 4 phase poses: (1) a held/LOADED wind-up that draws back and accelerates from near-still, (2) a single readable peak CONTACT pose with the weapon fully extended, (3) follow-through that drags across and down, (4) a settle. Crucially the strike is DRIVEN BY THE BODY: key the torso/hip to lead with the weapon arm dragging BEHIND (overlap/drag), over-rotate slightly past the arm then re-center. Plant the stance leg (rotation not translation) so only the striking limb carries the arc.",
+          "tools": [
+            "add_keyframe",
+            "pose_joint",
+            "capture_animation"
+          ],
+          "addresses_criteria": [
+            "anticipation-load-and-impact-hitstop",
+            "weight-cues-body-drive-drag-followthrough"
+          ],
+          "pitfalls": "Punching/swinging 'with no load' has no power; symmetric subtle bouncy motion 'looks like a workout routine'. Arm-only motion with a gliding stance leg makes the character float — lead with the body and lock the stance leg. Capture mid-pose with capture_animation to verify the contact pose is a single readable silhouette."
+        },
+        {
+          "id": "g2",
+          "order_index": 2,
+          "instruction": "Shape pacing on TWO axes, not one fixed swing reused everywhere. (1) PER-PHASE EASING: set per-keyframe easing within each swing — ease the loaded wind-up IN (accelerate from near-still), make contact CRISP (sharp ease-out into the extension frame so it snaps, near-linear through the contact window), and ease the recovery OUT (soft settle) — never one uniform/default curve. (2) PER-WEAPON MASS: swing speed must read from weapon weight — give heavier weapons a materially longer frame budget than lighter ones (e.g. greatsword ~12-24 frames vs dagger ~6-12, roughly 2x span), so a heavy weapon visibly swings slower/with more commitment, NOT one swing duration cloned across all weapons. Additionally vary duration/easing per attack WITHIN a combo so the chain has contrast (fast jabs vs a heavy committed swing) and escalates. Most light melee swings are ~0.4-0.7s; heavy weapons run longer. Capture and confirm both: the phases are eased (not linear) AND a heavier weapon's swing spans noticeably more frames than a lighter one.",
+          "tools": [
+            "add_keyframe",
+            "capture_animation"
+          ],
+          "addresses_criteria": [
+            "per-weapon-easing-and-pacing"
+          ],
+          "pitfalls": "Reusing one symmetric linear swing everywhere reads robotic and weightless. The rubric explicitly rejects (1) un-eased timing and (2) the same swing on every attack — vary easing AND silhouette per clip. Sharp-in/soft-out feels weightiest."
+        },
+        {
+          "id": "g3",
+          "order_index": 3,
+          "instruction": "On a confirmed hit, fire a SINGLE impact trigger off the Contact marker via RemoteEvent:FireAllClients carrying the attack-strength scalar (weight) — never a one-client-only freeze. On EACH client, derive a weight-SCALED hitstop frame count from that scalar (light jab ~1-2 frames / ~0.05s, heavy finisher ~3-4 frames / ~0.12s) and, in a RunService.Heartbeat loop, ramp BOTH the attacker swing track AND the victim hit-react track via AnimationTrack:AdjustSpeed from 1 -> near-0 -> 1 over a smooth curve DIP (NOT AdjustSpeed(0), which hard-pauses and reads as a stutter) across that scaled duration. Each client only AdjustSpeeds the tracks IT owns (attacker's client ramps the attacker track, victim's client ramps the victim track) — replicate the trigger, never AdjustSpeed a track you don't own. CRUCIALLY keep particle emitters, slash decals, and camera shake running at speed 1 throughout so the freeze reads as IMPACT, not a frame-drop/lag spike — freezing animation + VFX + camera together is the failure mode. The result: every client sees the same weight-scaled freeze synchronized to the contact frame, scaling continuously from a light jab to a heavy finisher, as a dedicated felt-impact/emphasis layer distinct from cosmetic animation.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "anticipation-load-and-impact-hitstop",
+            "dynamic-combat-camera-framing"
+          ],
+          "pitfalls": "Freezing EVERYTHING at once (animation + particles + camera) feels like a frame-drop/lag spike, not a hit — keep VFX and camera live. AdjustSpeed(0) hard-pauses; a curve DIP reads as weight. Apply hitstop only on the client that owns the animation; replicate the trigger, don't AdjustSpeed a track you don't own."
+        },
+        {
+          "id": "g4",
+          "order_index": 4,
+          "instruction": "Author a directional ADDITIVE hit-reaction that adapts to the live fight, not a canned flinch. (1) DIRECTIONAL FLINCH: at runtime compute the hit direction with victimHRP.CFrame:VectorToObjectSpace(attackerHRP.Position - victimHRP.Position) (or the hit normal) and select among front/side/back flinch variants authored via add_keyframe {scope='upperBody'/'rightArm'} so the silhouette snaps AWAY from the attack. Play it at Action3 so it layers ADDITIVELY over the victim's current locomotion/attack and does NOT cancel the attacker's swing; keep it brief (~0.3-0.5s) and interruptible; crossfade in/out via the fadeTime on Play/Stop so it never pops. (2) GRADE IT (escape a single-severity flinch): branch the reaction by hit FORCE as well as direction — a light glancing hit blends a small stumble that coexists with locomotion, a heavy hit plays a fuller stagger — so light and heavy hits do not look identical. (3) HEAD-GAZE LOCK (to truly earn head-gaze-targeting): add a LookAt-type IKControl on the head/aim chain targeting the live opponent, tweening Weight to full while in combat and easing it toward zero on the contact/recovery frames and when there is no target, so a single clip stays oriented to the opponent at any relative angle through the flinch. (4) Do NOT claim contextual-special-attack-geometry from this step unless you actually anchor the reaction to the real contact point (e.g. a marker-synced contact-located impact accent / origin-correct hit spark at the strike position) rather than a character-centered flinch — otherwise drop that criterion from this step. PITFALLS: a direction-blind canned flinch ignores who hit whom (derive the variant from the actual hit vector every hit); loading the flinch at attack priority cancels the attacker's swing (keep it Action3); a single invariant flinch regardless of force is the generic tell (grade by force); a head that merely rides the torso fails head-gaze (use the weighted IKControl); over-exaggerating the stagger looks comical (dial it back).",
+          "tools": [
+            "add_keyframe",
+            "bind_animation",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "directional-additive-hit-reaction",
+            "head-gaze-targeting",
+            "contextual-special-attack-geometry"
+          ],
+          "pitfalls": "A direction-blind canned flinch ignores who hit whom — derive the variant from the actual hit vector every hit. Loading the flinch at attack priority can cancel the attacker's swing — keep it Action3. Over-exaggerating the stagger looks comical; dial it back."
+        },
+        {
+          "id": "g5",
+          "order_index": 5,
+          "instruction": "Impose real COMMITMENT with hitstun + force-coupled consequence on BOTH parties, server-side. On a confirmed server hit: SAVE the victim's WalkSpeed/JumpPower, set both to 0 for a stun window, set character:SetAttribute('Stunned',true), restore the SAVED values when it ends (refresh-by-longest if a new stun overlaps, never un-stun early). Drop the ATTACKER's WalkSpeed to ~4-5 during their own swing so neither party slides freely. Other systems read GetAttributeChangedSignal('Stunned') to block actions.",
+          "tools": [
+            "run_luau",
+            "bind_hitbox"
+          ],
+          "addresses_criteria": [
+            "hitstun-and-walkspeed-commitment",
+            "weighted-behavior-brain-enemies"
+          ],
+          "pitfalls": "Hardcoding the restore value (WalkSpeed=16) breaks custom-movement games — save real values first. If the server script dies before the timer fires the victim is stunned forever; guard it. Overlapping stuns that each restore on their own timer un-stun early — refresh by longest remaining time. A cosmetic-only flinch the victim can mash through does NOT satisfy this criterion."
+        },
+        {
+          "id": "g6",
+          "order_index": 6,
+          "instruction": "Move BOTH parties coherently with a modern force mover. On hit, compute direction PER HIT from the CFrames (attacker LookVector or (victimRoot-attackerRoot).Unit, optional +Y pop) and push the victim back along the hit vector via BasePart:ApplyImpulse (accounts for AssemblyMass) OR a short-lived LinearVelocity + Attachment (VectorVelocity=dir*speed, Debris:AddItem after ~0.15s). Advance the ATTACKER slightly forward (~7-10) to stay in combo range. Apply the impulse SERVER-side on the server character for authority; bound the magnitude.",
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "create_instance"
+          ],
+          "addresses_criteria": [
+            "coherent-knockback-modern-mover",
+            "hitstun-and-walkspeed-commitment"
+          ],
+          "pitfalls": "Using AssemblyLinearVelocity or a fixed world-space vector makes knockback ALWAYS go the same direction regardless of who hit whom — derive direction from the CFrames every hit. A LinearVelocity left attached sticks the victim moving forever — Debris-remove it. VectorForce is continuous (bad for a discrete pop); prefer ApplyImpulse or a short LinearVelocity. BodyVelocity works but is deprecated."
+        },
+        {
+          "id": "g7",
+          "order_index": 7,
+          "instruction": "Fire a MARKER-SYNCED multi-channel impact FX stack at the single Contact marker, client-side-immediately. Keep a VFX attachment of ParticleEmitters (all Enabled=false so they don't leak) in ReplicatedStorage; on the Contact marker clone it to the victim HRP, then for each child emitter call :Emit(emitter:GetAttribute('EmitCount')) and Debris-clean. Spawn a one-shot camera-facing directional burst (debris/slash-decal) at the EXACT contact point, plus a SUBTLE spring-based camera shake (low amplitude, player-toggleable). Match VFX type to impact (debris/blood for melee, not smoke). Run all of it on the client (FireAllClients for shared visibility).",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "marker-synced-impact-fx-stack",
+            "contextual-special-attack-geometry",
+            "dynamic-combat-camera-framing"
+          ],
+          "pitfalls": "Leaving emitters Enabled=true double-emits (constant stream + burst). VFX spawned before the animation reaches the target (desynced, off a swing-start timer) instantly reads as broken — drive it off the contact marker. Too much camera shake is nauseating; keep it subtle and toggleable. Server-driven VFX is delayed by ping — run it client-side."
+        },
+        {
+          "id": "g8",
+          "order_index": 8,
+          "instruction": "Build the M1 combo as a CONNECTED pose-graph, not N disjoint swings. For each adjacent clip pair (hit1->hit2->hit3->...), explicitly add_keyframe the FINAL keypose of clip N to be IDENTICAL (same joint CFrames) to the OPENING keypose of clip N+1, so the seam has zero snap/teleport — then PROVE it: capture_animation a filmstrip spanning the last ~0.1s of clip N and the first ~0.1s of clip N+1 and confirm the silhouette is continuous across the cut (re-key and re-capture until it is). Preserve genuine distinctness: each attack must still own a different silhouette and momentum direction at its mid-pose (horizontal slash vs overhead vs thrust), so continuity is achieved by matching only the handoff poses, never by homogenizing the swings. Author all attack clips arm-scoped (add_keyframe {scope='rightArm'}) and bind them at Action priority so the combo LAYERS over walk/run locomotion (legs/torso keep their own animation) rather than freezing the lower body. Drive chain advance + reset through the behavior state machine's active/cooldown windows (bind_behavior), and define a DEDICATED combat-ready idle clip (distinct from the default standing idle) that the chain returns to between combos. For the idle<->attack<->idle transitions, do NOT pop: route playback through a runtime player that crossfades with a ~0.1s fade on track Play/Stop — and because the stock bind_animation/bind_behavior runtimes call Play()/Stop() with no fade, either extend that runtime to thread a fadeTime through its play() helper or document the exact runtime change required, so the crossfade is a real implemented seam and not an unbacked parameter reference.",
+          "tools": [
+            "add_keyframe",
+            "bind_animation",
+            "capture_animation"
+          ],
+          "addresses_criteria": [
+            "connected-combo-chain-flowing-poses",
+            "attack-layered-over-locomotion"
+          ],
+          "pitfalls": "Playing N clips back-to-back without matching end-pose to next-start-pose makes the character snap/teleport between hits. Don't sacrifice distinctness for continuity — each attack still needs its own silhouette and momentum. Snapping back to the default idle between chains breaks flow."
+        },
+        {
+          "id": "g9",
+          "order_index": 9,
+          "instruction": "Build the COMBO STATE MACHINE with input buffering, a marker-defined cancel window, AND a dual combo-index reset. Track comboIndex + lastAttackTime + exactly ONE buffered queued press. Drive transitions through a small state machine (Idle/Windup/Active/Recovery/Stunned) so attacks cannot start while Stunned or mid-recovery. Define the cancel window via the 'CancelOpen' marker consumed through track:GetMarkerReachedSignal('CancelOpen') — a press during an active swing is STORED (buffer exactly one; clear the queue on every state change so a held key cannot auto-mash and no phantom extra attack fires) and auto-fired the instant CancelOpen fires, so players chain without frame-perfect timing. A debounce prevents an in-progress M1 from being canceled. The combo index must have a DUAL reset, BOTH paths required: (A) reset to 0/1 after the FINISHER attack with an explicit end-of-combo cooldown before the chain can restart, AND (B) on idle timeout — implemented as a task.spawn watcher that snapshots the current m1-count, waits ~0.8-1.2s, and resets the index ONLY if the captured count is unchanged (so a press landing inside the window does not wrongly reset). Do NOT gate any of this — cancel window, idle reset, or recovery — off wait()/task.delay or track.Length math; all timing-critical events must read from animation markers. Pitfall: a finisher-only OR idle-only reset is incomplete — without the finisher+cooldown reset the chain never cleanly ends, and without the count-snapshot idle watcher the index either never returns to the opener or resets mid-chain.",
+          "tools": [
+            "run_luau",
+            "bind_behavior",
+            "add_keyframe"
+          ],
+          "addresses_criteria": [
+            "combo-state-machine-with-input-buffering",
+            "connected-combo-chain-flowing-poses",
+            "block-parry-defensive-layer",
+            "weighted-behavior-brain-enemies",
+            "data-driven-attacks-collider-groups"
+          ],
+          "pitfalls": "Without a cancel window the combo only advances on frame-perfect input and feels stiff; without an idle-reset timeout the index never returns to 1 so players start mid-combo. Buffer exactly ONE input — buffering many lets a held key auto-mash. Clear the queue on state change or you get phantom extra attacks."
+        },
+        {
+          "id": "g10",
+          "order_index": 10,
+          "instruction": "Commit hit registration to the RESPONSIVE-LOCAL / AUTHORITATIVE-DRIVEN model. The CLIENT plays the attack track + VFX + hitstop the instant the swing connects on its own frame (zero-latency feel) — never on button-press, never after a server round-trip. The client fires a RemoteEvent that is an INTENT signal only ('I started attack N'), never a hit claim with damage/positions. The SERVER re-runs its own marker/active-frame hitbox from server physics, runs plausibility checks (alive, not Stunned, weapon equipped, cooldown elapsed, target within reach + small latency buffer, rate-limited), then applies Humanoid:TakeDamage. Mirror state modules client+server; never make the client wait for the server to set state back to Idle.",
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "make_npc"
+          ],
+          "addresses_criteria": [
+            "client-predict-server-validate-hit-timing",
+            "lag-compensated-rewind-netcode",
+            "data-driven-attacks-collider-groups"
+          ],
+          "pitfalls": "Trusting client-sent targets/positions/timestamps turns your buffer into a damage-on-demand exploit — never accept the client's damage or victim list, only that they attempted attack N, and recompute server-side. Gating action/movement state behind server replication makes input feel sluggish. For shared reactions, FireAllClients the verified target so every client animates it identically."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Cross from 'good combat' to 'felt, fair, deep combat': route every feedback channel through ONE strength-scaled impact bus, grade reactions by direction+force (poise), add a defensive/parry counter-rhythm, weave knockback into cancelable combo spacing as a spacing tool, ground server validation in the marker contact frame, drive attacks from data/events, and run actors through a windowed/buffered selection brain.",
+      "steps": [
+        {
+          "id": "e1",
+          "order_index": 1,
+          "instruction": "Refactor all impact feedback into ONE strength-scaled IMPACT BUS. Replace the independently-fired channels with a single function fireImpact(strength, contactCFrame, hitVector) called once from the Contact marker that drives EVERY channel off that one event and SCALES them together by the single attack-strength value: hitstop duration, camera-shake amplitude, knockback magnitude, VFX :Emit count, sound pitch/volume, and freeze-frame length all = base * f(strength). No channel keeps its own independent timer.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "synchronized-strength-scaled-channel-bus",
+            "marker-synced-impact-fx-stack",
+            "dynamic-combat-camera-framing"
+          ],
+          "pitfalls": "Independently-timed effects (each with its own wait) drift out of sync and don't scale with hit weight — the rubric explicitly wants ONE contact event fanning out to all channels with a shared strength multiplier. If you AdjustSpeed for hitstop, the bus must still keep VFX/camera at speed 1."
+        },
+        {
+          "id": "e2",
+          "order_index": 2,
+          "instruction": "Make hit reactions GRADED/POISE-GATED by direction AND force, not a single binary flinch. Maintain a poise/posture value per fighter; choose the reaction CATEGORICALLY by the incoming hit's direction (front/side/back) and force (light flinch vs heavy stagger vs poise-break launch). A stronger/heavier or differently-angled hit produces a categorically different reaction clip + a longer stun. Author the tiered reaction clips with add_keyframe and select at runtime via run_luau off the same hit vector + strength the impact bus uses.",
+          "tools": [
+            "add_keyframe",
+            "run_luau",
+            "bind_animation"
+          ],
+          "addresses_criteria": [
+            "graded-poise-gated-hit-reactions",
+            "directional-additive-hit-reaction",
+            "hitstun-and-walkspeed-commitment"
+          ],
+          "pitfalls": "A single flinch for every hit regardless of force/angle fails this — the reaction must VARY with direction and force. Add a posture/stamina resource so players can't be perma-stunned; insert recovery/parry windows so the defender always has counterplay (a single unavoidable 5-hit lock 'doesn't feel challenging')."
+        },
+        {
+          "id": "e3",
+          "order_index": 3,
+          "instruction": "Add a DEFENSIVE/COUNTER-RHYTHM dimension tied to the INCOMING strike. Build block + parry with marker-synced, CANCELABLE/INTERRUPTIBLE timing windows: a parry window (input-buffered, marker-defined) that interrupts a stun chain and rewards reading the attacker, a block that absorbs/drains posture, and cancelable combo strings on the offense. The defensive window timing is defined relative to the attacker's active-frame markers. Wire block/parry states into the same state machine (Idle/Block/Parry/Stunned) so they gate and interrupt cleanly.",
+          "tools": [
+            "run_luau",
+            "bind_behavior",
+            "add_keyframe"
+          ],
+          "addresses_criteria": [
+            "block-parry-defensive-layer",
+            "combo-state-machine-with-input-buffering",
+            "weighted-behavior-brain-enemies"
+          ],
+          "pitfalls": "A purely offensive mash loop fails this criterion — the build needs a defensive counter-rhythm whose windows are marker-synced and cancelable/interruptible. A parry with no window (or a frame-perfect-only one) is unusable; buffer the input and define the window by marker."
+        },
+        {
+          "id": "e4",
+          "order_index": 4,
+          "instruction": "Turn knockback into a TUNED COMBO/SPACING tool woven into cancelable strings. Make displacement direction-/force-aware (from e1's bus) AND part of the chain: light mid-combo hits nudge to KEEP the victim in range, the finisher launches/ragdolls. Optionally ragdoll on heavy/finisher hits via a ragdoll module (gated to the last hit only). Tune per-step knockback so the chain's spacing stays coherent — the attacker advances to stay in combo range while the victim is pushed — and keep counterplay (the launched victim can recover/tech).",
+          "tools": [
+            "run_luau",
+            "bind_hitbox"
+          ],
+          "addresses_criteria": [
+            "ragdoll-knockback-combo-extension-with-counterplay",
+            "coherent-knockback-modern-mover"
+          ],
+          "pitfalls": "A uniform incidental shove on every hit launches the target out of combo range (e.g. magnitude 80 mid-combo) and breaks the chain — scale knockback per combo step. Ragdolling on EVERY hit makes targets uncontrollable; gate it to finishers. Knockback must be woven into the cancelable string, not a flat constant."
+        },
+        {
+          "id": "e5",
+          "order_index": 5,
+          "instruction": "Ground server hit validation in the MARKER-SYNCED CONTACT FRAME (lag-aware), not a stale or whole-swing window. The server validates the hit against the precise active-frame contact moment the attacker saw — gate the server hitbox by the same HitStart/HitEnd markers (or a buffered position history rewound to that frame), so registration is temporally grounded in the attacker's view of the moment rather than a loose whole-swing or stale window. Keep the client-predict feel from g10; the server just confirms the contact-frame query.",
+          "tools": [
+            "run_luau",
+            "bind_hitbox"
+          ],
+          "addresses_criteria": [
+            "lag-compensated-rewind-netcode",
+            "client-predict-server-validate-hit-timing",
+            "swept-active-frame-hitbox-no-touched"
+          ],
+          "pitfalls": "Validating against a whole-swing window (or a stale position) either rejects fair hits or lets cheaters claim hits across the entire swing. Tie validation to the marker-synced contact frame. The marker signal must be read on the peer that owns the playing track — keep the active-frame detection client-side and re-derive the contact-frame query server-side."
+        },
+        {
+          "id": "e6",
+          "order_index": 6,
+          "instruction": "Make attacks DATA/EVENT-CONFIGURED, not one hardcoded swing. Define a combo/attack TABLE (per index: animationId, damage, hitboxSize/shape, knockback, strength, markers) and drive everything — which clip plays, when the hitbox opens (the marker-synced active frames), how the impact bus scales — off that data. New attacks/weapons are added by editing the table, not by writing new swing code. The hitbox is OPENED by the animation's marker events, never a hardcoded wait.",
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "bind_behavior"
+          ],
+          "addresses_criteria": [
+            "data-driven-attacks-collider-groups",
+            "marker-driven-event-timing",
+            "combo-state-machine-with-input-buffering"
+          ],
+          "pitfalls": "One hardcoded static swing with a fixed wait-gated hitbox fails this — author attacks as data whose hitboxes are opened by marker-synced active frames. Over-engineering the action object (vararg unpacking, methods ignoring self) is a noted smell; keep the table flat."
+        },
+        {
+          "id": "e7",
+          "order_index": 7,
+          "instruction": "Run combat ACTOR decisions through a windowed, buffered SELECTION BRAIN. Use make_npc for the PvE enemy (idle->chase->attack->dead) and extend its decision loop via run_luau into a controller with cancel/timing WINDOWS and input buffering — the SAME state-machine discipline as the player (gated, buffered transitions; cancelable strings; no bespoke fire-and-forget logic). Enemies choose actions through the controller with cooldown/recovery windows so they can be parried and combo'd like a player.",
+          "tools": [
+            "make_npc",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "weighted-behavior-brain-enemies",
+            "combo-state-machine-with-input-buffering",
+            "block-parry-defensive-layer"
+          ],
+          "pitfalls": "Bespoke fire-and-forget enemy logic (attack on a raw timer with no windows) fails this — route actor decisions through a controller with gated, buffered transitions. make_npc's stock loop is server-authoritative but timer-based; layer the windowed/buffered selection on top so the enemy honors the same cancel/cooldown windows the player does."
+        },
+        {
+          "id": "e8",
+          "order_index": 8,
+          "instruction": "Prove RUNTIME-BLENDED concurrent limb motion on a running rig — the foundation for IK reactions, foot-planting, and physical secondary motion — and prove it where blending actually happens: at runtime, via an owned controller, not in edit-mode pose authoring. SCOPE THE TOOLS CORRECTLY: use pose_joint / ik_reach + add_keyframe ONLY to author the SOURCE clips (an upper-body attack/swing clip scoped to the arm/torso chain, and the locomotion clips), then do ALL the runtime blending in run_luau. In the run_luau controller: (1) play the attack clip at Action priority OVER Movement-priority locomotion (or procedurally post-multiply onto Waist/UpperTorso/arm Motor6D.Transform AFTER RunService.PreSimulation), restricted to the upper body, while the legs stay driven by the locomotion track underneath — confirm two or more weighted tracks coexist via AnimationTrack:AdjustWeight, never Stop()-ing the locomotion track (the secondary-motion + attack-over-locomotion foundation). (2) Create a real IKControl under the Humanoid (Type=Transform, ChainRoot=UpperLeg, EndEffector=Foot, Target=an Attachment moved per frame) for the foot-plant pass so it composes over the playing clip in the Animator's IK pass (the procedural-foot-planting prerequisite — legs must NOT be baked into the attack clip or there is nothing to plant on). (3) Drive a runtime head/gaze orientation each frame toward a live target (post-Animator Transform on Neck/Waist, or an upper-body IKControl), so the fighter turns toward the opponent while locomotion continues underneath (head-gaze-targeting + ikcontrol-reactive-limb-blending). VERIFY AT RUNTIME, not with capture_animation (which plays a single clip and overrides manual/concurrent poses): run a real playtest and capture the running session — show the upper body swinging/aiming while the legs are visibly movement-driven, and via run_luau sample two playing AnimationTracks' live weights (both > epsilon) to prove they coexist. A single full-body baked clip, or a capture_animation filmstrip of one authored clip, fails all four criteria — the proof must be concurrent weighted tracks blending on a live rig.",
+          "tools": [
+            "ik_reach",
+            "pose_joint",
+            "run_luau",
+            "capture_animation",
+            "capture_angles"
+          ],
+          "addresses_criteria": [
+            "ikcontrol-reactive-limb-blending",
+            "procedural-foot-planting-ik",
+            "animationconstraint-physical-secondary-motion",
+            "head-gaze-targeting"
+          ],
+          "pitfalls": "A single full-body baked clip the Animator plays alone fails all four of these — the rig must show tracks BLENDING and coexisting at runtime (attack over locomotion + concurrent layers). If the legs are baked into the attack clip, there's no locomotion underneath to plant feet on. Verify the layering visually with capture, don't assume it."
+        }
+      ]
+    }
+  ],
+  "killer_systems": [
+    {
+      "name": "Marker-driven timing spine (GetMarkerReachedSignal)",
+      "what": "One source of truth for ALL combat timing: named animation event markers (HitStart, HitEnd, Contact, CancelOpen) baked into every clip, read at runtime via AnimationTrack:GetMarkerReachedSignal. Hitbox activation, the impact stack, hitstop, and the combo cancel window all fire off these markers — never off wait()/task.delay/track.Length.",
+      "how": "Author markers at exact frames with add_keyframe's event track, bind clips via bind_animation, and connect GetMarkerReachedSignal in run_luau on the peer that OWNS the playing track. Because markers ride keyframes, they stay synced even when you AdjustSpeed for hitstop — which is why the active-frame window never desyncs from the visual."
+    },
+    {
+      "name": "Swept active-frame hitbox",
+      "what": "Damage volume LIVE only during the narrow HitStart->HitEnd window and DEAD during windup/recovery, detected by sweeping between previous-and-current frame positions so fast swings can't tunnel — never a static .Touched part or one ray per frame.",
+      "how": "Clear a per-swing alreadyHit set on the HitStart marker; each active frame, raycast between attachments spaced ~1 stud along the blade (or GetPartBoundsInBox/GetPartsInPart for wide sweeps) with OverlapParams filtered to character hitboxes, excluding the attacker. Wrap or replace bind_hitbox's radius-sweep internals with this via run_luau."
+    },
+    {
+      "name": "Strength-scaled impact bus",
+      "what": "A single fireImpact(strength, contactCFrame, hitVector) called once from the Contact marker that fans out to EVERY feedback channel — hitstop, camera shake, knockback, VFX emit count, sound pitch/volume, freeze-frame — all scaled together by one attack-strength value. The exceptional-tier differentiator over independently-timed effects.",
+      "how": "One run_luau function on the contact event; each channel reads base * f(strength). Hitstop ramps both tracks' AdjustSpeed 1->~0->1 over a curve while VFX/camera stay at speed 1. Light hits = short freeze/small shake/small nudge; heavies = long freeze/big shake/launch."
+    },
+    {
+      "name": "Cancelable combo state machine with input buffering",
+      "what": "Combos read as one continuous motion and chain without frame-perfect timing: a state machine (Idle/Windup/Active/Recovery/Stunned) with a marker-defined CancelOpen window, ONE buffered input auto-fired when the window opens, a debounce against canceling an in-progress swing, and an idle-timeout reset.",
+      "how": "Track comboIndex + lastAttackTime + one queued press in run_luau (on top of bind_behavior's state machine); store a press during an active swing and fire it on GetMarkerReachedSignal('CancelOpen'); re-key each clip's end pose to the next clip's start pose for flow; reset to index 1 after ~0.8-1.2s idle; client-predict, server-validate the step/cooldown."
+    },
+    {
+      "name": "Responsive-local / authoritative-driven netcode",
+      "what": "Impact is FELT the instant the swing connects on the attacker's client frame, while the server stays the single source of truth: the client fires INTENT only, the server re-runs the marker-synced contact-frame hitbox + plausibility checks before any TakeDamage.",
+      "how": "Client plays anim/VFX/hitstop locally and FireServer('attack N') — never a hit claim with damage/positions. Server re-runs its own active-frame query from server physics gated by the same markers, checks alive/not-stunned/equipped/cooldown/reach+latency-buffer/rate-limit, then Humanoid:TakeDamage. FireAllClients the verified target so all clients animate the reaction identically. make_npc keeps enemies server-authoritative."
+    }
+  ],
+  "common_pitfalls": [
+    "Driving timing off wait()/task.delay/track.Length instead of GetMarkerReachedSignal — it drifts the instant you AdjustSpeed for hitstop and decouples damage/VFX from the visible blade. Bake markers and read them on the peer that owns the playing track.",
+    "A static .Touched part or one raycast per frame tunnels through targets on fast swings ('my sword passed through them'). Sweep between previous-and-current frame positions and keep a per-swing alreadyHit set.",
+    "GetMarkerReachedSignal connected on the wrong peer/track — it does NOT fire on the server for a client-started track. Do active-frame detection on the client that plays the anim; re-derive the query server-side for authority.",
+    "Attack clips that key the legs override the Movement walk, so the character moonwalks/T-slides while attacking. Author attacks upper-body-only at Action priority so per-joint blending lets locomotion drive the legs.",
+    "Priority mistakes: leaving the attack at Idle/Core makes it blend out and look limp; putting the victim flinch at attack priority cancels the attacker's swing. Use attack=Action4, hit-react=Action3, dodge=Action2, locomotion=Movement.",
+    "Freezing the WHOLE scene for hitstop (animation + particles + camera) feels like a lag spike, not a hit — keep VFX and camera live at speed 1 and only dip the animation tracks' AdjustSpeed on a curve.",
+    "Connect/impact SFX and VFX fired on swing-start (or a fixed wait) land before the blade connects and read as broken. Drive them off the contact marker; vary sound PlaybackSpeed so repeats don't grate.",
+    "Knockback from a fixed world-space vector / AssemblyLinearVelocity always goes the same way regardless of who hit whom — derive direction from the attacker/victim CFrames every hit. A LinearVelocity left attached sticks the victim moving forever — Debris-remove it; prefer ApplyImpulse or a short LinearVelocity over continuous VectorForce; BodyVelocity is deprecated.",
+    "Trusting client-sent damage/targets/timestamps is a damage-on-demand exploit. Accept only 'attempted attack N' and recompute everything server-side; rate-limit and cooldown-check the RemoteEvent.",
+    "Stun handling: hardcoding the WalkSpeed restore (16) breaks custom-movement games — save real values first; overlapping stuns that restore on their own timers un-stun early — refresh by longest remaining; a dead server script leaves the victim stunned forever — guard it.",
+    "Combo errors: no cancel window = frame-perfect-only and stiff; no idle-reset = the index never returns to 1 so players start mid-combo; buffering more than one input lets a held key auto-mash; clips whose end pose doesn't match the next start pose snap/teleport between hits.",
+    "Shipping a flat clip list with no dedicated combat idle (snapping 'fighting'->'standing'), or one symmetric linear swing reused everywhere (reads robotic/weightless) — hold a combat stance idle and ease/vary each attack's phases and silhouette.",
+    "Forgetting the rig foundation: an Avatar-Joint-Upgrade R15 (AnimationConstraints, zero Motor6Ds) silently shows no keyframe tracks / a T-pose. Verify Motor6D joints before animating, and remember a single full-body baked clip blocks the runtime limb-blending the exceptional tier requires.",
+    "Over-juicing: camera shake that's too strong is nauseating (make it subtle + toggleable), mismatched VFX (smoke on a flesh punch) breaks immersion, and a persistent damage vignette miscommunicates whether you're hitting or being hit. Restraint and readability over spectacle."
+  ],
+  "provenance": {
+    "sources": [
+      "https://create.roblox.com/docs/animation/editor",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/create-an-animation",
+      "https://create.roblox.com/docs/animation/events",
+      "https://create.roblox.com/docs/animation/using",
+      "https://devforum.roblox.com/t/raycast-hitbox-401-for-all-your-melee-needs/374482",
+      "https://simplified.media/guides/roblox-combat-systems",
+      "https://devforum.roblox.com/t/stun-handler-v21/1072859",
+      "https://kitsblox.com/blog/how-to-make-combat-system-roblox",
+      "https://www.ahmadmohammadnejad.com/sandbox/a-more-realistic-hitstop ; https://create.roblox.com/docs/en-us/reference/engine/classes/AnimationTrack",
+      "https://devforum.roblox.com/t/knockback-always-moves-the-dummy-to-the-same-direction/3026787 ; https://devforum.roblox.com/t/linearvelocity-or-bodyvelocitydepreciated-for-making-a-knockback-system/2279867",
+      "https://devforum.roblox.com/t/should-i-use-animation-events-getmarkerreachedsignal-to-activate-hitboxes/2439938 ; https://devforum.roblox.com/t/how-can-i-use-getmarkerreachedsignal-on-the-server-with-client-animations/3073543 ; https://create.roblox.com/docs/reference/engine/classes/AnimationTrack/GetMarkerReachedSignal",
+      "https://devforum.roblox.com/t/input-buffering-and-event-driven-action-system-for-combat-system/3929897 ; https://devforum.roblox.com/t/cancel-system-for-combat-system/3600431 ; https://create.roblox.com/docs/en-us/reference/engine/classes/AnimationTrack",
+      "https://create.roblox.com/docs/reference/engine/enums/AnimationPriority ; https://devforum.roblox.com/t/keep-the-lower-body-walking-while-another-animation-plays/2791836 ; https://devforum.roblox.com/t/how-do-you-override-an-animation-body-part-with-another-animation/2867008",
+      "https://devforum.roblox.com/t/how-would-i-go-about-making-my-combat-feel-more-impactful/2042214",
+      "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+      "https://devforum.roblox.com/t/what-makes-a-satisfying-combat-experience-how-can-i-make-my-combat-game-feel-meaningful/3375581",
+      "https://devforum.roblox.com/t/what-makes-a-satisfying-combat-experience-how-can-i-make-my-combat-game-feel-meaningful/3375581",
+      "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+      "https://devforum.roblox.com/t/how-can-i-improve-this-combat-system/2860707",
+      "https://devforum.roblox.com/t/how-would-i-go-about-making-my-combat-feel-more-impactful/2042214",
+      "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328",
+      "https://devforum.roblox.com/t/combat-animation-helpfeedback/2017328",
+      "https://devforum.roblox.com/t/what-makes-good-combat/1999076",
+      "https://devforum.roblox.com/t/my-combat-system-does-not-feel-fluid-and-i-am-looking-forward-to-improving-it/1536278",
+      "https://devforum.roblox.com/t/combat-feels-janky-25d-fighting-game/2577244",
+      "https://devforum.roblox.com/t/what-makes-a-satisfying-combat-experience-how-can-i-make-my-combat-game-feel-meaningful/3375581",
+      "https://devforum.roblox.com/t/what-makes-good-combat/1999076",
+      "https://devforum.roblox.com/t/how-would-i-go-about-making-my-combat-feel-more-impactful/2042214",
+      "https://www.youtube.com/watch?v=Ht6ZfibXpDs",
+      "https://www.youtube.com/watch?v=AX3rWUj5gRo",
+      "https://www.youtube.com/watch?v=WZyvOpIiaYE",
+      "https://www.youtube.com/watch?v=AX3rWUj5gRo",
+      "https://www.youtube.com/watch?v=vPHa4poXS7I",
+      "https://www.youtube.com/watch?v=Ht6ZfibXpDs",
+      "https://www.youtube.com/watch?v=Ht6ZfibXpDs",
+      "https://www.youtube.com/watch?v=gmz904QpfxU",
+      "https://www.youtube.com/watch?v=TwUQ_19fdiE",
+      "https://www.youtube.com/watch?v=gmz904QpfxU",
+      "https://www.youtube.com/watch?v=vPHa4poXS7I",
+      "https://www.youtube.com/watch?v=Ht6ZfibXpDs",
+      "https://www.youtube.com/watch?v=AX3rWUj5gRo",
+      "https://www.youtube.com/watch?v=vPHa4poXS7I",
+      "https://www.youtube.com/watch?v=FpGgpUWEb_k",
+      "https://www.youtube.com/watch?v=FpGgpUWEb_k",
+      "https://www.youtube.com/watch?v=UURYhAVph5g"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 29,
+      "criteria_addressed": 29,
+      "uncovered": []
+    }
+  },
+  "date": "2026-06-27"
+}
