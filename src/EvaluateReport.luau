@@ -18,6 +18,86 @@ local TIER_GLYPH: { [string]: string } =
 	{ pass = "PASS", partial = "PARTIAL", fail = "FAIL", ungraded = "?" }
 -- fails first, then partial, then ungraded, then pass
 local TIER_RANK: { [string]: number } = { fail = 0, partial = 1, ungraded = 2, pass = 3 }
+-- quality tier display labels (a build clears them in order: baseline -> good -> exceptional)
+local QUALITY_TIER_LABEL: { [string]: string } =
+	{ baseline = "Baseline", good = "Good", exceptional = "Exceptional" }
+
+export type TierVerdict = { line: string, nextTier: string?, allPass: boolean }
+
+-- Compute the tier-progress verdict that DRIVES the refine loop: per-tier pass counts + the NEXT TARGET
+-- tier (the lowest quality tier that still has a non-pass criterion), so the loop knows what to fix next
+-- and when the bar is cleared. A tier is "cleared" only when EVERY criterion in it scores pass.
+function EvaluateReport.tierVerdict(rubric: Rubric, validated: Validated): TierVerdict
+	local gradeById: { [string]: Grade } = {}
+	for _, g in ipairs(validated.grades) do
+		gradeById[g.id] = g
+	end
+	local passN: { [string]: number } = {}
+	local totalN: { [string]: number } = {}
+	-- preserve any non-standard tiers by appending them after the canonical order
+	local order: { string } = { "baseline", "good", "exceptional" }
+	local seen: { [string]: boolean } = { baseline = true, good = true, exceptional = true }
+	for _, c in ipairs(rubric.criteria) do
+		local t = c.tier
+		if not seen[t] then
+			seen[t] = true
+			table.insert(order, t)
+		end
+		totalN[t] = (totalN[t] or 0) + 1
+		local g = gradeById[c.id]
+		if g ~= nil and g.tier == "pass" then
+			passN[t] = (passN[t] or 0) + 1
+		else
+			passN[t] = passN[t] or 0
+		end
+	end
+	local nextTier: string? = nil
+	for _, t in ipairs(order) do
+		if (totalN[t] or 0) > 0 and (passN[t] or 0) < (totalN[t] or 0) then
+			nextTier = t
+			break
+		end
+	end
+	local parts: { string } = {}
+	for _, t in ipairs(order) do
+		if (totalN[t] or 0) > 0 then
+			local label = QUALITY_TIER_LABEL[t] or t
+			local cleared = (passN[t] or 0) == totalN[t]
+			table.insert(
+				parts,
+				string.format("%s %d/%d%s", label, passN[t] or 0, totalN[t], if cleared then " CLEARED" else "")
+			)
+		end
+	end
+	if nextTier == nil then
+		return {
+			line = "Tier progress: " .. table.concat(parts, " · ") .. " — BAR CLEARED (every criterion passes).",
+			nextTier = nil,
+			allPass = true,
+		}
+	end
+	local unmet: { string } = {}
+	for _, c in ipairs(rubric.criteria) do
+		if c.tier == nextTier then
+			local g = gradeById[c.id]
+			if not (g ~= nil and g.tier == "pass") then
+				table.insert(unmet, c.id)
+			end
+		end
+	end
+	local label = QUALITY_TIER_LABEL[nextTier] or nextTier
+	return {
+		line = string.format(
+			"Tier progress: %s — NEXT TARGET: clear the %d unmet %s criteria [%s], then re-evaluate.",
+			table.concat(parts, " · "),
+			#unmet,
+			label,
+			table.concat(unmet, ", ")
+		),
+		nextTier = nextTier,
+		allPass = false,
+	}
+end
 
 -- The forced grading tool: the model MUST call submit_grade with one entry per criterion id.
 function EvaluateReport.buildGradeTool(rubric: Rubric): { [string]: any }
@@ -128,6 +208,8 @@ function EvaluateReport.renderReport(rubric: Rubric, validated: Validated): stri
 	if validated.summary ~= "" then
 		table.insert(lines, validated.summary)
 	end
+	-- tier-progress verdict (drives the refine loop: what tier to target next, or BAR CLEARED)
+	table.insert(lines, EvaluateReport.tierVerdict(rubric, validated).line)
 	-- killer-systems one-liner
 	local gradeById: { [string]: Grade } = {}
 	for _, g in ipairs(validated.grades) do

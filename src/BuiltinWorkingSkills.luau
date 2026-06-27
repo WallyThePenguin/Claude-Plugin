@@ -73,6 +73,33 @@ BuiltinWorkingSkills.list = {
 			.. "3) Fix confirmed issues and re-verify.",
 	},
 	{
+		name = "refine-to-rubric",
+		description = "Drive a build to its quality rubric: build → evaluate → fix the next unmet tier → repeat until the bar clears.",
+		parameters = {},
+		body = "When you build an asset in a category that HAS a rubric (locomotion, combat, gui, "
+			.. "environment, …), don't one-shot it — REFINE it to the bar in a loop:\n"
+			.. "1) use_rubric(category) to load the tiered bar (Baseline → Good → Exceptional; each "
+			.. "criterion has a concrete_fix).\n"
+			.. "2) Build a first draft with your normal tools.\n"
+			.. "3) capture the subject, then evaluate(category, subject?, design) — design = your 1-2 "
+			.. "sentence summary of the SYSTEM you built (what owns routing/IK/layering, not 'I made a "
+			.. "clip'). evaluate grades each criterion fail/partial/pass against the rubric + a screenshot + "
+			.. "reference exemplars, and prints a 'Tier progress:' line with the NEXT TARGET tier.\n"
+			.. "4) Work the NEXT TARGET tier ONLY: for each unmet (fail/partial) criterion it names, apply "
+			.. "that criterion's 'fix:' line. Clear Baseline fully before Good, Good before Exceptional — "
+			.. "the verdict tells you which tier you're on.\n"
+			.. "5) Re-evaluate. Repeat 3-5 until the verdict says BAR CLEARED, OR you reach the tier you're "
+			.. "aiming for (Good = above the mean; Exceptional = polish), OR ~4-5 rounds — whichever first. "
+			.. "Every round must move at least one criterion UP a tier; if a round doesn't, CHANGE approach "
+			.. "instead of repeating the same fix.\n"
+			.. "6) Judge ONLY by evaluate's rubric + evidence + capture — never declare it good on your own "
+			.. "opinion; the rubric+screenshot is the external verifier that keeps the loop honest.\n"
+			.. "7) When you find a durable, reusable fix (a mistake to avoid or a technique that worked), "
+			.. "learn(category, <one general sentence>) so the next build in this category starts higher.\n"
+			.. "For a quick throwaway with no rubric, just build it — this loop is for work that should be "
+			.. "pro-grade.",
+	},
+	{
 		name = "gui-design-quality",
 		description = "Make a ScreenGui look intentional: hierarchy, spacing, alignment, color, then capture.",
 		parameters = {},
