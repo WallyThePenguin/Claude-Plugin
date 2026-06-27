@@ -1,0 +1,359 @@
+{
+  "module": "locomotion",
+  "system_module": "locomotion",
+  "version": "1.0",
+  "rubric_version": "1.1",
+  "overview": "Roblox hands every game the stock Animate script — one forward walk/run loop swapped by WalkSpeed — and that IS the generic mean this rubric is built to beat. The whole guide therefore pivots on one decision made FIRST: stop swapping clips and instead OWN a runtime control layer that reads live planar velocity each frame and weight-blends multiple authored clips. You author the clips as flip-book keyposes on a Motor6D rig (spawn_rig + pose_joint/ik_reach + add_keyframe), then write the velocity-driven controller, foot IK, additive aim/lean, momentum tracking, and marker-synced events as runtime Luau via run_luau, verifying every layer visually with capture/capture_animation. Baseline = an owned velocity-classifying controller with a distinct idle@0 node. Good = the killer systems (2D speed+direction blend tree, foot IK, additive look-at) plus stride-lock, directional set, per-region shaping, and velocity-weighted transitions. Exceptional = gait-phase pelvis sway, additive velocity lean, marker-synced FX, runtime momentum, terrain hip-height, a named personality posture, and rig-portable signal-driven computation.",
+  "killer_systems": [
+    {
+      "name": "Blend Tree (speed + direction)",
+      "what": "A velocity-driven 2D blend space: a speed axis (idle@0 -> walk -> jog -> run) that crossfades adjacent tiers, AND a direction axis (forward/back + strafe, diagonals ideal) whose weights come from velocity projected into the rig's local frame. Replaces the stock hard clip-swap and the moonwalk.",
+      "how": "Author the idle/walk/jog/run + forward/back/left/right clips as separate looped Movement-priority clips with add_keyframe (one clip per direction+speed). In a run_luau-written controller script bound under StarterCharacterScripts (named 'Animate' so it overrides the default), Animator:LoadAnimation every clip and Play() them all at weight 0. Each frame on RunService.PreSimulation compute localVel = HRP.CFrame:VectorToObjectSpace(HRP.AssemblyLinearVelocity); derive per-direction weights by clamping localVel.X/localVel.Z against WalkSpeed (X=strafe, Z=fwd/back), and a speed-axis blend factor = speed/WalkSpeed; drive each track with AnimationTrack:AdjustWeight(w) (clamp to a tiny Epsilon, never exactly 0, so tracks keep replicating to other clients) and AdjustSpeed(speed/clipBaseSpeed). All directional tracks MUST be the same Movement priority so the Animator combines them by weight."
+    },
+    {
+      "name": "Foot IK (terrain grounding)",
+      "what": "Runtime inverse kinematics that plants each foot on the actual ground, slopes, and steps — layered OVER the playing locomotion clip (the clip carries style, the IK corrects to the world), so no skating and no floating.",
+      "how": "Per leg, run_luau to create an IKControl parented to the Humanoid with Type=Enum.IKControlType.Transform, ChainRoot=LeftUpperLeg, EndEffector=LeftFoot, Target=an Attachment you move each frame, Weight=1, SmoothTime~0.2. Each frame while grounded, raycast downward from above/from the animated hip with workspace:Raycast; set Target.WorldCFrame to the hit point rotated to the surface normal via CFrame.lookAt(hit.Position, hit.Position + hit.Normal) so the foot tilts on slopes; reject surfaces past ~45 degrees; disable IK on jump/fall. For anti-skate, FREEZE the stance foot's target at its plant world-position through the contact phase and re-target on lift-off. The IKControl runs in the Animator's IK pass, composing on the clip automatically."
+    },
+    {
+      "name": "Additive Look-At / Aim",
+      "what": "An upper-body aim/look-at layer that rides ON TOP of the running gait — head/torso/arms orient to a target while the legs keep walking — never stopping or replacing the locomotion track.",
+      "how": "Two routes. (1) Priority route: play the aim clip at Action priority over Movement-priority locomotion so only the conflicting upper-body limbs are overridden. (2) Procedural route (no shipped additive API): in a run_luau script bound to RunService.PreSimulation (AFTER the Animator evaluates), POST-MULTIPLY an aim CFrame onto Waist.Transform and Neck.Transform — Waist.Transform = Waist.Transform * CFrame.Angles(-pitch, yaw, 0) — using math.atan for pitch to the target. Use Motor6D.Transform (NOT C0), keep it to UpperTorso/Head/UpperArms only so legs stay locomotion-driven, and never Stop() the walk track."
+    },
+    {
+      "name": "Pelvis Bias / Hip Sway (gait phase)",
+      "what": "The pelvis counter-rotates against the legs and sways side-to-side tied to gait phase (figure-8 hip trace), on R15 via the LowerTorso joint — and the run is re-posed (wider split, deeper drop, an airborne frame, arms in and slightly behind the legs) rather than a sped-up walk.",
+      "how": "Re-author the run clip distinctly from the walk with add_keyframe (don't reuse the walk faster). For the sway, in the controller (run_luau) drive a small sinusoidal X/Z offset on LowerTorso.Transform off the clip's normalized time (track.TimePosition / track.Length) so the pelvis bobs in phase with footfalls, plus an acceleration-reactive counter-rotation; apply post-Animator on .Transform onto the cached base so it doesn't accumulate."
+    }
+  ],
+  "common_pitfalls": [
+    "Leaving the stock Animate untouched and only swapping clip IDs in animTable — that is the generic floor the rubric scores as FAIL on the architecture criteria (loco-state-machine, loco-fadetime-transitions, loco-retarget-rig-portability). An ID-swap is fine to bootstrap, but you must OWN a velocity-driven controller to pass.",
+    "Authoring clips on the wrong rig type. Always spawn_rig an R15 rig (R15's LowerTorso/UpperTorso split is required for hip sway and additive aim) and match the runtime rig — an R6 clip does not map onto R15 joints.",
+    "Driving locomotion off Humanoid.Running (it fires ONLY on input change, so direction-switches freeze mid-strafe). Poll AssemblyLinearVelocity every frame on RunService.PreSimulation/Heartbeat instead.",
+    "Mixing AnimationPriority across the directional blend tracks. All directional/speed blend clips MUST be the same Movement priority so the Animator combines them by weight; a higher-priority track fully wins and kills the blend. Author locomotion at Movement, additive aim at Action.",
+    "Letting a blend weight hit exactly 0. Roblox stops replicating a track at weight 0, so other clients see frozen/wrong locomotion (invisible in solo test). Clamp every weight to a tiny Epsilon.",
+    "Writing procedural aim/lean/sway on RenderStepped/PreAnimation or via Motor6D.C0 — the Animator overwrites Motor6D.Transform every frame between PreAnimation and PreSimulation, so your offset gets stomped (PreAnimation) or stacks confusingly (C0). Bind AFTER PreSimulation and POST-MULTIPLY onto .Transform (= Transform * offset), onto a CACHED base so it doesn't drift.",
+    "Forgetting seamless loops and correct config on authored clips: identical first/last keyframe (copy keyframe 0 to the end), Looping ON, priority Movement (Idle for idle). A non-looping or mismatched-loop clip hitches every cycle.",
+    "Mismatching AdjustSpeed's nominal/base-speed constant to the clip's authored cadence — feet still skate even with speed-sync on. Author each clip for one reference WalkSpeed and use AdjustSpeed(liveSpeed / referenceSpeed).",
+    "Rig Model scaled below 1 causes persistent foot sliding no animation tweak can fix — verify the rig's scale is 1 before blaming the animation.",
+    "Solo-testing only forward motion. The strafe-inversion (right/left swap + negative speed when backpedaling) and the weight=0 replication bug only show under backward/diagonal movement and on OTHER clients — drive all 8 directions and verify with a second client."
+  ],
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "An owned, velocity-classifying control layer drives locomotion (not the stock single-loop swap), with a distinct idle@0 node — the architectural seam every later killer system composes onto.",
+      "steps": [
+        {
+          "id": "loco-base-1-spawn-rig",
+          "order_index": 1,
+          "instruction": "spawn_rig an R15 Motor6D rig AS the substrate for a build-owned, velocity-driven locomotion routing layer — and in the same step commit to that architecture, not just the rig. After spawning, confirm via get_rig that the rig is R15 with a Humanoid + HumanoidRootPart AND that it exposes the LowerTorso/UpperTorso joint split (the seam hip-sway and additive-aim later compose onto) and Motor6D.Transform on the joints (the flip-book authoring channel). Then state the routing commitment the rig exists to serve: locomotion clip selection/weighting will be a function of LIVE planar velocity (and/or Humanoid MoveDirection) feeding MORE THAN ONE locomotion target through a controller the build owns (a velocity-keyed blend space or a custom Animate-override), explicitly NOT a discrete WalkSpeed-keyed swap of one forward clip on the untouched stock Animate. Name the runtime rig type you will author to match (R15 Motor6D) so the authored clips map joints correctly at runtime. Reject the step if it only spawns/confirms the rig without committing to the owned velocity-driven routing layer it is being authored against.",
+          "addresses_criteria": [
+            "loco-state-machine"
+          ],
+          "tools": [
+            "spawn_rig",
+            "get_rig"
+          ],
+          "pitfalls": "Authoring on R6 (or a mismatched runtime rig) means clips won't map joints correctly; R6 also lacks the LowerTorso split, blocking the exceptional hip-sway tier. Always author R15 and match the runtime rig type."
+        },
+        {
+          "id": "loco-base-2-author-idle",
+          "order_index": 2,
+          "instruction": "Author the idle clip FIRST as a first-class zero-velocity node: pose_joint the rig into a settled standing pose, add_keyframe to snapshot it, then add a subtle breathing/weight-shift keypose and snapshot again, and copy keyframe 0 to the end so the loop is seamless. This clip is the v=0 endpoint of the blend space and the base layer that standing aim/lean ride on. capture_animation to verify it reads as a living idle, not a frozen pose.",
+          "addresses_criteria": [
+            "loco-living-idle"
+          ],
+          "tools": [
+            "pose_joint",
+            "add_keyframe",
+            "capture_animation"
+          ],
+          "pitfalls": "A frozen/looped neutral default pose with no authored v=0 idle node FAILS loco-living-idle. Idle must be its own node selected at near-zero planar speed, not whatever the stock default leaves. Make the first and last keyframe identical or the idle pops every loop."
+        },
+        {
+          "id": "loco-base-3-author-walk-run",
+          "order_index": 3,
+          "instruction": "Author at least a walk and a run clip as the >1 locomotion targets the controller will select among. Build each from the four canonical keyposes (Contact -> Down -> Pass -> Up) with pose_joint/ik_reach + add_keyframe: opposite-side (contralateral) arm swing, a small vertical torso bob (two down-beats per cycle for weight), and a held contact pose so the planted foot has real ground-contact frames. Set each to Looping, Movement priority, identical first/last keyframe. The run must be a distinct re-pose, not the walk reused.",
+          "addresses_criteria": [
+            "loco-state-machine"
+          ],
+          "tools": [
+            "pose_joint",
+            "ik_reach",
+            "add_keyframe",
+            "capture_animation"
+          ],
+          "pitfalls": "In-phase arm swing (arm forward with the same-side leg) reads instantly robotic. A flat horizontal torso path makes legs look like they slide. Don't lift the rear foot before the front foot accepts weight, or both feet appear to float."
+        },
+        {
+          "id": "loco-base-4-owned-controller",
+          "order_index": 4,
+          "instruction": "Write the owned velocity-classifying control layer with run_luau: a LocalScript named EXACTLY 'Animate' in StarterPlayer.StarterCharacterScripts (so it overrides the stock default for every spawned character). Inside, Animator:LoadAnimation the idle/walk/run clips, and each frame on RunService.PreSimulation read planar velocity from HumanoidRootPart.AssemblyLinearVelocity and SELECT/WEIGHT among the >1 targets as a CONTINUOUS function of that live velocity (idle when planar speed ~= 0, walk/run as it rises) — NOT a discrete WalkSpeed clip-swap. This script is the documented hook point all later layers compose onto.",
+          "addresses_criteria": [
+            "loco-state-machine",
+            "loco-living-idle"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_animation"
+          ],
+          "pitfalls": "Renaming the script away from 'Animate' or leaving it out of StarterCharacterScripts means the stock default keeps running. Driving selection off discrete WalkSpeed buckets (not continuous live velocity) only earns Partial. Wiring to Humanoid.Running misses ledges/conveyors and freezes mid-strafe — poll velocity every frame."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "The three killer systems (2D speed+direction blend tree, runtime foot IK, additive look-at) plus stride-lock, the directional variant set, per-region shaping, and velocity-weighted transitions — locomotion that responds to direction, speed, terrain, and aim targets.",
+      "steps": [
+        {
+          "id": "loco-good-1-directional-clips",
+          "order_index": 1,
+          "instruction": "Author the directional variant set AND wire it to the velocity-projection direction axis that makes it pass-gate (not just partial). With add_keyframe build forward, back, left-strafe, and right-strafe walk AND run clips (diagonals ideal), each looped at Movement priority. Then commit the selection mechanism: a 2D direction axis whose weights are computed from velocity projected into HumanoidRootPart object space — CFrame:VectorToObjectSpace(velocity) (or dot/cross of velocity vs look/right) normalized by WalkSpeed — so the correct directional target blends in for every movement direction and movement decouples from facing with no moonwalk. Tie each authored clip to its quadrant in that object-space axis (enumerate the forward/back/left/right(/diagonal) → axis-coordinate mapping). capture_animation each clip to confirm a real strafe/backpedal (not a forward clip rotated), and verify a non-forward input weights its own variant rather than falling back to the forward loop. Keep stride length and keyframe spacing symmetric between left and right steps so no leg whips; a missing quadrant must not silently fall back to forward (moonwalk).",
+          "addresses_criteria": [
+            "loco-directional-variant-set"
+          ],
+          "tools": [
+            "add_keyframe",
+            "pose_joint",
+            "capture_animation"
+          ],
+          "pitfalls": "A missing directional quadrant falls back to the forward walk (moonwalk) or throws animation errors. You need BOTH walk and run variants per direction. Keep stride length and keyframe spacing symmetric between left and right steps or one leg whips."
+        },
+        {
+          "id": "loco-good-2-blend-tree",
+          "order_index": 2,
+          "instruction": "In the owned controller (run_luau), build the KILLER SYSTEM blend tree: Play() all directional+speed clips at weight 0, then each frame compute localVel = HRP.CFrame:VectorToObjectSpace(HRP.AssemblyLinearVelocity); weight each direction by clamping localVel.X (strafe) and localVel.Z (fwd/back) against WalkSpeed, and crossfade the speed axis (idle@0 -> walk -> run) by speed/WalkSpeed. Drive every track with AnimationTrack:AdjustWeight (Epsilon-clamped, never exactly 0) so adjacent directions/tiers cross-blend by weight. This commits BOTH axes to live velocity.",
+          "addresses_criteria": [
+            "loco-blend-tree-speed-and-direction",
+            "loco-directional-variant-set",
+            "loco-state-machine"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_animation",
+            "capture_angles"
+          ],
+          "pitfalls": "All blend tracks MUST share Movement priority or the highest fully wins and kills the blend. Don't hard-switch on a threshold (if Forward>0.5) — that pops; always crossfade weights. Normalize weights or fast diagonals double-up and over-drive the pose. Weight exactly 0 stops replication to other clients."
+        },
+        {
+          "id": "loco-good-3-stride-lock",
+          "order_index": 3,
+          "instruction": "Eliminate contact-phase foot skating with a velocity-coupled cadence lock whose correctness is measured, not asserted. In the locomotion controller, each frame set AnimationTrack:AdjustSpeed(liveSpeed / clipReferenceSpeed) where liveSpeed is read from the SAME live planar-velocity signal that drives your blend space (not WalkSpeed buckets, not a flat tuned multiplier), and clipReferenceSpeed is the authored ground-translation cadence of that specific clip. Calibrate clipReferenceSpeed EMPIRICALLY per clip: play the clip at AdjustSpeed(1), measure the planted foot's world displacement per cycle, and set the constant so the foot's stance-phase world position holds still at that reference speed — do not guess the constant from the authored WalkSpeed. Clamp the ratio to a sane band (e.g. [0.2, 3.0]) so a teleport/dash/large dt spike cannot blow the clip up, and ensure the clamp is hit-tested, not just present. Then PROVE the lock via capture: run at two distinct speeds and on a slope/varied terrain, and via run_luau sample the stance foot's world position across its contact frames at each speed; the planted foot's per-frame world displacement during stance must be near zero (report the residual slip in studs) — a visual \"looks synced\" is not sufficient. If residual slip remains at the ratio extremes, that is the signal to add the foot-IK world-plant pass (the other accepted anti-skate path) on top rather than over-driving AdjustSpeed.",
+          "addresses_criteria": [
+            "loco-stride-locked-to-speed"
+          ],
+          "tools": [
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "Mismatching the reference-speed constant to the clip's authored cadence leaves skating even with sync on. Don't crank a flat speed multiplier — it must be the proportional ratio. Clamp AdjustSpeed so a teleport/dash doesn't spike the clip absurdly. (A foot-IK world-plant in the next step is the other accepted anti-skate path.)"
+        },
+        {
+          "id": "loco-good-4-foot-ik",
+          "order_index": 4,
+          "instruction": "Build the KILLER SYSTEM foot IK (run_luau): per leg create an IKControl under the Humanoid (Type=Enum.IKControlType.Transform, ChainRoot=UpperLeg, EndEffector=Foot, Target=an Attachment, Weight=1, SmoothTime~0.2). Each frame while grounded, workspace:Raycast downward from the animated hip; set Target.WorldCFrame to the hit point rotated to the surface normal via CFrame.lookAt(hit.Position, hit.Position+hit.Normal) so feet tilt on slopes/steps; reject surfaces past ~45deg; disable on jump/fall. The IKControl composes over the clip in the Animator's IK pass. Verify on a slope + stairs with capture_angles.",
+          "addresses_criteria": [
+            "loco-foot-ik-terrain",
+            "loco-stride-locked-to-speed"
+          ],
+          "tools": [
+            "run_luau",
+            "ik_reach",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "Pole=LowerLeg makes the knee rotate weirdly — use a forward pole attachment or none. Raycast from ABOVE the foot so the ray doesn't start inside geometry. Leaving IK enabled airborne snaps feet to phantom ground. SmoothTime=0 looks robotic. IK alone plants height/angle; horizontal foot-lock through stance phase is what stops slide."
+        },
+        {
+          "id": "loco-good-5-additive-aim",
+          "order_index": 5,
+          "instruction": "Build the KILLER SYSTEM additive look-at (run_luau): either play an aim clip at Action priority over Movement-priority locomotion (so only upper-body limbs are overridden), OR procedurally POST-MULTIPLY an aim CFrame onto Waist.Transform and Neck.Transform each frame on RunService.PreSimulation (AFTER the Animator runs), using math.atan for pitch to the target — Waist.Transform = Waist.Transform * CFrame.Angles(-pitch, yaw, 0). Restrict to UpperTorso/Head/UpperArms so legs keep walking. Capture a walk-while-tracking shot to confirm the gait never stops.",
+          "addresses_criteria": [
+            "loco-additive-lookat-aim",
+            "loco-per-part-easing"
+          ],
+          "tools": [
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "Never Stop() the walk track to aim — that's the generic floor. Use Motor6D.Transform not C0 (the Animator writes Transform). Bind AFTER PreSimulation or the Animator stomps your offset. SET (= Transform * aim), don't overwrite, or you wipe the locomotion pose. Don't aim the lower torso/legs or the walk breaks."
+        },
+        {
+          "id": "loco-good-6-per-region-shaping",
+          "order_index": 6,
+          "instruction": "Differentiate limb motion per body-region so the gait reads weighted, not mechanical, via EITHER authored per-part easing OR a runtime overlay stack. Authored route: set keyframe easing to Cubic In/Out on arm/head swings (ease-out at end-of-swing) with near-linear legs/torso and moving-hold keys so no joint freezes (add_keyframe over the clips). Runtime route: layer >=2 region-targeted overlays over the clip (the additive upper-body aim from the prior step PLUS an accel/gait-phase torso/pelvis layer) so the upper body is driven independently of the legs.",
+          "addresses_criteria": [
+            "loco-per-part-easing"
+          ],
+          "tools": [
+            "add_keyframe",
+            "run_luau",
+            "capture_animation"
+          ],
+          "pitfalls": "Raw library clips with one baked Linear curve and no per-region treatment FAIL — all-Linear reads robotic/teleporting. Only ONE runtime overlay (no second region split) earns Partial. Keyframe the FULL limb chain (upper arm + forearm + hand) or an un-authored segment fights the pose."
+        },
+        {
+          "id": "loco-good-7-velocity-weighted-transitions",
+          "order_index": 7,
+          "instruction": "Make state continuity a continuous live-velocity re-weighting of YOUR blend space rather than the stock fixed-time fade between clip swaps. In the controller, transitions between idle/walk/run happen because the blend weights re-compute every frame from live velocity (adjacent states cross-blend by weight as velocity changes) — no discrete threshold swap. Add a speed-scaled stop/settle and a velocity-sign-flip reversal-through-intermediate for full marks. Verify a pop-free acceleration sweep with capture_animation.",
+          "addresses_criteria": [
+            "loco-fadetime-transitions",
+            "loco-blend-tree-speed-and-direction"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_animation"
+          ],
+          "pitfalls": "Relying on the engine's fixed-duration fade between WalkSpeed-keyed clip swaps FAILS — the continuity must come from continuous velocity re-weighting of an owned blend space. Discrete threshold switches with a fade only earn Partial. Hard-cutting (Play with 0 fade) snaps the pose."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Polish layers that read as top-studio craft: gait-phase pelvis sway + re-posed run, additive velocity lean, marker-synced contact FX, runtime momentum, terrain hip-height, a named personality posture, and rig-portable signal-driven computation.",
+      "steps": [
+        {
+          "id": "loco-exc-1-pelvis-sway",
+          "order_index": 1,
+          "instruction": "Build the KILLER SYSTEM pelvis bias/hip sway: re-author the run clip distinctly (wider split, deeper hip drop, a true airborne frame, arms in and slightly behind the legs) with add_keyframe — NOT a sped-up walk. Then in the controller (run_luau, post-Animator) drive a small sinusoidal X/Z offset on LowerTorso.Transform off the clip's normalized time (track.TimePosition / track.Length) for a figure-8 hip trace in phase with footfalls, plus an acceleration-reactive counter-rotation against the legs, applied onto the cached base Transform.",
+          "addresses_criteria": [
+            "loco-pelvis-hip-sway-gait-phase"
+          ],
+          "tools": [
+            "add_keyframe",
+            "run_luau",
+            "capture_animation"
+          ],
+          "pitfalls": "Rigid hips ('no pelvis sway') or a run that's just the walk played faster FAILS. Pelvis motion baked into one clip with no gait-phase/accel coupling only earns Partial. Multiply onto the CACHED base or the sway accumulates and drifts. Needs the R15 LowerTorso joint."
+        },
+        {
+          "id": "loco-exc-2-velocity-lean",
+          "order_index": 2,
+          "instruction": "Add the additive velocity/acceleration lean (run_luau, post-Animator): each frame compute velocity's deviation from facing via dot/cross of AssemblyLinearVelocity vs the look vector, map to a capped (~10deg, math.rad(value*10)) tilt on the root/hips, and Lerp toward it with a framerate-independent factor (1 - 0.001^dt, ~0.2 feel) — leaning forward on accel, into turns, back on hard stops. Optionally bank the camera from RightVector:Dot(MoveDirection). Verify with a turn/hard-stop capture.",
+          "addresses_criteria": [
+            "loco-velocity-lean-additive",
+            "loco-personality-cog"
+          ],
+          "tools": [
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "No lean reads weightless and FAILS. A lean baked into a clip (not velocity-driven) only earns Partial. A naive Lerp(target, dt) tilts slower at high framerate — use the exponential form. Big tilt (>~30deg) on the root looks drunk and fights foot IK — keep root lean subtle, push sway onto the Waist."
+        },
+        {
+          "id": "loco-exc-3-momentum",
+          "order_index": 3,
+          "instruction": "Track momentum as a live runtime signal and FEED it into the locomotion output (run_luau): each frame compute acceleration (delta of AssemblyLinearVelocity over dt) or a dt-ramped 0..1 speedRatio over accel/decel times, and drive at least one momentum-reflecting output with it — the accel lean/pelvis bias from the prior steps, the blend axis, and/or the MoveDirection velocity multiplier. For full marks share ONE ramped speedRatio across BOTH the blend axis AND the velocity multiplier through a named TweenService:GetValue easing with tuned friction, so starts/stops/turns read weighted instead of snapping.",
+          "addresses_criteria": [
+            "loco-accel-decel-momentum"
+          ],
+          "tools": [
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "An instant WalkSpeed snap / loop swap with no runtime momentum signal FAILS. Tracking acceleration but feeding only a tiny cosmetic lean (no shared blend/velocity ratio) earns Partial. A purely linear ratio with no shaped easing is weaker than a named easing curve."
+        },
+        {
+          "id": "loco-exc-4-hip-height-terrain",
+          "order_index": 4,
+          "instruction": "Extend the foot-IK pass to vertical terrain grounding (run_luau): the per-foot downward raycast already returns the true slope/step ground height — place each foot there (not the flat clip plane) so the character conforms vertically. For the CEILING, also offset the root/hip vertical position toward the lower foot from the height delta between the two foot-IK targets (clamped), so both feet plant with naturally bent knees on inclines and corner-steps. Verify on a slope + stairs with capture_angles.",
+          "addresses_criteria": [
+            "loco-hip-height-terrain",
+            "loco-foot-ik-terrain"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_angles"
+          ],
+          "pitfalls": "No runtime grounding pass (feet on the flat clip plane, floating/skating on slopes) FAILS. 'Feet snap down' with no IK/Transform mechanism, or flat-ground-only, earns Partial. Clamp the root/hip offset or it over-drops on steep corners."
+        },
+        {
+          "id": "loco-exc-5-marker-synced-fx",
+          "order_index": 5,
+          "instruction": "Anchor contact effects to YOUR velocity-coupled playback layer so they stay synced as playback scales with velocity (run_luau): add named Contact-frame keyframe markers to the walk/run clips and fire footstep SFX/dust from AnimationTrack:GetMarkerReachedSignal — because the clip plays through your owned, velocity-coupled blend layer (AdjustSpeed-scaled), the markers stay locked to real contacts rather than drifting like an external timer. Vary the SFX by surface material for full marks.",
+          "addresses_criteria": [
+            "loco-marker-synced-fx"
+          ],
+          "tools": [
+            "add_keyframe",
+            "run_luau"
+          ],
+          "pitfalls": "Timer-based events (not anchored to the timeline) drift under speed scaling and earn Partial. Markers only on walk and not run earn Partial. The stock WalkSpeed clip-swap exposes no synced channel at all and FAILS — this only works because locomotion runs on your owned velocity-coupled layer."
+        },
+        {
+          "id": "loco-exc-6-personality-posture",
+          "order_index": 6,
+          "instruction": "Give the character a non-default movement signature via an owned runtime posture/COG layer (run_luau) that biases torso-lean and pelvis carriage with movement across ALL speed states (reuse the lean + pelvis-sway layers, applied consistently). For full marks make it a DELIBERATE named personality — a chosen COG bias (forward+wide=aggressive, back=proud, wobble=drunk, rigid-centered=military) plus matching foot-width and stomp/tiptoe weight — and state a tone rationale tying it to the game's feel. Capture across idle/walk/run to confirm a consistent signature.",
+          "addresses_criteria": [
+            "loco-personality-cog"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_angles"
+          ],
+          "pitfalls": "The stock emotionally-neutral default pose with no owned posture layer FAILS. A posture layer inconsistent across speed states, or so slight it barely departs from neutral, earns Partial. An owned posture layer with no authored named-character rationale passes the gate but won't earn full marks."
+        },
+        {
+          "id": "loco-exc-7-rig-portability",
+          "order_index": 7,
+          "instruction": "Make locomotion a signal-computed driver that is rig-portable by construction (run_luau): confirm the controller computes pose/weights purely from live runtime signals (planar velocity / MoveDirection / joint transforms) — the velocity-keyed blend tree + runtime foot IK already do this — rather than being welded to one stock forward clip. For full marks add a HumanoidRigDescription joint mapping (>=15 joints + T-pose, custom rigs as Custom Humanoids) so one library drives differently-proportioned rigs, and branch the forward/strafe direction sign on R6 vs R15 root orientation so strafe never inverts. Verify on two rigs via spawn_rig + capture.",
+          "addresses_criteria": [
+            "loco-retarget-rig-portability"
+          ],
+          "tools": [
+            "run_luau",
+            "spawn_rig",
+            "capture"
+          ],
+          "pitfalls": "A stock Animate WalkSpeed clip-swap welded to one forward clip on the single default rig FAILS. One signal only, or motion still partly tied to a fixed clip, earns Partial. On R6 the HumanoidRootPart faces backward so forward velocity reads negative — branch the sign per rig version or strafe/forward invert."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "sources": [
+      "https://create.roblox.com/docs/education/build-it-play-it-island-of-move/looping-animations",
+      "https://create.roblox.com/docs/reference/engine/enums/AnimationPriority",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/animation/play-character-animations",
+      "https://github.com/EgoMoose/Custom-Character-Controller/blob/master/characterController/Animate.lua",
+      "https://devforum.roblox.com/t/how-do-i-make-my-custom-run-animation-sync-with-the-walkspeed/2818551",
+      "https://github.com/EgoMoose/Custom-Character-Controller/blob/master/characterController/Animate.lua",
+      "https://devforum.roblox.com/t/default-r15-player-animations-now-include-strafing-and-backpedaling-beta/1999236",
+      "https://github.com/EgoMoose/Custom-Character-Controller/blob/master/characterController/Animate.lua",
+      "https://devforum.roblox.com/t/directional-movement-system/2647030",
+      "https://devforum.roblox.com/t/procedural-foot-planting-with-ikcontrols/2190661",
+      "https://devforum.roblox.com/t/better-runtime-support-for-partial-body-and-additive-animation-layering/4663688",
+      "https://devforum.roblox.com/t/making-the-torso-lean-to-the-humanoids-move-direction/991536",
+      "https://devforum.roblox.com/t/walk-and-run-animation-feedback/3066069",
+      "https://devforum.roblox.com/t/walk-and-run-animation-feedback/3066069",
+      "https://devforum.roblox.com/t/walk-and-run-animation-feedback/3066069",
+      "https://devforum.roblox.com/t/how-to-make-animation-consistent-with-walkspeed/2713407",
+      "https://devforum.roblox.com/t/feedback-on-a-run-animation/4598246",
+      "https://devforum.roblox.com/t/feedback-on-walking-animation/1312736",
+      "https://devforum.roblox.com/t/r6-walk-animation-feedback/2047160",
+      "https://devforum.roblox.com/t/idle-to-walk-animation-not-transitioning-smoothly/1706668",
+      "https://devforum.roblox.com/t/solved-animation-issue-moving-weirdly-when-walking/2653489",
+      "https://devforum.roblox.com/t/how-to-reduce-sliding-when-moving/2563257",
+      "https://www.youtube.com/watch?v=sr34MYv35XU (script_ing); https://www.youtube.com/watch?v=CKlQJlNuXPI (Pandastroyer); https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix)",
+      "https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix); https://www.youtube.com/watch?v=CKlQJlNuXPI (Pandastroyer); https://www.youtube.com/watch?v=sr34MYv35XU (script_ing)",
+      "https://www.youtube.com/watch?v=CKlQJlNuXPI (Pandastroyer); https://www.youtube.com/watch?v=sr34MYv35XU (script_ing)",
+      "https://www.youtube.com/watch?v=CKlQJlNuXPI (Pandastroyer)",
+      "https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix); https://www.youtube.com/watch?v=CKlQJlNuXPI (Pandastroyer); https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)",
+      "https://www.youtube.com/watch?v=sr34MYv35XU (script_ing); https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix)",
+      "https://www.youtube.com/watch?v=sr34MYv35XU (script_ing); https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix)",
+      "https://www.youtube.com/watch?v=sr34MYv35XU (script_ing); https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix)",
+      "https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)",
+      "https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)",
+      "https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)",
+      "https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)",
+      "https://www.youtube.com/watch?v=Xi4dQ4FOm6E (Scriptix); https://www.youtube.com/watch?v=aP_VzBxrPOA (devdump)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 16,
+      "criteria_addressed": 16,
+      "uncovered": []
+    }
+  },
+  "date": "2026-06-27"
+}
