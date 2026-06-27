@@ -17,6 +17,7 @@ local Memory = require(script.Parent.Memory)
 local Learnings = require(script.Parent.Learnings)
 local SkillStore = require(script.Parent.SkillStore)
 local RubricStore = require(script.Parent.RubricStore)
+local BuildGuideStore = require(script.Parent.BuildGuideStore)
 local CameraRig = require(script.Parent.CameraRig)
 local Relay = require(script.Parent.Relay)
 local DevBridge = require(script.Parent.DevBridge)
@@ -59,6 +60,7 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 		learnings = Learnings.new(plugin),
 		skills = SkillStore.new(plugin),
 		rubrics = RubricStore.new(),
+		buildGuides = BuildGuideStore.new(),
 		cameraRig = CameraRig.new(config),
 	}
 

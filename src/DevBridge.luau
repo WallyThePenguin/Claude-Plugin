@@ -99,6 +99,7 @@ local function toolContext(deps: any): any
 		memory = deps.memory,
 		skills = deps.skills,
 		rubrics = deps.rubrics,
+		buildGuides = deps.buildGuides,
 		cameraRig = deps.cameraRig,
 		learnings = deps.learnings,
 	}
@@ -146,6 +147,7 @@ local function handleCommand(deps: any, cmd: any)
 			deps.memory,
 			deps.skills,
 			deps.rubrics,
+			deps.buildGuides,
 			deps.cameraRig,
 			deps.learnings,
 			tostring(cmd.prompt),

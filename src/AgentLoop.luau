@@ -36,6 +36,7 @@ local function runLoop(
 	memory: any,
 	skills: any,
 	rubrics: any,
+	buildGuides: any,
 	cameraRig: any,
 	learnings: any,
 	snapshot: number,
@@ -104,6 +105,7 @@ local function runLoop(
 		memory = memory,
 		skills = skills,
 		rubrics = rubrics,
+		buildGuides = buildGuides,
 		cameraRig = cameraRig,
 		learnings = learnings,
 	}
@@ -130,6 +132,12 @@ local function runLoop(
 	end
 	if rubrics ~= nil then
 		local cat = rubrics:catalogBlock()
+		if cat ~= "" then
+			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
+		end
+	end
+	if buildGuides ~= nil then
+		local cat = buildGuides:catalogBlock()
 		if cat ~= "" then
 			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
 		end
@@ -303,6 +311,7 @@ function AgentLoop.send(
 	memory: any,
 	skills: any,
 	rubrics: any,
+	buildGuides: any,
 	cameraRig: any,
 	learnings: any,
 	userText: string,
@@ -330,6 +339,7 @@ function AgentLoop.send(
 			memory,
 			skills,
 			rubrics,
+			buildGuides,
 			cameraRig,
 			learnings,
 			snapshot,

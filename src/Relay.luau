@@ -32,6 +32,7 @@ local LOCAL_TOOLS: { [string]: boolean } = {
 	save_skill = true,
 	delete_skill = true,
 	use_rubric = true,
+	use_build_guide = true,
 	evaluate = true,
 	learn = true,
 	unlearn = true,
