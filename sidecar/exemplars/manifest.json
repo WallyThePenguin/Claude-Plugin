@@ -10,6 +10,16 @@
       "caption": "Stylized RPG hub plaza: custom generated meshes (timber cottage, market cart, stone well, barrels, crates, lantern posts, pine trees) on a cobblestone plaza with a bonfire focal; warm/cool dawn lighting, Atmosphere + ColorCorrection + Bloom, eye-level 3/4 composition with foreground/midground/background depth.",
       "criterion_id": null,
       "tier": "good"
+    },
+    {
+      "id": "gui-shop-modal",
+      "category": "gui",
+      "file": "gui/gui-shop-modal.png",
+      "license": "own",
+      "source": "agent-built via the gui build guide (use_rubric + use_build_guide) + one refine round, captured 2026-06-27",
+      "caption": "Shop modal built by following the gui build guide: one governed responsive Scale layer (centered aspect-locked panel, role-set AnchorPoints); layout-driven composition (a vertical UIListLayout owns header/tabs/body/footer, a UIPageLayout drives WEAPONS/ARMOR/POTIONS category pages of UIListLayout item rows); a central role-palette token system (off-black 26,28,36 base + a single reserved gold accent for currency + CTA); engineered off-black/off-white contrast; type hierarchy (GothamBlack title > Bold names > Medium descriptions); tactile drop-shadowed price buttons + a primary 'OPEN FEATURED CHEST' CTA with a top highlight; a CanvasGroup-clipped reset bar; and a TweenService DescendantAdded feedback system. evaluate(gui) graded 29/35 pass, 0 fail, all 7 killer systems pass.",
+      "criterion_id": null,
+      "tier": "good"
     }
   ]
 }
