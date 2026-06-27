@@ -1,0 +1,431 @@
+{
+  "module": "environment",
+  "system_module": "environment",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "A great Roblox environment is built in five strict chapters — Greybox -> Develop assets -> Assemble a reusable library -> Construct the world (apply library + terrain + set dressing) -> Optimize + light — and you never polish before the layout plays. Critically: the agent has NO dedicated terrain/lighting/material tools. Authored content comes from create_instance + set_property (Parts, walls, Lighting/Atmosphere/post-effect instances, MaterialVariant/SurfaceAppearance, Terrain calls), generate_mesh (Cube, for MAN-MADE props), author_mesh (pine/rock organics), paint_texture (procedural tiling Texture on PARTS only), and save_mesh (persist). EVERYTHING terrain (Terrain:FillBlock/FillBall/ReplaceMaterial/PaintMaterials), every Lighting/Atmosphere/ColorCorrection/Bloom/SunRays tweak, and every MaterialVariant/SurfaceAppearance/Package is done through run_luau (edit-mode loadstring) or create_instance. You SEE your work and iterate with capture / capture_angles from the PLAYER'S eye level, and self-grade with evaluate (its EnvEvidence census specifically rewards non-Plastic Materials, SurfaceAppearance children, placed Lights, an Atmosphere under Lighting, and post-effect instances — so those are the concrete structural targets). The build order below front-loads the cheap-to-change gameplay flow, defers all visual polish, and ends with a measured optimization pass so a rich scene stays shippable.",
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "Prove the space PLAYS and reads at human scale before any art: a function-first greybox composed for the player's eye, plus the seed of a reuse system (a modular kit + at least one custom material).",
+      "steps": [
+        {
+          "id": "b1",
+          "order_index": 1,
+          "instruction": "Gather form + style reference and decide a committed theme/mood BEFORE building (e.g. 'evening medieval market'). Write the intended player route, the focal landmark, and the time-of-day in one sentence. This anchors every later decision (palette, lighting scenario, kit). No tool call — it is a design decision recorded in your plan — but it is what makes the build read as composed rather than improvised.",
+          "addresses_criteria": [
+            "env-reference-driven-plan-and-eyelevel",
+            "env-greybox-metric-gameplay-first"
+          ],
+          "tools": [],
+          "pitfalls": "Skipping the plan and improvising geometry is the #1 'AI did it' tell. The reference is not a 1:1 target — your result should drift from it; use it to confirm scale, silhouette, and mood, not to copy."
+        },
+        {
+          "id": "b2",
+          "order_index": 2,
+          "instruction": "Greybox the playable area FIRST with anchored block Parts on a 5-stud grid. Build in dependency order via create_instance: floor planes -> elevation changes (use WedgePart for sight-line breaks) -> perimeter walls with intended openings -> spawn zones -> combat/interaction pockets where lanes intersect. Set on every part: Anchored=true, a flat placeholder Color per zone (set_property), Size as 5-stud multiples. Keep every doorway/hallway >=10 studs wide and every wall >=10 studs tall (two characters pass; a default 5-stud jump can't clear a 10-stud wall). The ~5-stud-tall default character is your scale ruler.",
+          "addresses_criteria": [
+            "env-greybox-metric-gameplay-first",
+            "env-human-scale-proportion-standard"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Off-grid or sub-10-stud halls/doors break two-wide passage and let 5-stud jumps bypass short walls. Forgetting Anchored=true makes greybox fall/jitter under physics the moment you playtest."
+        },
+        {
+          "id": "b3",
+          "order_index": 3,
+          "instruction": "Validate flow at the PLAYER'S eye level, not the top-down editor camera. Use capture (and capture_angles with elevation='eye') to look down each lane: do routes read, are sight-lines broken where intended, do spawns avoid bottlenecks, does scale feel true against the character? Fix layout flaws NOW while geometry is disposable blocks. Re-capture after each change. Frame at least one deliberate sightline toward your intended focal landmark.",
+          "addresses_criteria": [
+            "env-reference-driven-plan-and-eyelevel",
+            "env-greybox-metric-gameplay-first"
+          ],
+          "tools": [
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "Judging only from the top-down editor view: a scene that looks fine from above can have broken scale and dead sightlines at character height. Saving all verification for the end means layout fixes land after art is committed and become expensive."
+        },
+        {
+          "id": "b4",
+          "order_index": 4,
+          "instruction": "Establish the seed of a REUSE system over the greybox: define a small modular kit (a wall unit, a corner, a floor tile, a trim/pillar) as named Models, all sized as multiples of one base module on the grid so they tile when rotated. Reuse those same pieces across the build rather than hand-authoring each spot. Then author at least one CUSTOM material so the kit isn't all default Plastic: either paint_texture (bricks/planks/tiles/checker/noise) onto kit Parts, or create a MaterialVariant via run_luau (MaterialService + a MaterialVariant with ColorMap/NormalMap/RoughnessMap/MetalnessMap) and assign it. EnvEvidence specifically counts non-Plastic Materials and SurfaceAppearance children, so this is the measurable baseline.",
+          "addresses_criteria": [
+            "env-asset-library-packages-reusable-look",
+            "env-modular-kit-grid-pivot-discipline"
+          ],
+          "tools": [
+            "create_instance",
+            "paint_texture",
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "One-off hand-authored parts at arbitrary coordinates with default Plastic everywhere fails the reuse-system bar. paint_texture is PARTS ONLY — it smears on a MeshPart's UVs; texture meshes come from generate_mesh instead. Pieces whose dimensions aren't divisible by the module leave gaps/overlaps when rotated 90 degrees."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "Turn the proven greybox into a composed, lit, dressed world: apply the modular kit, sculpt terrain that extends the world beyond bounds, commit a time-of-day lighting+atmosphere+post-processing treatment, vary set-dressing, break flat surfaces, and run a real optimization pass — the five killer systems (composition, lighting, modular kit, scale+performance, plus density).",
+      "steps": [
+        {
+          "id": "g1",
+          "order_index": 1,
+          "instruction": "Construct the world by applying the modular kit onto the greybox, zone by zone, via create_instance + set_property (Position/Orientation, Material/MaterialVariant, Anchored=true). Move ONE piece at a time (selecting many averages their pivots and breaks the snap offsets). Give each zone a DISTINCT MaterialVariant or hue for wayfinding (e.g. a unique wall variant per area), so players read where they are. Then delete the original greybox blocks as each zone is covered.",
+          "addresses_criteria": [
+            "env-modular-kit-grid-pivot-discipline",
+            "env-wayfinding-zone-color-material-coding"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "Generic single-material cladding everywhere kills wayfinding and storytelling. Moving multiple kit pieces together averages their pivots and destroys intentional alignment — move one, then offset in module-sized increments."
+        },
+        {
+          "id": "g2",
+          "order_index": 2,
+          "instruction": "Compose in three explicit depth planes. Group geometry under Foreground / Midground / Background Folders (create_instance Folder). FOREGROUND: framing parts near the spawn/approach that partially occlude the view (an archway, planters, an overhanging branch). MIDGROUND: the playable subject. BACKGROUND: oversized backdrop landforms placed far out and scaled up to read at the horizon. Create the focal point by deliberate CONTRAST — one tall mass in an otherwise low/open space (height), a wide plaza ringed by narrow structures (density), or one element angled off-grid (orientation). Use WedgePart elevation transitions and sightline blockers so the landmark is occluded on approach, then revealed at a framed moment. Verify each composition from the player camera with capture.",
+          "addresses_criteria": [
+            "env-composition-sightlines-landmark-flow",
+            "env-reference-driven-plan-and-eyelevel"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "capture"
+          ],
+          "pitfalls": "A flat, evenly-distributed field of props gives the eye nowhere to land. Leading lines alone do NOT work — a sightline only reads if the player has a REASON to look there (a goal/exit/reward), so the focal mass must feel relevant, not merely pointed-at. Blank walls and empty space are failures, not neutral; every sightline must terminate on something intentional."
+        },
+        {
+          "id": "g3",
+          "order_index": 3,
+          "instruction": "Sculpt terrain via run_luau so the playable area reads as an authored slice of a larger world, not a flat baseplate under a raw skybox. (1) MASS & CONTOUR: use workspace.Terrain:FillBlock/FillBall/FillRegion to raise PERIMETER landforms (hills/cliffs/slopes with varied, offset, non-parallel masses and a size gradient) that blend the build into its surroundings and imply continuation past the edge; vary elevation so the ground is not one uniform-noise blob. (2) NORMALIZE: run an explicit smoothing/normalization pass so transitions read organic — no lumpy/blocky voxels and no hard untreated seams where terrain meets structures (sink/grade the ground into building footings). (3) MULTI-MATERIAL BANDING: use ReplaceMaterial/PaintMaterials to layer at least two transition BANDS between adjacent materials (e.g. a dirt band between grass and rock, a sand band at a shoreline) so no two materials meet at a single hard edge. (4) CUSTOM MATERIAL OVERRIDE: override the default terrain materials with your own tileable MaterialVariants tuned to match the built materials, so the ground does not read as a separate generic 'Roblox' surface. (5) DELETE the Baseplate so terrain/sky are visible. (6) GROUND THE FOLIAGE: enable terrain grass decoration with the grass height pulled down (not a cornfield) and ground every foliage/set-dressing asset by sinking most of it into the sculpted surface so it sits planted in the terrain rather than floating on a flat plane — keep foliage in the decorated zones, clustered contextually, not sprayed evenly.",
+          "addresses_criteria": [
+            "env-terrain-contour-multimaterial-tooling",
+            "env-part-blockout-to-terrain-normalize",
+            "env-set-extension-world-beyond-bounds",
+            "env-grass-decoration-and-foliage-grounding"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "A flat baseplate ending at a hard edge under the default skybox is the textbook bare-edge failure. A single uniformly-noisy terrain blob with hard material edges fails too. Default terrain materials that clash with your built materials make the ground read as a separate generic 'Roblox' surface — override them."
+        },
+        {
+          "id": "g4",
+          "order_index": 4,
+          "instruction": "Build vertical terrain depth with author_mesh rock clusters plus sculpted cliffs: scale a few LARGE rocks (author_mesh kind='rock') over many tiny ones for a main cliff face, layer them in offset (non-parallel) courses with a size gradient, let some poke out past the rest for depth, and sculpt a grass lip along the top edge. Never place three identical rocks in a row — rotate a rock 90 degrees for 4 'free' variants and vary scale. Sink most of each rock/bush INTO the terrain so only part shows (props sitting on a flat plane read fake).",
+          "addresses_criteria": [
+            "env-cliff-rock-layering-depth",
+            "env-grass-decoration-and-foliage-grounding",
+            "env-varied-nonuniform-set-dressing-density"
+          ],
+          "tools": [
+            "author_mesh",
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "Three obviously-duplicated rocks in succession look abnormal — duplicate only when moving far away. Flat ground or a single flat cliff face fails the vertical-relief bar. Cube (generate_mesh) is wrong for rocks/trees — its organics come out creature-like; use author_mesh for naturals."
+        },
+        {
+          "id": "g5",
+          "order_index": 5,
+          "instruction": "Break every major flat surface so it catches light and casts shadow: inset windows/doors into wall planes, extrude trim/ledges so surfaces step in and out, extend roof lines past the walls, and bevel hard corners with WedgePart/CylinderPart. Apply a trim/tileable texture (paint_texture on Parts, or a MaterialVariant) so walls read articulated rather than as bare placeholder boxes — but model ACTUAL in/out relief, not just a painted-on look.",
+          "addresses_criteria": [
+            "env-surface-depth-relief-no-flat-walls",
+            "env-trim-sheets-seamless-tileables"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "paint_texture",
+            "run_luau"
+          ],
+          "pitfalls": "Texture/material alone with NO geometric relief still reads flat — you need protruding/receding trim geometry. A distinctive one-off motif tiled across many pieces makes repetition glaringly obvious; keep trim detail generic."
+        },
+        {
+          "id": "g6",
+          "order_index": 6,
+          "instruction": "Author lighting as a deliberate MOOD SYSTEM, tuned together (Lighting + Atmosphere + ambient + skybox), via run_luau / set_property / create_instance on game.Lighting. Do it in this order and make warm/cool SEPARATION the load-bearing goal:\n\n1) COMMIT a time-of-day scenario FIRST and MATCH the skybox to it. Set a modern Technology mode (Future or ShadowMap) and a committed ClockTime (e.g. evening ~17). Parent a Sky to Lighting whose UPPER hemisphere matches the chosen sky and whose LOWER hemisphere is pulled toward (and darker than) the ground hue — the skybox must read as the same time-of-day as the lighting, not a default skybox under tuned light.\n\n2) Establish WARM-HIGHLIGHT vs COOL-SHADOW separation (the painting fundamental, ported to engine props). Warm the key/highlight: ColorShift_Top toward yellow/orange. Cool the shadow FILL: set Ambient/OutdoorAmbient to a colored, NON-black fill that is genuinely COOLER and DARKER in value than the highlight tone (e.g. a moonlit/teal-blue fill, not a bright light-value purple) so lit faces read warm and shadowed faces read cool — there must be a visible temperature AND value gap between highlight and shadow, never pure black, never a flat near-white wash. Set EnvironmentDiffuseScale / EnvironmentSpecularScale to taste (≈1) to let surfaces pick up the colored environment.\n\n3) Add depth with a tuned Atmosphere — and respect the dependency: the Atmosphere does NOTHING without a Sky in Lighting, so step 1 must already be done. Parent an Atmosphere to Lighting (EnvEvidence checks for this) with Density tuned for the scene (~0.27–0.49 outdoors), low Haze to keep sky clarity, Offset so NEAR objects stay crisp while distant landforms fade, and Color/Decay pulled toward the AVERAGE/horizon color of the scene so the haze UNIFIES the palette and recedes distant geometry (the distant-blur test should read as one mood).\n\nFAIL if any of these hold: engine-default noon (white midday light), pure-black or near-black Ambient (shadows must carry a cool colored fill), no Sky / a default skybox unmatched to the scenario, no Atmosphere parented to Lighting, or a highlight/shadow pair with no temperature-and-value separation. The deliverables must be VERIFIABLE: a committed ClockTime + Technology mode, a warm ColorShift_Top, a cool non-black colored OutdoorAmbient that is darker than the highlight, a matched Sky (lower hemisphere coupled to ground hue), and an Atmosphere under Lighting with named Density/Haze/Offset/Color.",
+          "addresses_criteria": [
+            "env-lighting-atmosphere-mood-system",
+            "env-sun-as-composition-and-shadow-craft",
+            "env-unified-atmospheric-palette-blur-test"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property",
+            "create_instance"
+          ],
+          "pitfalls": "Engine-default noon (white midday light, black shadows, no scenario) is the #1 untouched-build signature. Pure-black Ambient kills mood — shadows must carry a cool/colored fill. Atmosphere does NOTHING unless there is a Sky in Lighting AND the Atmosphere is parented to Lighting. A greyish-white untuned haze adds nothing — pull its Color toward the scene's key hues."
+        },
+        {
+          "id": "g7",
+          "order_index": 7,
+          "instruction": "Add a restrained, ORDERED post-processing grade as children of Lighting via create_instance: ColorCorrectionEffect FIRST (modest Contrast ~+0.1-0.2, genre-tuned Saturation, warm/cool TintColor) to set base mood; then BloomEffect with a RAISED Threshold so only true highlights glow; then DepthOfFieldEffect only for intentional focus with NearIntensity=0 so the player's own surroundings don't blur; then SunRaysEffect subtle (~0.15-0.25). Toggle each Enabled on/off to A/B compare. EnvEvidence counts these post-effect instances, so a committed grade is a measured target.",
+          "addresses_criteria": [
+            "env-post-processing-ordered-stack-restraint",
+            "env-unified-atmospheric-palette-blur-test"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "capture"
+          ],
+          "pitfalls": "Post left OFF reads ungraded and flat; everything maxed produces blown-out bloom, a washed-out grade, or a full-world blur. Never apply a full-world BlurEffect (only behind a GUI). DepthOfField with non-zero NearIntensity blurs the player's surroundings — order and restraint are the skill, not the effect count."
+        },
+        {
+          "id": "g8",
+          "order_index": 8,
+          "instruction": "Set-dress ONLY after structure, materials, and terrain already read correctly — dressing cannot rescue a broken blockout. Use generate_mesh (Cube) for man-made props (crates, carts, barrels, lamps, signs, furniture) and author_mesh for organics (pine, rock). Build ONE good instance of each prop, then duplicate-and-vary (generate_mesh is rate-limited ~5/min — never regenerate per instance; on a rate error wait and retry). For EVERY repeated element, drive variation from run_luau + Random.new across THREE independent axes at once — Orientation (>=90deg spread, and exploit an asset's faces so a rotated rock reads as a new variation), Size (per-instance scale factor), and per-instance color/tint — so no two adjacent instances and never three-in-a-row are identical; a single duplicated prop merely jittered is NOT enough. Place by CONTEXTUAL CLUSTERS tied to a named focal point (axes/wares at a market stall, rock clusters in offset groups, foliage in copses), never uniform spacing, and leave deliberate NEGATIVE SPACE around each focal point; concentrate detail at corners, intersections, and T-junctions, curated not sprayed. Then go past mere variation to BELIEVABILITY: author at least 2-3 wear/history beats tied to the theme (a repaired or worn surface, a broken or abandoned object, street furniture, a secondary point of interest along a path) so the space implies use and history rather than reading as brand-new arbitrary clutter. Finish with capture_angles and confirm from the captures that (a) no grid-uniform/identical repetition is visible, (b) the focal point still has breathing room, and (c) the wear/history detail is legible — not just asserted.",
+          "addresses_criteria": [
+            "env-varied-nonuniform-set-dressing-density",
+            "env-environmental-storytelling-wear-history"
+          ],
+          "tools": [
+            "generate_mesh",
+            "author_mesh",
+            "run_luau",
+            "set_property",
+            "capture_angles"
+          ],
+          "pitfalls": "Uniform spacing + identical rotation + single scale is the #1 procedural tell; spraying props everywhere with no negative space buries the focal point. generate_mesh is rate-limited ~5/min (beta) — on a rate error, wait and retry; build one prop, then duplicate-and-vary rather than regenerating each."
+        },
+        {
+          "id": "g9",
+          "order_index": 9,
+          "instruction": "Place local lights for dimension (not just global illumination): add PointLight/SpotLight/SurfaceLight via create_instance at lamps, windows, fires, and shadowed interiors, tuned to the mood (e.g. a warm campfire PointLight ~255,179,73, Range ~48). EnvEvidence counts placed Lights. Keep light Shadows on where they read; this is what separates planes and gives the build form against flat global-only illumination.",
+          "addresses_criteria": [
+            "env-foliage-fill-light-recoloring-shadows",
+            "env-sun-as-composition-and-shadow-craft"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "capture"
+          ],
+          "pitfalls": "A flat, low-contrast scene where every surface reads at the same brightness has no depth. Neon parts that 'glow' cost more than a PointLight and bloom unpredictably — prefer a PointLight for local warmth."
+        },
+        {
+          "id": "g10",
+          "order_index": 10,
+          "instruction": "Run a measured OPTIMIZATION pass so the rich scene ships. Per asset (set_property / run_luau): CanCollide/CanTouch/CanQuery=false on non-interactive dressing (keep walls queryable), CastShadow=false on small/distant/occluded props, CollisionFidelity=Box/Hull on simple shapes, RenderFidelity=Performance/Automatic on distant high-vertex foliage. Make duplicates SHARE one mesh asset ID and identical SurfaceAppearance so they batch into one draw call (duplicate-in-place, never bulk-import unique IDs). Persist finished custom meshes with save_mesh so they survive Play. Use run_luau to read part counts / sweep for occluded geometry; budget shadow-casting lights.",
+          "addresses_criteria": [
+            "env-performance-optimization-pass",
+            "env-human-scale-proportion-standard"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau",
+            "save_mesh"
+          ],
+          "pitfalls": "Emitting dense instances on defaults (collide-on, query-on, shadow-on, Precise collision) tanks mobile framerate. Even one differing SurfaceAppearance property between two copies breaks the single-draw-call batch. Merge meshes only when the design is locked — merged assets can't be individually moved/recolored. save_mesh needs the 'CreateAssetAsync Lua API' beta flag and is rate-limited ~30/min — run it on a finished build, not every iteration."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Push hero surfaces and atmosphere to a crafted, art-directed ceiling: full PBR SurfaceAppearance on hero meshes, a tuned depth-falloff system, theme-tied wear/story detail, custom terrain PBR, and layered atmospheric life — the difference between 'good Roblox' and a designed world.",
+      "steps": [
+        {
+          "id": "e1",
+          "order_index": 1,
+          "instruction": "Give HERO meshes full PBR craft via a SurfaceAppearance, replacing the Studio-default plastic read. Via run_luau add a SurfaceAppearance child to each hero MeshPart with a correct, complete map set: ColorMap (albedo, no baked lighting), an OpenGL-format NormalMap (flat = 127,127,255 — NOT DirectX, which inverts the relief), a grayscale RoughnessMap, and a BINARY MetalnessMap (fully metal or fully non-metal, never a muddy half value). Keep every map <=1024x1024 and author them so seams tile. Reuse ONE shared SurfaceAppearance/Package across the whole kit rather than proliferating unique texture IDs (this also batches draw calls). Pair the PBR maps with the actual trim/tileable relief geometry from g5 so the normal detail reads against real silhouette. Persist the finished hero meshes with save_mesh so the surface survives Play.",
+          "addresses_criteria": [
+            "env-pbr-surfaceappearance-material-craft",
+            "env-trim-sheets-seamless-tileables"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property",
+            "save_mesh"
+          ],
+          "pitfalls": "A DirectX-format normal map inverts the relief (bumps point the wrong way). Non-binary metalness produces a muddy half-metal look. Note SurfaceAppearance.ColorMap is not writable at PluginSecurity via a bare set — author the maps as a SurfaceAppearance with Content set through the supported path (run_luau / import), and reuse one shared package rather than proliferating unique texture IDs."
+        },
+        {
+          "id": "e2",
+          "order_index": 2,
+          "instruction": "Author a complete, scene-tuned atmospheric-depth-AND-life pass, not just a haze. (1) Depth falloff: on the Atmosphere (under Lighting) pull Density and Color toward the scene's key hues so it actively grades distance, set Offset to keep NEAR focal geometry crisp while distant terrain fades, keep Haze low (high Haze blows out metal via fresnel), and state explicitly why you chose Atmosphere over legacy FogStart/FogEnd (soft volumetric blend vs hard cutoff) for this scene. (2) Read-against: couple the falloff to the oversized backdrop geometry from g2 so the gradient has layered silhouettes to overlay — verify in capture that near/mid/far separate. (3) Volumetric LIFE (required, not optional): add at least one ambient-motion cue (a low-rate ParticleEmitter of drifting dust/leaves/insects sized to the scene) AND a faux-volumetric light cue (a sun-aligned semi-transparent fog-mesh god-ray or light-shaft with CastShadow off), and state the performance gate — e.g. only spawn the volumetrics/particles on a high-graphics or showcase tier so the mean hardware path stays cheap. The step must produce both the tuned depth falloff and the motion/volumetric life, captured, so it earns env-fog-vs-atmosphere-intentional-depth-tool AND env-organic-motion-volumetric-life rather than only the former.",
+          "addresses_criteria": [
+            "env-fog-vs-atmosphere-intentional-depth-tool",
+            "env-organic-motion-volumetric-life"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "A greyish-white untuned default haze adds nothing. Too much Density flattens contrast and hides the focal landmark; too much Haze blows out metal. No backdrop geometry means the falloff has nothing to read against."
+        },
+        {
+          "id": "e3",
+          "order_index": 3,
+          "instruction": "Dress the space with deliberate, theme-tied WEAR and HISTORY so it has a sense of place: story-consistent detail that implies use over time (worn footpaths, tools scattered at a workstation, scorch and slag near a forge, crates and rope by a dock, a repaired or broken object) rather than bare space or arbitrary brand-new clutter with no theme link. Distribute the dressing at MULTIPLE scales — large hero props down to small ground stones and debris — and push it INTO the open areas and around focal points, not only hugging walls and edges; concentrate detail at corners/intersections while deliberately preserving negative space so the result reads curated, not sprayed. Build the props from generate_mesh/author_mesh plus small create_instance Parts, varied and clustered per g8's rules (varied rotation/scale/per-instance tint, contextual clusters, no three identical in a row). Crucially, the foliage and hero props must read as AUTHORED assets, not stock toolbox meshes with default plastic: apply crafted PBR materials via paint_texture/SurfaceAppearance (no default-Plastic look) and, where it counts, a real foliage technique (e.g. normal-transfer leaf cards with a white roughness map, hand-painted cavity-edge highlights, PixelFix-treated alpha cutouts) so the dressing earns both the storytelling AND the stylized-foliage-material bar.",
+          "addresses_criteria": [
+            "env-environmental-storytelling-wear-history",
+            "env-stylized-foliage-normal-roughness-pipeline"
+          ],
+          "tools": [
+            "generate_mesh",
+            "author_mesh",
+            "create_instance",
+            "set_property",
+            "paint_texture"
+          ],
+          "pitfalls": "Arbitrary brand-new clutter with no theme connection reads as filler, not story. Vacant blank space is the single most-cited reason a scene 'feels off' — but spraying clutter without negative space is just as bad."
+        },
+        {
+          "id": "e4",
+          "order_index": 4,
+          "instruction": "Override terrain and key ground surfaces with CUSTOM PBR materials (not the stock palette): via run_luau create a MaterialVariant in MaterialService with crafted ColorMap/NormalMap/RoughnessMap/MetalnessMap (OpenGL normals), set its BaseMaterial, and assign it in MaterialService as the override for that terrain material so the override actually applies. Tune any water surface to the scene (lower Reflectance toward 0 so it reads via wave motion, not skybox mirroring) rather than leaving raw realistic defaults.",
+          "addresses_criteria": [
+            "env-custom-terrain-material-override",
+            "env-stylized-water-treatment-and-quirks"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "Importing a MaterialVariant changes NOTHING until you assign it as the override in MaterialService — easy to miss. Works for any terrain material except Water and Air. Reflective water that mirrors the sky fights a stylized look — kill its Reflectance."
+        },
+        {
+          "id": "e5",
+          "order_index": 5,
+          "instruction": "Add layered atmospheric LIFE so the scene isn't a static default: drifting Clouds (under workspace.Terrain via create_instance — Clouds live under Terrain, NOT Lighting), plus ParticleEmitter/Beam accents (dust motes, embers, light shafts, falling petals) placed among the dressing and light sources. Combined with the tuned Atmosphere (e2) and local fill lights (g9), this gives the depth-and-motion cue that reads as authored life. Final-verify the whole scene from the player camera with capture / capture_angles, and grade against the rubric with evaluate.",
+          "addresses_criteria": [
+            "env-organic-motion-volumetric-life",
+            "env-foliage-fill-light-recoloring-shadows"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "Clouds are under Terrain, not Lighting — easy to hunt for in the wrong place. Over-emitting particles tanks mobile perf and clutters the frame; keep ambient motion subtle. A scene with no ambient motion feels dead even when geometry is fine."
+        }
+      ]
+    }
+  ],
+  "killer_systems": [
+    {
+      "name": "Composition / sightlines / landmark-guided flow",
+      "what": "The player is ALWAYS looking at something intentional: a clear focal landmark anchored by deliberate foreground/midground/background layering, with verticality and sightline-blocking used as directorial tools.",
+      "how": "Group geometry under Foreground/Midground/Background Folders (create_instance). Place framing parts close to the approach (archway, planters, overhang) that partially occlude; put the playable subject in the midground; scale up oversized backdrop landforms far out for the horizon. Manufacture the focal point by CONTRAST (one tall mass among low ones / a wide plaza among narrow / one off-grid element). Use WedgePart elevation and blockers to occlude the landmark on approach then reveal it at a framed moment. Verify every composition from the player camera with capture — never the top-down editor view. The focal mass must be RELEVANT (a goal/exit/reward), not merely pointed-at."
+    },
+    {
+      "name": "Lighting / atmosphere / mood",
+      "what": "Lighting is an authored mood system tuned together (Lighting + Atmosphere + ambient + color + a committed time-of-day), not engine-default noon.",
+      "how": "Choose the time-of-day FIRST. Via run_luau/set_property on game.Lighting: set ClockTime, a modern Technology mode, EnvironmentDiffuse/SpecularScale, warm ColorShift_Top, and a NON-BLACK colored Ambient/OutdoorAmbient fill. create_instance a Sky (required) under Lighting and an Atmosphere parented to Lighting with Density tuned and Color pulled to the scene's average. Add local PointLight/SpotLight at lamps/windows/fires. EnvEvidence specifically checks for an Atmosphere under Lighting and counts placed Lights — so this system is directly measured."
+    },
+    {
+      "name": "Modular kit reuse",
+      "what": "The world is assembled from a reused modular kit (with rotation/scale variation) rather than one-off hand-placed parts at arbitrary coordinates.",
+      "how": "Define a small kit (wall, corner, floor tile, trim) as named Models sized as multiples of one base module on the grid so pieces tile when rotated. Build via create_instance + set_property, moving ONE piece at a time (multi-select averages pivots and breaks alignment), offsetting in module-sized increments. Skin pieces with shared MaterialVariants/SurfaceAppearance for cohesion and draw-call batching, and give each zone a distinct variant for wayfinding."
+    },
+    {
+      "name": "Scale readability + performance optimization",
+      "what": "Navigation reads true at character height via a consistent human-scaled standard, AND the richness is made shippable through a distinct, measured optimization pass.",
+      "how": "Build on a 5-stud grid with >=10-stud doors/walls measured against the ~5-stud character; verify at eye level with capture. Then a perf pass via set_property/run_luau: CanCollide/CanTouch/CanQuery=false on dressing, CastShadow=false on small/distant props, CollisionFidelity=Box/Hull on simple shapes, RenderFidelity=Performance on distant foliage; share one mesh ID + identical SurfaceAppearance so duplicates batch to one draw call (duplicate-in-place, never bulk-import); save_mesh to persist; budget shadow-casting lights."
+    },
+    {
+      "name": "Material / texture / PBR surface craft",
+      "what": "Hero surfaces use full PBR SurfaceAppearance/MaterialVariant with a correct map set and correct authoring rules, replacing Studio defaults that read as plastic.",
+      "how": "Via run_luau add a SurfaceAppearance to hero MeshParts with ColorMap + OpenGL NormalMap (flat=127,127,255) + grayscale RoughnessMap + BINARY MetalnessMap, all <=1024x1024, and reuse ONE shared package across the kit. For Parts and terrain, paint_texture (procedural tiling, Parts only) or a MaterialVariant in MaterialService (assigned as the override, or it does nothing). EnvEvidence counts non-Plastic Materials and SurfaceAppearance children, so crafted surfaces are a measured target."
+    }
+  ],
+  "common_pitfalls": [
+    "Jumping to detailed assets/lighting before the greybox plays well — the layout inevitably changes and you redo polished work. Prove flow in cheap anchored blocks first; light LAST.",
+    "Composing from the top-down editor camera. A scene that looks fine from above has broken scale and dead sightlines at the player's ~5-stud eye height — always verify with capture from eye level.",
+    "Shipping on engine-default lighting (noon, white light, black shadows, no Atmosphere) — the #1 'untouched / AI-generated' tell. Commit a time-of-day scenario, fill shadows with non-black color, and remember Atmosphere does nothing without a Sky parented under Lighting.",
+    "Default-Plastic materials everywhere. EnvEvidence literally counts Plastic/SmoothPlastic as 'default' and rewards non-Plastic Materials + SurfaceAppearance children — so a wash of default parts fails the material bar by construction.",
+    "Uniform set dressing: identical rotation, single scale, even spacing. That is the #1 procedural signature. Vary orientation/scale/tint per instance and cluster contextually with deliberate negative space around focal points.",
+    "paint_texture on a MeshPart — it smears on arbitrary mesh UVs and is rejected; paint_texture is Parts-only, and meshes get their look from generate_mesh (Cube) or a persisted Cube texture.",
+    "Using generate_mesh (Cube) for trees/rocks/foliage — its organic single-meshes come out creature-like. Use author_mesh (pine/rock) for naturals; reserve Cube for man-made props (and respect its ~5/min beta rate limit).",
+    "Forgetting to persist: in-session generate_mesh/author_mesh/paint_texture geometry is edit-only and goes blank in a playtest until save_mesh is run (needs the 'CreateAssetAsync Lua API' beta flag).",
+    "Texture without geometric relief: a painted-on trim look on a still-flat wall reads flat. Model actual inset/extruded/beveled relief so surfaces catch light and cast shadow.",
+    "Flat baseplate edges under a raw skybox. Sculpt perimeter terrain (run_luau Terrain calls), delete the Baseplate, and override terrain materials to match the build so the world reads as continuing beyond bounds.",
+    "MaterialVariant authored but never assigned as the MaterialService override — it changes nothing until assigned. Same trap for a SurfaceAppearance with a DirectX (not OpenGL) normal map, which inverts the relief.",
+    "No optimization pass on a dense scene: defaults (collide-on, query-on, shadow-on, Precise collision, unique mesh IDs) tank mobile framerate. Cull flags, share IDs/SurfaceAppearance for draw-call batching, budget shadow lights, and merge only when the design is locked.",
+    "Leaving greybox and occluded geometry in the final place — it costs memory/draw calls for surfaces nobody sees and can poke through finished art. Delete greybox + hidden geometry before the final lighting pass."
+  ],
+  "provenance": {
+    "sources": [
+      "https://create.roblox.com/docs/tutorials/curriculums/environmental-art",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/greybox-your-environment.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/greybox-your-environment.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/develop-polished-assets.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/assemble-an-asset-library.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/assemble-an-asset-library.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/core/building/create-an-environment-with-terrain.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/construct-your-world.md",
+      "https://create.roblox.com/docs/environment",
+      "https://create.roblox.com/docs/environment/post-processing-effects",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/assemble-an-asset-library.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/environmental-art/optimize-your-experience.md",
+      "https://devforum.roblox.com/t/how-do-you-create-your-maps-from-start-to-finish-in-the-most-organised-way-possible/1312128",
+      "https://book.leveldesignbook.com/process/blockout/massing/composition",
+      "https://devforum.roblox.com/t/map-design-guidelines-make-your-maps-superior/1293781",
+      "https://create.roblox.com/docs/art/modeling/surface-appearance",
+      "https://devforum.roblox.com/t/recolorable-pbr-textures-surfaceappearance/1133067",
+      "https://create.roblox.com/docs/tutorials/curriculums/environmental-art/develop-polished-assets",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/modeling/assemble-modular-environments",
+      "https://devforum.roblox.com/t/how-to-generate-a-random-rotation-and-much-more/1549051",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/lighting/enhance-outdoor-environments",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/lighting/enhance-outdoor-environments",
+      "https://create.roblox.com/docs/reference/engine/classes/ColorCorrectionEffect",
+      "https://create.roblox.com/docs/performance-optimization/improve",
+      "https://create.roblox.com/docs/performance-optimization/microprofiler/index",
+      "https://create.roblox.com/docs/tutorials/curriculums/environmental-art/develop-polished-assets",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431",
+      "https://devforum.roblox.com/t/feedback-on-environment-something-doesnt-feel-right/3027158",
+      "https://devforum.roblox.com/t/cartoon-lighting-critiquereview/253439",
+      "https://devforum.roblox.com/t/cartoon-lighting-critiquereview/253439",
+      "https://devforum.roblox.com/t/cartoon-lighting-critiquereview/253439",
+      "https://devforum.roblox.com/t/my-build-looks-very-boring/1338211",
+      "https://devforum.roblox.com/t/my-build-looks-very-boring/1338211",
+      "https://devforum.roblox.com/t/feedback-on-my-games-environment/2945642",
+      "https://devforum.roblox.com/t/stylized-environment-help-and-feedback/2449090",
+      "https://devforum.roblox.com/t/my-game-looks-soooo-boring/2016096",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=99C5K1cdql8 (Complete Guide to Lighting)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=CippiATeZ54 (EASIEST Guide to Terrain); https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build)",
+      "https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build); https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced)",
+      "https://www.youtube.com/watch?v=CippiATeZ54 (EASIEST Guide to Terrain); https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=CippiATeZ54 (EASIEST Guide to Terrain)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art)",
+      "https://www.youtube.com/watch?v=gpsErt8wFqE (Terrain Textures); https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=7GVA771n7ds (Medieval Tower)",
+      "https://www.youtube.com/watch?v=CippiATeZ54 (EASIEST Guide to Terrain)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build)",
+      "https://www.youtube.com/watch?v=EAtKeffHRRI (Basics); https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced)",
+      "https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced); https://www.youtube.com/watch?v=EAtKeffHRRI (Basics)",
+      "https://www.youtube.com/watch?v=7GVA771n7ds (Medieval Tower)",
+      "https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced); https://www.youtube.com/watch?v=7GVA771n7ds (Medieval Tower)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build)",
+      "https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build); https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=N_UMED30lNc (Stylized Build)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=99C5K1cdql8 (Complete Guide to Lighting)",
+      "https://www.youtube.com/watch?v=99C5K1cdql8 (Complete Guide to Lighting); https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art)",
+      "https://www.youtube.com/watch?v=99C5K1cdql8 (Complete Guide to Lighting)",
+      "https://www.youtube.com/watch?v=-DoOf32pkPo (Environmental Art); https://www.youtube.com/watch?v=B9nvNMNUiBE (Advanced); https://www.youtube.com/watch?v=EAtKeffHRRI (Basics)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 28,
+      "criteria_addressed": 28,
+      "uncovered": []
+    }
+  },
+  "date": "2026-06-27"
+}
