@@ -1,0 +1,474 @@
+{
+  "module": "vfx",
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "vfx-layered-multi-emitter-composition",
+      "order_index": 1,
+      "tier": "baseline",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — LAYERED COMPOSITION. The effect is authored as a coordinated SET of role-separated emitters (a bright core flash + a glow/haze + fast sparks/debris + slow rising smoke + a synced light), each emitter owning ONE visual job, rather than a single ParticleEmitter trying to be blast, smoke and debris at once. The discriminator is whether the build commits to a multi-emitter stack with explicit per-emitter role separation: passing requires the build to state at least 3 cooperating emitters/elements with distinct, named roles (e.g. core + glow + sparks + smoke, or fireball-flipbook + smoke + radial-sparks + shockwave + light-flash) where each layer carries its own motion/color/size/lifetime profile, AND that they are authored as one composited effect. A build described as a single emitter (or one emitter with the default texture doing everything) FAILS — it can only express one motion/color/size profile. A build that commits to >=3 role-separated cooperating emitters PASSES at the architecture level; canonical recipes (fire = core flame + outer haze + rising smoke + sparse sparks; explosion = fireball + smoke + sparks + shockwave + flash) and a per-layer property dump push toward full marks. A two-element build (e.g. core + smoke only) earns partial.",
+      "above_generic_rationale": "A single default ParticleEmitter is the #1 tell of generic/AI VFX — it can only express ONE motion, color, size and timing profile, so a 'combusting ball of fire' that is simultaneously blast, smoke and debris reads flat. Real phenomena are several simultaneous layers at different speeds/timings; splitting jobs across role-separated emitters is the single biggest visual differentiator cited across every pro source (the move that lifts an effect off the default), and it is also the seam every other VFX technique (lifetime curves, additive glow, ZOffset depth, synced light) composes onto. Grading the >=3-role-separated-stack commitment — not demanding a runtime dump a design-stage build can't show — keeps this discriminating: a multi-emitter composite clears it, a one-emitter build cannot.",
+      "evidence_required": "A statement/dump showing >=3 cooperating emitters/elements with distinct named roles (e.g. core flash + glow + sparks + smoke + light), each with its own motion/color/size/lifetime profile, authored as one composited effect. A per-layer property dump or a recipe naming each layer's job is credited toward full marks. A single emitter (or one emitter with the default square texture doing blast+smoke+debris) does NOT satisfy this; a two-element build earns partial.",
+      "concrete_fix": "Split the effect into role-separated emitters that each do ONE job — a bright additive core flash, an outer glow/haze, fast short-lived sparks/debris, slow rising smoke, and a synced light — and author them as one coordinated set instead of overloading a single ParticleEmitter.",
+      "grading": {
+        "pass": "The build commits to >=3 cooperating emitters/elements with distinct, named roles (e.g. core + glow + sparks + smoke, or fireball + smoke + radial-sparks + shockwave + flash), each carrying its own motion/color/size/lifetime profile, authored as one composited effect. A canonical recipe (fire = core flame + outer haze + rising smoke + sparse sparks; explosion = fireball + smoke + sparks + shockwave + flash) plus a per-layer property dump earns full marks.",
+        "partial": "A two-element build (e.g. core + smoke only, or glow + sparks) — more than a single emitter but fewer than 3 role-separated layers, or 3+ layers named but with no per-layer distinction in motion/color/size/lifetime.",
+        "fail": "A single emitter (or one emitter with the default square texture) trying to be blast, smoke and debris at once — it can only express one motion/color/size/lifetime profile."
+      },
+      "exemplar_refs": [
+        "fire = core flame + outer haze + rising smoke + sparse sparks",
+        "explosion = fireball-flipbook + smoke + radial-sparks + shockwave + light-flash"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-to-make-emitter-effects-look-good/4138403",
+          "https://devforum.roblox.com/t/feedback-on-explosion/1746363",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://create.roblox.com/docs/en-us/education/build-it-play-it-mansion-of-wonder/using-particles-for-actions",
+          "https://www.youtube.com/watch?v=xzZeP65SSlA",
+          "https://www.youtube.com/watch?v=exWx1kYy0P0"
+        ]
+      }
+    },
+    {
+      "id": "vfx-lifetime-curves-size-transparency-color",
+      "order_index": 2,
+      "tier": "baseline",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — LIFETIME CURVES. Size, Transparency and Color are driven by authored NumberSequence/ColorSequence curves OVER each particle's life with eased in/out keypoints, never left at constant values. The discriminator is whether the build commits to shaped per-life envelopes on more than one of these properties: passing requires the build to state (1) a Transparency curve that fades particles IN and OUT (e.g. a bell/V shape — ~1 at birth and death, opaque in the middle) so particles emerge and dissipate rather than hard-popping, AND (2) a Size envelope that grows-then-shrinks (or otherwise eases) over life, AND ideally (3) Color graded along a ramp over life. A build that leaves Size/Transparency/Color flat (constant values, hard particle pop at birth/death) FAILS. A build that commits to a fade-in/out Transparency curve AND an eased Size envelope over life PASSES; per-particle Envelope randomness on the keypoints, and a Color-over-life ramp, push toward full marks. A build with only ONE shaped property (e.g. a transparency fade but constant size) earns partial.",
+      "above_generic_rationale": "Constant Size/Transparency/Color is the most-quoted single tell of amateur VFX — it produces the mechanical, hard-popping default look where particles appear and vanish abruptly. Shaping these as curves (the V/bell transparency fade is the specific reviewer fix for de-jittering a magic circle; grow-then-shrink size; a heat-ramp color) is repeatedly called the ~80% of tuning effort that decides amateur vs professional. Grading shaped envelopes on >=2 properties — rather than demanding a curve dump a design-stage build can't always show — keeps this discriminating: an authored fade-in/out + size-easing build clears it, a flat-constant build cannot.",
+      "evidence_required": "A statement/dump showing authored NumberSequence/ColorSequence curves: a Transparency curve that fades IN and OUT over life (bell/V, opaque mid) AND a Size envelope that eases (grow-then-shrink) over life. A Color-over-life ramp and per-keypoint Envelope randomness are credited toward full marks. Constant/flat Size/Transparency/Color (hard pop at birth/death) does NOT satisfy this; a single shaped property earns partial.",
+      "concrete_fix": "Replace constant values with authored sequences: a Transparency curve that is ~1 at birth and death and opaque in the middle (fade in AND out), a Size that grows then shrinks over life, and a Color graded along a ramp — add per-keypoint Envelope for per-particle variation.",
+      "grading": {
+        "pass": "The build commits to a fade-in/out Transparency curve (bell/V, ~1 at birth and death, opaque mid) AND an eased Size envelope (grow-then-shrink) over particle life. A Color-over-life ramp plus per-keypoint Envelope randomness earns full marks.",
+        "partial": "Only ONE shaped property over life (e.g. a transparency fade but constant size, or a size envelope but a hard transparency pop) — some easing present but not on >=2 properties.",
+        "fail": "Size/Transparency/Color left flat at constant values, producing hard particle pop at birth/death with no shaped per-life envelope."
+      },
+      "exemplar_refs": [
+        "Transparency NumberSequence shaped as a V/bell to de-jitter a magic circle (~1 at birth and death, 0 mid)",
+        "Size grows then shrinks over life; Color graded along a heat ramp"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/what-vfx-is-best/3117633",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://www.youtube.com/watch?v=xRT-OcfmkI8",
+          "https://www.youtube.com/watch?v=TkNZETIu0CM"
+        ]
+      }
+    },
+    {
+      "id": "vfx-additive-emission-and-authored-texture",
+      "order_index": 3,
+      "tier": "baseline",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — ADDITIVE + TEXTURE CRAFT. Energy/fire/magic layers are self-lit and use a real authored sprite, not the default white square at constant lighting. The discriminator is whether the build commits to BOTH the emissive trio AND a non-default texture with color-over-life: passing requires the build to state (1) LightEmission raised toward ~1 (additive blend) with LightInfluence below 1 (and Brightness, which only applies once LightInfluence<1) so the layer self-illuminates and glows regardless of scene lighting — with smoke kept at low/nonzero LightInfluence so it still accepts environment light and stays grounded — AND (2) a real authored sprite texture (transparent-background PNG sized to its job) replacing the default soft square, with color graded over life. A build that leaves the default square at constant white with default LightEmission=0 (environment-lit, dull opaque billboards) FAILS. A build that commits to the additive self-lit trio AND an authored texture PASSES; the smoke-stays-partly-lit nuance, custom per-role textures, and negative-LightEmission stylistic outlines push toward full marks. A build that sets additive glow but reuses the default circle for everything (or authors a texture but leaves it environment-lit) earns partial.",
+      "above_generic_rationale": "Default emitters are environment-lit with LightEmission=0, so glowing swords/auras go pitch-black in a cave and fire looks muddy; the default soft circle reused for everything is the most recognizable beginner/AI tell. Decoupling emissive layers from scene light (LightEmission~1 / LightInfluence<1 / Brightness) is what makes magic/fire/explosion cores POP against any background, while keeping smoke partly lit keeps it grounded — and an authored sprite with color-over-life gives directional, characterful particles a default white square never can. Grading the additive-trio-AND-authored-texture commitment keeps this discriminating: a self-lit, real-texture build clears it, a default-square-at-constant-white build cannot.",
+      "evidence_required": "A statement/dump showing (1) LightEmission toward ~1 with LightInfluence<1 + Brightness on the energy/fire layers (self-lit, additive) AND smoke kept at low-but-nonzero LightInfluence, AND (2) a real authored sprite texture (not the default square) with color-over-life. The smoke-partly-lit nuance and per-role custom textures are credited toward full marks. Default square at constant white / LightEmission=0 environment-lit billboards do NOT satisfy this; setting only one half (glow OR texture) earns partial.",
+      "concrete_fix": "Set LightEmission~1, LightInfluence<1 and Brightness on fire/energy/magic layers so they self-illuminate; keep smoke at low-but-nonzero LightInfluence so it still accepts environment light; and replace the default square with an authored transparent-PNG sprite graded by a color-over-life ramp.",
+      "grading": {
+        "pass": "The build commits to BOTH halves: (1) LightEmission toward ~1 with LightInfluence<1 + Brightness on energy/fire/magic layers (additive self-lit) with smoke kept at low-but-nonzero LightInfluence, AND (2) a real authored sprite texture (not the default square) with color-over-life. The smoke-partly-lit nuance, per-role custom textures, and negative-LightEmission stylistic outlines earn full marks.",
+        "partial": "Only one half is set — additive glow but the default circle reused for everything, OR an authored texture left environment-lit (LightEmission=0).",
+        "fail": "Default square at constant white with default LightEmission=0 — environment-lit, dull opaque billboards that go dark in shadow."
+      },
+      "exemplar_refs": [
+        "Fire/energy core: LightEmission~1, LightInfluence<1, Brightness raised; smoke: low-but-nonzero LightInfluence so it accepts environment light",
+        "Authored transparent-PNG sprite sized to its role, graded by a color-over-life ramp"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://create.roblox.com/docs/en-us/reference/engine/classes/ParticleEmitter.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://www.youtube.com/watch?v=TkNZETIu0CM",
+          "https://roblox-studio-plugin-trail-editor.pages.dev/posts/roblox-studio-plugin-trail-editor/"
+        ]
+      }
+    },
+    {
+      "id": "vfx-performance-budget-bounded-cleanup",
+      "order_index": 4,
+      "tier": "baseline",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — PERFORMANCE BUDGET. Rate, Lifetime and particle/emit counts are bounded and one-shot effects are actively cleaned up (Debris/disable/despawn), with no unbounded emission left running. The discriminator is whether the build commits to BOTH bounded emission AND active teardown: passing requires the build to state (1) Rate/Lifetime/Emit-count kept within deliberate bounds per layer (short lifetimes for impacts, capped emit counts, role-targeted rates) rather than a high constant Rate left running; AND (2) a cleanup path for one-shot effects — the cloned fx instance is Destroyed/Debris-serviced after its lifetime, looped auras are Enabled=false / disabled after their window, and despawn waits are tuned so debris/rocks clear cleanly. A build that leaves emitters Enabled with an unbounded/high constant Rate, never destroys cloned one-shot fx, or lets debris accumulate FAILS. A build that commits to bounded emission AND active one-shot cleanup PASSES; per-layer rate/lifetime budgets tied to the multi-emitter stack and tuned despawn timing push toward full marks. A build that bounds emission but never cleans up clones (or cleans up but leaves an unbounded Rate) earns partial.",
+      "above_generic_rationale": "Leaving emitters Enabled at a high constant Rate and never destroying cloned one-shot effects is the standard beginner failure — it accumulates particles and orphaned instances until the game stutters, the inverse of the role-separated burst-on-demand workflow pros use. Bounding Rate/Lifetime/count per layer and actively tearing down one-shot fx (Debris/Destroy, disable looped auras, tune despawn) is the structural quality gate that lets all the other visual layers run without tanking performance. Grading the bounded-emission-AND-active-cleanup commitment keeps this discriminating: a budgeted, self-cleaning build clears it, an unbounded always-on no-teardown build cannot.",
+      "evidence_required": "A statement/dump showing (1) Rate/Lifetime/Emit-count bounded per layer (capped counts, short impact lifetimes, role-targeted rates) NOT a high constant Rate left running, AND (2) active cleanup of one-shot effects (Debris/Destroy the cloned fx after lifetime, disable looped auras after their window, tuned debris despawn). Per-layer budgets tied to the emitter stack are credited toward full marks. Always-on unbounded emission, never-destroyed clones, or accumulating debris does NOT satisfy this; bounding without cleanup (or cleanup without bounding) earns partial.",
+      "concrete_fix": "Bound Rate/Lifetime/Emit-count per layer (short impact lifetimes, capped emit counts) and actively clean up one-shot effects — Debris/Destroy the cloned fx after its lifetime, disable looped auras after their window, and tune debris despawn — so nothing emits unbounded or leaks instances.",
+      "grading": {
+        "pass": "The build commits to BOTH bounded emission (Rate/Lifetime/Emit-count capped per layer — short impact lifetimes, capped counts, role-targeted rates) AND active one-shot teardown (Debris/Destroy cloned fx after lifetime, disable looped auras after their window, tuned despawn). Per-layer budgets tied to the multi-emitter stack and tuned despawn timing earn full marks.",
+        "partial": "Only one half — emission bounded but clones never cleaned up, OR cleanup present but an unbounded/high constant Rate left running.",
+        "fail": "Emitters left Enabled with an unbounded/high constant Rate, cloned one-shot fx never destroyed, or debris allowed to accumulate."
+      },
+      "exemplar_refs": [
+        "Cloned impact fx Debris:AddItem'd / Destroyed after its lifetime; looped aura Enabled=false after its window",
+        "Per-layer Rate/Lifetime/Emit-count budgets tied to the role-separated emitter stack; tuned rock/debris despawn"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions",
+          "https://www.youtube.com/watch?v=XXCGWREKpo0",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://devforum.roblox.com/t/plugin-vfx-forge-an-advanced-custom-vfx-system/3867553"
+        ]
+      }
+    },
+    {
+      "id": "vfx-color-graded-ramp-and-randomized-lifetime",
+      "order_index": 5,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "Particle Color follows a physically-motivated ramp over life and per-particle Lifetime/rotation is randomized, so the effect encodes temperature change and avoids synchronized mechanical death. The discriminator is whether the build commits to BOTH a multi-stop color ramp (not one flat hue) AND per-particle variation: passing requires the build to state (1) a ColorSequence graded along a motivated ramp — e.g. fire/embers white-hot to orange to deep red/maroon as they cool, smoke black to peach/gray, water dark/light blue to white foam — rather than a single saturated hue, AND (2) randomization of Lifetime via a (min,max) NumberRange and/or per-particle Rotation (e.g. -180..180) so particles age, die and orient unevenly. A build that uses one flat saturated color (the classic 'too reddish' recolored-default look) with synchronized lifetimes FAILS. A build that commits to a cooling/heat color ramp AND randomized lifetime/rotation PASSES; per-axis random acceleration and randomized texture/flipbook-start variation push toward full marks. A build with the color ramp but no per-particle randomization (or vice versa) earns partial.",
+      "above_generic_rationale": "A single saturated hue looks like a recolored default, and a fixed Lifetime makes every particle die in lockstep — both are mechanical tells. A cooling/heat color ramp encodes real temperature change over a particle's life, and a randomized lifetime/rotation range breaks the synchronized death and tiled repetition of default emitters so each burst feels hand-made. Grading the ramp-AND-randomization commitment keeps this discriminating: a graded, varied build clears it, a flat-hue synchronized build cannot.",
+      "evidence_required": "A statement/dump showing (1) a ColorSequence graded along a motivated ramp (e.g. white-hot to orange to maroon for cooling embers; black to gray for smoke) AND (2) randomized Lifetime (min,max NumberRange) and/or per-particle Rotation range so particles age/orient unevenly. Random per-axis acceleration and flipbook-start variation are credited toward full marks. One flat saturated hue with synchronized lifetimes does NOT satisfy this; only one of the two earns partial.",
+      "concrete_fix": "Grade Color along a physically-motivated ramp (hot core cooling to dim — white/orange to deep red, or black to gray for smoke) instead of one flat hue, and randomize Lifetime with a (min,max) range plus a wide per-particle Rotation range so particles age and die unevenly.",
+      "grading": {
+        "pass": "The build commits to BOTH a multi-stop physically-motivated ColorSequence (e.g. white-hot to orange to maroon for cooling embers; black to gray for smoke; blue to white foam for water) AND per-particle randomization of Lifetime (min,max NumberRange) and/or Rotation (e.g. -180..180). Random per-axis acceleration and flipbook-start variation earn full marks.",
+        "partial": "Only one of the two — a color ramp but synchronized lifetimes/no rotation variation, OR randomized lifetime/rotation but a single flat hue.",
+        "fail": "One flat saturated color (the 'too reddish' recolored-default look) with synchronized lifetimes — no temperature ramp and no per-particle variation."
+      },
+      "exemplar_refs": [
+        "Embers: white-hot -> orange -> deep red/maroon ColorSequence as they cool",
+        "Lifetime NumberRange(min,max) + Rotation -180..180 so particles age and orient unevenly"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://devforum.roblox.com/t/feedback-on-explosion/1746363",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://www.youtube.com/watch?v=exWx1kYy0P0"
+        ]
+      }
+    },
+    {
+      "id": "vfx-motion-acceleration-drag-squash-orientation",
+      "order_index": 6,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — PER-LAYER DIFFERENTIATED MOTION. The composite reads as a real phenomenon because each role-separated layer moves on its OWN motion profile — fast outward sparks/debris that shoot then decelerate, vs slow buoyant rising smoke, vs a stationary core flash — rather than every particle drifting on one shared speed/direction. The discriminator is whether the build commits to motion that DIFFERS BY LAYER, expressed either as named force/speed shaping (Acceleration + Drag together with a Speed (min,max) range so debris fires out fast then settles while smoke rises slowly) OR as an explicit per-layer motion-role contrast (a directional fast spark layer + a slow rising smoke layer + a near-static core, each with its own travel behavior). Passing requires BOTH (1) at least two layers whose motion is intentionally different in speed AND direction (e.g. fast directional sparks vs slow rising smoke), AND (2) a sense of velocity change over life — particles that accelerate/decelerate or arc (via Drag, gravity/buoyant Acceleration, or a stated fast-out-then-settle decay) rather than constant-velocity drift. A single-emitter build where one shared motion profile drives everything (one Speed, one direction, no per-particle range, constant velocity) FAILS — it physically cannot express fast sparks and slow smoke at once. A build that names differentiated per-layer motion AND a fast-out/decelerate (or rise/settle) velocity change PASSES; explicit Acceleration+Drag+Speed-range values per layer and a VelocityParallel/Squash stretch on the fast layer push toward full marks. A build with differentiated layers but no velocity-change-over-life (or velocity change on one layer but no per-layer differentiation) earns partial.",
+      "above_generic_rationale": "A single ParticleEmitter can express exactly ONE motion profile, so fast debris and slow smoke cannot coexist — the #1 tell that an effect is one recolored default emitter rather than an authored phenomenon. Real explosions/impacts are simultaneously a fast outward debris burst AND a slow buoyant smoke rise AND a stationary flash; that per-layer motion DIFFERENCE, plus the fast-out-then-settle velocity arc of real debris, is the depth a flat constant-velocity emitter cannot fake. Grading per-layer motion differentiation + velocity-change-over-life (not a verbatim four-field property dump) keeps it discriminating: the layered explosion with fast sparks vs rising smoke and a burst-then-decay arc clears it, the single constant-velocity emitter cannot.",
+      "evidence_required": "A statement/dump showing (1) >=2 layers with intentionally DIFFERENT motion in both speed and direction (e.g. fast directional sparks/debris vs slow rising/buoyant smoke vs a near-static core), AND (2) a velocity change over life — fast-out-then-decelerate/settle, rising-then-slowing, or arcing — via Acceleration+Drag, gravity/buoyancy, or a stated burst-then-decay signature. Explicit per-layer Acceleration/Drag/Speed-range values and a VelocityParallel/Squash stretch on the fast layer earn full marks. A single shared motion profile across all particles, or constant-velocity straight-line drift with one Speed and one direction, does NOT satisfy this; differentiated layers with no velocity change (or velocity change on a single undifferentiated layer) earns partial.",
+      "concrete_fix": "Give each role its own motion: sparks/debris get a high outward Speed with Drag (and/or gravity) so they shoot out fast then decelerate and settle, smoke gets a low buoyant up-Acceleration so it rises slowly, and the core stays near-static — so the layers move at visibly different speeds and directions instead of all drifting together at one constant velocity.",
+      "grading": {
+        "pass": "The build commits to BOTH (1) >=2 layers with intentionally different motion in speed AND direction (e.g. fast directional sparks/debris vs slow rising buoyant smoke vs a near-static core) AND (2) a velocity change over life (fast-out-then-decelerate/settle, rise-then-slow, or arc) via Acceleration+Drag, gravity/buoyancy, or a stated burst-then-decay signature. Explicit per-layer Acceleration/Drag/Speed-range values plus a VelocityParallel/Squash stretch on the fast layer earn full marks.",
+        "partial": "Only one half — differentiated per-layer motion but no velocity change over life (constant-velocity layers), OR a velocity change/decay on a single undifferentiated motion profile with no per-layer speed/direction contrast.",
+        "fail": "A single shared motion profile driving all particles — one Speed, one direction, constant-velocity straight-line drift, no per-particle range and no per-layer differentiation (the single-emitter default)."
+      },
+      "exemplar_refs": [
+        "Embers: upward/gravity Acceleration + high Drag (shoot out fast, decelerate, settle) with a Speed min,max range",
+        "Sparks orientation VelocityParallel + Squash to streak along travel; smoke FacingCamera/WorldUp billboard"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://devforum.roblox.com/t/what-vfx-is-best/3117633",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://create.roblox.com/docs/en-us/reference/engine/classes/ParticleEmitter.md",
+          "https://www.youtube.com/watch?v=xRT-OcfmkI8"
+        ]
+      },
+      "change_reason": "The original failed BOTH artifacts: it demanded a verbatim property dump (Acceleration AND Drag AND Speed-range AND Orientation/Squash by name), which the GREAT artifact — a summary-level layered explosion stating 'directional sparks/debris' moving differently from 'lingering smoke' and a 'burst-then-decay' velocity signature — does not enumerate, so it scored fail alongside the single-emitter mean. The single shared-motion profile is in fact THE thing a one-emitter build cannot do and a role-separated stack can, so I re-anchored the discriminator on per-layer motion DIFFERENTIATION plus velocity-change-over-life (both of which the GREAT artifact's 'fast directional sparks vs slow rising smoke' + 'burst-then-decay' evidence supports), instead of on naming four specific engine fields. This makes the great composite pass and the flat single-emitter constant-velocity build fail."
+    },
+    {
+      "id": "vfx-zoffset-depth-and-directional-emission-shape",
+      "order_index": 7,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — SPATIAL / DIRECTIONAL STRUCTURE FROM ROLE-SEPARATED LAYERS. The composite has authored spatial structure — its layers occupy distinguishable depth/render planes AND at least one layer emits with intent (a directed, shaped spread) rather than every particle puffing uniformly out of one omnidirectional point. The discriminator is whether the build commits to BOTH a depth/draw-order relationship between its layers AND a directional/shaped emission decision on at least one role. Passing requires the build to state (1) a deliberate front-to-back / draw-order relationship among >=2 named layers — either explicit per-layer ZOffset, OR a stated render-order intent that is only expressible with separate layers (e.g. 'the bright additive core flash reads in FRONT of the soft glow, which sits in front of the lingering smoke') — AND (2) at least one layer whose emission is directional or shaped with intent — directional/radial sparks fired outward, a tight cone vs a 360 blast, or an emitter Shape/SpreadAngle chosen for the role — rather than a single omnidirectional sphere-puff. A single-emitter build FAILS by construction: one omnidirectional emitter cannot carry a front-to-back layer ordering and cannot contrast a directed spark spread against a diffuse haze. A build that names a depth/draw-order relationship across role-separated layers AND a directional/shaped emission on at least one role PASSES; explicit per-layer ZOffset values, a negative-ZOffset-behind-a-character case, and a surface-shell/cone Shape choice push toward full marks. A build that has the role-separated depth ordering but no directional/shaped emission on any layer (or directional emission with no inter-layer depth/draw-order relationship) earns partial.",
+      "above_generic_rationale": "On a billboard engine, role-separated layers with no intended draw order z-fight into one muddy coplanar plate (fire lost inside smoke), and a single omnidirectional spread reads as a generic uniform sphere-puff 'leak' instead of a directed blast — the two classic flat-VFX tells. A front-to-back layer relationship (core in front of glow in front of smoke) gives the composite Photoshop-like draw order, and a directed/shaped emission role gives it intentional force — both of which a single omnidirectional emitter fundamentally cannot produce. Grading the depth-ordering-AND-directional-emission commitment (crediting a stated render-order intent across role-separated layers, not only a literal ZOffset field) keeps it discriminating: the layered explosion that orders core-front-of-smoke and fires directional sparks clears it, the single omnidirectional emitter cannot.",
+      "evidence_required": "A statement showing (1) a front-to-back / draw-order relationship among >=2 named role-separated layers — explicit per-layer ZOffset OR a render-order intent only possible with separate layers (additive core flash in front of glow in front of lingering smoke) — AND (2) at least one layer emitting directionally or with a shaped spread (directional/radial sparks outward, tight cone vs 360 blast, or an emitter Shape/SpreadAngle choice). Literal per-layer ZOffset values, a negative-ZOffset-behind-a-character case, and a surface-shell/cone Shape are credited toward full marks. A single omnidirectional emitter — no separable layers and a uniform spherical puff — does NOT satisfy this; only one of the two halves earns partial.",
+      "concrete_fix": "Give the layered stack spatial structure: establish a front-to-back draw order across the roles (additive core flash nearest, then glow, then lingering smoke behind — via per-layer ZOffset) AND make at least one role emit directionally (fire the sparks/debris outward as a directed/radial spread, or sculpt the emitter Shape/SpreadAngle) instead of letting every layer puff omnidirectionally at the same depth.",
+      "grading": {
+        "pass": "The build commits to BOTH (1) a deliberate front-to-back / draw-order relationship among >=2 named role-separated layers (explicit per-layer ZOffset, OR a stated render-order intent only expressible with separate layers — e.g. additive core flash in FRONT of glow in front of smoke) AND (2) at least one layer with directional or shaped emission chosen for its role (directional/radial sparks fired outward, a tight cone vs a 360 blast, or an emitter Shape/SpreadAngle decision) rather than one omnidirectional sphere-puff. Explicit per-layer ZOffset values, a negative-ZOffset-behind-a-character case, and a surface-shell/cone Shape choice earn full marks.",
+        "partial": "Only one half — a role-separated depth/draw-order ordering across layers but no directional/shaped emission on any role, OR a directional/shaped emission on a role but no stated inter-layer depth/draw-order relationship.",
+        "fail": "A single omnidirectional emitter (no separable layers, so no front-to-back ordering possible) and a uniform spherical puff with no directed or shaped emission — no spatial structure of either kind."
+      },
+      "exemplar_refs": [
+        "ZOffset: fire in front of smoke; blast > smoke > debris; negative to render behind a character",
+        "Surface-only sphere-shell emitter Shape for a shockwave; tight cone EmissionDirection for a directed cast vs 360/360 spherical blast"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-on-my-explosion-fx/1325348",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://create.roblox.com/docs/en-us/reference/engine/classes/ParticleEmitter.md",
+          "https://create.roblox.com/docs/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions",
+          "https://www.youtube.com/watch?v=r9pa_n6r6Kc"
+        ]
+      },
+      "change_reason": "The original demanded the engine field ZOffset AND an explicit EmissionDirection/SpreadAngle/Shape dump by name — neither of which the GREAT artifact spells out, so it scored fail right next to the single-emitter mean (zero discrimination). The underlying quality axis is spatial structure that is ONLY possible with a role-separated stack: a front-to-back layer relationship plus at least one directed/shaped role. The GREAT artifact's explicit 'core flash + soft glow + directional sparks/debris + lingering smoke' supplies exactly that — a natural core-front / glow-mid / smoke-back draw-order intent AND a 'directional sparks/debris' role that emits with direction, contrasted against a diffuse glow/haze — while the single omnidirectional emitter of the mean can express neither a layer ordering nor a directed-vs-diffuse contrast. I re-anchored the pass condition on (1) an inter-layer depth/draw-order relationship expressible only with separate layers (crediting an explicit render-order intent, not only a literal ZOffset number) AND (2) a directional/shaped emission on at least one role (crediting 'directional sparks' as a stated directed spread). This makes the great composite pass on its own words and keeps the flat single-emitter mean a clean fail, while still rewarding literal ZOffset values and Shape choices toward full marks.",
+      "statement_note": "replaces ZOffset-and-EmissionDirection-by-name requirement"
+    },
+    {
+      "id": "vfx-flipbook-animated-particles",
+      "order_index": 8,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — ANIMATED / EVOLVING SHAPE, NOT A FROZEN BILLBOARD. Turbulent phenomena (fire licks, explosion fireballs, rolling smoke, splashes) get a shape that CHANGES over each particle's life — either a flipbook (sprite-sheet) atlas feeding animated frames, OR a deliberately evolving authored sprite whose form reads as turbulent motion rather than a static stamped circle/square held fixed from birth to death. The discriminator is whether the build commits to a non-static, intentionally-authored particle shape with de-repeat discipline: passing requires the build to state (1) an authored, non-default sprite (a real PNG, ideally a flipbook atlas Grid2x2/4x4/8x8) whose shape is purpose-built for the turbulent role — NOT the default soft square/circle — AND (2) a mechanism that keeps the shape from looking identical and frozen across particles: a flipbook with a matched FlipbookMode (OneShot for bursts, Loop for fire, Random for lightning) plus an anti-repeat de-sync (FlipbookStartRandom / framerate range / BlendFrames / two slightly-varied instances), OR for non-flipbook sprites a per-particle Rotation range + size/color evolution so no two particles present the same frozen stamp. A build that uses the default square/circle (or any single static sprite) held at constant orientation for turbulent fire/smoke/explosion FAILS. A build that commits to an authored turbulent-shaped sprite AND a de-repeat/anti-frozen mechanism PASSES; a true flipbook atlas with FlipbookMode + de-sync, and the restraint to skip flipbooks where simple curves suffice, push toward full marks. A build with an authored non-default sprite but no anti-repeat/anti-frozen mechanism (every particle the same stamp) earns partial.",
+      "above_generic_rationale": "The default soft square/circle held fixed from birth to death is the single most recognizable tell of generic/AI VFX for turbulent fire/smoke/explosion — no parameter curve can give a static stamp the licking, rolling motion those phenomena need. An authored sprite (best a flipbook atlas) gives hand-shaped turbulent form, and a de-sync/anti-frozen mechanism stops every particle reading as the same repeated asset. Grading authored-non-static-shape + anti-frozen discipline (crediting either a real flipbook or an evolving authored sprite) keeps it discriminating: the explosion with authored sprites + per-life evolution clears it, the default-square single-static-stamp emitter cannot.",
+      "evidence_required": "A statement/dump showing (1) an authored, non-default sprite (real PNG; a flipbook atlas Grid2x2/4x4/8x8 is best) purpose-shaped for the turbulent role, NOT the default square/circle, AND (2) an anti-frozen mechanism so particles don't all present an identical static stamp: flipbook FlipbookMode + de-sync (FlipbookStartRandom / framerate range / BlendFrames / two varied instances), or for static sprites a per-particle Rotation range plus size/color evolution over life. A true flipbook atlas with matched mode + de-sync, and restraint to skip flipbooks where curves suffice, earn full marks. The default square/circle, or any single static sprite held at fixed orientation for turbulent fire/smoke/explosion, does NOT satisfy this; an authored sprite with no de-repeat/anti-frozen mechanism earns partial.",
+      "concrete_fix": "Replace the default square/circle with an authored sprite purpose-shaped for the turbulent role — ideally a flipbook sprite-sheet (Grid4x4/8x8) with a matched FlipbookMode (OneShot for the blast, Loop for fire) de-synced via FlipbookStartRandom + a framerate range + BlendFrames — or, if keeping a single sprite, give it a wide per-particle Rotation range and size/color evolution so no two particles read as the same frozen stamp.",
+      "grading": {
+        "pass": "The build commits to (1) an authored, non-default sprite (real PNG; a flipbook atlas Grid2x2/4x4/8x8 best) purpose-shaped for the turbulent role AND (2) an anti-frozen mechanism (flipbook FlipbookMode + de-sync, or per-particle Rotation range + size/color evolution for a static sprite) so particles don't all present an identical stamp. A true flipbook atlas with matched mode + de-sync, plus restraint to skip flipbooks where curves suffice, earn full marks.",
+        "partial": "An authored non-default sprite but no anti-repeat/anti-frozen mechanism — every particle the same static stamp at fixed orientation (or a flipbook with a matched mode but no de-sync that visibly loops in lockstep).",
+        "fail": "The default square/circle (or any single static sprite held at constant orientation) used for turbulent fire/smoke/explosion where an authored, evolving shape is the right tool."
+      },
+      "exemplar_refs": [
+        "Explosion fireball: Grid8x8 atlas, FlipbookMode OneShot synced to lifetime (framerate auto-scales)",
+        "Fire: Loop flipbook de-synced via FlipbookStartRandom + min/max framerate + BlendFrames, or two instances at slightly different Size/Rate/SpreadAngle"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://devforum.roblox.com/t/how-to-make-emitter-effects-look-good/4138403",
+          "https://devforum.roblox.com/t/animated-particles-with-the-particle-flipbooks-beta/1718023",
+          "https://create.roblox.com/docs/en-us/reference/engine/classes/ParticleEmitter.md",
+          "https://www.youtube.com/watch?v=QKuk_Mau09I",
+          "https://www.youtube.com/watch?v=xzZeP65SSlA"
+        ]
+      },
+      "change_reason": "The original required a flipbook atlas SPECIFICALLY, which failed both artifacts: the GREAT explosion uses 'authored additive sprite textures' (a real non-default sprite, a genuine quality jump over the mean's default square) but never claims a sprite-SHEET, so it scored fail next to the mean. That meant the criterion measured 'did you happen to use a flipbook' rather than 'did your turbulent particle have an intentionally-authored, non-frozen shape' — the actual quality axis. I widened the pass condition to credit an authored, non-default, non-static sprite shape with de-repeat/anti-frozen discipline (which the GREAT artifact's authored-sprite + per-life curves evidence supports) while keeping the default-square single-static-stamp mean a clean fail, and still rewarding a true flipbook toward full marks."
+    },
+    {
+      "id": "vfx-beam-craft-taper-glow-scroll-curve",
+      "order_index": 9,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — DIRECTED / LINEAR ELEMENT DISTINCT FROM THE DIFFUSE BODY. A complete impact/energy effect carries at least one element whose shape reads as DIRECTED or LINEAR — a streak, radial spark/debris spray, connecting tendril, or expanding shockwave edge — that is authored as its OWN role, visually distinct from the round diffuse body (the blast core, glow, haze, or smoke puff). The discriminator is whether the build commits to a separately-authored directed/edge element alongside the diffuse body, which REQUIRES a role-separated stack: passing requires the build to name (1) a diffuse body role (core flash / glow / haze / smoke), AND (2) a distinct directed-or-linear role — directional/radial sparks or debris fired outward, a streak/trail, a connecting line/tendril, or an expanding shockwave ring/edge — that is a different SHAPE-CLASS from the body (linear/directed vs round/diffuse), ideally crafted (a Beam with >=2 of taper / additive glow + FaceCamera / scrolling TextureSpeed / end-fade / CurveSize, OR a Start->End tweened shockwave-ring mesh, OR a velocity-aligned streaking spark layer). A single ParticleEmitter — which can only emit one omnidirectional round puff and therefore cannot carry a directed/linear element at all — FAILS by construction. A build whose every element is the same round diffuse shape-class (e.g. only blast + smoke, both soft puffs, no directed/linear/edge role) FAILS. A build that names a distinct directed/linear role separate from the diffuse body (e.g. 'directional sparks/debris' alongside core flash + glow + smoke) PASSES; an explicitly CRAFTED beam (>=2 mechanisms) or a fully-tweened shockwave-ring substitute pushes toward full marks. A build that gestures at a directed element but leaves it un-shaped (same Speed/direction as the body, no outward spray, no streak) earns partial.",
+      "above_generic_rationale": "Generic VFX is one omnidirectional ParticleEmitter — a single round puff that, by construction, cannot carry any directed or linear element (a spark streak, a connecting tendril, a shockwave edge). The presence of a directed/linear role authored SEPARATELY from the round diffuse body — sparks fired outward, a streaking trail, an expanding ring — is exactly the structure a single emitter cannot fake and a role-separated stack can; it is the seam that gives an impact crisp force and edge instead of a uniform blob. Grading 'a directed/linear role distinct in shape-class from the diffuse body' (crediting a directional-spark layer, not only a literally-named Beam) keeps it discriminating: the layered explosion with directional sparks-vs-diffuse-smoke clears it; the single round-puff emitter, and any all-soft-puffs build, cannot. A crafted Beam or tweened shockwave-ring still earns full marks for the strongest form of this element.",
+      "evidence_required": "A statement/dump showing BOTH (1) a diffuse body role (core flash / glow / haze / smoke) AND (2) a DISTINCT directed-or-linear role of a different shape-class — directional/radial sparks or debris sprayed outward, a streak/trail, a connecting tendril, or an expanding shockwave ring/edge — not merely a second round puff. A crafted Beam (>=2 of taper / additive glow + FaceCamera / scrolling TextureSpeed / end-fade / CurveSize) or a Start->End tweened shockwave-ring mesh or a velocity-aligned streaking spark layer is credited toward full marks. A single emitter (one omnidirectional round puff — cannot carry any directed/linear element), or a build whose elements are all the same round diffuse shape-class, does NOT satisfy this; a directed element left un-shaped (no outward spray / no streak, same motion as the body) earns partial.",
+      "concrete_fix": "Add a directed/linear element distinct from the round diffuse body: spray sparks/debris radially OUTWARD as their own role (velocity-aligned so they streak), OR add a crafted Beam (width taper + additive glow + FaceCamera + scrolling TextureSpeed + end-fade) for a connecting tendril, OR tween an expanding shockwave-ring mesh from Start->End for the edge — instead of letting every element be the same soft omnidirectional puff (which a single emitter is by construction).",
+      "grading": {
+        "pass": "The build names BOTH (1) a diffuse body role (core flash / glow / haze / smoke) AND (2) a DISTINCT directed-or-linear role of a different shape-class — directional/radial sparks or debris sprayed outward, a streak/trail, a connecting tendril, or an expanding shockwave ring/edge (e.g. 'directional sparks/debris' alongside core flash + glow + smoke). A crafted Beam (>=2 mechanisms: taper / additive glow + FaceCamera / scrolling TextureSpeed / end-fade / CurveSize) or a fully Start->End tweened shockwave-ring mesh or a velocity-aligned streaking spark layer earns full marks.",
+        "partial": "A directed/linear element gestured at but left un-shaped — sparks/debris named but with the same Speed/direction as the diffuse body (no outward spray, no streak), or a connecting element named but flat/un-crafted (one mechanism only, no taper/glow/flow/end-fade).",
+        "fail": "A single ParticleEmitter (one omnidirectional round puff — cannot carry a directed/linear element at all), OR a build whose every element is the same round diffuse shape-class (e.g. only blast + smoke, both soft puffs) with no directed/linear/edge role."
+      },
+      "exemplar_refs": [
+        "Energy beam: Width0->Width1 taper to a lance + LightEmission glow + FaceCamera + scrolling TextureSpeed (TextureMode Stretch) + end-fading transparency",
+        "Whip/arc: CurveSize0/CurveSize1 bezier from trajectory + Segments 25-100 for smooth non-faceted curves"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/laser-traps-with-beams.md",
+          "https://robloxapi.github.io/ref/class/Beam.html",
+          "https://create.roblox.com/docs/en-us/effects/beams.md",
+          "https://www.youtube.com/watch?v=yK_BSF3p8sk",
+          "https://www.youtube.com/watch?v=r9pa_n6r6Kc",
+          "https://devforum.roblox.com/t/using-beams-to-simulate-projectile-curves/456385"
+        ]
+      },
+      "change_reason": "The prior version (already once-reframed) still demanded EITHER a crafted Beam OR an explicitly-named 'no-beam decision backed by a crafted substitute' — and the grader refused to count the GREAT artifact's 'directional sparks/debris' as either, so it scored fail level with the single-emitter mean (zero discrimination). The real quality axis a beam tests is whether the effect has a DIRECTED/LINEAR element distinct from the round diffuse body, not whether the author wrote the word 'Beam' or verbalized a meta-decision. The GREAT artifact explicitly names 'directional sparks/debris' as a role separate from its 'core flash + soft glow + lingering smoke' diffuse body — a directed/linear shape-class the single-emitter MEAN (one omnidirectional round puff) structurally cannot produce. I re-anchored the pass condition on 'a directed/linear role distinct in shape-class from the diffuse body,' crediting the GREAT artifact's directional-sparks role as that element, while keeping a crafted Beam / tweened shockwave-ring as full-marks and failing both the single-emitter mean and any all-round-puffs build. This makes the great composite pass on its own words and the flat mean a clean fail."
+    },
+    {
+      "id": "vfx-trail-body-core-stack-taper-shortlife",
+      "order_index": 10,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — DEPTH STACK: BRIGHT CORE + SOFTER SURROUND. Bright energy/heat reads as volume because it is built from a stacked pair — an intense, tight, additive CORE layer sitting inside a softer, larger, dimmer GLOW/HALO (or body) surround — with each layer carrying its own size, brightness and transparency, rather than one flat opaque billboard pretending to be both the hot center and the soft falloff. The discriminator is whether the build commits to a core+surround depth stack on its bright element(s): passing requires the build to state (1) at least TWO co-located layers for the bright element — a small/tight bright additive core AND a larger/softer dimmer glow or haze around it (the explicit 'don't ship a flat single layer' move; for a streak this is the body+core trail pairing, for a blast the core-flash+glow pairing) — AND (2) a shaping difference between them: the core is brighter/tighter/shorter-lived or higher LightEmission, the surround is larger/dimmer/softer-faded, so they don't render as one uniform plate. A single emitter (or a single flat constant-width/constant-size opaque element) doing both the hot center and the soft surround at once FAILS. A build that commits to a bright-core + softer-surround stack with a brightness/size/fade difference between the layers PASSES; a tapering WidthScale (for trails), a tuned short core Lifetime, and a third mid-layer push toward full marks. A build that has two layers but no brightness/size/fade distinction between them (or a taper on a single flat layer) earns partial.",
+      "above_generic_rationale": "A single flat layer can't be both the searing hot center and the soft outer falloff, so generic energy/heat/blast reads as one uniform plate with no depth. The pro move is a bright tight core inside a softer larger glow (the same principle as a body+core trail), each with its own brightness/size/fade — that pairing is what gives fire cores, blasts and slashes dimensional volume a single emitter cannot. Grading the core+surround depth-stack-with-a-shaping-difference keeps it discriminating: the explosion with a 'core flash + soft glow' clears it, the single flat emitter cannot.",
+      "evidence_required": "A statement/dump showing (1) >=2 co-located layers for a bright element — a tight bright additive core AND a larger softer dimmer glow/haze/body surround (blast: core-flash + glow; streak: body + core trail) — AND (2) a shaping difference between them: core brighter/tighter/higher-LightEmission/shorter-lived vs surround larger/dimmer/softer-faded. A tapering WidthScale (trails), a tuned short core Lifetime, and a third mid-layer earn full marks. A single emitter or one flat constant-size/constant-width opaque element doing both center and surround does NOT satisfy this; two layers with no brightness/size/fade distinction (or a taper on one flat layer) earns partial.",
+      "concrete_fix": "Build bright elements as a stacked pair — a small, tight, high-LightEmission additive core inside a larger, dimmer, softer glow/haze surround (for a streak, a thinner bright core ribbon inside a thicker semi-transparent body trail) — and make them differ in brightness, size and fade so the center reads hot and the surround reads as soft volume, instead of one flat opaque plate.",
+      "grading": {
+        "pass": "The build commits to BOTH (1) >=2 co-located layers for a bright element — a tight bright additive core AND a larger softer dimmer glow/haze/body surround (blast core-flash + glow, or streak body + core trail) — AND (2) a shaping difference between them (core brighter/tighter/higher-LightEmission/shorter-lived vs surround larger/dimmer/softer-faded). A tapering WidthScale, a tuned short core Lifetime, and a third mid-layer earn full marks.",
+        "partial": "Two layers present but with no brightness/size/fade distinction between them (they render as one uniform plate), OR a taper/fade applied to a single flat layer with no separate core.",
+        "fail": "A single emitter or one flat constant-size/constant-width opaque element doing both the hot center and the soft surround at once — no core+surround depth stack."
+      },
+      "exemplar_refs": [
+        "Sword slash: thick semi-transparent body trail + thinner brighter core ribbon, WidthScale tapered wide->thin, Lifetime ~0.5s, TextureMode Stretch",
+        "Footprint stamp: TextureMode Static; comet tail: longer Lifetime"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://roblox-studio-plugin-trail-editor.pages.dev/posts/roblox-studio-plugin-trail-editor/",
+          "https://create.roblox.com/docs/effects/trails",
+          "https://create.roblox.com/docs/en-us/effects/trails.md",
+          "https://www.youtube.com/watch?v=r9pa_n6r6Kc"
+        ]
+      },
+      "change_reason": "The original required a TRAIL specifically (body+core ribbon with WidthScale taper for a slash/dash), which failed both artifacts since neither is a trail effect — zero discrimination. But the underlying pro principle behind that criterion ('don't ship a flat single layer; pair a bright tight core with a softer surround for depth') generalizes directly to the GREAT explosion, which states 'a bright additive core flash + soft glow' — a genuine core+surround stack the mean's single flat emitter lacks. I re-anchored the discriminator on that core+brighter / surround+softer DEPTH STACK (crediting the trail body+core pairing as one instance, the blast core+glow as another), so the GREAT layered build passes on its stated core-flash+glow and the single-emitter flat-plate mean fails."
+    },
+    {
+      "id": "vfx-attachment-bound-emit-on-event",
+      "order_index": 11,
+      "tier": "good",
+      "system_module": "vfx",
+      "statement": "Emitters are bound to Attachments on the moving source with a deliberate LockedToPart choice and fired as precise bursts on game events (Enabled=false until Emit()), not hardcoded to world positions or left always-on. The discriminator is whether the build commits to attachment-anchored, event-driven emission with a world-space-vs-locked decision: passing requires the build to state (1) emitters parented to Attachments (rig points / tool / limb) so VFX rides the moving source, with a DELIBERATE LockedToPart choice (true for auras/charge effects that travel rigidly with the body; false/world-space so trailing smoke/sparks get left behind), AND (2) effects kept Enabled=false and triggered via Emit(count) on game events (or enable a looped aura then disable after a delay) rather than a constant Rate fountain. A build that hardcodes world positions, leaves emitters always-on with a steady Rate, or ignores LockedToPart (so auras smear across the world) FAILS. A build that commits to attachment-binding + deliberate LockedToPart + event-driven Emit() PASSES; a clone-into-fx-folder + descendant-loop emit pattern and velocity-inheritance push toward full marks. A build that attaches emitters but leaves them always-on, or emits on event but ignores LockedToPart, earns partial.",
+      "above_generic_rationale": "Hardcoding world positions detaches effects from the caster, and leaving emitters Enabled with a steady Rate produces a constant fountain with no event timing — both beginner defaults. Parenting to Attachments with LockedToPart glues auras to the moving hand/blade (or deliberately lets trailing smoke fall behind in world space), and keeping Enabled=false until an Emit() burst gives precise, reusable event timing. This binding + world-vs-locked decision is what makes auras hug the body and impacts fire on the exact game event. Grading the attachment-binding-AND-event-Emit-AND-LockedToPart commitment keeps this discriminating: a bound, event-driven, deliberately-locked build clears it, a hardcoded always-on build cannot.",
+      "evidence_required": "A statement/dump showing (1) emitters parented to Attachments on the moving source with a deliberate LockedToPart choice (true for auras, false/world-space for trailing debris) AND (2) Enabled=false until an Emit(count) burst on a game event (or enable-then-delay-disable for auras). A clone-into-fx-folder + IsA('ParticleEmitter') descendant-loop emit pattern and velocity-inheritance are credited toward full marks. Hardcoded world positions, always-on steady-Rate emission, or ignoring LockedToPart (auras smearing across the world) does NOT satisfy this; binding-without-event-timing or event-without-LockedToPart earns partial.",
+      "concrete_fix": "Parent emitters to Attachments on the moving part, set LockedToPart=true for auras/charge effects (false for trailing debris), keep Enabled=false, and fire Emit(count) on the actual game event — clone a template into a workspace fx folder and loop descendants calling Emit() for reuse.",
+      "grading": {
+        "pass": "The build commits to BOTH (1) emitters parented to Attachments on the moving source with a deliberate LockedToPart choice (true for auras/charge, false/world-space for trailing debris) AND (2) Enabled=false until an Emit(count) burst on a game event (or enable-then-delay-disable for auras). A clone-into-fx-folder + descendant-loop Emit() pattern and velocity-inheritance earn full marks.",
+        "partial": "Only one half — emitters attached to the moving source but left always-on with a steady Rate, OR event-driven Emit() but LockedToPart ignored (auras smear across the world).",
+        "fail": "Effects hardcoded to world positions, emitters left always-on with a steady Rate fountain, and no deliberate LockedToPart decision."
+      },
+      "exemplar_refs": [
+        "Aura: emitter parented to a hand Attachment, LockedToPart=true, looped then disabled after its window",
+        "Impact burst: Enabled=false, Emit(count) fired on the game event; trailing smoke LockedToPart=false so it's left behind in world space"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/en-us/education/build-it-play-it-mansion-of-wonder/using-particles-for-actions",
+          "https://create.roblox.com/docs/reference/engine/classes/ParticleEmitter",
+          "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+          "https://www.youtube.com/watch?v=XXCGWREKpo0",
+          "https://www.youtube.com/watch?v=xRT-OcfmkI8"
+        ]
+      }
+    },
+    {
+      "id": "vfx-motion-timing-burst-decay-anticipation",
+      "order_index": 12,
+      "tier": "exceptional",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — MOTION + TIMING. The effect is a burst-then-decay shaped by anticipation/impact/secondary beats with a synced one-frame light flash, not a flat even fade. The discriminator is whether the build commits to a TIMED, shaped emission signature with anticipation/secondary motion and a synced light: passing requires the build to state (1) a one-shot burst signature — Emit(count) with short Lifetime + high initial Speed + high Drag so particles fire out fast then rapidly decelerate (punch-then-settle), NOT a constant Rate; AND (2) at least one anticipation/secondary-motion beat — a wind-up/charge cue before release and/or staggered secondary smoke that begins a few frames AFTER the initial flash and lingers/rises, and/or a snappy fast reveal with a quick dissipation tail; AND (3) a synced PointLight that flashes for ~one frame on the burst. A build that fires everything in one undifferentiated frame, uses a constant-Rate fountain, or fades evenly with no anticipation/secondary beat and no synced flash FAILS. A build that commits to the burst-then-decay signature AND an anticipation/secondary beat AND a synced light-flash PASSES; emitters that inherit/parent to motion (velocity inheritance, SpreadAngle/Acceleration tuned to travel) and burst+lingering-aura combos push toward full marks. A build with the burst but no anticipation/secondary beat (or no synced flash) earns partial.",
+      "above_generic_rationale": "Generic effects leave Enabled=true at a constant Rate and fade evenly, so impacts read weightless and slashes appear instantly at full strength. Pro impacts are discrete Emit() bursts with short lifetime and heavy drag (the punch-then-settle curve), staged with anticipation (a wind-up cue) and staggered secondary motion (smoke that starts after the flash and lingers — the single most common fire/explosion critique), plus a one-frame light flash that sells the energy release. This borrows the animation principles of anticipation, impact and secondary action that the default emitter has no notion of. Grading the burst-AND-anticipation/secondary-AND-synced-flash commitment keeps this discriminating: a timed, staged, light-flashed effect clears it, a constant-fountain even-fade build cannot.",
+      "evidence_required": "A statement/dump showing (1) a one-shot Emit(count) burst with short Lifetime + high Speed + high Drag (punch-then-settle), NOT constant Rate; AND (2) an anticipation cue and/or staggered secondary smoke (begins ~2-4 frames after the flash, lingers/rises) and/or a snappy reveal + quick dissipation; AND (3) a synced ~one-frame PointLight flash. Velocity-inheritance / motion-parented emitters and burst+lingering-aura combos are credited toward full marks. A constant-Rate fountain, an all-in-one-frame fire, or an even fade with no anticipation/secondary beat and no synced flash does NOT satisfy this; a burst with no anticipation/secondary (or no flash) earns partial.",
+      "concrete_fix": "Fire the effect as an Emit() burst with short lifetime + high speed + high drag, add an anticipation wind-up and staggered secondary smoke that starts a few frames after the flash and lingers, and flash a synced PointLight for one frame on impact — instead of a constant Rate that fades evenly.",
+      "grading": {
+        "pass": "The build commits to ALL three: (1) a one-shot Emit(count) burst with short Lifetime + high Speed + high Drag (punch-then-settle), NOT constant Rate; AND (2) at least one anticipation/secondary beat (wind-up cue, staggered secondary smoke starting ~2-4 frames after the flash and lingering, or snappy reveal + quick dissipation); AND (3) a synced ~one-frame PointLight flash. Velocity-inheritance / motion-parented emitters and burst+lingering-aura combos earn full marks.",
+        "partial": "The burst-then-decay signature is present but missing one element — no anticipation/secondary beat, OR no synced light flash.",
+        "fail": "Everything fired in one undifferentiated frame, a constant-Rate fountain, or an even fade with no anticipation/secondary beat and no synced flash."
+      },
+      "exemplar_refs": [
+        "Impact: Emit(count) + short Lifetime + high Speed + high Drag (fire out fast, decelerate, settle), constant Rate avoided",
+        "Staggered secondary smoke begins ~2-4 frames after the flash and lingers/rises; synced PointLight flashes ~one frame on the burst"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-on-vfx/2432141",
+          "https://devforum.roblox.com/t/feedback-on-my-explosion-fx/1325348",
+          "https://devforum.roblox.com/t/feedback-on-explosion/1746363",
+          "https://create.roblox.com/docs/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions",
+          "https://roblox-studio-plugin-trail-editor.pages.dev/posts/roblox-studio-plugin-trail-editor/"
+        ]
+      }
+    },
+    {
+      "id": "vfx-impact-phase-choreography",
+      "order_index": 13,
+      "tier": "exceptional",
+      "system_module": "vfx",
+      "statement": "Heavy impacts (explosions, big hits) are choreographed as discrete TIMED phases on their own delays — flash, expanding shockwave ring, radial debris/sparks, rolling smoke, lingering embers/dust — rather than firing everything in one frame. The discriminator is whether the build commits to a multi-phase, delay-sequenced impact: passing requires the build to state at least FOUR sequenced phases each on its own delay/beat — e.g. white-hot core flash -> expanding shockwave/pressure ring (a Start->End tweened mesh ring, or a refraction/distortion sphere) -> radial debris + sparks -> rolling smoke -> lingering embers/dust — so the impact unfolds over time with a sense of force. A build that fires a single puff (all phases in one frame, or just one burst) FAILS. A build that commits to >=4 delay-sequenced phases PASSES; the expanding-mesh-ring Start->End tween, a Transparency>1 + Highlight distortion sphere, and a physical rock/debris module (craters + thrown rocks with velocity spread) push toward full marks. A build with only two or three undifferentiated-timing phases earns partial.",
+      "above_generic_rationale": "Generic explosions fire everything in one frame and read as a single weightless puff. Choreographing flash/ring/debris/smoke/embers as a delay-sequenced cascade is what gives an explosion weight and a sense of force over time; the expanding ground ring (Start->End tween) and refraction shockwave are hallmarks of high-impact hits, and physical debris with craters grounds the effect in the world. Grading the >=4-delay-sequenced-phase commitment keeps this discriminating: a choreographed multi-phase impact clears it, a single-frame puff cannot.",
+      "evidence_required": "A statement/dump showing >=4 impact phases each on its own delay/beat (flash -> shockwave/ring -> radial debris+sparks -> smoke -> lingering embers/dust). The Start->End tweened mesh ring, a Transparency>1 + disabled-Highlight distortion sphere, and a physical rock/crater debris module are credited toward full marks. A single-frame puff or a one-burst explosion does NOT satisfy this; two-or-three phases with no distinct timing earn partial.",
+      "concrete_fix": "Choreograph the impact as timed phases on separate delays: a white-hot core flash, then an expanding shockwave ring (tween a mesh from Start to End), then radial debris + sparks, then rolling smoke, then lingering embers/dust — and add physical debris (craters + thrown rocks) for weight.",
+      "grading": {
+        "pass": "The build commits to >=4 sequenced phases each on its own delay/beat (e.g. white-hot core flash -> expanding shockwave/pressure ring -> radial debris + sparks -> rolling smoke -> lingering embers/dust). The Start->End tweened mesh ring, a Transparency>1 + disabled-Highlight distortion sphere, and a physical rock/crater debris module earn full marks.",
+        "partial": "Only two or three phases, or phases named with no distinct per-phase timing/delay.",
+        "fail": "A single puff — all phases fired in one frame, or just one undifferentiated burst."
+      },
+      "exemplar_refs": [
+        "Explosion cascade: flash (t0) -> Start->End tweened shockwave mesh ring -> radial debris + sparks -> rolling smoke -> lingering embers/dust, each on its own delay",
+        "Refraction shockwave: a sphere with Transparency>1 + a momentarily-disabled Highlight; physical rock module with craters + velocity-spread thrown rocks"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-on-my-explosion-fx/1325348",
+          "https://devforum.roblox.com/t/feedback-on-explosion/1746363",
+          "https://devforum.roblox.com/t/runup-vfx-breakdown-part-4/3669430",
+          "https://www.youtube.com/watch?v=XXCGWREKpo0"
+        ]
+      }
+    },
+    {
+      "id": "vfx-beam-stacking-parallax-volume",
+      "order_index": 14,
+      "tier": "exceptional",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — FAKED VOLUME FROM A DEPTH-ORDERABLE ROLE-SEPARATED STACK. The effect fakes 3D volume on a 2D-billboard engine by being built from MULTIPLE co-located layers occupying naturally different depth planes that read foreground-to-background (a tight bright core/flash nearest, a softer glow/haze around it, a smoke/debris body behind), rather than collapsing into one flat coplanar plate. The discriminator is whether the build commits to a role-separated stack of >=3 co-located layers whose roles imply a front-to-back depth READ — a structure that ONLY a multi-layer stack can express and a single emitter cannot. Passing requires the build to name (1) >=3 co-located layers stacked at the SAME impact point with distinct roles whose natural depth differs (e.g. bright core flash + soft glow + lingering smoke, where the hot core reads in front of the glow which reads in front of the smoke body), so the composite has inherent foreground/midground/background structure; full marks require this to be made EXPLICIT via per-layer ZOffset draw-order (core/flash front, glow mid, smoke back; negative behind a character) and/or offset-ZOffset stacked beams scrolling at differing TextureSpeeds for a volumetric flow. A single emitter — one coplanar round puff with no other layer to sit in front of or behind — FAILS by construction. A two-layer build (only core + smoke), or layers that are all the same diffuse plane with no depth-differentiated roles, earns partial. A stack of >=3 co-located role-separated layers whose roles imply a front-to-back ordering PASSES; explicit per-layer ZOffset values or offset-ZOffset stacked beams earn full marks.",
+      "above_generic_rationale": "On a billboard engine a single emitter is one coplanar plate with no second layer to occupy a different depth — it physically cannot read as volume. Faked 3D depth comes from STACKING >=3 co-located layers whose roles naturally fall onto different depth planes (hot core in front, soft glow around, smoke body behind) so the composite reads foreground/midground/background — a structure only a role-separated stack can have. Grading the >=3-co-located-depth-orderable-stack commitment (crediting a named core/glow/smoke stack whose roles imply the ordering, with explicit ZOffset/stacked-beams as full marks) keeps it discriminating: the multi-layer explosion that CAN order core-in-front-of-smoke clears it; the single coplanar emitter, and a thin two-layer build, cannot.",
+      "evidence_required": "A statement/dump showing >=3 co-located layers stacked at the SAME impact point with distinct roles whose natural depth differs and reads foreground-to-background (e.g. tight bright core flash nearest / soft glow mid / smoke or debris body behind) — i.e. a depth-orderable role-separated stack, not one flat plate. Explicit per-layer ZOffset draw-order (core/flash front, glow mid, smoke back; negative behind a character) and/or offset-ZOffset stacked beams scrolling at differing TextureSpeeds are credited toward full marks. A single emitter (one coplanar puff, no layer to sit in front of/behind), or a stack whose layers are all the same diffuse plane with no depth-differentiated roles, does NOT satisfy this; a two-layer build (core + smoke only) earns partial.",
+      "concrete_fix": "Build the effect from >=3 co-located layers that naturally occupy different depth planes — a tight bright core/flash nearest, a softer glow around it, a smoke/debris body behind — and make the front-to-back read explicit by assigning each a distinct ZOffset draw-order (core front, glow mid, smoke back; negative to sit behind a character), or stack beams at offset ZOffset scrolling at different speeds for a volumetric flow, instead of one coplanar puff with nothing to sit in front of or behind.",
+      "grading": {
+        "pass": "The build commits to >=3 co-located layers stacked at the SAME impact point with distinct roles whose natural depth differs and reads front-to-back (e.g. bright core flash + soft glow + lingering smoke, hot core nearest / glow mid / smoke body behind) — a depth-orderable role-separated stack. Explicit per-layer ZOffset draw-order (core/flash front, glow mid, smoke back; negative behind a character) and/or offset-ZOffset stacked beams scrolling at differing TextureSpeeds earn full marks.",
+        "partial": "A two-layer build (only core + smoke, or glow + body) — more than one layer but fewer than 3 depth-differentiated co-located roles — OR >=3 layers that are all the same diffuse plane with no role-implied front-to-back depth (everything coplanar despite multiple emitters).",
+        "fail": "A single emitter — one coplanar round puff with no other co-located layer to sit in front of or behind, so no front-to-back / volume read is possible by construction."
+      },
+      "exemplar_refs": [
+        "Lava/waterfall: glowing-core beam + crust/foam beams stacked at offset ZOffset, scrolling at different TextureSpeeds (one slightly negative) with slightly different widths",
+        "AoE dome/ring: gradient beams bowed into a circle via CurveSize-by-radius; beam-stack faking a 3D tube to replace a mesh flipbook"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-waterfalls.md",
+          "https://devforum.roblox.com/t/runup-vfx-breakdown-part-4/3669430",
+          "https://www.youtube.com/watch?v=yK_BSF3p8sk"
+        ]
+      },
+      "change_reason": "The prior version (already once-reframed) still required the build to verbalize either an explicit per-layer ZOffset or a stated render-order intent ('core in front of glow in front of smoke'); the GREAT artifact lists 'core flash + glow + sparks + smoke' but never spells out that ordering, so the grader scored it fail right next to the single-emitter mean (zero discrimination). The faked-volume axis is fundamentally about HAVING a depth-orderable stack of co-located layers — a structure the single-emitter mean cannot have at all and a >=3-layer role-separated composite inherently has, because a tight bright core, a soft glow, and a smoke body occupy naturally different depth planes whether or not the author writes 'ZOffset.' I re-anchored the PASS bar on committing to >=3 co-located role-separated layers whose roles imply a front-to-back read (which the GREAT artifact's named core/glow/smoke stack supplies), and moved the explicit ZOffset/render-order-intent and stacked-beams up to FULL MARKS. This makes the great composite pass on its stated stack while the single coplanar emitter — and a thin two-layer build — still fail/partial."
+    },
+    {
+      "id": "vfx-lighting-post-and-game-feel-juice",
+      "order_index": 15,
+      "tier": "exceptional",
+      "system_module": "vfx",
+      "statement": "The effect is finished with the lighting/post + game-feel layer the textures can't provide alone: a color-matched local PointLight, Bloom on the bright emissive pixels, ColorCorrection grade, plus impact juice (camera shake + a color-matched screen flash, and optional hitstop freeze). The discriminator is whether the build commits to >=3 of these post/feel systems layered on the same hit: passing requires the build to state at least three of (1) a local PointLight matched to the effect's color with high Brightness/Range (brighter for darker colors) so the effect casts light and reads emissive; (2) a BloomEffect tuned to bloom the bright emissive cores into an energy halo; (3) a ColorCorrection grade (contrast/saturation/tint) and/or a momentary color-matched screen-flash via ColorCorrection on impact; (4) a camera-shake module tuned by magnitude/roughness/lifetime; (5) a hitstop/impact-frame beat (briefly desaturate the scene, punch a white flash, hold the pose, then resume). A build that ships raw particles on a dark baseplate with no light, no bloom, no grade and no camera/feel layer FAILS. A build that commits to >=3 of these PASSES; matched-per-layer lights, hand-drawn smear/impact-frame overlays, and invert-frame layering so particles stay over the color-correction push toward full marks. A build with only ONE post/feel system (e.g. just a point light) earns partial.",
+      "above_generic_rationale": "Emissive textures alone don't cast light or bloom, so even good particles look flat on a dark baseplate, and particles alone don't convey force. A color-matched point light grounds the effect in the scene, Bloom gives the glowy energy halo, ColorCorrection adds cinematic contrast, and the camera-shake + screen-flash + hitstop 'juice' manufactures perceived weight at the moment of impact — the difference between a hit that lands and one that's ignored. This whole layer is what beginners omit and what separates a showcase shot from raw particles. Grading the >=3-post/feel-systems commitment keeps this discriminating: a light+bloom+grade+juice build clears it, a raw-particles-on-baseplate build cannot.",
+      "evidence_required": "A statement/dump showing >=3 of: a color-matched high-Brightness PointLight; a tuned BloomEffect on the emissive cores; a ColorCorrection grade and/or a color-matched impact screen-flash; a magnitude/roughness/lifetime camera-shake module; a hitstop/impact-frame freeze (desaturate + white flash + pose hold). Hand-drawn smear/impact-frame overlays and invert-frame layering are credited toward full marks. Raw particles with no light/bloom/grade/camera-feel layer does NOT satisfy this; a single post/feel system earns partial.",
+      "concrete_fix": "Finish with a color-matched PointLight (high Brightness for dark colors), a BloomEffect to halo the bright cores, a ColorCorrection grade plus a one-beat color-matched screen flash on impact, and a tuned camera-shake — and add a brief hitstop (desaturate + white flash + pose hold) on heavy hits.",
+      "grading": {
+        "pass": "The build commits to >=3 of: (1) a color-matched high-Brightness/Range PointLight (brighter for darker colors); (2) a tuned BloomEffect haloing the emissive cores; (3) a ColorCorrection grade and/or a momentary color-matched impact screen-flash; (4) a magnitude/roughness/lifetime camera-shake module; (5) a hitstop/impact-frame beat (desaturate + white flash + pose hold + resume). Matched-per-layer lights, hand-drawn smear/impact-frame overlays, and invert-frame layering earn full marks.",
+        "partial": "Only ONE or TWO post/feel systems (e.g. just a point light, or light + bloom but no grade/camera-feel layer).",
+        "fail": "Raw particles shipped on a dark baseplate with no light, no bloom, no grade and no camera/feel layer."
+      },
+      "exemplar_refs": [
+        "Color-matched PointLight (high Brightness for dark colors) + BloomEffect haloing the emissive cores + ColorCorrection grade",
+        "Impact juice: magnitude/roughness/lifetime camera-shake + color-matched screen flash; hitstop = desaturate + white flash + pose hold + resume"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-volcanoes.md",
+          "https://kitsblox.com/blog/roblox-particle-system-deep-dive",
+          "https://www.youtube.com/watch?v=XXCGWREKpo0",
+          "https://devforum.roblox.com/t/advanced-impact-frames/2468478",
+          "https://www.youtube.com/watch?v=exWx1kYy0P0"
+        ]
+      }
+    },
+    {
+      "id": "vfx-event-synced-raycast-placed-networked",
+      "order_index": 16,
+      "tier": "exceptional",
+      "system_module": "vfx",
+      "statement": "KILLER SYSTEM — TRIGGERED ONE-SHOT LIFECYCLE (FIRE, PLACE, REPLICATE, CLEAN UP). The effect is authored as a discrete, triggerable one-shot with a real lifecycle — fired on a precise event as an Emit()/clone burst at a specific placed position, then actively torn down — rather than a constant-Rate emitter left always-on at a fixed spot. This grades the depth dimension every shipped combat/impact VFX needs and a default fountain lacks. Passing requires the build to commit to at least TWO of: (1) EVENT-TRIGGERED firing — the effect is fired by a discrete trigger (an animation-event/keyframe marker, a hit/cast event, or an Emit(count) burst) with the emitter Enabled=false until triggered, NOT a constant-Rate always-on fountain; (2) PLACED-AT-IMPACT positioning — the effect is positioned at the real action/impact point (raycast hit, attachment on the moving source, or the event's reported CFrame) rather than parented to one hardcoded world spot; (3) ACTIVE TEARDOWN / replication awareness — a cloned one-shot fx is Destroyed/Debris-serviced after its lifetime (and, for multiplayer, a server-computes-then-FireAllClients split so every player sees it). A build that is an always-on constant-Rate emitter at a fixed position, never triggered, never placed, never cleaned up, FAILS. A build that commits to >=2 of the three (e.g. an Emit() burst on an event that is cleaned up after its lifetime) PASSES; all three — animation-event trigger + raycast placement + server/client replication split with texture pre-load — earn full marks. A build with only ONE of the three (e.g. a burst that is cleaned up but fired on input-press at a guessed point and seen only locally) earns partial.",
+      "above_generic_rationale": "A constant-Rate emitter pinned to one world spot with no trigger, no placement and no teardown is the structural signature of generic VFX — it never fires ON the action, never lands at the real impact, and leaks instances forever. The triggered one-shot lifecycle (fire on event, place at impact, replicate, clean up) is the integration depth beneath every shipped combat effect. Grading >=2-of-three keeps it discriminating without demanding the full exceptional raycast+networking trio: the event-fired, cleaned-up burst clears it, the always-on fixed-position fountain cannot.",
+      "evidence_required": "A statement/dump showing >=2 of: (1) event-triggered firing (animation-event/keyframe marker, hit/cast event, or Emit(count) burst with Enabled=false until triggered) rather than a constant-Rate fountain; (2) placement at the real action/impact point (raycast hit, attachment on the moving source, or the event CFrame) rather than a hardcoded world spot; (3) active teardown (cloned fx Destroyed/Debris-serviced after lifetime) and/or a server-computes-then-FireAllClients replication split. All three plus texture pre-load earn full marks. An always-on constant-Rate emitter at a fixed position — never triggered, placed, or cleaned up — does NOT satisfy this; only one of the three earns partial.",
+      "concrete_fix": "Author the effect as a triggered one-shot: keep emitters Enabled=false and fire an Emit(count)/clone burst on the real event (animation-event marker or hit), place it at the actual impact point (raycast hit / attachment / event CFrame), then Destroy or Debris-service the clone after its lifetime (and for multiplayer, compute the hit on the server and FireAllClients so everyone sees it) — instead of leaving a constant-Rate emitter running at one fixed spot.",
+      "grading": {
+        "pass": "The build commits to >=2 of: (1) event-triggered firing (animation-event marker, hit/cast event, or Emit(count) burst, Enabled=false until triggered) not a constant-Rate fountain; (2) placement at the real impact/action point (raycast hit, attachment, or event CFrame); (3) active teardown (clone Destroyed/Debris-serviced after lifetime) and/or a server-computes-then-FireAllClients replication split. All three plus texture pre-load earn full marks.",
+        "partial": "Only ONE of the three — e.g. an Emit() burst fired on input-press at a guessed point and seen only locally, or active cleanup of an otherwise always-on fixed-position emitter.",
+        "fail": "An always-on constant-Rate emitter at a hardcoded fixed position — never event-triggered, never placed at a real impact, never cleaned up (none of the three)."
+      },
+      "exemplar_refs": [
+        "Cast fired from a 'shoot' animation-event marker via GetMarkerReachedSignal, not an input-press timer",
+        "Raycast from the weapon to the real impact (fallback to aim target); server computes the hit CFrame and FireAllClients(CFrame,Pos) while caster-side feel stays client-side; textures pre-loaded"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.youtube.com/watch?v=TkNZETIu0CM",
+          "https://www.youtube.com/watch?v=XXCGWREKpo0",
+          "https://devforum.roblox.com/t/full-beginners-guide-on-scripting-animefighting-vfxvisual-effects-part-1/1610853",
+          "https://devforum.roblox.com/t/plugin-vfx-forge-an-advanced-custom-vfx-system/3867553"
+        ]
+      },
+      "change_reason": "The original demanded ALL THREE heavyweight scripting mechanisms (animation-event marker AND raycast placement AND a client/server replication split), an exceptional-tier bar that the GREAT artifact — which DOES commit to a triggered 'burst-then-decay' one-shot with 'a bounded performance budget with cleanup' — still failed for lacking the specific raycast+networking trio, scoring it level with the never-scripted single-emitter mean. That over-strict all-or-nothing gate gave zero discrimination. I rebalanced it to a >=2-of-three triggered-one-shot LIFECYCLE check (event-trigger, placement, teardown/replication), so the GREAT artifact's event-fired-burst + active-cleanup evidence clears the pass bar while the always-on constant-Rate fixed-position single emitter (which has none of the three) fails — and the full raycast+networking trio still earns full marks."
+    }
+  ]
+}
