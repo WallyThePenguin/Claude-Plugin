@@ -1,0 +1,380 @@
+{
+  "module": "vfx",
+  "system_module": "vfx",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "A great Roblox VFX is never one ParticleEmitter doing everything — it is a coordinated STACK of role-separated layers (a bright core/flash, a soft glow/haze, fast sparks/debris, slow rising smoke, a directed/linear element, a synced light), each owning ONE visual job, each driven by authored NumberSequence/ColorSequence curves over particle life, fired as a triggered one-shot burst with a real lifecycle (Emit -> place -> replicate -> clean up), and finished with a lighting/post/game-feel juice layer. Because the agent has no native particle editor, you author every layer programmatically: create_instance the anchor Part + Attachments + each emitter/Beam/Trail/PointLight, then set_property (or one run_luau block) to assign NumberSequence/ColorSequence, LightEmission/LightInfluence, Drag/Acceleration, ZOffset, and Emit()/Debris lifecycle. Build the scaffold first, then layer roles, then curve and differentiate motion per layer, then choreograph timed phases and post. Verify visually with capture/capture_angles and grade with evaluate against the vfx rubric, then refine. The spine that separates an above-the-mean effect from a recolored default is: MULTIPLE role-separated layers + SHAPED lifetime curves + ADDITIVE self-lit authored textures + BOUNDED, actively-cleaned one-shot lifecycle.",
+  "killer_systems": [
+    {
+      "name": "Layered role-separated composition",
+      "what": "The effect is a coordinated SET of 3-5 emitters/elements, each owning ONE job (bright core flash + glow/haze + fast sparks/debris + slow rising smoke + a synced light + a directed/linear element), never a single ParticleEmitter trying to be blast, smoke and debris at once.",
+      "how": "create_instance an invisible anchor Part (Transparency=1, Anchored, CanCollide=false) and an Attachment in it; then create_instance one ParticleEmitter per role parented to the Attachment, plus a Beam/Trail for the directed element and a PointLight sibling for the synced light. Give each layer its OWN Size/Transparency/Color sequences, Rate, Lifetime, Speed, Drag, Acceleration via set_property. Depth-sort with ZOffset (core in front high ZOffset, smoke behind low/negative). A single-emitter effect FAILS this killer system by construction."
+    },
+    {
+      "name": "Authored lifetime curves",
+      "what": "Size, Transparency and Color are driven by eased NumberSequence/ColorSequence curves OVER each particle's life (fade-in at birth, fade-out at death, grow-or-shrink Size, a physically-motivated Color ramp) with per-particle envelope randomness — never left at constant values.",
+      "how": "set_property Transparency to a NumberSequence that starts near 1, dips toward 0 mid-life, returns to 1 at death (hides spawn/despawn pops); Size to a grow-then-shrink or grow curve; Color to a ColorSequence ramp (e.g. bright yellow -> orange -> dark red so it encodes cooling). Use the optional 3rd 'envelope' arg on NumberSequenceKeypoint for per-particle variety. First/last keypoint times MUST be exactly 0 and 1. Build these as Luau sequence literals in a run_luau block since structured set_property can't express a multi-keypoint curve easily."
+    },
+    {
+      "name": "Additive self-lit authored texture",
+      "what": "Energy/fire/magic layers are self-lit (additive blending + low light influence + brightness) and use a real authored sprite — not the default white square at constant lighting.",
+      "how": "set_property LightEmission toward 1 (additive: overlapping particles brighten/bloom), LightInfluence toward 0 (so dark scenes don't mute the color), and raise Brightness. Author a grayscale, soft-edged, transparent-background sprite via paint_texture (or use a crafted asset id) and drive ALL hue through the Color ColorSequence — never bake color into the texture. Design the texture on black because additive ignores black pixels."
+    },
+    {
+      "name": "Per-layer differentiated motion",
+      "what": "Each role-separated layer moves on its OWN motion profile — fast outward sparks that shoot then decelerate, slow buoyant rising smoke, a stationary core flash — rather than every particle drifting on one shared profile.",
+      "how": "Per emitter, set_property a distinct Speed (NumberRange), Acceleration (Vector3: negative Y for gravity sparks, positive Y for rising smoke), and Drag (high Drag ~10 makes a fast burst flare then decelerate; ~0 lets sparks fly). Sparks: high Speed + wide SpreadAngle + high Drag. Smoke: low Speed + upward Acceleration + long Lifetime. Core: Speed ~0.001 (NOT 0, which hides velocity-oriented particles) so it shimmers in place."
+    },
+    {
+      "name": "Triggered one-shot lifecycle with post/juice",
+      "what": "The effect is a discrete triggerable one-shot fired on a precise event as an Emit()/clone burst at a placed position, choreographed as timed phases (flash, shockwave, debris, smoke, embers) with a synced one-frame PointLight flash + camera shake + screen flash, then actively torn down (Debris/disable/Destroy) — not a constant-Rate emitter left running.",
+      "how": "Set each emitter Enabled=false (idle). In a run_luau script: clone or place the rig at the raycast hit / Attachment, task.delay the phases (Emit core+flash at t=0, shockwave Beam + sparks at t=0.02, enable smoke ~0.3s then disable, embers linger), tween a sibling PointLight Brightness from a spike to 0 over ~0.15s, fire a client camera shake + a brief color-matched ColorCorrection screen flash, then Debris:AddItem the whole rig with delay >= max Lifetime so in-flight particles finish before teardown. Run impact VFX on the SERVER (or a RemoteEvent fan-out) so all players see it."
+    }
+  ],
+  "common_pitfalls": [
+    "Single ParticleEmitter trying to be the whole effect — the #1 amateur tell. Blast, smoke, sparks and glow each need their own emitter with their own properties; one emitter can only hold one Size/Color/motion profile.",
+    "Flat constant Size/Transparency/Color (a single-keypoint sequence) — particles pop in and out abruptly and read as a recolored default. Always taper Transparency toward 1 at BOTH ends and ramp Color over life.",
+    "Baking color into the texture instead of using a grayscale sprite + Color ColorSequence — yields muddy, monochromatic, stock-looking particles and kills runtime color control.",
+    "Leaving LightInfluence high / LightEmission low on energy effects — dark scene lighting mutes the color and there's no glow. Drop LightInfluence to ~0 and push LightEmission toward 1 plus Brightness for energy.",
+    "Overdraw: stacking many large, high-Rate, semi-transparent layers (big glow + big smoke at high Rate) tanks GPU fill-rate and looks muddy. Keep big transparent layers low-Rate; reserve high counts for tiny sparks; cap total on-screen particles.",
+    "Unbounded emission / no cleanup — a constant-Rate one-shot left Enabled, or a rig never destroyed, leaks instances and particles forever. Idle bursts at Enabled=false, bound Rate/Lifetime/Emit-count, and Debris:AddItem the rig after a delay >= max Lifetime.",
+    "Destroying the rig immediately after Emit() — cuts in-flight particles mid-life. Disable the emitter and let Lifetime expire (or Debris with a delay >= max Lifetime) instead of an instant Destroy.",
+    "Parenting a ParticleEmitter to a big Part instead of an Attachment — particles scatter randomly inside the part's bounding box. Parent to an Attachment for a precise point origin (and avoid Sphere/Cylinder spawn shapes on an Attachment — only Box/Disc render correctly there).",
+    "Beam/Trail with one or missing attachment — renders nothing. Both Attachment0 and Attachment1 must exist and be separated; Trail width IS the inter-attachment distance, and a Trail only renders while its part MOVES.",
+    "Firing everything in one frame / no anticipation — a heavy impact reads flat. Choreograph discrete TIMED phases on their own task.delay offsets (flash -> shockwave -> debris -> smoke -> embers) with a synced one-frame light flash.",
+    "Running impact VFX in a LocalScript — only the local player sees it. Cosmetic muzzle/cast can be client-side for responsiveness, but shared impacts must run on the SERVER or via a RemoteEvent fan-out.",
+    "Tuning only in the edit viewport — runtime lighting, camera and timing differ. Verify with capture/capture_angles (and a playtest), then iterate Rate/Size/Speed/Transparency in small passes against the contrast/impact principle."
+  ],
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "A composited, curve-driven, self-lit, bounded one-shot — clears the four baseline killer systems (layered composition, lifetime curves, additive+texture, performance budget).",
+      "steps": [
+        {
+          "id": "vfx-scaffold-anchor-attachment",
+          "order_index": 1,
+          "instruction": "Build the spatial scaffold as the explicit mount for a ROLE-SEPARATED multi-emitter stack, not a single generic emission point. First create_instance an anchor Part (className='Part') with Transparency=1, Anchored=true, CanCollide=false, parented under a named workspace effects folder. Then, BEFORE authoring any look, name the >=3 cooperating layers this rig will host (e.g. core flash + glow/haze + fast sparks/debris + slow rising smoke + synced light) and provision the spatial origins each needs: create_instance a primary Attachment as the shared point origin, AND a dedicated Attachment per layer that needs a distinct spatial role — at minimum a SECOND Attachment offset from the first to define the axis/direction for the directional/linear layer (sparks/debris/shockwave edge), so the directed role emits along a real vector rather than omnidirectionally from the same point as the diffuse body. State which emitter role will parent to which Attachment. This makes the scaffold encode per-layer spatial structure (point origins for diffuse layers, a directional axis for the linear layer, a near-static origin for the core) that a single bounding-box-parented emitter cannot, and makes the whole stack track/rotate as one unit with whatever it is later attached to. Pitfalls: parenting any emitter directly to the large Part scatters its particles randomly through the bounding box — every emitter must parent to an Attachment for a precise origin; a single shared Attachment for all layers collapses the directional role into the same omnidirectional point as the diffuse body (give the directed layer its own offset Attachment/axis); forgetting Transparency=1 leaves a grey box occluding the effect; forgetting Anchored=true + CanCollide=false makes the anchor fall/collide when later spawned on a character.",
+          "addresses_criteria": [
+            "vfx-layered-multi-emitter-composition"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Parenting a ParticleEmitter directly to a large Part scatters particles randomly inside its bounding box; parent emitters to the Attachment for a point origin. Forgetting Transparency=1 leaves a grey box occluding the effect; forgetting Anchored+CanCollide=false makes the anchor fall/collide when later spawned on a character."
+        },
+        {
+          "id": "vfx-role-layers-core-glow-sparks-smoke",
+          "order_index": 2,
+          "instruction": "Author the effect as 3-5 SEPARATE ParticleEmitters parented to the Attachment, each owning exactly ONE role, and prove the separation with role-DISCRIMINATING per-layer property values (not just three copies of one emitter): (1) CORE — small Size, high LightEmission (~1, additive) with LightInfluence<1, short Lifetime, moderate Rate; (2) GLOW/HAZE — much larger Size, high Transparency, LightEmission~1, soft round texture, LOW Rate (it is a big transparent layer — keep Rate low to avoid overdraw); (3) SPARKS/DEBRIS — tiny Size, high Speed, wide SpreadAngle, short Lifetime; (4) SMOKE — large Size, slow Speed, long Lifetime, dark Color, LOW-but-nonzero LightEmission/LightInfluence so it still reads as grounded and never as bright as the core. create_instance each ParticleEmitter, then set_property the role-specific values above so the layers differ in brightness, size, speed AND lifetime — a build that names the roles but leaves their Rate/Lifetime/Size/LightEmission identical earns only partial. PITFALLS: making the glow/smoke layers as bright as the core erases the hot-core-vs-soft-shell contrast that is the whole point — the core must be the brightest, tightest, shortest-lived layer and the surround dimmer/larger/softer. Stacking many large high-Rate transparent layers tanks GPU via overdraw, so the big glow/smoke layers MUST stay low-Rate. A single emitter cannot encode multiple roles and FAILS the layered-composition criterion by construction.",
+          "addresses_criteria": [
+            "vfx-layered-multi-emitter-composition"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Making the glow/smoke layers as bright as the core erases the hot-core-vs-soft-shell contrast that is the whole point. Stacking many large high-Rate layers tanks GPU via overdraw — keep big transparent layers low-Rate."
+        },
+        {
+          "id": "vfx-authored-texture-grayscale-soft",
+          "order_index": 3,
+          "instruction": "Give every layer a real authored sprite, never the default white square. Use paint_texture to author a procedural sprite (or set the emitter's Texture to a crafted grayscale, soft-edged, transparent-background asset id). Author the sprite in GRAYSCALE so all hue is driven by the Color property at runtime — one texture serves many tinted effects and avoids the muddy 'baked-in color' stock look.",
+          "addresses_criteria": [
+            "vfx-additive-emission-and-authored-texture"
+          ],
+          "tools": [
+            "paint_texture",
+            "set_property",
+            "create_instance"
+          ],
+          "pitfalls": "Baking color into the texture removes Color-property control and reads as a generic stock asset. Hard-edged or opaque-background sprites show visible rectangles and harsh seams — blur edges to transparent. (paint_texture tiles on PARTS; for the particle sprite itself use a grayscale soft blob image id.)"
+        },
+        {
+          "id": "vfx-lifetime-curves-size-transparency-color",
+          "order_index": 4,
+          "instruction": "Drive each emitter's Size, Transparency and Color with eased sequences over particle life via a run_luau block (a single set_property can't express multi-keypoint curves cleanly). Transparency = NumberSequence that starts near 1, dips toward 0 mid-life, returns to 1 at death (hides spawn/despawn). Size = grow-then-shrink (impact/smoke) or large-to-small (sparks). Color = ColorSequence ramp encoding the phenomenon (e.g. bright yellow -> orange -> dark red). Add the 3rd 'envelope' arg on keypoints for per-particle variety. First/last keypoint times MUST be exactly 0 and 1.",
+          "addresses_criteria": [
+            "vfx-lifetime-curves-size-transparency-color"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "Flat single-keypoint (constant) values are the #1 amateur tell — particles pop in/out and look synthetic. Spend ~80% of tuning time on Size+Transparency curves. Keypoint times that aren't strictly increasing (or don't start at 0 / end at 1) error on construction."
+        },
+        {
+          "id": "vfx-additive-selflit-energy",
+          "order_index": 5,
+          "instruction": "Make energy/fire/magic layers self-lit. set_property LightEmission toward 1 (additive blending so overlapping particles brighten and bloom), LightInfluence toward 0 (~0.1 so dark scene lighting doesn't mute your authored color), and raise Brightness. This 'fake glow' is what reads as energy; the core layer should carry the highest LightEmission, the smoke layer the lowest.",
+          "addresses_criteria": [
+            "vfx-additive-emission-and-authored-texture"
+          ],
+          "tools": [
+            "set_property"
+          ],
+          "pitfalls": "LightEmission=1 makes black/dark texture pixels vanish (additive ignores black) — design sprites on black so only bright parts show. Maxing LightEmission without Brightness (or leaving LightInfluence high) under-delivers the glow; they stack. Many overlapping additive particles blow out to pure white — keep Rate/overlap modest."
+        },
+        {
+          "id": "vfx-performance-budget-bounded-cleanup",
+          "order_index": 6,
+          "instruction": "Bound the effect and make it clean up. set_property a finite Rate (<=400/s desktop, <=100/s mobile) and a bounded Lifetime NumberRange on every emitter; for one-shots set Enabled=false and trigger a bounded Emit(count) instead of a running stream. Then actively tear down: in a run_luau block disable the emitters and Debris:AddItem the whole rig with a delay >= the max Lifetime so no unbounded emission is left running and no instances leak.",
+          "addresses_criteria": [
+            "vfx-performance-budget-bounded-cleanup"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau",
+            "destroy_instance"
+          ],
+          "pitfalls": "Destroying the rig immediately after Emit() cuts in-flight particles mid-life — disable first and Debris with delay >= max Lifetime. A constant-Rate emitter left Enabled is the classic unbounded leak. An infinite Lifetime makes particles never disappear."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "Differentiated per-layer motion, spatial/directional structure, animated shapes, a directed/linear element, a core+glow depth stack, and event-bound bursts — clears the 'good' criteria.",
+      "steps": [
+        {
+          "id": "vfx-color-graded-ramp-randomized-lifetime",
+          "order_index": 1,
+          "instruction": "Refine the Color ramp to be physically motivated and de-synchronize particle death. set_property the Color ColorSequence to follow a temperature ramp (hot bright core -> warm mid -> cool/dark end). Make Lifetime a Min,Max NumberRange (e.g. 0.5,1) and set a Rotation range + RotSpeed so particles spin at varied rates — this avoids the synchronized mechanical death where every particle dies on the same frame.",
+          "addresses_criteria": [
+            "vfx-color-graded-ramp-and-randomized-lifetime"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "A single-value Lifetime makes the whole batch die in lockstep (gif-like restart). Identical Rotation on all particles looks mechanical — randomize via a range and the envelope band."
+        },
+        {
+          "id": "vfx-per-layer-differentiated-motion",
+          "order_index": 2,
+          "instruction": "Give each role-separated layer its OWN motion profile so the composite reads as a real phenomenon. Per emitter set_property a distinct Speed (NumberRange), Acceleration (Vector3 — negative Y for gravity-pulled sparks/debris, positive Y for buoyant rising smoke), and Drag (high ~10 makes a fast burst flare out then decelerate hard like an impact puff; ~0 lets sparks fly). Sparks: high Speed + high Drag. Smoke: low Speed + upward Acceleration + long Lifetime. Core flash: Speed ~0.001 so it shimmers in place rather than flying off.",
+          "addresses_criteria": [
+            "vfx-motion-acceleration-drag-squash-orientation"
+          ],
+          "tools": [
+            "set_property"
+          ],
+          "pitfalls": "Speed exactly 0 makes velocity-oriented particles invisible — use 0.001 for a stationary core. Every layer sharing one Speed/Acceleration reads as fake. Short Lifetime with no Speed bump means particles barely travel."
+        },
+        {
+          "id": "vfx-zoffset-depth-directional-emission",
+          "order_index": 3,
+          "instruction": "Author spatial structure: depth-sort the layers and make at least one layer emit with INTENT. set_property each emitter's ZOffset so layers occupy distinguishable render planes (core in front at a higher ZOffset, smoke behind at a lower/negative ZOffset like -5 to render behind props). Then make at least one layer DIRECTED — set a narrow SpreadAngle and an EmissionDirection (and verify the EmissionDirection NormalId after any reorientation) for a shaped cone, rather than every layer puffing 180,180 omnidirectionally.",
+          "addresses_criteria": [
+            "vfx-zoffset-depth-and-directional-emission-shape"
+          ],
+          "tools": [
+            "set_property"
+          ],
+          "pitfalls": "Without ZOffset ordering, co-located layers z-fight and flicker. EmissionDirection is relative to the parent part's face — rotating the part redirects the spray unexpectedly. Pushing ZOffset too high pulls particles so close they clip out when the camera nears (keep roughly -5..5)."
+        },
+        {
+          "id": "vfx-flipbook-animated-shape",
+          "order_index": 4,
+          "instruction": "Give turbulent layers (fire licks, fireballs, rolling smoke, splashes) a shape that CHANGES over each particle's life so it isn't a frozen billboard. Set the layer's Texture to a sprite-sheet, then set_property FlipbookLayout to match the grid (Grid2x2/Grid4x4/Grid8x8), FlipbookFramerate, FlipbookMode (OneShot is cleanest for stylized effects), and FlipbookStartRandom=true so particles don't all play the same frame in lockstep. If no flipbook sheet is available, fake it with a strong evolving Size+Rotation curve so the form visibly morphs.",
+          "addresses_criteria": [
+            "vfx-flipbook-animated-particles"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "A FlipbookLayout that mismatches the sheet (4x4 mode on an 8x8 sheet) renders garbled frames. Without FlipbookStartRandom every particle animates in lockstep and looks mechanically repetitive. Flipbook textures cost more memory — reuse one sheet and drop resolution for mobile."
+        },
+        {
+          "id": "vfx-directed-linear-element-beam-trail",
+          "order_index": 5,
+          "instruction": "Add at least one DIRECTED/LINEAR element authored as its OWN role, visually distinct from the diffuse body: a streak, radial spark spray, connecting tendril, or expanding shockwave edge. For a connecting/energy line use a Beam between the two Attachments (assign Attachment0/Attachment1, set Texture, TextureMode=Wrap + TextureSpeed to scroll, Width0/Width1 to taper, CurveSize0/CurveSize1 to bend, FaceCamera=true, LightEmission for glow, Segments up if faceted). For a motion streak on a moving part use a Trail (two Attachments — their distance IS the width — Lifetime, Texture, Color ColorSequence, Transparency fading the tail, LightEmission). create_instance the Beam/Trail and set_property its fields.",
+          "addresses_criteria": [
+            "vfx-beam-craft-taper-glow-scroll-curve"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "A Beam or Trail stops rendering entirely if either attachment is missing/removed. A curved Beam looks faceted if Segments is too low. A Trail only renders while its part MOVES, and a too-long Lifetime leaves a stale smear — shorten it for crisp slashes. Beams have no collision — a damaging laser needs a separate hitbox."
+        },
+        {
+          "id": "vfx-core-glow-depth-stack",
+          "order_index": 6,
+          "instruction": "Build bright heat as a stacked PAIR so it reads as volume: an intense, tight, additive CORE layer sitting inside a softer, larger, dimmer GLOW/HALO surround. create_instance two emitters on the same Attachment; set_property the core to small Size + high LightEmission + high Brightness + short Lifetime, and the glow to larger Size + higher Transparency + lower LightEmission + longer Lifetime, with ZOffset placing the core in front of the glow. Each carries its OWN size/brightness/transparency.",
+          "addresses_criteria": [
+            "vfx-trail-body-core-stack-taper-shortlife"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Making the glow as bright/opaque as the core collapses the depth read — the contrast is the point. A soft, unfocused core kills impact; keep the inner core small, bright and crisp."
+        },
+        {
+          "id": "vfx-attachment-bound-emit-on-event",
+          "order_index": 7,
+          "instruction": "Bind emitters to Attachments on the moving source with a deliberate LockedToPart choice and fire them as precise bursts on game events. set_property Enabled=false (idle until needed) and LockedToPart per layer (true so particles ride the source; false so a burst is left in world space). Then in a run_luau script trigger emitter:Emit(count) on the exact event moment (a Touched handler, a RemoteEvent, or an animation marker via GetMarkerReachedSignal) — never hardcoded to a fixed world position or left always-on.",
+          "addresses_criteria": [
+            "vfx-attachment-bound-emit-on-event"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "Leaving Enabled=true on a burst emitter makes it spew constantly instead of firing once. Emitting at a guessed point instead of the real event/attachment makes the effect float. Wrong LockedToPart makes a world-space burst drag along with the source (or vice versa)."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Burst-then-decay timing with a synced light flash, choreographed impact phases, faked volume from a depth-ordered stack, full lighting/post + game-feel juice, and a triggered networked one-shot lifecycle — clears the exceptional criteria.",
+      "steps": [
+        {
+          "id": "vfx-motion-timing-burst-decay-anticipation",
+          "order_index": 1,
+          "instruction": "Shape the whole effect as a burst-then-decay with anticipation/impact/secondary beats, not a flat even fade. In a run_luau script: optionally play a tiny anticipation beat, then Emit the core/sparks with very short Lifetime (e.g. 0.2,0.6) + high Speed (20,40) + high Drag (~10) so the burst flares then decelerates, then let the Transparency curves decay the survivors. Sync a one-frame PointLight flash to the burst (tween Brightness from a spike to 0 over ~0.1s). Add a secondary beat (a smaller follow-up Emit) a few frames later.",
+          "addresses_criteria": [
+            "vfx-motion-timing-burst-decay-anticipation"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "A constant-Rate stream has no punch — use Emit() bursts. Snapping the light on/off instead of tweening the spike->0 reads as a blink, not a flash. No anticipation/secondary beat makes a heavy hit feel weak."
+        },
+        {
+          "id": "vfx-impact-phase-choreography",
+          "order_index": 2,
+          "instruction": "Choreograph a heavy impact as discrete TIMED phases on their own delays rather than firing everything in one frame. In a run_luau script use task.delay offsets: t=0 flash (core Emit + PointLight spike); t~0.02 expanding shockwave (a ring Beam or a fast wide-SpreadAngle Emit); t~0.04 radial debris/sparks Emit; t~0.1 enable rolling smoke for ~0.3s then disable; t~0.4 lingering embers/dust at low Rate. Each phase is its own role-separated layer triggered on its own beat.",
+          "addresses_criteria": [
+            "vfx-impact-phase-choreography"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Firing all layers on the same frame collapses the choreography into a single puff. Forgetting to disable the smoke phase leaves it streaming. Phase delays that exceed a layer's Lifetime mean the layer is gone before its beat — match Lifetimes to the schedule."
+        },
+        {
+          "id": "vfx-faked-volume-depth-stack",
+          "order_index": 3,
+          "instruction": "Fake 3D volume on the 2D-billboard engine by building the effect from MULTIPLE co-located layers occupying naturally different depth planes that read foreground-to-background: a tight bright core/flash nearest (highest ZOffset), a softer glow/haze around it, then diffuse smoke/dust furthest (lowest/negative ZOffset). set_property each layer's ZOffset to order the stack and give each its own Size/Transparency so the parallax between planes sells depth as the camera moves.",
+          "addresses_criteria": [
+            "vfx-beam-stacking-parallax-volume"
+          ],
+          "tools": [
+            "set_property",
+            "create_instance"
+          ],
+          "pitfalls": "Layers at the same ZOffset z-fight and flicker instead of reading as depth. Equal Size/brightness across planes flattens the parallax — the front must be tighter/brighter, the back larger/dimmer. Overdraw from many big stacked planes still applies — keep the back planes low-Rate."
+        },
+        {
+          "id": "vfx-lighting-post-and-game-feel-juice",
+          "order_index": 4,
+          "instruction": "Finish with the lighting/post + game-feel layer the textures can't provide alone. Add a color-matched PointLight as a SIBLING of the emitter (create_instance, tween its Brightness on the burst). Add Bloom on the bright emissive pixels and a ColorCorrectionEffect grade under Lighting (create_instance + set_property). On impact, run client-side juice: a time/spring-based camera shake (bind to RenderStepped or use a CameraShaker module, client only), a brief color-matched ColorCorrection screen flash, and an optional short hitstop freeze. Drive these with TweenService so they grow/peak/dissipate on one coordinated timeline.",
+          "addresses_criteria": [
+            "vfx-lighting-post-and-game-feel-juice"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "A fixed per-frame CFrame camera offset scales with framerate — use a time/spring-based shake bound to RenderStepped. Camera shake and screen flash are per-client — do them on the client, not the server. A ColorCorrection flash with wrong saturation/contrast washes the scene; tune those with the tint. Snapping (not tweening) the light/post makes the layers start/stop on different frames and look disjointed."
+        },
+        {
+          "id": "vfx-event-synced-raycast-placed-networked",
+          "order_index": 5,
+          "instruction": "Author the whole effect as a discrete, triggerable one-shot with a real lifecycle — fired, placed, replicated, cleaned up. In a run_luau script: stage the rig in ReplicatedStorage; on a precise event, raycast to the real hit position, clone the rig and set its CFrame to that placed position (or to the source Attachment), Emit() all burst layers (staggered per the phase schedule), replicate to all clients by running on the SERVER or firing a RemoteEvent fan-out, then actively tear down via Debris:AddItem with a delay >= max Lifetime — never a constant-Rate emitter left running.",
+          "addresses_criteria": [
+            "vfx-event-synced-raycast-placed-networked",
+            "vfx-performance-budget-bounded-cleanup"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "destroy_instance"
+          ],
+          "pitfalls": "Placing the burst at a guessed point instead of the raycast hit makes it float in the wrong spot. Running impact VFX in a LocalScript means other players never see it — replicate via server/RemoteEvent. Cloning per shot at scale without pooling/culling is expensive — reuse the rig and cull off-screen instances."
+        },
+        {
+          "id": "vfx-verify-and-evaluate-loop",
+          "order_index": 6,
+          "instruction": "Verify visually and grade before calling it done. Use capture (single framing) or capture_angles (orbit the effect from several sides at the burst peak) to SEE the composite — particle editors lie in the edit viewport, so confirm timing/density/depth as it actually renders. Then call evaluate(category='vfx', subject=<rig path>, design=<your summary of the layers/roles/lifecycle you built>) to grade against the vfx rubric, and refine the fails-first criteria (curves, additive, motion differentiation, cleanup) in small passes.",
+          "addresses_criteria": [
+            "vfx-layered-multi-emitter-composition",
+            "vfx-lifetime-curves-size-transparency-color",
+            "vfx-performance-budget-bounded-cleanup",
+            "vfx-motion-timing-burst-decay-anticipation"
+          ],
+          "tools": [
+            "capture",
+            "capture_angles",
+            "evaluate"
+          ],
+          "pitfalls": "Tuning only in the edit viewport produces effects that look wrong at runtime (lighting/camera/timing differ) — capture at the burst peak, since a one-shot is invisible at rest. Chasing exact numbers from a tutorial fails because values are texture- and scale-dependent — iterate by eye against the contrast/impact principle and the evaluate report."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "sources": [
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/core/building/create-basic-visual-effects.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/effects/particle-emitters.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/curriculums/core/building/create-basic-visual-effects.md",
+      "https://devforum.roblox.com/t/introduction-to-vfx-particles/2068650",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/effects/beams.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/effects/trails.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/tutorials/use-case-tutorials/vfx/create-waterfalls.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/effects/particle-emitters.md",
+      "https://kitsblox.com/blog/roblox-particle-system-deep-dive",
+      "https://create.roblox.com/docs/effects/particle-emitters",
+      "https://create.roblox.com/docs/reference/engine/classes/ParticleEmitter",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/vfx/use-particles-for-explosions",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/curriculums/core/building/create-basic-visual-effects.md",
+      "https://github.com/Sleitnick/RbxCameraShaker",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/vfx/custom-particle-effects.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/vfx/custom-particle-effects.md",
+      "https://devforum.roblox.com/t/refined-slashing-visual-effect/2740540",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/vfx/custom-particle-effects.md",
+      "https://devforum.roblox.com/t/feedback-on-vfx/2432141",
+      "https://devforum.roblox.com/t/how-can-i-make-my-visual-effects-look-better/2963977",
+      "https://devforum.roblox.com/t/how-can-i-make-my-visual-effects-look-better/2963977",
+      "https://devforum.roblox.com/t/how-can-i-make-my-visual-effects-look-better/2963977",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/vfx/use-particles-for-explosions.md",
+      "https://devforum.roblox.com/t/how-can-i-make-my-visual-effects-look-better/2963977",
+      "https://devforum.roblox.com/t/feedback-on-my-vfx/2927101",
+      "https://devforum.roblox.com/t/refined-slashing-visual-effect/2740540",
+      "https://devforum.roblox.com/t/refined-slashing-visual-effect/2740540",
+      "https://devforum.roblox.com/t/feedback-on-my-sword-slash-vfx/3438372",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper), https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying)",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying)",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying), https://www.youtube.com/watch?v=QKuk_Mau09I (Dogmath, flipbooks)",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying), https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper), https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic)",
+      "https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying), https://www.youtube.com/watch?v=r9pa_n6r6Kc (DazMuky)",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=r9pa_n6r6Kc (DazMuky)",
+      "https://www.youtube.com/watch?v=r9pa_n6r6Kc (DazMuky)",
+      "https://www.youtube.com/watch?v=XXCGWREKpo0 (MoldySugar), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=XXCGWREKpo0 (MoldySugar), https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=TkNZETIu0CM (Develuper)",
+      "https://www.youtube.com/watch?v=xzZeP65SSlA (Histoic), https://www.youtube.com/watch?v=TrFiKIr7K-4 (ghxstying)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 16,
+      "criteria_addressed": 16,
+      "uncovered": []
+    }
+  },
+  "date": "2026-06-27"
+}
