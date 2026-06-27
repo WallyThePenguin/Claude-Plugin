@@ -37,6 +37,21 @@ VFX_FALLBACK = {
 }
 
 
+def gist(statement, limit=320):
+    """The criterion's gist for STEP GENERATION — the rubric statement is written for grading
+    (hundreds of words); the factory only needs what to build, which the discriminator states up
+    front. Trim to ~limit chars at a sentence/word boundary so args stay compact + reliable to pass."""
+    s = " ".join((statement or "").split())
+    if len(s) <= limit:
+        return s
+    cut = s[:limit]
+    dot = cut.rfind(". ")
+    if dot >= 160:  # prefer a sentence boundary when one is reasonably far in
+        return cut[: dot + 1]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > 0 else cut).rstrip() + " …"
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit("usage: build_recipe_args.py <category>")
@@ -47,7 +62,7 @@ def main():
         "module": rub.get("module", cat),
         "version": str(rub.get("version", "1.0")),
         "criteria": [
-            {"id": c.get("id"), "tier": c.get("tier"), "statement": c.get("statement")}
+            {"id": c.get("id"), "tier": c.get("tier"), "statement": gist(c.get("statement"))}
             for c in rub.get("criteria", [])
         ],
     }
