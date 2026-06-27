@@ -40,6 +40,9 @@ function allSteps(tiers) {
   for (const t of (tiers || [])) for (const s of (t.steps || [])) out.push({ ...s, tier: t.tier })
   return out
 }
+// Collapse any tier label to the 3-tier model the rubric/validateGuide accept (off-enum -> 'good').
+const TIER_SET = { baseline: true, good: true, exceptional: true }
+function normTier(t) { return TIER_SET[t] ? t : 'good' }
 
 // ---- schemas ----
 const FINDINGS_SCHEMA = { type: 'object', required: ['techniques'], properties: {
@@ -60,7 +63,7 @@ const TIERS_SCHEMA = { type: 'object', required: ['tiers'], properties: {
     name: { type: 'string' }, what: { type: 'string' }, how: { type: 'string' } } } },
   common_pitfalls: { type: 'array', items: { type: 'string' } },
   tiers: { type: 'array', items: { type: 'object', required: ['tier', 'steps'], properties: {
-    tier: { type: 'string' }, goal: { type: 'string' },
+    tier: { type: 'string', enum: ['baseline', 'good', 'exceptional'] }, goal: { type: 'string' },
     steps: { type: 'array', items: STEP_OBJ } } } } } }
 
 const VOTE_SCHEMA = { type: 'object', required: ['id', 'verdict'], properties: {
@@ -69,7 +72,7 @@ const VOTE_SCHEMA = { type: 'object', required: ['id', 'verdict'], properties: {
 
 const FILL_SCHEMA = { type: 'object', required: ['steps'], properties: {
   steps: { type: 'array', items: { type: 'object', required: ['id', 'instruction', 'tier', 'addresses_criteria'], properties: {
-    id: { type: 'string' }, instruction: { type: 'string' }, tier: { type: 'string' },
+    id: { type: 'string' }, instruction: { type: 'string' }, tier: { type: 'string', enum: ['baseline', 'good', 'exceptional'] },
     addresses_criteria: { type: 'array', items: { type: 'string' } },
     tools: { type: 'array', items: { type: 'string' } }, pitfalls: { type: 'string' } } } } } }
 
@@ -79,7 +82,7 @@ const GUIDE_SCHEMA = { type: 'object', required: ['module', 'tiers'], properties
   killer_systems: { type: 'array', items: { type: 'object', properties: {
     name: { type: 'string' }, what: { type: 'string' }, how: { type: 'string' } } } },
   tiers: { type: 'array', items: { type: 'object', required: ['tier', 'steps'], properties: {
-    tier: { type: 'string' }, goal: { type: 'string' },
+    tier: { type: 'string', enum: ['baseline', 'good', 'exceptional'] }, goal: { type: 'string' },
     steps: { type: 'array', items: { type: 'object', required: ['id', 'order_index', 'instruction'], properties: {
       id: { type: 'string' }, order_index: { type: 'number' }, instruction: { type: 'string' },
       addresses_criteria: { type: 'array', items: { type: 'string' } },
@@ -139,8 +142,9 @@ while (uncovered(draft.tiers).length > 0 && round < MAX_FILL) {
     `These rubric criteria are NOT yet addressed by any build step in the "${CATEGORY}" guide. Write the concrete BUILD step(s) that would satisfy each — above the generic floor, citing the real tools, assigned to the right tier (match the criterion's tier). If a criterion is genuinely un-buildable with the available tools, still return a best-effort step describing what WOULD satisfy it and note the gap in pitfalls.\n\nUNADDRESSED CRITERIA:\n${JSON.stringify((RUBRIC.criteria || []).filter(c => gaps.includes(c.id)), null, 1)}\n\nREAL TOOLS: ${JSON.stringify(TOOLS)}`,
     { label: `fill#${round}`, phase: 'Cover', schema: FILL_SCHEMA })
   for (const ns of (fill.steps || [])) {
-    let tier = draft.tiers.find(t => t.tier === ns.tier)
-    if (!tier) { tier = { tier: ns.tier || 'good', goal: '', steps: [] }; draft.tiers.push(tier) }
+    const nsTier = normTier(ns.tier)
+    let tier = draft.tiers.find(t => t.tier === nsTier)
+    if (!tier) { tier = { tier: nsTier, goal: '', steps: [] }; draft.tiers.push(tier) }
     tier.steps.push({ id: ns.id, instruction: ns.instruction, addresses_criteria: ns.addresses_criteria || [], tools: ns.tools || [], pitfalls: ns.pitfalls || '' })
   }
   round++
