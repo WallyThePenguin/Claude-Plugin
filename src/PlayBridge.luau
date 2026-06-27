@@ -242,6 +242,40 @@ local function convertToMotor6D(model)
 	end
 	return built, stripped
 end
+-- VERIFY #4 hit detection: place workspace.TargetDummy in front of the player, trigger the swing (the client
+-- requests a hit on the active window -> the server sweeps + damages), and report the dummy's Humanoid.Health
+-- before/after (server-authoritative, so readable here).
+local function serverHitTest()
+	local plr = firstPlayer()
+	local char = plr and plr.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local dummy = workspace:FindFirstChild("TargetDummy")
+	local dhum = dummy and dummy:FindFirstChildOfClass("Humanoid")
+	if not (hrp and dummy and dhum) then
+		return "hit-test: need player HRP + workspace.TargetDummy w/ Humanoid (hrp="
+			.. tostring(hrp ~= nil)
+			.. " dummy="
+			.. tostring(dhum ~= nil)
+			.. ")"
+	end
+	;(dummy :: Model):PivotTo(
+		CFrame.lookAt(
+			(hrp :: any).Position + (hrp :: any).CFrame.LookVector * 3,
+			(hrp :: any).Position
+		)
+	)
+	task.wait(0.3)
+	local before = (dhum :: Humanoid).Health
+	client("act", "record")
+	local after = (dhum :: Humanoid).Health
+	return string.format(
+		"TargetDummy Health: before=%.0f after=%.0f (delta=%.0f, max=%.0f)",
+		before,
+		after,
+		before - after,
+		(dhum :: Humanoid).MaxHealth
+	)
+end
 -- Fix the PLAYER's own character in place (keeps it as LocalPlayer.Character so the in-Tool runtime works).
 local function serverFix()
 	local plr = firstPlayer()
@@ -325,6 +359,8 @@ while true do
 				post(cmd.id, true, serverAnim())
 			elseif cmd.cmd == "sfix" then
 				post(cmd.id, true, serverFix())
+			elseif cmd.cmd == "shit" then
+				post(cmd.id, true, serverHitTest())
 			else
 				post(cmd.id, false, "unknown play cmd: " .. tostring(cmd.cmd))
 			end

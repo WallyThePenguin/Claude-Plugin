@@ -62,6 +62,7 @@ local EXPECTED_RELAY = {
 	"import_animation",
 	"bind_animation",
 	"bind_behavior",
+	"bind_hitbox",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
