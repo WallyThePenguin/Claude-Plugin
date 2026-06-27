@@ -168,8 +168,13 @@ local function storeClip(tool: Tool, event: string, source: KeyframeSequence): K
 	return copy
 end
 
--- Create/refresh the runtime LocalScript under the Tool (idempotent -- replaces any prior one).
+-- Create/refresh the runtime LocalScript under the Tool (idempotent -- replaces any prior one). If a behavior
+-- state machine (#3 ItemBehaviorRuntime) already owns playback, DON'T add a competing runtime -- it reads the
+-- Anims clips we just (re)wrote, so re-binding a clip after bind_behavior just updates the motion.
 local function writeRuntime(tool: Tool)
+	if tool:FindFirstChild("ItemBehaviorRuntime") ~= nil then
+		return
+	end
 	local existing = tool:FindFirstChild("ItemAnimRuntime")
 	if existing ~= nil then
 		existing:Destroy()

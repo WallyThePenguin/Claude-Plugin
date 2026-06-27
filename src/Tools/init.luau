@@ -43,6 +43,7 @@ local MeshTool = require(script.Mesh)
 local TextureTool = require(script.Texture)
 local ItemTool = require(script.Item)
 local ItemAnimTool = require(script.ItemAnim)
+local ItemBehaviorTool = require(script.ItemBehavior)
 
 local Tools = {}
 
@@ -157,6 +158,9 @@ for _, descriptor in ItemTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ItemAnimTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in ItemBehaviorTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 

@@ -417,6 +417,31 @@ local function doAct(verb)
 			return "profile camera set"
 		end
 		return "no char"
+	elseif verb == "record" then
+		-- VERIFY the #3 behavior state machine: equip + activate the Tool, then sample its ItemState
+		-- attribute (set client-side by ItemBehaviorRuntime) for 3s and return the transition sequence.
+		local backpack = plr:FindFirstChild("Backpack")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local tool = (char and char:FindFirstChildOfClass("Tool"))
+			or (backpack and backpack:FindFirstChildOfClass("Tool"))
+		if not (hum and tool) then
+			return "record: no humanoid/tool"
+		end
+		if tool.Parent ~= char then
+			hum:EquipTool(tool)
+			task.wait(0.4)
+		end
+		tool:Activate()
+		local samples, last, t0 = {}, nil, os.clock()
+		while os.clock() - t0 < 3 do
+			local st = tostring(tool:GetAttribute("ItemState"))
+			if st ~= last then
+				table.insert(samples, string.format("%.2f:%s", os.clock() - t0, st))
+				last = st
+			end
+			task.wait(0.05)
+		end
+		return "ItemState " .. table.concat(samples, " -> ")
 	end
 	return "unknown act: " .. tostring(verb)
 end
