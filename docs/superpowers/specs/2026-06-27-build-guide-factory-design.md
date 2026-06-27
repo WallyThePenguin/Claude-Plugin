@@ -177,7 +177,7 @@ Plus a one-line update to the `refine-to-rubric` working skill (`src/BuiltinWork
 `BuildGuideCatalog.render(guide)` produces markdown (mirrors `RubricCatalog.render`):
 
 ```
-# Build guide: locomotion (v1.0) — targets the locomotion rubric (v1.0)
+# Build guide: locomotion (v1.0) — targets the rubric (v1.0)
 <overview>
 Killer systems: <name — what (how)>, …
 
