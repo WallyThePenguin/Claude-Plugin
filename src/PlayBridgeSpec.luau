@@ -19,6 +19,16 @@ local function buildCases(): { Case }
 		return ok1 and ok2, "cleanupTestScripts should never error"
 	end)
 
+	add("restoreStarterPlayer is callable + a no-op when nothing was saved", function()
+		-- With no test in flight (savedAppearance == nil) it must not touch StarterPlayer or error.
+		local before = game:GetService("StarterPlayer").LoadCharacterAppearance
+		local ok1 = pcall(PlayBridge.restoreStarterPlayer)
+		local ok2 = pcall(PlayBridge.restoreStarterPlayer)
+		local after = game:GetService("StarterPlayer").LoadCharacterAppearance
+		return ok1 and ok2 and before == after,
+			"restoreStarterPlayer should be a safe no-op when no test forced LoadCharacterAppearance"
+	end)
+
 	return cases
 end
 
