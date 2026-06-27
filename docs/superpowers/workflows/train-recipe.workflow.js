@@ -44,6 +44,18 @@ function allSteps(tiers) {
 const TIER_SET = { baseline: true, good: true, exceptional: true }
 function normTier(t) { return TIER_SET[t] ? t : 'good' }
 
+// Retry a single-point agent call: agent() returns null after exhausting its own retries (e.g. a
+// transient rate-limit). distill/assemble can't be null or the run crashes, so give them extra tries.
+async function agentTry(prompt, opts, tries) {
+  tries = tries || 4
+  for (let i = 1; i <= tries; i++) {
+    const r = await agent(prompt, opts)
+    if (r != null) return r
+    if (i < tries) log(`${(opts && opts.label) || 'agent'}: null (rate-limited?), retry ${i + 1}/${tries}`)
+  }
+  return null
+}
+
 // ---- schemas ----
 const FINDINGS_SCHEMA = { type: 'object', required: ['techniques'], properties: {
   angle: { type: 'string' },
@@ -111,9 +123,10 @@ log(`Sweep: ${allTech.length} build techniques across ${sweep.length} angles`)
 // ---- Distill: cluster into tier-structured ordered steps, each mapped to rubric criterion ids ----
 phase('Distill')
 const REAL_TOOLS = TOOLS.length ? `\n\nThe agent's REAL build tools (cite these by name in step.tools; do NOT invent tool names): ${JSON.stringify(TOOLS)}` : ''
-let draft = await agent(
+let draft = await agentTry(
   `You are writing a BUILD GUIDE for "${CATEGORY}" — the proactive, tier-by-tier approach for HOW to build a great one. The guide must let a builder CLEAR this rubric, so map each step to the rubric criterion ids it satisfies. Organize steps by tier (baseline -> good -> exceptional), in BUILD ORDER (dependencies before dependents). Each step: a concrete instruction citing the real tools, the addresses_criteria (rubric ids it satisfies), and a pitfall. Also give an overview, the killer_systems (name/what/how-to-build), and common_pitfalls.\n\nRUBRIC CRITERIA (the bar to cover):\n${JSON.stringify(CRIT_BRIEF, null, 1)}\n\nBUILD TECHNIQUES (from research):\n${JSON.stringify(allTech, null, 1)}${REAL_TOOLS}`,
   { label: 'distill', phase: 'Distill', schema: TIERS_SCHEMA })
+if (!draft || !Array.isArray(draft.tiers) || !draft.tiers.length) throw new Error(`distill produced no tiers for ${CATEGORY} (rate-limited?)`)
 log(`Distilled ${allSteps(draft.tiers).length} steps; uncovered after distill: ${uncovered(draft.tiers).length}/${CRIT_IDS.length}`)
 
 // ---- Critique-steps: above-generic judge per step (drop/raise generic filler) ----
@@ -141,7 +154,7 @@ while (uncovered(draft.tiers).length > 0 && round < MAX_FILL) {
   const fill = await agent(
     `These rubric criteria are NOT yet addressed by any build step in the "${CATEGORY}" guide. Write the concrete BUILD step(s) that would satisfy each — above the generic floor, citing the real tools, assigned to the right tier (match the criterion's tier). If a criterion is genuinely un-buildable with the available tools, still return a best-effort step describing what WOULD satisfy it and note the gap in pitfalls.\n\nUNADDRESSED CRITERIA:\n${JSON.stringify((RUBRIC.criteria || []).filter(c => gaps.includes(c.id)), null, 1)}\n\nREAL TOOLS: ${JSON.stringify(TOOLS)}`,
     { label: `fill#${round}`, phase: 'Cover', schema: FILL_SCHEMA })
-  for (const ns of (fill.steps || [])) {
+  for (const ns of ((fill && fill.steps) || [])) {
     const nsTier = normTier(ns.tier)
     let tier = draft.tiers.find(t => t.tier === nsTier)
     if (!tier) { tier = { tier: nsTier, goal: '', steps: [] }; draft.tiers.push(tier) }
@@ -154,9 +167,10 @@ const finalUncovered = uncovered(draft.tiers)
 
 // ---- Assemble: to the build-guide schema ----
 phase('Assemble')
-const assembled = await agent(
+const assembled = await agentTry(
   `Assemble this into a FINAL build guide for category "${CATEGORY}" following the schema EXACTLY. Set module="${CATEGORY}", system_module="${CATEGORY}", version="1.0", rubric_version="${RUBRIC.version || '1.0'}". Order tiers baseline -> good -> exceptional; within each tier assign a stable order_index in build order starting at 1. Keep every step's addresses_criteria + tools + pitfalls. Preserve overview, killer_systems, common_pitfalls.\n\nDRAFT:\n${JSON.stringify(draft, null, 1)}`,
   { label: 'assemble', phase: 'Assemble', schema: GUIDE_SCHEMA })
+if (!assembled || !Array.isArray(assembled.tiers)) throw new Error(`assemble produced no guide for ${CATEGORY} (rate-limited?)`)
 // stamp provenance.coverage deterministically (do not trust the model for the count)
 assembled.module = CATEGORY
 assembled.version = assembled.version || '1.0'
@@ -171,7 +185,7 @@ assembled.provenance = {
 
 // ---- Review: completeness ----
 phase('Review')
-const review = await agent(
+const review = await agentTry(
   `Completeness review of the "${CATEGORY}" BUILD GUIDE. Killer systems that MUST appear as build steps: ${JSON.stringify(KILLER)}. Report which are covered vs missing, whether the build ORDER is sound (dependencies before dependents), and an overall assessment of whether this guide, if followed, produces an above-the-mean build that clears the rubric (coverage = ${addressedCount}/${CRIT_IDS.length}).\n\nGUIDE:\n${JSON.stringify(assembled.tiers.map(t => ({ tier: t.tier, steps: (t.steps || []).map(s => ({ id: s.id, instruction: s.instruction })) })), null, 1)}`,
   { label: 'review', phase: 'Review', schema: REVIEW_SCHEMA })
 
