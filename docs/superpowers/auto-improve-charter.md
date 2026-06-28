@@ -53,9 +53,13 @@ not in that it ever fakes completion.
 
 ## Backlog (prioritized; each item names its oracle)
 
-1. **Run-context guard** — DevBridge tool/luau results prepend a context banner when NOT clean edit
-   (`not IsEdit()` or `IsRunning()`), so building into a playtest server DM can't silently fail again.
-   *Oracle:* a pure Spec on the banner logic + selene/rojo + a live check that the banner appears.
+1. ✅ **DONE (iter 1)** — **Run-context guard** — DevBridge `tool`/`luau`/`prompt` results prepend a
+   context banner when NOT clean edit. Load-bearing signal = **LocalPlayer presence** (the 2026-06-27
+   failure ran with IsEdit=true/IsRunning=false yet a LocalPlayer present, so IsEdit/IsRunning alone
+   would have stayed silent — adversarial review caught this). Live-proven: the banner fires on every
+   `/agent` result in the current play-client context; `DevBridgeSpec` 8/8; selene 0/0; rojo green.
+   *Follow-up stone (1b):* extend an equivalent banner to the **PlayBridge `/play` result path** (the
+   deliberate-playtest channel — lower-risk since you knowingly started play, but currently un-warned).
 2. **GUI image/icon authoring tool** — the one tool gap blocking the last 2 gui criteria
    (`gui-custom-asset-shapes`, `gui-unified-icon-set`): author a transparent-PNG icon via EditableImage →
    persist → apply to an ImageLabel. *Oracle:* `evaluate gui` moves those 2 to pass + a capture I look at.

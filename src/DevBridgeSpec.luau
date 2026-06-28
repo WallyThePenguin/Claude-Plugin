@@ -47,6 +47,32 @@ local function buildCases(): { Case }
 		return r.done and r.error == "agent already running"
 	end)
 
+	add("contextBanner: clean edit (no LocalPlayer) -> empty (no noise)", function()
+		return DevBridge.contextBanner(true, false, true, true, false) == ""
+	end)
+
+	add("contextBanner: a running playtest warns + names the server role + the verify nudge", function()
+		local s = DevBridge.contextBanner(false, true, true, false, false)
+		return string.find(s, "WARN run-context", 1, true) ~= nil
+			and string.find(s, "PLAYTEST", 1, true) ~= nil
+			and string.find(s, "role=server", 1, true) ~= nil
+			and string.find(s, "VERIFY with a capture", 1, true) ~= nil
+	end)
+
+	add("contextBanner: a non-edit client warns NOT-edit + client", function()
+		local s = DevBridge.contextBanner(false, false, false, true, true)
+		return string.find(s, "NOT the edit DataModel", 1, true) ~= nil
+			and string.find(s, "role=client", 1, true) ~= nil
+	end)
+
+	-- The load-bearing case: edit-ish flags but a LocalPlayer present = the exact 2026-06-27 blind
+	-- context; the guard MUST fire here (IsEdit/IsRunning alone would not).
+	add("contextBanner: edit flags but a LocalPlayer present -> still warns", function()
+		local s = DevBridge.contextBanner(true, false, true, true, true)
+		return string.find(s, "WARN run-context", 1, true) ~= nil
+			and string.find(s, "LocalPlayer is present", 1, true) ~= nil
+	end)
+
 	return cases
 end
 

@@ -28,6 +28,50 @@ function DevBridge.serializeContent(content: any): string
 	return tostring(content)
 end
 
+-- Run-context banner prepended to a tool/luau/prompt result when the bridge is NOT executing in clean
+-- edit. A playtest DataModel — SERVER (a GUI built there never renders) or CLIENT (the Studio window
+-- shows the play view, so edit builds aren't on screen and captures show the play client) — silently
+-- swallows edit-style work, and the plugin keeps LoadStringEnabled=true so loadstring "works" and hides
+-- it (this bit a 2026-06-27 dogfood: both a server-CoreGui build that didn't render AND a later
+-- client-context diagnostic). Guards the /agent channel only; the deliberate /play (PlayBridge) flow is
+-- a known playtest and is a separate stone. Pure (flags in -> string out), unit-tested; "" = clean edit.
+function DevBridge.contextBanner(
+	isEdit: boolean,
+	isRunning: boolean,
+	isServer: boolean,
+	isClient: boolean,
+	hasLocalPlayer: boolean
+): string
+	-- Clean edit has NO LocalPlayer; the 2026-06-27 failure ran with IsEdit=true/IsRunning=false yet a
+	-- LocalPlayer present (a play-client context), so LocalPlayer presence is the load-bearing signal —
+	-- IsEdit/IsRunning alone would have stayed silent in exactly the context that burned us.
+	if isEdit and not isRunning and not hasLocalPlayer then
+		return ""
+	end
+	local why: { string } = {}
+	if isRunning then
+		table.insert(why, "a PLAYTEST is active")
+	end
+	if hasLocalPlayer then
+		table.insert(why, "a LocalPlayer is present (a client/play context, not clean edit)")
+	end
+	if not isEdit then
+		table.insert(why, "this is NOT the edit DataModel")
+	end
+	local role = if isServer and isClient
+		then "server+client"
+		elseif isServer then "server"
+		elseif isClient then "client"
+		else "unknown"
+	return "[WARN run-context: "
+		.. (if #why > 0 then table.concat(why, " + ") else "non-edit")
+		.. " (role="
+		.. role
+		.. "). The Studio window may be showing the PLAY view, so edit-DataModel builds aren't on screen "
+		.. "and captures show the play client; a GUI built in a server DataModel does NOT render. VERIFY "
+		.. "with a capture you actually look at before trusting structure.]\n"
+end
+
 function DevBridge.newResult(): Result
 	return { reply = "", tools = {}, error = nil, done = false }
 end
@@ -110,14 +154,27 @@ local function postResult(deps: any, id: number, result: any)
 	httpPostJson(sidecarUrl(deps) .. "/agent/result", result)
 end
 
+-- Read the live run context and render the warning banner (impure wrapper over the pure contextBanner).
+local function runContextBanner(): string
+	local Players = game:GetService("Players")
+	return DevBridge.contextBanner(
+		RunService:IsEdit(),
+		RunService:IsRunning(),
+		RunService:IsServer(),
+		RunService:IsClient(),
+		Players.LocalPlayer ~= nil
+	)
+end
+
 -- Run one command and POST its result. Total (caller pcall-wraps anyway).
 local function handleCommand(deps: any, cmd: any)
 	local kind = tostring(cmd.kind)
+	local banner = runContextBanner()
 	if kind == "tool" then
 		local content, isError = Tools.dispatch(tostring(cmd.tool), cmd.input, toolContext(deps))
 		postResult(deps, cmd.id, {
 			ok = not isError,
-			result = DevBridge.serializeContent(content),
+			result = banner .. DevBridge.serializeContent(content),
 			logs = Logs.recent(40),
 		})
 	elseif kind == "luau" then
@@ -125,7 +182,7 @@ local function handleCommand(deps: any, cmd: any)
 			Tools.dispatch("run_luau", { code = tostring(cmd.code) }, toolContext(deps))
 		postResult(deps, cmd.id, {
 			ok = not isError,
-			result = DevBridge.serializeContent(content),
+			result = banner .. DevBridge.serializeContent(content),
 			logs = Logs.recent(40),
 		})
 	elseif kind == "prompt" then
@@ -163,7 +220,7 @@ local function handleCommand(deps: any, cmd: any)
 		end
 		postResult(deps, cmd.id, {
 			ok = result.error == nil,
-			reply = result.reply,
+			reply = banner .. result.reply,
 			tools = result.tools,
 			error = result.error,
 		})
