@@ -54,12 +54,16 @@ not in that it ever fakes completion.
 ## Backlog (prioritized; each item names its oracle)
 
 1. ✅ **DONE (iter 1)** — **Run-context guard** — DevBridge `tool`/`luau`/`prompt` results prepend a
-   context banner when NOT clean edit. Load-bearing signal = **LocalPlayer presence** (the 2026-06-27
-   failure ran with IsEdit=true/IsRunning=false yet a LocalPlayer present, so IsEdit/IsRunning alone
-   would have stayed silent — adversarial review caught this). Live-proven: the banner fires on every
-   `/agent` result in the current play-client context; `DevBridgeSpec` 8/8; selene 0/0; rojo green.
-   *Follow-up stone (1b):* extend an equivalent banner to the **PlayBridge `/play` result path** (the
-   deliberate-playtest channel — lower-risk since you knowingly started play, but currently un-warned).
+   `[WARN run-context]` banner when a real playtest is active (`IsRunning`) or it isn't the edit
+   DataModel. *Loop receipts (this is what the honest loop looks like):* the adversarial critic caught
+   that my `prompt` branch + comment were unguarded (fixed); then **the HUMAN caught that my signal was
+   wrong** — I'd keyed it on `LocalPlayer` presence, which false-positives in **Team Create** (it
+   connects as a CLIENT with a collaborator LocalPlayer in genuine edit). Corrected to key on
+   `IsRunning`; verified live silent in this Team Create session. `DevBridgeSpec` 8/8; selene 0/0; rojo
+   green. **Lesson: a worker confabulates plausible run-context stories; only the human can see it's
+   Team Create vs play.** *Follow-up stones:* (1b) extend the banner to the PlayBridge `/play` path;
+   (1c) the original 2026-06-27 capture failure was partly a **stale `capture` fetch** — the `capture`
+   verb returns the last buffered image; it should trigger a fresh shot or flag staleness.
 2. **GUI image/icon authoring tool** — the one tool gap blocking the last 2 gui criteria
    (`gui-custom-asset-shapes`, `gui-unified-icon-set`): author a transparent-PNG icon via EditableImage →
    persist → apply to an ImageLabel. *Oracle:* `evaluate gui` moves those 2 to pass + a capture I look at.
