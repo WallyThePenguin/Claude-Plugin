@@ -35,6 +35,17 @@ ARTIFACTS = {
         "choreographed timed phases (burst -> sustain -> dissipate via task.delay/sub-emitters), and a "
         "triggered one-shot Emit() lifecycle with Debris cleanup + a one-frame light flash + camera shake.",
     },
+    "combat": {
+        "mean": "A single full-body attack animation that plays on click; hit detection via a .Touched "
+        "event or a swing-wide hitbox; the same fixed damage every time; no wind-up/contact/recovery timing; "
+        "no hit reactions, no combos, no hitstop, no impact feedback - the generic default a beginner ships.",
+        "great": "Marker-driven combat: named animation event markers (HitStart/HitEnd/Contact/CancelOpen) "
+        "drive active-frame SWEPT hitboxes (not .Touched); a deliberate anticipation -> contact -> "
+        "follow-through timing skeleton with strength-scaled HIT-STOP; directional hit reactions layered "
+        "additively; cancelable combos with input buffering; an impact bus where VFX/SFX/camera-shake/"
+        "knockback all fire off one contact event and scale by attack strength; server-authoritative hit "
+        "validation tied to the marker contact frame.",
+    },
 }
 
 TIER_W = {"baseline": 0, "good": 1, "exceptional": 2}
