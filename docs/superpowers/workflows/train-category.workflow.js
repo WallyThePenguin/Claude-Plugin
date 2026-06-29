@@ -42,6 +42,19 @@ function separation(meanRows, greatRows) {
   return { mean: m, great: g, gap: g - m, pass: (g - m) >= SEPARATION_MIN && m <= 0.5 && g >= 0.7 }
 }
 
+// Retry a single-point agent call: agent() returns null after exhausting its own retries (e.g. a
+// transient rate-limit). distill/assemble can't be null or the run crashes (e.g. distilled.criteria), so
+// give them extra attempts.
+async function agentTry(prompt, opts, tries) {
+  tries = tries || 4
+  for (let i = 1; i <= tries; i++) {
+    const r = await agent(prompt, opts)
+    if (r != null) return r
+    if (i < tries) log(`${(opts && opts.label) || 'agent'}: null (rate-limited?), retry ${i + 1}/${tries}`)
+  }
+  return null
+}
+
 // ---- schemas ----
 const FINDINGS_SCHEMA = { type: 'object', required: ['techniques'], properties: {
   angle: { type: 'string' },
@@ -103,12 +116,14 @@ const sweep = (await parallel(ANGLES.map(a => () =>
 ))).filter(Boolean)
 const allTechniques = sweep.flatMap(s => s.techniques || [])
 log(`Sweep: ${allTechniques.length} techniques across ${sweep.length} angles`)
+if (allTechniques.length === 0) throw new Error(`sweep produced 0 techniques for ${CATEGORY} (all angles rate-limited?) — re-run when load clears`)
 
 // ---- Distill: cluster into candidate criteria ----
 phase('Distill')
-const distilled = await agent(
+const distilled = await agentTry(
   `Cluster these ${CATEGORY} techniques into concrete, gradable candidate CRITERIA organized by tier (baseline/good/exceptional). Each criterion must check SYSTEMS DEPTH, not surface presence (e.g. not "has an animation" but "locomotion warps by speed AND direction via a blend tree"). Merge duplicates. Ensure the known killer systems are represented where evidence supports them: ${JSON.stringify(KILLER)}.\n\nTECHNIQUES:\n${JSON.stringify(allTechniques, null, 1)}`,
   { label: 'distill', phase: 'Distill', schema: CRITERIA_SCHEMA })
+if (!distilled || !Array.isArray(distilled.criteria) || !distilled.criteria.length) throw new Error(`distill produced no criteria for ${CATEGORY} (rate-limited?) — re-run`)
 log(`Distilled ${distilled.criteria.length} candidate criteria`)
 
 // ---- Judge: above-generic, 3 skeptical votes per criterion ----
@@ -134,9 +149,10 @@ log(`Judge: ${survivors.length}/${distilled.criteria.length} survived (${(surviv
 
 // ---- Assemble: final rubric to the schema ----
 phase('Assemble')
-let rubric = await agent(
+let rubric = await agentTry(
   `Assemble these surviving criteria into a FINAL rubric for category "${CATEGORY}" following the schema EXACTLY. Assign stable ids and a fixed order_index (baseline first, then good, then exceptional). Fill grading.pass/partial/fail, evidence_required, concrete_fix, and provenance per criterion. Set system_module="${CATEGORY}" and module="${CATEGORY}". Keep order stable (scoring-bias defense).\n\nSURVIVORS:\n${JSON.stringify(survivors, null, 1)}`,
   { label: 'assemble', phase: 'Assemble', schema: RUBRIC_SCHEMA })
+if (!rubric || !Array.isArray(rubric.criteria)) throw new Error(`assemble produced no rubric for ${CATEGORY} (rate-limited?) — re-run`)
 
 // ---- Harden: scoring-bias check + discrimination back-test + self-optimization ----
 phase('Harden')
