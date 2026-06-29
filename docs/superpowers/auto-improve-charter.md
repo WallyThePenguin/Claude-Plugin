@@ -71,11 +71,15 @@ not in that it ever fakes completion.
 2. **GUI image/icon authoring tool** — the one tool gap blocking the last 2 gui criteria
    (`gui-custom-asset-shapes`, `gui-unified-icon-set`): author a transparent-PNG icon via EditableImage →
    persist → apply to an ImageLabel. *Oracle:* `evaluate gui` moves those 2 to pass + a capture I look at.
-3. **Above-generic JUDGE tightening** — `train-category`/`train-recipe` judge under-rejects (100%
-   survival recurred). *Oracle:* re-run one category's judge; survival drops while the back-test still
-   passes (mean low / great high / gap ≥ 0.35). **NOTE (director-flagged 2026-06-28):** the worker's
-   claim that "the back-test already gates quality, so this is low-value" is UNVERIFIED against the actual
-   100%-survival recurrence in stone 3's vfx run — do NOT treat as settled-low-value; measure first.
+3. ✅ **MEASURED (iter, 2026-06-29) — judge-tightening NOT needed for vfx; the "under-rejects" flag was a
+   false alarm.** Ran `scripts/measure_judge.py vfx` via the 8319 proxy (4 calls): CURRENT judge survival
+   **16/16 (100%)**, a deliberately TIGHTENED judge (reject best-practice-not-system / no-specific-mechanism
+   / toggle-one-property / merely-exists) ALSO **16/16 (100%)**, and the back-test **mean 0.000 / great
+   0.733 / gap 0.733 → PASS**. So the 100% survival is JUSTIFIED — the mean artifact fails all 16 criteria,
+   a stricter judge rejects none, and the rubric discriminates strongly; the criteria are genuinely all
+   above-generic. The back-test is the real gate (it passes); the survival-rate heuristic was overcautious.
+   *Caveat:* measured vfx only (the flagged case); other categories could be spot-checked the same way but
+   are lower-priority now. Outcome: stop treating high survival as a defect; trust the back-test.
 4. **More guide+rubric categories** (e.g. audio/SFX, UI-motion, terrain, mounts/vehicles). *Oracle:* the
    factory's discrimination back-test passes + full criterion coverage in the generated guide.
 5. **`save_build_guide` / user guides** (v1 is built-ins only; mirror the skills store). *Oracle:* a Spec
