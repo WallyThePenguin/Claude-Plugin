@@ -68,9 +68,13 @@ not in that it ever fakes completion.
    the stray-playtest blindness was the `/agent` path, already covered). Do not re-propose. (1c) the
    original 2026-06-27 capture failure was partly a **stale `capture` fetch** — the `capture` verb returns
    the last buffered image; it should trigger a fresh shot or flag staleness.
-2. **GUI image/icon authoring tool** — the one tool gap blocking the last 2 gui criteria
-   (`gui-custom-asset-shapes`, `gui-unified-icon-set`): author a transparent-PNG icon via EditableImage →
-   persist → apply to an ImageLabel. *Oracle:* `evaluate gui` moves those 2 to pass + a capture I look at.
+2. ✅ **DONE (iter, 2026-06-29)** — **GUI image/icon authoring tool** (`author_icon` / IconFactory).
+   Shipped pixel-art glyph → white-rect-on-transparent draw-ops reusing TextureFactory.authorImage/
+   persistImage; IconFactorySpec 4/4 (incl. a rectangular-bitmap self-check that caught a ragged row);
+   Tools/Icon.luau wired, RelaySpec no-drift. Rebuilt a real 6-icon recolored shop; both target criteria
+   flipped PARTIAL→PASS (`gui-custom-asset-shapes`, `gui-unified-icon-set`) per a per-criterion grade off
+   real structural evidence + a human-looked-at capture. *Oracle note:* graded via the working **8319**
+   proxy, not the plugin's own `evaluate` (the 8318→hecate path is down — server-side, human-only fix).
 3. ✅ **MEASURED (iter, 2026-06-29) — judge-tightening NOT needed for vfx; the "under-rejects" flag was a
    false alarm.** Ran `scripts/measure_judge.py vfx` via the 8319 proxy (4 calls): CURRENT judge survival
    **16/16 (100%)**, a deliberately TIGHTENED judge (reject best-practice-not-system / no-specific-mechanism
@@ -82,13 +86,26 @@ not in that it ever fakes completion.
    are lower-priority now. Outcome: stop treating high survival as a defect; trust the back-test.
 4. **More guide+rubric categories** (e.g. audio/SFX, UI-motion, terrain, mounts/vehicles). *Oracle:* the
    factory's discrimination back-test passes + full criterion coverage in the generated guide.
+   - 🔶 **AUDIO IN PROGRESS (iter, 2026-06-29)** — first category beyond the original 5. Rubric DONE +
+     committed (12 criteria): factory back-test great=0.64 (under bar) was diagnosed as great-artifact
+     under-description, then **independently confirmed sound** by a new reusable `verify-rubric.workflow.js`
+     (rubric-BLIND expert build + 12 adversarial skeptics + median-of-3 graders) → **mean 0.00 / great 0.82
+     / gap 0.82 PASS, 0/12 killed**. Baked into `BuiltinRubrics.luau` (6 rubrics). Scope correction baked
+     in per owner: grades CURATING+WIRING Roblox's audio library, NOT authoring raw audio. **Audio BUILD
+     GUIDE generating now** (`train-recipe`); when it lands → `BuiltinBuildGuides.luau` regen closes audio.
+   - *Lesson banked:* the factory's own back-test under-counts the great side when its great-artifact text
+     under-enumerates; the rubric-blind verify is the honest gate. Run `verify-rubric` on every new category.
 5. **`save_build_guide` / user guides** (v1 is built-ins only; mirror the skills store). *Oracle:* a Spec
    + a live round-trip via the bridge.
 6. **Netcode foundation** (the lightsaber vision: server-authoritative validation / lag-comp scaffolding
    on #4's client-request→server-execute seam). *Oracle:* a server-sim Spec asserting authority/rejection;
    this is large and partly a taste/design call → expect human checkpoints.
-7. **Housekeeping** discovered along the way (schema/validator `order_index` parity, more `paint_texture`
-   kinds, the pre-`/exemplars` sidecar exe rebuild, etc.). *Oracle:* per-item.
+7. **Housekeeping** discovered along the way (more `paint_texture` kinds, the pre-`/exemplars` sidecar exe
+   rebuild, etc.). *Oracle:* per-item.
+   - ✅ **DONE (iter, 2026-06-29)** — rubric schema/validator parity: `validate_rubric.py` + `rubric.schema.json`
+     wrongly REQUIRED a top-level `system_module` the factory never emits (it lives per-criterion), so they
+     rejected all 6 rubrics incl. the 5 shipping ones. Relaxed to the real contract `{module,version,criteria}`;
+     all 6 now VALID. The structural validator is usable as an oracle again.
 
 ## Per-iteration protocol
 

@@ -1,0 +1,18 @@
+{
+  "category": "audio",
+  "description": "Roblox game audio and sound design — CURATING and wiring Roblox's built-in audio library (Creator Store / Toolbox sound + music assets referenced by asset id; NOT authoring raw audio) played and mixed via both the modern Audio API (AudioPlayer -> AudioEmitter -> AudioListener node graph connected by Wire, with AudioFader/AudioEqualizer/AudioCompressor/AudioLimiter/AudioReverb/AudioEcho effect nodes) and the legacy Sound/SoundGroup/SoundService API — for SFX, music, ambience, 3D spatial audio, dynamic mixing, environmental reverb/occlusion, and event-driven playback",
+  "killerSystems": [
+    "modern-audio-api-spatial-wiring (AudioPlayer -> Wire -> AudioEmitter -> AudioListener -> AudioDeviceOutput, tuned attenuation; legacy = Sound on Attachment + RollOffMode)",
+    "curated-library-layered-randomized-variation (role-matched asset pool of 4-8 clips + per-play pitch/volume jitter, not one placeholder)",
+    "dynamic-mixing-bus-with-sidechain-ducking-and-mastering (Master -> SFX/Music/Ambient/UI bus tree, AudioFader/SoundGroup, sidechain AudioCompressor + AudioLimiter)",
+    "environmental-reverb-eq-occlusion-zones (AudioReverb/AudioEcho + AmbientReverb per zone + EQ low-pass occlusion behind walls)",
+    "event-synced-and-adaptive-layered-music (marker-synced one-shots via GetMarkerReachedSignal + 4-8 sample-aligned music stems cross-fading by game state)"
+  ],
+  "meanArtifact": {
+    "name": "single 2D library clip per event",
+    "description": "One legacy Sound instance playing a single placeholder library clip at full Volume on every event, 2D and non-spatial (no AudioEmitter/AudioListener, no RollOff) — the same clip every time with no randomization or pitch/volume variation, no SoundGroup/AudioFader bus or ducking, no AudioCompressor/Limiter, no AudioReverb/AudioEcho/occlusion, no event-marker sync — the generic default a beginner ships."
+  },
+  "greatArtifactHint": "A pro audio system built ON Roblox's audio library: fitting curated SFX/music assets chosen per event with layered + randomized variation (multiple clips + pitch/volume jitter); true 3D positional audio via the modern Audio API (AudioPlayer -> AudioEmitter -> AudioListener wired with tuned attenuation curves); a SoundGroup/AudioFader bus hierarchy (SFX/Music/Ambient/UI) with ducking and AudioCompressor/AudioLimiter mastering; AudioReverb/AudioEcho effect nodes + reverb zones + EQ-based occlusion for environmental reflection; and event-marker-synced one-shots plus adaptive layered music whose stems crossfade by game state.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
