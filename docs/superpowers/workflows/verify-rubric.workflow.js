@@ -13,6 +13,7 @@ const cat = args.category
 const crit = args.criteria
 const MEAN = args.mean
 const FRAMING = args.greatFraming
+const API = (args.apiSurface || '')
 const TIER_W = { baseline: 1, good: 2, exceptional: 3 }
 const SCORE_V = { pass: 1.0, partial: 0.5, fail: 0.0 }
 
@@ -61,20 +62,21 @@ function median(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
+// Category-GENERAL expert prompt (rubric-blind): the expert never sees the criteria, so the great-side
+// score reflects what an excellent build contains independent of the rubric. apiSurface (optional) nudges
+// the expert to enumerate the category's real Roblox API surface so the build is mechanistic, not vague.
 const EXPERT_PROMPT =
-  `You are a top-1% Roblox game-audio engineer with a decade of shipped titles. A studio hires you to ` +
-  `design the COMPLETE audio system for this game:\n\n"${FRAMING}"\n\n` +
-  `Describe, EXHAUSTIVELY and MECHANISTICALLY, the audio system you would actually build — every layer, ` +
-  `the exact Roblox instances and APIs, the signal flow, and the concrete parameters you'd dial in. Cover ` +
-  `the full surface of professional Roblox audio: how sources are spatialized and routed; how the mix is ` +
-  `structured and gain-staged; how you source and de-repeat library assets; how sounds are triggered; ` +
-  `dynamics/ducking; how the listener is placed and self-audio handled; continuous beds and loops; ` +
-  `environmental acoustics; and music. Name specific instances (AudioPlayer, AudioEmitter, AudioListener, ` +
-  `AudioDeviceOutput, Wire, AudioFader, AudioCompressor, AudioLimiter, AudioEqualizer, AudioReverb, ` +
-  `AudioEcho, SoundGroup, SoundService, Attachment) and the properties/parameters you'd set, the way you ` +
-  `would in a real design doc. Do NOT hold back or summarize — enumerate the real mechanisms. ` +
-  `CRITICAL: you are describing what a genuinely excellent build contains; do not pad with things a real ` +
-  `expert would NOT ship. 700-1000 words, prose + concrete mechanisms.`
+  `You are a top-1% Roblox ${cat} engineer with a decade of shipped titles. A studio hires you to ` +
+  `design the COMPLETE ${cat} system for this game:\n\n"${FRAMING}"\n\n` +
+  `Describe, EXHAUSTIVELY and MECHANISTICALLY, the ${cat} system you would actually build — every layer, ` +
+  `the exact Roblox instances, classes, services and APIs, the update/signal/per-frame flow, and the ` +
+  `concrete properties and parameter values you'd dial in, the way you would in a real engineering design ` +
+  `doc. Cover the full professional surface of Roblox ${cat}. ` +
+  (API ? `Make sure to address this API/system surface where it genuinely applies: ${API}. ` : '') +
+  `Name specific instances, properties and parameter values — do NOT hold back, summarize, or speak in ` +
+  `generalities; enumerate the real mechanisms a shipped build contains. CRITICAL: describe what a ` +
+  `genuinely excellent build contains; do not pad with things a real expert would NOT ship, and do not ` +
+  `drift into a DIFFERENT discipline — stay strictly on ${cat}. 700-1000 words, prose + concrete mechanisms.`
 
 function skepticPrompt(c) {
   return (
