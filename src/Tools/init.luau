@@ -42,6 +42,7 @@ local ImportTool = require(script.Import)
 local EvaluateTool = require(script.Evaluate)
 local MeshTool = require(script.Mesh)
 local TextureTool = require(script.Texture)
+local IconTool = require(script.Icon)
 local ItemTool = require(script.Item)
 local ItemAnimTool = require(script.ItemAnim)
 local ItemBehaviorTool = require(script.ItemBehavior)
@@ -158,6 +159,9 @@ for _, descriptor in MeshTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in TextureTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in IconTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ItemTool.descriptors :: { Descriptor } do

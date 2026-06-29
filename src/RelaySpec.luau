@@ -42,6 +42,7 @@ local EXPECTED_RELAY = {
 	"author_mesh",
 	"save_mesh",
 	"paint_texture",
+	"author_icon",
 	"make_tool",
 	"grip_tool",
 	"capture",
