@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Category Quality Rubric",
   "type": "object",
-  "required": ["module", "version", "system_module", "criteria"],
+  "required": ["module", "version", "criteria"],
   "properties": {
     "module": { "type": "string" },
     "version": { "type": "string" },

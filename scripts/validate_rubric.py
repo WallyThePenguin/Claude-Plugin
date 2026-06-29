@@ -3,7 +3,7 @@ import json
 import sys
 
 TIERS = {"baseline", "good", "exceptional"}
-TOP_REQUIRED = ["module", "version", "system_module", "criteria"]
+TOP_REQUIRED = ["module", "version", "criteria"]
 CRIT_REQUIRED = ["id", "order_index", "tier", "statement",
                  "above_generic_rationale", "grading", "evidence_required", "concrete_fix"]
 GRADING_REQUIRED = ["pass", "partial", "fail"]
