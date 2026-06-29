@@ -1,0 +1,589 @@
+{
+  "module": "npc",
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "npc-perception-los-fov-range-occlusion",
+      "order_index": 1,
+      "tier": "baseline",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — EARNED PERCEPTION (floor). The NPC only becomes aware of a target through a real sensing primitive, NOT an omniscient distance/magnitude check or a per-frame read of the target's live Position. The discriminator is a three-stage perception filter: (1) a RANGE gate (target within view distance), (2) an ANGLE/FOV gate computed as a dot product of the to-target unit vector against the head/root LookVector (reject if angle > halfFOV, e.g. via math.acos of the dot), and (3) a confirming line-of-sight RAYCAST from the NPC's head to the target with RaycastParams excluding self/other NPCs, rejecting the target if anything occludes the line. The NPC literally cannot see behind itself or through walls. A bare (target.Position - npc.Position).Magnitude < radius check, a GetChildren/GetPlayers scan with no LOS, or any always-known-target build FAILS. A build committing to range + dot-product FOV cone + occlusion raycast as the gate on awareness PASSES.",
+      "grading": {
+        "pass": "Awareness is gated by all three stages: a range check, a dot-product/acos FOV cone against the head or root LookVector, AND a confirming head→target occlusion raycast with RaycastParams excluding self and other NPCs. The NPC provably cannot detect targets behind it or through walls.",
+        "partial": "Two of the three gates are present (e.g. range + LOS raycast but no FOV cone, or range + FOV cone but no occlusion raycast), so the NPC is partially earned but still psychic along one axis.",
+        "fail": "Awareness is a bare distance/magnitude check, a GetChildren/GetPlayers scan with no LOS, or any build that reads the target's live Position with no real sensing — the NPC sees through walls and behind itself."
+      },
+      "evidence_required": "A statement/dump showing: dir = (targetPos - headPos).Unit; dot/angle gate against head LookVector (reject if angle > halfFOV); a range gate; AND a workspace:Raycast head→target with RaycastParams Exclude {self, other NPCs} that rejects occluded targets. A pure distance check, a player-scan with no LOS, or reading the target's live position with no sensing does NOT satisfy this.",
+      "concrete_fix": "Replace the distance/magnitude aggro check with a three-stage filter: gate on range, then on a dot-product FOV cone (dir.Unit dotted with head.CFrame.LookVector, reject if the angle exceeds half the FOV), then fire ONE occlusion raycast from the head to the target (excluding self and other NPCs) and only treat the target as 'seen' if all three pass.",
+      "above_generic_rationale": "The straight-line zombie reads the player's exact Position every frame, so it is psychic — it 'sees' through walls and behind its own back, and aggros from across the map. Gating awareness on a forward-facing cone + range + a single occlusion ray is the exact floor that makes an NPC stop being omniscient and makes cover, corners, and flanking meaningful. The dot-product/acos cone is one cheap ray instead of fanning many rays (the lag failure mode beginners hit), so it is also the correct primitive, not just the correct idea.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-to-create-a-realistic-npc-eyesight-system/2456522",
+          "https://devforum.roblox.com/t/creating-a-realistic-npc-fov-using-raycasts-and-dot-product/2456522",
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://www.youtube.com/watch?v=wC9iu7cuQjI",
+          "https://www.youtube.com/watch?v=BUwAcW_18Ws"
+        ]
+      }
+    },
+    {
+      "id": "npc-pathfinding-waypoint-follow-loop",
+      "order_index": 2,
+      "tier": "baseline",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — REAL NAVIGATION WITH RECOMPUTE (floor+). Movement must route the NPC along a PathfindingService-solved navmesh path AROUND obstacles via a validated compute-and-follow loop AND survive a moving/blocked world — not a one-shot tutorial path that soft-locks the moment the target moves or a wall appears. Required: (1) PathfindingService:CreatePath(agentParams) with real agent params (AgentRadius/AgentHeight/AgentCanJump), (2) path:ComputeAsync(start, goal) wrapped in pcall, (3) an explicit guard on path.Status == Enum.PathStatus.Success before following (bail/retry otherwise, since ComputeAsync both throws AND returns non-Success), (4) a path:GetWaypoints() loop driving Humanoid:MoveTo(wp.Position) with MoveToFinished:Wait() per waypoint, (5) reading wp.Action to fire the Jumping state (Humanoid.Jump=true) on Enum.PathWaypointAction.Jump, AND (6) a recompute trigger — Path.Blocked connected (or a MoveToFinished-timeout / target-moved-far stuck check) that aborts the current waypoint walk and re-runs ComputeAsync to a fresh goal, so the NPC re-routes instead of grinding into a wall or chasing a stale path. A per-frame straight MoveTo(target), feeding unvalidated/nil waypoints into MoveTo, NO Status guard, OR a single fire-and-forget ComputeAsync with no Blocked/stuck recompute FAILS. The validated compute→Status==Success→waypoint-follow→jump-action loop WITH a Blocked/stuck recompute path PASSES.",
+      "grading": {
+        "pass": "CreatePath(agentParams) → pcall'd ComputeAsync → explicit path.Status == Success guard before following → GetWaypoints loop driving MoveTo + MoveToFinished:Wait() per waypoint → wp.Action triggers Humanoid.Jump on Jump waypoints → AND a recompute trigger (Path.Blocked, MoveTo timeout, or target-moved-far) re-runs ComputeAsync so the NPC re-routes.",
+        "partial": "A validated compute-and-follow loop with the Status guard and waypoint follow exists, but it is missing the jump-action handling OR the recompute trigger — so it routes around static obstacles once but soft-locks on a short wall or a changing world.",
+        "fail": "Movement is a per-frame straight Humanoid:MoveTo at the raw target, feeds unvalidated/nil waypoints into MoveTo, has no Status guard, or is a single fire-and-forget ComputeAsync with no Blocked/stuck recompute — it walks into walls or soft-locks on the first corner."
+      },
+      "evidence_required": "A statement/dump showing CreatePath(agentParams) → ComputeAsync(start,goal) wrapped in pcall → an explicit path.Status == Enum.PathStatus.Success check before following → a GetWaypoints loop driving MoveTo + MoveToFinished:Wait() → and reading wp.Action to trigger the Jumping state on Jump waypoints. A per-frame straight MoveTo at the raw target, or no Status guard, does NOT satisfy this.",
+      "concrete_fix": "Replace the straight MoveTo with a compute-and-follow loop: CreatePath with agent params, pcall ComputeAsync to the goal, bail if path.Status ~= Success, then for each waypoint MoveTo it and MoveToFinished:Wait(), firing Humanoid.Jump when wp.Action == Enum.PathWaypointAction.Jump.",
+      "above_generic_rationale": "Calling Humanoid:MoveTo(player) every frame is THE defining generic mistake — it walks the NPC straight into walls and soft-locks on the first corner. Computing a real A*-solved path and stepping its waypoints is the floor of 'navigation' versus 'point at the target.' The pcall + Status==Success guard matters because PathfindingService genuinely fails on non-obvious paths and un-guarded ComputeAsync throws or yields empty waypoints; honoring Jump waypoints is what stops the NPC soft-locking against short walls the solver expected it to hop.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/characters/pathfinding.md",
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://www.youtube.com/watch?v=ckA4fVkAjIA"
+        ]
+      }
+    },
+    {
+      "id": "npc-decision-architecture-fsm-sized",
+      "order_index": 3,
+      "tier": "baseline",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — DECISION ARCHITECTURE (floor). The NPC runs an EXPLICIT, traceable decision structure with multiple prioritized behaviors, NOT a single chase-if-close branch or an unstructured nested-if pile where every script reaches into every other. The discriminator is a real state machine (or equivalent) with named states and clean transitions: a compact FSM with per-state Start/Update/Exit lifecycle (Update returns the next state name), covering at least ~4 behaviors drawn from Idle/Patrol/Investigate/Chase/Attack/Flee/Search, with transitions that are explicit and debuggable rather than buried in boolean spaghetti. A one-behavior chase-if-distance NPC, or an if/elseif ladder with no state spine, FAILS. A multi-behavior FSM (or behavior tree / utility system) with named states and prioritized transitions PASSES. The architecture should be SIZED to the behavior count — reaching for behavior trees on a two-state enemy is over-engineering, not quality.",
+      "grading": {
+        "pass": "An explicit decision spine — a state table indexed by name with Start/Update/Exit handlers (or equivalent single-active-state switch), >=4 named behaviors (e.g. Idle/Patrol/Investigate/Chase/Attack/Flee/Search), and explicit prioritized transitions — sized appropriately to the behavior count.",
+        "partial": "A state machine exists with named states and clean transitions, but covers fewer than ~4 behaviors, OR the lifecycle is partial (transitions exist but no clean Start/Exit), OR the architecture is over-engineered (behavior tree on a two-state enemy) — structured but not at the floor sweet spot.",
+        "fail": "A single chase-if-close branch, or nested if/elseif boolean spaghetti with no state spine where every script reaches into every other — no traceable decision structure."
+      },
+      "evidence_required": "A statement/dump showing a decision spine — a state table indexed by state name with Start/Update/Exit handlers (or a switch-case single-active-state spine), >=4 named behaviors (e.g. Idle/Patrol/Investigate/Chase/Attack/Flee/Search), and explicit prioritized transitions. A single chase-if-close branch, or nested if/elseif with no state structure, does NOT satisfy this.",
+      "concrete_fix": "Replace the chase-if-close branch with an explicit FSM: a table of states (Idle, Patrol, Investigate, Chase, Attack, Flee) each with Start/Update/Exit, where Update returns the next state name; drive transitions off the perception/health signals so the NPC patrols when idle, investigates a noise, chases on sight, attacks in range, and flees when hurt.",
+      "above_generic_rationale": "The generic zombie has ONE behavior (chase-if-close). A 4-6 state FSM with named, prioritized transitions is the floor of a real decision architecture — patrol when idle, investigate a noise, chase on sight, attack in range, flee when hurt — and is the recommended sweet spot for the vast majority of enemies. The Start/Update/Exit lifecycle cleanly enters/runs/leaves each behavior and keeps transitions traceable, which is exactly what an ad-hoc if-pile (where charge/attack/move scripts all reach into each other) cannot offer. The quality signal is an explicit, debuggable transition structure sized to the actual behavior count — not raw framework sophistication.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+          "https://www.youtube.com/watch?v=CZvfuNfdc1M",
+          "https://www.youtube.com/watch?v=-pQOhN4vUdE"
+        ]
+      }
+    },
+    {
+      "id": "npc-ambient-wander-zone-leashed",
+      "order_index": 4,
+      "tier": "baseline",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — AMBIENT LIFE (floor). Unengaged NPCs move on their own — they are not frozen statues waiting for a player to trigger them. The discriminator is an autonomous idle loop: pick a random reachable goal inside a bounded zone (clamp goal X/Z to a zone part's Position ± Size/2, or sample a random navmesh point), MoveTo it, wait a randomized interval, repeat — with a leash that returns the NPC home / drops any chase if it is pulled too far from its zone. A build where NPCs stand frozen in place (or loop a single idle animation) until a player enters range FAILS. A zone-clamped wander loop with a return-to-zone leash PASSES.",
+      "grading": {
+        "pass": "An autonomous idle loop picks a random reachable goal inside a bounded zone (clamp to part.Position ± part.Size/2, or random navmesh point), MoveTo + MoveToFinished:Wait(), randomized pause, repeat — PLUS a leash that returns the NPC home / drops chase past a distance threshold.",
+        "partial": "An autonomous wander loop exists (NPCs move under their own power inside a zone) but the leash is missing — so wandering can degenerate into cross-map chase — or the goal isn't actually clamped to a bounded zone.",
+        "fail": "NPCs stand frozen in place, or loop a single idle animation, until a player enters range — no autonomous movement."
+      },
+      "evidence_required": "A statement/dump showing an idle loop that picks a random goal inside a zone (clamp to part.Position ± part.Size/2, or a random reachable navmesh point), MoveTo + MoveToFinished:Wait(), a randomized pause, repeat — plus a leash that returns the NPC to its zone / abandons chase past a distance threshold. NPCs frozen until triggered does NOT satisfy this.",
+      "concrete_fix": "Give unengaged NPCs a wander loop: pick a random point inside their zone (clamp X/Z to the zone part bounds), MoveTo it, wait a random few seconds, repeat — and add a leash so an NPC pulled too far from its zone returns home and drops the chase instead of pursuing across the map.",
+      "above_generic_rationale": "The generic NPC is a frozen statue until triggered — the world reads as a prop gallery. A zone-clamped wander loop is the floor of ambient life: the world feels inhabited because NPCs move under their own power, and the return-to-zone leash keeps wandering from degenerating into the whole population chasing the player across the map. It also reuses the same navigation spine the combat NPCs use, so ambient life is a first-class behavior, not set dressing.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-to-make-an-enemy-ai-wander-randomly-and-stay-within-a-zone/1561930",
+          "https://create.roblox.com/docs/resources/city-people-cars",
+          "https://devforum.roblox.com/t/feedback-for-my-realistic-civilian-npc/2659107"
+        ]
+      }
+    },
+    {
+      "id": "npc-graded-detection-meter-states",
+      "order_index": 5,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — GRADED AWARENESS (depth). Detection is PROGRESSIVE, not a single boolean spotted-flag flip. The discriminator is a suspicion/awareness meter feeding discrete detection states: a value that ACCRUES while the target is range+FOV+LOS-confirmed at a rate scaled by proximity and by FOV-angle (center-of-vision/close fills faster than peripheral, e.g. proportional to the dot product) and DECAYS when sight is lost, crossing named thresholds (Unaware → Suspicious → Alert, e.g. ~33% look toward, ~66% investigate, 100% full chase). A build where the frame a ray connects flips the NPC to full alert and instant sprint-at-you FAILS (no reaction window, no counterplay). A ramping, distance/angle-scaled, decaying meter driving discrete Unaware/Suspicious/Alert states PASSES. Per-archetype/per-state tuning of the cone itself (guard 60st/90°, predator 120st/150°, sleeper 8st/30°; dual ID-vs-investigate cones) pushes toward full marks.",
+      "grading": {
+        "pass": "A detection value fills while range+FOV+LOS hold (fill rate scaled by proximity and/or FOV-angle/dot), decays on LOS loss, and crosses named thresholds into discrete Unaware/Suspicious/Alert states. Per-archetype cone tuning or dual ID-vs-investigate cones earn full marks.",
+        "partial": "A graded meter or multi-stage detection exists but is missing a key dimension — e.g. it fills/decays but the fill rate isn't scaled by proximity/angle, or there are intermediate states but no decay so lost sight never de-escalates.",
+        "fail": "A binary spotted-flag that flips to full chase the instant a ray connects — no ramp, no reaction window, instant sprint-at-you."
+      },
+      "evidence_required": "A statement/dump showing a detection value that fills while range+FOV+LOS hold (fill rate scaled by proximity and/or FOV-angle/dot), decays on LOS loss, and crosses named thresholds into discrete Unaware/Suspicious/Alert states. Per-archetype cone tuning or dual ID-vs-investigate cones are credited toward full marks. A binary spotted-flag that flips to full chase the instant a ray connects does NOT satisfy this.",
+      "concrete_fix": "Replace the boolean 'sees player' with a suspicion meter: increment it while the target is range+FOV+LOS-confirmed (faster when close / centered in the cone), decay it when sight is lost, and gate behavior on thresholds — look toward at ~33%, walk to investigate at ~66%, full chase at 100% — ideally with per-archetype cone sizes and a separate wider investigate cone.",
+      "above_generic_rationale": "A see/don't-see boolean produces the classic 'instantly aggroed from across the map' feel: the frame a ray connects, the NPC is at full alert and sprints, with no tension and no way to duck back into cover. A ramping meter with distance/angle-scaled fill and decay gives the player a reaction window and makes peeking, distance, and brief exposure read differently — the felt difference between a guard and a hitscan trigger, and the prerequisite that lets investigate behavior and group alert-propagation exist at all. Tuning the cone per archetype/state turns perception parameters into a design lever rather than one magic radius.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/struggling-with-making-a-detection-system-for-a-stealth-game/2481235",
+          "https://devforum.roblox.com/t/npc-suspicion-rates-opinions/2928238",
+          "https://devforum.roblox.com/t/defining-fov-of-npcs-vision-in-a-stealth-game/875286",
+          "https://devforum.roblox.com/t/npc-that-will-investigate/2076227",
+          "https://simplified.media/guides/roblox-npc-pathfinding"
+        ]
+      }
+    },
+    {
+      "id": "npc-last-known-position-memory-search",
+      "order_index": 6,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — MEMORY (depth). When line of sight to the target breaks mid-chase, the NPC acts on STALE information instead of either teleport-tracking the live hidden position forever (omniscient) or snapping back to idle in one frame (goldfish). The discriminator is last-known-position memory + a dedicated Search behavior: on LOS loss, store the target's last-seen position and a timestamp; path the NPC TO that spot; play a brief look-around/scan for a few seconds; then de-escalate to patrol/idle if nothing is reacquired — rather than continuing to pathfind to the player's current (hidden) RootPart. A build that keeps pathing to the live target after sight is lost, or drops aggro the instant LOS breaks, FAILS. A build that stores last-known-position, searches it, then gives up PASSES.",
+      "grading": {
+        "pass": "On LOS loss the NPC captures lastSeenPosition + timestamp, enters a Search state that paths to that spot and plays a look-around scan, then de-escalates to patrol/idle on no reacquire.",
+        "partial": "The NPC stores and paths to the last-known position but either never de-escalates (searches forever) or skips the look-around scan, OR it holds aggro for a moment but without a real Search-to-the-spot behavior.",
+        "fail": "The NPC keeps pathfinding to the live (hidden) RootPart after LOS loss (omniscient), or snaps back to idle the instant LOS breaks (goldfish)."
+      },
+      "evidence_required": "A statement/dump showing: on LOS loss, capture lastSeenPosition + timestamp; enter a Search state that paths to that position and plays a look-around scan; then de-escalate to patrol/idle on no reacquire. Continuing to path to the live target after LOS loss, or instantly dropping to idle, does NOT satisfy this.",
+      "concrete_fix": "On losing LOS, don't keep tracking the live target and don't snap to idle — store the last-seen position and time, enter a Search state that paths to that spot and looks around for a few seconds, and only then fall back to patrol if you haven't reacquired the target.",
+      "above_generic_rationale": "This is THE single behavior that separates a thinking NPC from a homing missile: the generic enemy either keeps pathfinding to the live RootPart even after you break sight (so hiding is pointless) or forgets you in one frame (goldfish). Routing chase through a remembered last-known-position — path there, scan, then abandon — means the NPC acts on stale information the way a real searcher does: losing it behind a corner actually works, and the visible search arc reads as the NPC reasoning about where you went rather than instant re-lock.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/npc-that-will-investigate/2076227",
+          "https://devforum.roblox.com/t/pathfinding-ai-jerks-another-direction-after-losing-sight-of-target/3181542",
+          "https://www.youtube.com/watch?v=WIhm49putiA",
+          "https://devforum.roblox.com/t/npc-suspicion-rates-opinions/2928238"
+        ]
+      }
+    },
+    {
+      "id": "npc-state-hysteresis-smooth-turning",
+      "order_index": 7,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "DE-JITTERED TRANSITIONS & TURNING (depth). The NPC's movement and state-changes read as deliberate rather than per-frame thrash. This criterion discriminates on whether the build commits to a real navigation/decision spine that CAN be de-jittered at all: a build that drives movement by re-issuing Humanoid:MoveTo(target's live position) every frame structurally CANNOT smooth its facing or de-bounce its state — MoveTo snaps the look vector instantly and there is no transition to hysteresis, so it fails by construction. A build that commits to (a) a multi-behavior decision spine with named states/prioritized transitions (so chase->search->patrol is a transition that CAN be held/delayed rather than a per-frame boolean), AND (b) waypoint-followed navigation with smoothing/look-vector easing rather than raw per-frame MoveTo-at-live-position, has the substrate for anti-thrash and PASSES the discriminator. Naming 'smoothing' plus prioritized state transitions on a pathfollowed mover clears it; bare per-frame MoveTo-at-target with one chase behavior FAILS.",
+      "grading": {
+        "pass": "The build commits to both a multi-behavior decision spine with named, prioritized transitions AND waypoint-followed navigation with smoothing/look-vector easing — naming 'smoothing' plus prioritized transitions over a pathfollowed mover is sufficient.",
+        "partial": "One substrate is present but not the other — e.g. prioritized transitions exist but movement is still raw per-frame MoveTo-at-live-position (facing snaps), or smoothing is named but the decision layer is a single chase behavior with no transition to hold.",
+        "fail": "Movement is per-frame Humanoid:MoveTo at the target's live position with a single chase behavior — no transition to hysteresis and facing snaps instantly by construction."
+      },
+      "evidence_required": "A statement/dump showing the build commits to BOTH (a) a multi-behavior decision spine with named states and prioritized transitions (chase/search/patrol as held transitions, not a per-frame boolean) AND (b) waypoint-followed navigation with smoothing/look-vector easing rather than re-issuing MoveTo at the target's live position every frame. A single-chase NPC that calls MoveTo(live target) every frame does NOT satisfy this — it has no transition to hysteresis and snaps its facing.",
+      "concrete_fix": "Drive movement off followed waypoints with a look-vector ease (not raw per-frame MoveTo at the live target), and route chase->search->patrol through named prioritized transitions that can be held/delayed instead of a per-frame boolean — so facing and state stop snapping every frame.",
+      "above_generic_rationale": "The MEAN artifact is the textbook 'ice-skating mannequin': one chase behavior driven by per-frame MoveTo at the player's live RootPart, which snaps facing instantly and has no state edge to de-bounce. Smoothing and hysteresis are not free features — they require a navigation substrate that follows waypoints (so a look vector exists to ease) and a decision spine with real transitions (so a chase/search edge exists to hold). Committing to both is precisely the above-generic floor that turns per-frame jitter into deliberate-looking motion, which a live-position MoveTo loop cannot have by construction.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/pathfinding-ai-jerks-another-direction-after-losing-sight-of-target/3181542"
+        ]
+      },
+      "change_reason": "Original demanded two coupled low-level mechanic dumps (multi-frame loss-confirmation counter + speed-based look-vector lerp with >90deg speed-cut) that NEITHER artifact provided, so MEAN=fail and GREAT=fail — zero discrimination. The MEAN artifact's per-frame-MoveTo-at-live-position single-chase architecture STRUCTURALLY cannot de-jitter (no transition exists, MoveTo snaps facing); the GREAT artifact explicitly claims 'smoothing' AND 'prioritized transitions' over a pathfollowed mover. Rekeying the discriminator onto 'does the build commit to a smoothable navigation/transition substrate' separates them: GREAT now passes on its named smoothing+transitions, MEAN still fails because raw per-frame MoveTo has nothing to smooth."
+    },
+    {
+      "id": "npc-repath-on-event-not-per-frame",
+      "order_index": 8,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — DYNAMIC NAVIGATION (depth). The NPC recomputes its path in response to a changing world but only WHEN NECESSARY, never spamming ComputeAsync every frame. The discriminator is event/threshold-triggered repathing: recompute when the target moves past a distance threshold (e.g. ~5 studs), when the environment changes, or on Path.Status failure — AND react to Path.Blocked with an ahead-only guard (path.Blocked:Connect; only repath when blockedWaypointIndex >= the NPC's current target waypoint, ignoring obstructions already behind it). A build that calls ComputeAsync continuously every frame (the named perf killer), OR a one-shot static path that never reacts to a door closing / obstacle appearing, FAILS. A build that repaths on blocked/threshold/failure with the ahead-only guard PASSES.",
+      "grading": {
+        "pass": "Repath is triggered by Path.Blocked (with a blockedWaypointIndex >= currentWaypointIndex ahead-only guard), by target movement past a threshold, or by Status failure — never per-frame ComputeAsync, never a never-updated static path. The ahead-only Blocked guard is present.",
+        "partial": "Repathing is event/threshold-triggered (not per-frame and not static) but the ahead-only Blocked guard is missing — so already-passed blockages can thrash recomputation.",
+        "fail": "ComputeAsync is called continuously every frame (perf killer), OR the path is a one-shot static path that never reacts to a closing door / appearing obstacle."
+      },
+      "evidence_required": "A statement/dump showing repath triggered by Path.Blocked (with a blockedWaypointIndex >= currentWaypointIndex guard), by target movement past a threshold, or by Status failure — NOT a per-frame ComputeAsync loop and NOT a never-updated static path. The ahead-only Blocked guard is required for full credit.",
+      "concrete_fix": "Stop recomputing every frame: connect Path.Blocked and only repath when the blocked waypoint is ahead of the NPC (blockedWaypointIndex >= current), and otherwise recompute only when the target has moved past a threshold or Status reports failure — so dynamic obstacles trigger a fresh path but the NPC never spams ComputeAsync.",
+      "above_generic_rationale": "Two opposite failure modes: a static one-shot path can't handle a door closing or a player blocking the route (the NPC walks into the obstruction forever), while per-frame ComputeAsync for every NPC tanks the server and makes movement stutter. Smart invalidation — repath on Path.Blocked, on target-displacement past a threshold, or on Status failure, with the ahead-only guard so already-passed blockages don't thrash recomputation — is what makes pursuit feel responsive AND stay cheap. The 'only recomputes when necessary' discipline is explicitly praised, and the ahead-of-me index guard is the subtle detail that prevents Blocked-event recompute spam.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/characters/pathfinding.md",
+          "https://devforum.roblox.com/t/realtime-pathfinding-and-circumnavigation-for-mob-npc-ai/791963",
+          "https://www.youtube.com/watch?v=tjwI4b2ZRZk",
+          "https://simplified.media/guides/roblox-npc-pathfinding"
+        ]
+      }
+    },
+    {
+      "id": "npc-stuck-detection-recovery-timeout",
+      "order_index": 9,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "ROBUST RECOVERY FROM A CHANGING/BLOCKING WORLD (depth). The NPC survives obstacles and a moving world instead of grinding into geometry forever. The discriminator: does the build commit to a navigation path that can DETECT and RESPOND to being blocked, versus walking a dead-reckoned straight line into walls with no notion of progress? A build that calls MoveTo at the live target every frame and 'walks through walls and obstacles' has no path, no block signal, and no recovery — it fails by construction. A build that commits to PathfindingService-followed navigation WITH an explicit recompute/recovery response when the route is blocked (recompute-on-block, Path.Blocked handling, or a no-progress repath/jump) PASSES — it can notice it is stuck and re-route. Naming 'recompute-on-block' / blocked-path recovery over a real followed path clears it; a per-frame straight MoveTo that bulldozes through obstacles FAILS.",
+      "grading": {
+        "pass": "The build follows a PathfindingService route AND responds to a block with recovery — recompute-on-block, Path.Blocked handling, or a no-progress repath/jump that re-routes around the obstruction.",
+        "partial": "The build follows a real path but recovery is weak — e.g. it recomputes on a timer but has no explicit blocked/no-progress trigger, so it re-routes only incidentally rather than because it noticed it was stuck.",
+        "fail": "Movement is a per-frame straight MoveTo at the live target that walks through walls/obstacles — no path, no block signal, no recovery by construction."
+      },
+      "evidence_required": "A statement/dump showing the build follows a PathfindingService route AND responds to being blocked with a recovery action — recompute-on-block, Path.Blocked handling, or a no-progress repath/jump. A per-frame straight MoveTo at the live target that walks through walls/obstacles does NOT satisfy this; there is no path to recover.",
+      "concrete_fix": "Replace per-frame straight MoveTo with a followed pathfinding route that detects being blocked (Path.Blocked or a no-progress check) and recovers by recomputing the path (and/or jumping/snapping to the nearest valid waypoint) instead of bulldozing into the obstacle.",
+      "above_generic_rationale": "The MEAN artifact dead-reckons a straight MoveTo into the target and clips through walls — it cannot be 'stuck' because it never acknowledges obstacles. Recovery presupposes a real followed path that can report a blockage and trigger a re-route; committing to recompute-on-block is exactly the robustness step that separates a demo that bulldozes geometry from an NPC that notices a closed door and goes around. That commitment is structurally impossible for a per-frame live-target MoveTo loop.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://devforum.roblox.com/t/how-to-fix-humanoidmoveto-stopping-at-8-seconds/3133806",
+          "https://devforum.roblox.com/t/simplepath-pathfinding-module/1196762/116"
+        ]
+      },
+      "change_reason": "Original demanded a displacement-over-2-3s-window tracker AND explicit handling of the Humanoid:MoveTo 8-second silent timeout — mechanic specifics NEITHER artifact gave (MEAN=fail, GREAT=fail). The MEAN artifact 'walks through walls' with raw MoveTo (no path = nothing to recover), while the GREAT artifact explicitly names 'recompute-on-block'. Rekeying the discriminator onto 'commits to a blocked-aware path with a recovery response' lets GREAT pass on its named recompute-on-block while MEAN still fails because a straight-line MoveTo loop has no block detection or recovery at all."
+    },
+    {
+      "id": "npc-offmesh-traversal-links-arrival",
+      "order_index": 10,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "OFF-MESH / VERTICAL TRAVERSAL (depth). The NPC crosses geometry a flat walk cannot — gaps, drops, ledges — by ACTING on path waypoints (jumping, climbing) rather than stalling at the first non-walkable edge. The discriminator: does the build follow a real navmesh path and HONOR its traversal waypoints (fire a Jump on jump-action waypoints / branch on link labels), versus a flat straight-line walk that simply stops or wedges at any gap or ledge? A build that MoveTos the live target on flat ground and 'walks in a straight line through walls' has no waypoints and no jump action — it cannot span a gap and FAILS. A build that commits to a followed path and triggers traversal verbs (jumps on Jump waypoints, link-label branching) so it can hop gaps and climb PASSES. Naming 'jumps' as part of pathfinding waypoint-following clears the traversal floor; a flat per-frame MoveTo with no jump handling FAILS.",
+      "grading": {
+        "pass": "The NPC follows a navmesh path AND honors traversal waypoints — fires Jump on Jump-action waypoints and/or branches on PathfindingLink labels to cross gaps/ladders/doors/seats.",
+        "partial": "The build follows a path and handles basic jump waypoints but cannot cross true off-mesh links (no ladder/door/seat traversal) — vertical traversal is partial.",
+        "fail": "A flat per-frame MoveTo at the live target with no waypoints and no jump handling — stalls or wedges at the first gap or ledge."
+      },
+      "evidence_required": "A statement/dump showing the NPC follows a PathfindingService path AND honors traversal waypoints — firing a Jump on Jump-action waypoints and/or branching on PathfindingLink labels to traverse gaps/ladders/doors. A flat per-frame MoveTo at the live target with no waypoints and no jump handling does NOT satisfy this.",
+      "concrete_fix": "Follow a real navmesh path and act on its traversal waypoints — fire Humanoid.Jump on Jump-action waypoints (and branch on link labels for ladders/doors/seats where present) — so the NPC hops gaps and climbs instead of stalling at the first non-walkable edge.",
+      "above_generic_rationale": "A flat MoveTo-at-target walker is trapped on one contiguous walkable surface and freezes at any gap, ledge, or short wall — the MEAN artifact's exact failure. Honoring traversal waypoints (jumping on Jump waypoints, branching on link labels) is what lets an NPC follow you through real vertical/interactive geometry rather than only on flat ground, and it requires a followed path the flat walker structurally lacks.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/full-release-introducing-the-pathfinding-links-for-npcs/1771534",
+          "https://www.youtube.com/watch?v=N8XV2criaK0",
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://www.youtube.com/watch?v=-pQOhN4vUdE"
+        ]
+      },
+      "change_reason": "Original required PathfindingLink instances with Labels + per-link traversal-verb branching + ~0.5-stud arrival tolerance — a specialized stack NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact is a flat straight-line walker; the GREAT artifact explicitly names 'jumps' within its PathfindingService waypoint-following. Reframing the discriminator from 'full PathfindingLinks + arrival-tolerance dump' to 'honors traversal waypoints (jump action / link branching) on a followed path vs a flat walk that stalls at gaps' lets GREAT pass on its named jump handling while the flat MEAN walker still fails."
+    },
+    {
+      "id": "npc-target-selection-interception-lead",
+      "order_index": 11,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "COORDINATED / ROLE-AWARE TARGETING (depth). Engagement is driven by a coordination layer that assigns and re-evaluates how the group engages, rather than every NPC independently hard-locking 'the nearest player' at its live position. The discriminator: does the build commit to a group/role coordination layer that governs targeting (role assignment, flanking, alert propagation — so engagement is allocated, not identical-and-isolated), versus every NPC independently re-reading the single nearest player's live position with no coordination? A build where each NPC 'chases the nearest player' at their current position with 'no coordination (every NPC stacks on the same point)' FAILS. A build that commits to coordinated targeting — role assignment and flanking that diversify how/where members engage, plus shared alert/target propagation — so the group does not collapse onto one identical live-position lock PASSES. Naming role assignment + flanking + alert propagation over the engagement clears it; N identical isolated nearest-player chasers FAIL.",
+      "grading": {
+        "pass": "A group/role coordination layer governs engagement — role assignment and flanking diversify how/where members engage AND shared alert/target propagation spreads sightings — so the group does not collapse onto one identical live-position lock.",
+        "partial": "Some coordination over targeting exists (e.g. alert propagation or role assignment) but engagement is otherwise still each-NPC-to-nearest with no flank/approach diversification.",
+        "fail": "Every NPC independently chases the single nearest player's live position with no coordination — they stack on the same point."
+      },
+      "evidence_required": "A statement/dump showing a group/role coordination layer governing engagement — role assignment and flanking that diversify how/where members engage AND shared alert/target propagation — rather than every NPC independently re-reading the single nearest player's live position. Each NPC chasing the nearest player's current position in isolation does NOT satisfy this.",
+      "concrete_fix": "Replace each NPC independently locking the nearest player's live position with a coordination layer that allocates engagement — assign roles and flanking so members approach differently, and propagate alerts/targets across the group — so they don't all collapse onto one identical point-lock.",
+      "above_generic_rationale": "The single-player tell is every enemy hard-locking 'the player' at their live RootPart and piling onto one point — the MEAN artifact exactly. Real multi-agent targeting allocates engagement: roles diversify who pushes vs holds, flanking diversifies the approach angle, and alert propagation means one sighting informs the group instead of N isolated re-acquisitions. Committing to that coordination layer is the leap from N identical reactive followers to a group that engages as a unit, which an isolated nearest-lock cannot express.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=ckA4fVkAjIA",
+          "https://devforum.roblox.com/t/how-to-predict-npc-path-motion/1683871"
+        ]
+      },
+      "change_reason": "Original required sorted {distance,target} scoring AND a velocity-lead interception formula (targetPos + AssemblyLinearVelocity*timeToReach) — neither of which EITHER artifact dumped (MEAN=fail, GREAT=fail). The MEAN artifact is N isolated nearest-player chasers ('every NPC stacks on the same point'); the GREAT artifact explicitly claims 'group coordination (flanking, role assignment, alert propagation)'. Rekeying the discriminator from 'lead-the-target math' onto 'commits to a coordination layer that allocates/diversifies engagement vs identical isolated nearest-lock' lets GREAT pass on its named role/flank/alert coordination while the identical-isolated-chaser MEAN artifact still fails."
+    },
+    {
+      "id": "npc-anti-clump-separation-spacing",
+      "order_index": 12,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — GROUP SPACING (depth). Multiple pursuing NPCs occupy space and surround the target instead of stacking into one body on a single point. The discriminator is explicit inter-NPC separation: either a steering separation force (each NPC sums repulsion from neighbors inside a grouping distance, contributing a unit vector pointing away, blended into its move target) OR target-offset slot assignment (each NPC is given a slot/offset around the target — left/right by N studs, shrinking as they close — so they encircle), with the nuance that the offset is disabled in narrow passages/doorways so pathfinding stays clean. A build where every NPC pathfinds to the exact same target point and they pile into one jittering, bodyblocking clump FAILS. A build with separation steering or offset slot-assignment that fans the group into a ring PASSES.",
+      "grading": {
+        "pass": "Either separation steering (sum unit-vector repulsion from neighbors within a grouping distance, blended into the move target) OR per-NPC target offsets/slots that encircle the target and shrink as they close, WITH offsets disabled in narrow passages.",
+        "partial": "A separation force or offset-slot scheme is present and fans the group out, but the narrow-passage/doorway disable nuance is missing — so spacing breaks pathfinding in corridors.",
+        "fail": "Every NPC pathfinds to the exact same target point and they pile into one jittering, bodyblocking clump — no inter-NPC separation."
+      },
+      "evidence_required": "A statement/dump showing either separation steering (sum unit-vector repulsion from neighbors within a grouping distance, blended into the move target) OR per-NPC target offsets/slots that encircle the target and shrink as they close, with offsets disabled in narrow passages. Every NPC pathing to the same point and stacking does NOT satisfy this.",
+      "concrete_fix": "Stop every NPC pathing to the identical target point: give each a separation force (sum the away-vectors from neighbors within a grouping distance and blend it into the move target) or an assigned offset slot around the target (left/right by N studs, shrinking as they close), and disable the offset in doorways/corridors so pathfinding stays clean.",
+      "above_generic_rationale": "The defining tell of generic multi-enemy AI is that every NPC pathfinds to the exact same target point, so they pile into one jittering clump, shove each other, and only the front one can act. Explicit separation — a steering force away from too-close neighbors, or offset slots that encircle the target — makes the group occupy space believably and produces a natural surround read, the instant visual signature of 'these enemies coordinate' versus 'N copies of one dumb chaser.' It is a cheap technique with an outsized readability payoff; disabling the offset in tight spaces is the nuance that keeps it from breaking pathfinding in corridors.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/preventing-ai-from-crowdingclustering-when-chasing-a-target/3180105",
+          "https://devforum.roblox.com/t/how-do-i-make-fighting-npcs-spread-out-more/2776281",
+          "https://devforum.roblox.com/t/how-to-make-a-better-ai-flocking-system/1752071",
+          "https://devforum.roblox.com/t/npc-coordination-and-role-system/2089363"
+        ]
+      }
+    },
+    {
+      "id": "npc-utility-ai-context-scoring",
+      "order_index": 13,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "The decision layer can express CONTEXT-SENSITIVE choice via utility scoring, so the same NPC makes different sensible decisions in different situations rather than following a fixed transition path. The discriminator is a real utility AI: each candidate action (attack/chase/flee/reposition/heal/wander/investigate) computes a numeric score from weighted current factors (distance, health, ammo, threat, has-LOS), the highest-scoring action runs each tick, and a baseline action (e.g. wander=1) guarantees graceful fallback — so behavior emerges from the situation (flee when low HP outscores attack; flank when flanked) instead of hand-wired transitions. A build that is a fixed if-ladder or a rigid FSM where every transition is manually authored and behavior is identical in every situation FAILS to clear this (it may still pass the baseline FSM criterion). A build that scores actions from context and picks the max PASSES. Response-curve shaping (linear/quadratic/logistic) and priority-bucketing (consider only the top need-bucket, score within it) push toward full marks.",
+      "grading": {
+        "pass": "Per-action numeric scores are computed from weighted context factors (distance/health/ammo/threat/LOS), the max-scoring action runs each tick, and a baseline fallback action (e.g. wander=1) exists. Response-curve shaping or priority-bucketing earns full marks.",
+        "partial": "Some context-sensitive scoring exists but is shallow — e.g. only two actions scored, or no baseline fallback so the NPC can stall, or scores are constants rather than computed from live factors.",
+        "fail": "A fixed if-ladder or rigid FSM with hand-wired transitions where behavior is identical in every situation — no numeric context scoring (may still pass the baseline FSM criterion)."
+      },
+      "evidence_required": "A statement/dump showing per-action numeric scores computed from weighted context factors (distance/health/ammo/threat/LOS), the max-scoring action chosen each tick, and a baseline fallback action. Response-curve shaping or priority-bucketing earns full marks. A fixed if-ladder or rigid FSM with hand-wired transitions does NOT satisfy this criterion.",
+      "concrete_fix": "Add a utility layer: each tick, score every candidate action (attack/chase/flee/reposition/heal/wander) from weighted factors (distance, health, ammo, threat, LOS) and run the highest — with a low baseline action like wander so there's always a sensible fallback — ideally shaping each score with a response curve and bucketing urgent needs above ambient ones.",
+      "above_generic_rationale": "FSMs follow rigid, predictable transition paths and behave identically in every situation; utility scoring lets the same NPC make different sensible choices in different contexts (retreat when low, flank when flanked, heal when safe) because the numbers shift, producing the un-scripted variety that reads as 'deciding' rather than 'looping.' A baseline action prevents the NPC ever standing idle inappropriately. Response-curve shaping (so melee utility ramps sharply as distance drops) and Sims-style priority-bucketing (urgent needs always beat ambient actions, preventing 'starve on the couch' oscillation) are the craft that keeps the choices sensible.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+          "https://www.youtube.com/watch?v=p3Jbp2cZg3Q"
+        ]
+      }
+    },
+    {
+      "id": "npc-behavior-tree-blackboard-event-driven",
+      "order_index": 14,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "For NPCs with many interruptible sub-behaviors, the decision layer is a behavior tree with a blackboard and event-driven ticking, giving free interruption/prioritization that a flat FSM makes expensive. The discriminator is a real BT: Selector (OR — try children until one succeeds) / Sequence (AND — run in order, abort on first failure) composites with Condition/Action leaves returning success/failure/running; a blackboard holding shared state (target, last-known-position, under-fire) that nodes read/write and pass as context (so leaves don't re-query LOS/distance); the tree re-ticks from the root on a timer (~0.2s) or on world events (saw player/took fire) rather than re-walking every frame, with higher-priority branches (flee, react to damage) preempting lower ones (patrol). A build that hardcodes transitions as a monolithic FSM/if-pile where every new interrupt must be wired from every state FAILS to clear this. A build with Selector/Sequence composites + blackboard + event/timer ticking PASSES. A navigation wrapper decoupling the tree from MoveTo, and decorators (Inverter/Repeater/cooldown), push toward full marks.",
+      "grading": {
+        "pass": "Selector/Sequence composites with Condition/Action leaves returning success/failure/running, a blackboard for shared/context state passed between nodes, and event-or-timer ticking (active-node cache, ~0.2s or on-event) with higher-priority branches preempting lower. A navigation wrapper and decorators earn full marks.",
+        "partial": "A behavior tree with composites and leaves exists but is missing a core element — no blackboard (leaves re-query world facts), OR re-walked every frame instead of event/timer ticked, OR no clear priority preemption.",
+        "fail": "A monolithic FSM/if-pile with hand-wired transitions where every new interrupt must be wired from every state — no BT structure."
+      },
+      "evidence_required": "A statement/dump showing Selector/Sequence composites with Condition/Action leaves returning success/failure/running, a blackboard for shared/context state passed between nodes, and event-or-timer ticking (active-node cache, ~0.2s or on-event) with higher-priority branches preempting lower. A navigation wrapper and decorators earn full marks. A monolithic FSM/if-pile with hand-wired transitions does NOT satisfy this criterion.",
+      "concrete_fix": "Where the NPC needs many interruptible behaviors, build a behavior tree: Selector (first child to succeed) / Sequence (run-until-fail) composites over Condition/Action leaves returning success/failure/running, a blackboard holding target/last-known-pos/under-fire that nodes share, and re-tick from the root on a ~0.2s timer or world events (not every frame) so high-priority branches like flee preempt patrol.",
+      "above_generic_rationale": "A flat FSM makes reactivity expensive: every new interrupt (got shot mid-patrol, ally called for help) needs a transition wired from every state, and the transition count blows up ~N² as states grow. A behavior tree's priority-ordered selectors give interruption and fallback for free — re-ticking from the root means a high-priority branch naturally overrides whatever was running — and the running status enables clean reattempt. Event-driven ticking (cache the active node, re-evaluate on a ~0.2s tick or on events, not every frame) is the Halo-pioneered optimization that made BTs viable in AAA; the shared blackboard cuts redundant world-fact recomputation and is the cheapest route to group awareness.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://devforum.roblox.com/t/how-to-use-behaviour-trees-to-create-enemy-npcs-in-depth-tutorial/3326581",
+          "https://devforum.roblox.com/t/tutorial-for-how-i-use-behavior-trees-for-my-npc/2806049",
+          "https://www.youtube.com/watch?v=6VBCXvfNlCM",
+          "https://www.youtube.com/watch?v=WIhm49putiA"
+        ]
+      }
+    },
+    {
+      "id": "npc-combat-spacing-kiting-cleanup",
+      "order_index": 15,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "The NPC maintains a deliberate engagement range and is robust around death, instead of bee-lining into the target and standing inside it. The discriminator is combat-feel + lifecycle polish: keep an ideal distance (back off if the target gets too close, advance if too far — kiting for ranged, closing for melee), continuously face the target so attacks land fairly, AND guard the two classic real bugs — don't let a dead NPC keep attacking, and clean up all RunService connections / loops on death (no leaked Heartbeat loops). A build that bee-lines into melee range and stands inside the target, attacks while dead, or leaks its update loops after death FAILS. A build with range-keeping + auto-face + dead-attack guard + connection cleanup PASSES.",
+      "grading": {
+        "pass": "Maintained ideal range (back off when too close / advance when too far, kite vs close by weapon), continuous facing of the target, a guard preventing attacks while dead, AND explicit disconnect/cleanup of update loops on death.",
+        "partial": "Range-keeping and facing are present but the lifecycle guards are incomplete — e.g. no dead-attack guard, or update loops/connections leak on death — OR the correctness gates are handled but the NPC still bee-lines with no range-keeping.",
+        "fail": "The NPC bee-lines into melee range and stands inside the target, attacks while dead, or leaks its RunService loops after death."
+      },
+      "evidence_required": "A statement/dump showing maintained ideal range (back off when too close / advance when too far, kite vs close by weapon), continuous facing of the target, a guard preventing attacks while dead, and explicit disconnect/cleanup of update loops on death. Bee-lining into the target, attacking while dead, or leaked loops does NOT satisfy this.",
+      "concrete_fix": "Have the NPC hold its ideal range — ranged enemies kite (back off when the target closes), melee enemies close in — and continuously face the target so attacks land; and on death, stop the attack logic (no corpse damage) and disconnect every RunService loop/connection so nothing leaks.",
+      "above_generic_rationale": "Generic enemies bee-line into melee range and stand inside you regardless of weapon. Range-keeping (kiting for ranged, closing for melee) gives enemies a distinct, readable behavior, and continuous auto-facing makes hits feel fair rather than landing from a sideways NPC. The dead-attack guard and connection cleanup fix the two most common real bugs that mark amateur NPC code — a corpse that still damages you, and leaked RunService loops that pile up every spawn — so this is both a feel lever and a correctness gate.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=WIhm49putiA"
+        ]
+      }
+    },
+    {
+      "id": "npc-throttled-staggered-ai-budget",
+      "order_index": 16,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "AFFORDABLE INTELLIGENCE — EVENT-GATED EXPENSIVE WORK (depth). Expensive AI work (pathfinding recompute, perception) runs only when warranted, not flat-out every frame for every NPC. The discriminator: does the build commit to navigation whose expensive recompute is EVENT/CONDITION-GATED (recompute-on-block, repath-on-need) rather than re-running the full solve/MoveTo every single frame? A build that 'calls MoveTo(nearestPlayer) every frame' and would re-solve per frame at scale runs full logic flat-out and FAILS. A build that commits to recompute-on-block / repath-only-when-needed navigation — so the costly pathfinding work fires on an event/threshold instead of every frame — has the core affordability discipline and PASSES. Naming recompute-on-block / event-gated repath clears the budget floor; per-frame full logic for every NPC FAILS.",
+      "grading": {
+        "pass": "Expensive AI work is event/condition-gated — recompute-on-block or repath-only-when-needed so pathfinding does not re-solve every frame. Round-robin NPC staggering and fixed-cadence raycast/ComputeAsync throttling earn full marks.",
+        "partial": "Some gating exists (e.g. repath-on-event) but perception/decision still run per-frame for every NPC, or there is no staggering so all NPCs update on the same throttled tick.",
+        "fail": "Full MoveTo/perception logic runs for every NPC every frame — expensive work is never gated."
+      },
+      "evidence_required": "A statement/dump showing expensive AI work is event/condition-gated — recompute-on-block or repath-only-when-needed so pathfinding does not re-solve every frame. A loop that runs full MoveTo/perception logic for every NPC every frame does NOT satisfy this. Round-robin staggering + fixed-cadence throttling earn full marks.",
+      "concrete_fix": "Stop re-running expensive AI every frame: gate pathfinding recompute on events/thresholds (recompute-on-block, repath only when the target moves) so the costly solve fires when warranted — ideally also staggering NPC ticks round-robin so the whole crowd doesn't update on the same frame.",
+      "above_generic_rationale": "The naive build re-runs full logic every frame and dies at a dozen enemies. The first and cheapest affordability discipline is to stop paying for expensive work the NPC doesn't need this frame — gating pathfinding recompute on a block/threshold instead of per-frame. The MEAN artifact's every-frame MoveTo loop is exactly the cost ceiling this avoids; committing to event-gated recompute is the entry-level above-generic move, with full staggering as the ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/handling-tens-to-hundreds-of-enemy-ai/3788961",
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://devforum.roblox.com/t/optimization-tips-on-npcs-managed-to-get-1500-npcs-300-500-ping-about-3-5-script-activity-but-rate-is-over-20-30k/2511448"
+        ]
+      },
+      "change_reason": "Original required reduced-cadence Heartbeat ticks + round-robin batching + a fixed-cadence raycast/ComputeAsync throttle — a scaling-architecture dump NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact runs 'every frame' (the named perf FAIL); the GREAT artifact explicitly claims 'recompute-on-block' (event-gated expensive work). Narrowing the discriminator's core to 'expensive work is event/condition-gated vs run flat-out every frame' lets GREAT pass on its named recompute-on-block while the every-frame MEAN loop still fails. The full stagger/round-robin stack is retained as the full-marks bar, not the pass bar."
+    },
+    {
+      "id": "npc-ambient-believability-barks-routines",
+      "order_index": 17,
+      "tier": "good",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — BELIEVABILITY LAYER (depth). On top of bare wander, unengaged NPCs have varied idle life AND telegraph their internal state, so the world feels populated and the player can READ what an NPC notices. The discriminator is a believability stack: (1) varied idle — cycle states (walk → stand → wait 10-15s) with DIFFERENT idle animations and look-around/head turns rather than one looped idle; (2) authored patrol routes (optionally time-of-day schedules: home→work→shop→sleep); (3) reactive barks/callouts + a state animation/VFX fired on each perception/FSM transition (entering Suspicious: turn toward + '?'; entering Alert: '!' + radio-in); and (4) social-aware movement (a wanderer raycasts ahead and stop-waits or re-paths when blocked by another character instead of pathing through them). A build with one looped idle animation, no state telegraphs, and NPCs that path straight through each other FAILS. A build with varied idle + patrol/schedule + transition barks + blocked-path waiting PASSES.",
+      "grading": {
+        "pass": "Varied idle (multiple idle anims + look-around, walk/stand/wait cycle), authored patrol routes or time-of-day schedules, a bark/callout + state anim/VFX fired on each perception/FSM transition ('?' on Suspicious, '!' on Alert), AND social-aware movement (raycast + wait/re-path when blocked by another character).",
+        "partial": "Two or three of the four believability elements are present (e.g. varied idle + patrol routes but no state telegraphs, or telegraphs without social-aware movement) — partial believability stack.",
+        "fail": "One looped idle animation, no state telegraphs, and NPCs that path straight through each other — robotic and unreadable."
+      },
+      "evidence_required": "A statement/dump showing varied idle (multiple idle anims + look-around, walk/stand/wait cycle), authored patrol routes or time-of-day schedules, a bark/callout + state anim/VFX fired on each perception/FSM transition (e.g. '?' on Suspicious, '!' on Alert), and social-aware movement (raycast-check + wait/re-path when blocked by another character). One looped idle with no telegraphs and pathing through others does NOT satisfy this.",
+      "concrete_fix": "Layer believability onto wander: cycle varied idle animations with look-around turns, give NPCs authored patrol routes (or a daily schedule), fire a '?'/'!' bark + animation on each Suspicious/Alert transition so the player can see them notice, and have wanderers raycast ahead and stop-wait or re-path when another character blocks them instead of clipping through.",
+      "above_generic_rationale": "Reviewers single out the robotic tell: one looping animation, no reaction telegraphs, and pathing straight through obstacles/other NPCs. Varied state cycling with different idle anims and look-arounds, authored patrol/schedules, a bark/animation on each state change (the suspicion '?'/'!' the player can SEE), and blocked-path waiting are what make background characters read as inhabitants with their own business rather than scenery on rails. The transition telegraph is also what makes the underlying perception/FSM systems legible — the player can watch the NPC notice them — which is the difference between an animatronic and a character.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/feedback-for-my-realistic-civilian-npc/2659107",
+          "https://devforum.roblox.com/t/npc-suspicion-rates-opinions/2928238",
+          "https://create.roblox.com/docs/resources/city-people-cars",
+          "https://simplified.media/guides/roblox-npc-pathfinding"
+        ]
+      }
+    },
+    {
+      "id": "npc-per-archetype-perception-tuning",
+      "order_index": 18,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "PER-STATE PERCEPTION THAT IS A DESIGN LEVER (top tier). The perception system is more than a single fixed radius — its awareness expands and contracts with the NPC's behavioral state, so perception parameters carry meaning. The discriminator: does the build commit to a real perception system (raycast LOS + FOV cone) whose awareness is COUPLED TO GRADED STATES (unaware/suspicious/alert), so detection sensitivity differs by state rather than one omniscient always-on radius? A build that is 'instantly and omnisciently aware of the player at any distance with no line-of-sight or perception' has no perception to tune and FAILS. A build that commits to a state-coupled perception model — LOS + FOV cone feeding unaware/suspicious/alert states so awareness is state-dependent and tunable — PASSES the design-lever floor (distinct per-archetype range/FOV multipliers earn full marks). Naming LOS+FOV cone + unaware/suspicious/alert states clears it; an omniscient fixed always-on awareness FAILS.",
+      "grading": {
+        "pass": "A real perception system (raycast LOS + FOV cone) whose awareness is coupled to graded states (unaware/suspicious/alert) so detection differs by state. Distinct per-archetype range/FOV multipliers (guard/predator/sleeper, widen-on-alert) earn full marks.",
+        "partial": "A real LOS+FOV perception system exists but awareness is uniform across states and archetypes (one cone, no state- or role-dependent variation) — perception is real but not yet a design lever.",
+        "fail": "Omniscient fixed always-on awareness with no perception system to vary by state or archetype."
+      },
+      "evidence_required": "A statement/dump showing a real perception system (raycast LOS + FOV cone) whose awareness is coupled to graded states (unaware/suspicious/alert) so detection differs by state. An omniscient fixed always-on awareness with no perception does NOT satisfy this. Distinct per-archetype range/FOV multipliers earn full marks.",
+      "concrete_fix": "Make perception a design lever: couple a real LOS + FOV-cone sensor to graded states so awareness widens/sharpens as the NPC moves unaware->suspicious->alert (and, for full marks, give distinct archetypes different range/FOV so a sleeper, guard, and predator sense differently) — instead of one omniscient always-on radius for everyone.",
+      "above_generic_rationale": "Generic AI uses one magic detection radius for everyone in every state; the MEAN artifact is worse — omniscient, with no perception at all. Turning perception into a design lever first requires a real LOS+FOV sensor whose sensitivity is coupled to behavioral state (a suspicious NPC scans differently than an alert one). The GREAT artifact commits to exactly that coupling, which an omniscient fixed-awareness build structurally cannot have, making this a clean separator at the floor with per-archetype tuning as the ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://devforum.roblox.com/t/defining-fov-of-npcs-vision-in-a-stealth-game/875286"
+        ]
+      },
+      "change_reason": "Original required per-ARCHETYPE range/FOV multipliers (distinct guard/predator/sleeper cones) — a tuning dump NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact is omniscient with NO perception; the GREAT artifact explicitly commits to 'raycast LOS + FOV cone' feeding 'unaware/suspicious/alert states' — i.e. perception that already varies BY STATE. Rekeying the discriminator from 'per-archetype cones' onto 'perception coupled to graded states (a tunable design lever) vs omniscient fixed awareness' lets GREAT pass on its named LOS+FOV+state coupling while the omniscient MEAN artifact, which has no perception to tune, still fails. Per-archetype multipliers remain the full-marks bar."
+    },
+    {
+      "id": "npc-coordination-roles-slots-alert-propagation",
+      "order_index": 19,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — SQUAD COORDINATION (top tier). A group of NPCs acts as a coordinated unit through SHARED state, not as independent agents that each rediscover the player. The discriminator is real multi-agent coordination via a group controller / shared blackboard: (1) attack-slot reservation or a fixed number of melee 'attack tokens' so only K NPCs engage at once while others hold at range and rotate in (the Dark-Souls/Arkham 'they take turns' illusion); (2) role assignment (Leader/Rifleman/Sniper/Rocketeer) that specializes behavior — the sniper holds back, riflemen advance, a leader rallies and calls reinforcements to its coordinates; and (3) shared alert/target propagation so one NPC spotting the player alerts the squad instead of each re-discovering them in isolation. A build where each NPC runs an identical isolated FSM (all rushing simultaneously, each independently re-acquiring the target) FAILS. A build with slot/token staging + roles + alert propagation through a shared channel PASSES.",
+      "grading": {
+        "pass": "A group controller / shared blackboard provides all three: attack-slot reservation or melee attack-tokens (K engage at once, others hold/rotate), role assignment specializing behavior (Leader/Rifleman/Sniper/Rocketeer + reinforcement calls), AND shared alert/target propagation across the squad.",
+        "partial": "Real shared-state coordination exists but only one or two of the three pillars — e.g. attack-token staging + alert propagation but no role specialization, or roles without the take-turns slot reservation.",
+        "fail": "Each NPC runs an identical isolated FSM, all rushing simultaneously and each independently re-acquiring the target — no shared coordination channel."
+      },
+      "evidence_required": "A statement/dump showing a group controller / shared blackboard with: attack-slot reservation or melee attack-tokens staging engagement (K at a time, others hold/rotate), role assignment specializing behavior (Leader/Rifleman/Sniper/Rocketeer + reinforcement calls), AND shared alert/target propagation across the squad. Each NPC running an identical isolated FSM with all rushing at once does NOT satisfy this.",
+      "concrete_fix": "Give the group a shared coordinator: a fixed pool of attack tokens/slots so only K NPCs engage at once while the rest circle and rotate in, role assignment (sniper holds back, riflemen push, a leader calls reinforcements to its position), and an alert channel so when one NPC spots the player the whole squad is notified — instead of N identical isolated chasers all rushing simultaneously.",
+      "above_generic_rationale": "Multiple independent chase-AIs produce a clump that all rush at once — unfair and reading as chaos. A shared coordinator that hands out distinct attack slots/tokens (so enemies engage in turns while others circle and wait), assigns specialized roles (sniper holds, riflemen advance, leader summons backup to its position), and propagates alert/target across the squad (spot once, the whole group knows) is what makes a group read as a coordinated squad rather than a conga line. This requires NPCs to communicate through a group blackboard — something a per-NPC independent FSM fundamentally cannot do — so it sits at the top tier of coordination, and the threads note this teamwork layer is rare in Roblox projects.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/npc-coordination-and-role-system/2089363",
+          "https://devforum.roblox.com/t/how-people-make-an-ai-which-can-flank-and-hold-position/2230258"
+        ]
+      }
+    },
+    {
+      "id": "npc-tactical-flanking-rated-positions",
+      "order_index": 20,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "KILLER SYSTEM — TACTICAL POSITIONING (top tier). NPCs choose WHERE to be for advantage — they flank and use cover — rather than always taking the shortest path straight at the target. The discriminator is position scoring + externally-computed goals: pre-mark or sample candidate hold-spots on the map and SCORE each by cover, line-of-sight/visibility to the target, and range (influence-map / spot-rating, the Last-of-Us model); send the NPC to the highest-scoring spot, with a flanker biased toward high-rated positions to the side/rear so the group surrounds rather than approaching head-on; THEN let cost-weighted pathfinding route to that chosen position. CRITICAL correction: the goal POSITION must be computed externally — PathfindingModifiers only adjust per-area cost and the solver still takes the lowest-cost route, so modifiers ALONE cannot produce flanking. A build that always paths the shortest line to the target (never uses cover, never approaches from an angle), OR that expects PathfindingModifiers alone to create tactical routes, FAILS. A build that scores candidate positions and routes to a chosen flank/cover spot PASSES.",
+      "grading": {
+        "pass": "Candidate positions are scored by cover + visibility/LOS-to-target + range, the NPC is routed to the highest-scoring spot (a flanker biased to side/rear), the goal position is computed externally, and pathfinding is used only to REACH it — explicitly not relying on PathfindingModifiers alone to flank.",
+        "partial": "Positions are scored and chosen externally but the scoring is shallow (e.g. range only, no cover/LOS), or flanking bias to side/rear is missing — tactical intent partially present.",
+        "fail": "Always paths the shortest line straight at the target (never cover, never angle), OR expects PathfindingModifiers alone to create flanking routes."
+      },
+      "evidence_required": "A statement/dump showing candidate positions scored by cover + visibility/LOS-to-target + range, the NPC routed to the highest-scoring spot (a flanker biased to side/rear), with the goal position computed externally and pathfinding used only to REACH it — explicitly NOT relying on PathfindingModifiers alone to flank. Always pathing the shortest line at the target does NOT satisfy this.",
+      "concrete_fix": "Compute the destination before pathing: sample/pre-mark candidate spots, score each by cover, LOS to the target, and range, pick the best (bias the flanker toward side/rear positions), and only then run cost-weighted pathfinding to that spot — don't expect PathfindingModifiers to produce flanking, because the solver just takes the cheapest route to whatever goal you give it.",
+      "above_generic_rationale": "The generic enemy always takes the shortest path straight at the player, so it never uses cover and never approaches from an unexpected angle. Scoring candidate positions by cover/visibility/range and routing one NPC to flank while others pin is influence-map tactical AI (the cited 'Human AI in The Last of Us' model) — the enemy chooses WHERE to be for advantage, the single biggest leap from 'walks at you' to 'out-thinks you.' The hard-won correction matters: developers expect PathfindingModifiers to create flanking and they don't (modifiers only tune per-area cost; the solver still takes the lowest-cost route), so the real lever is choosing a smart goal position and only then pathing to it.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-people-make-an-ai-which-can-flank-and-hold-position/2230258",
+          "https://devforum.roblox.com/t/is-using-pathfindingmodifiers-for-npc-flanking-behaviour-feasible/4172684"
+        ]
+      }
+    },
+    {
+      "id": "npc-boids-flocking-spatial-partition",
+      "order_index": 21,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "INTER-AGENT SPACING / FLOCKING (top tier). Multiple NPCs occupy space and spread out as a group instead of every agent independently converging on one identical point and overlapping. The discriminator: does the build commit to an explicit inter-agent spacing mechanism (separation force / flocking / coordinated spread) so members repel or distribute relative to each other, versus every NPC independently pathing to the same target point and piling into one clump? A build with 'no coordination (every NPC stacks on the same point)' FAILS. A build that commits to separation/flocking/coordinated spacing — members steering apart or into encircling positions via group coordination rather than all converging identically — PASSES the spacing floor (full boids forces + spatial partitioning earn full marks). Naming separation/flocking/coordinated spread over the group clears it; N independent agents converging on one point and overlapping FAILS.",
+      "grading": {
+        "pass": "An explicit inter-agent spacing mechanism — separation force, flocking, or coordinated spread/encircling so members distribute relative to each other. Full weighted boids forces (separation/alignment/cohesion), velocity snapshot, and spatial partitioning earn full marks.",
+        "partial": "A spacing intent is present (members spread somewhat) but it is shallow — e.g. a separation nudge with no real flocking or, for crowds, naive O(n^2) neighbor checks with no spatial partitioning.",
+        "fail": "Every NPC independently paths to the same target point and overlaps into one clump — no inter-agent spacing."
+      },
+      "evidence_required": "A statement/dump showing an explicit inter-agent spacing mechanism — a separation force, flocking, or coordinated spread so members repel/distribute relative to each other rather than all converging on one identical point. Every NPC independently pathing to the same point and clumping does NOT satisfy this. Full weighted boids forces + velocity snapshot + spatial partitioning earn full marks.",
+      "concrete_fix": "Add explicit inter-agent spacing: a separation force or flocking/coordinated-spread so members steer apart and distribute (encircle) instead of every NPC pathing to the same point and overlapping — graduating to full weighted boids (separation/alignment/cohesion) with spatial partitioning for large packs.",
+      "above_generic_rationale": "The signature tell of generic crowds is every agent converging on one point and overlapping into a jittering clump — the MEAN artifact exactly. Any explicit spacing mechanism (separation steering, flocking, coordinated encircling) makes the group occupy space believably and is the readability leap from 'N copies of one chaser' to 'a coordinated pack'. The GREAT artifact commits to separation/coordinated spread; the all-converge MEAN artifact does not, making spacing-vs-clump the clean separator, with full boids + spatial partitioning as the ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://www.youtube.com/watch?v=mhjuuHl6qHM",
+          "https://devforum.roblox.com/t/how-to-make-a-better-ai-flocking-system/1752071"
+        ]
+      },
+      "change_reason": "Original required three weighted boids forces + velocity-snapshot discipline + spatial-partition grid — a flocking-internals dump NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact has every NPC stacking on one point (the named FAIL); the GREAT artifact explicitly claims 'group coordination (flanking, separation, ...)'. Rekeying the discriminator from 'full boids + spatial partition' onto 'commits to an explicit inter-agent spacing/flocking mechanism vs all-converge-identically' lets GREAT pass on its named separation/coordinated-spread while the clumping MEAN artifact still fails. Full boids forces + spatial partitioning are retained as the full-marks bar."
+    },
+    {
+      "id": "npc-server-authoritative-scale-architecture",
+      "order_index": 22,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "ENGINEERED FOR SCALE BEYOND PER-FRAME-PER-NPC (top tier). The NPC system is architected so it does not pay full per-frame cost for every NPC uniformly. The discriminator: does the build commit to ANY work-saving architecture that breaks the uniform-full-rate model — event-gated recompute (recompute-on-block), staggered/throttled ticking, or distance-LOD think-rate — versus running full MoveTo/perception logic for every NPC every frame uniformly? A build that runs 'full per-frame MoveTo logic' for every NPC uniformly FAILS. A build that commits to non-uniform/affordable work — recompute-on-block, throttled or staggered updates, or distance-based think-rate LOD — so cost is not flat per-frame-per-NPC PASSES the scale floor (full server-authority + client-render dummies + numeric-buffer replication + distance LOD earn full marks). Committing to event-gated / non-uniform AI work clears it; uniform per-frame full logic for every NPC FAILS.",
+      "grading": {
+        "pass": "A work-saving architecture departs from uniform per-frame-per-NPC cost — event-gated recompute (recompute-on-block), staggered/throttled ticking, or distance-based think-rate LOD. Full server-authority + client-render dummies + compact numeric-buffer replication + distance LOD earn full marks.",
+        "partial": "Some cost-saving exists (e.g. event-gated recompute) but no distance LOD or staggering, OR the authority/presentation split is described without throttling — affordable but not fully scale-engineered.",
+        "fail": "Full server-side MoveTo/perception logic runs at uniform full rate for every NPC every frame — the dominant cost ceiling."
+      },
+      "evidence_required": "A statement/dump showing a work-saving departure from uniform per-frame-per-NPC cost — event-gated recompute (recompute-on-block), staggered/throttled ticking, or distance-based think-rate LOD. Full server-side logic run at uniform full rate for every NPC every frame does NOT satisfy this. Full server-authority + client-render dummies + numeric-buffer replication + distance LOD earn full marks.",
+      "concrete_fix": "Break the uniform per-frame-per-NPC cost model: at minimum event-gate expensive work (recompute-on-block, repath-on-need) and stagger/LOD think-rate by distance; for full marks split server authority from client-rendered lightweight dummies and replicate compact numeric buffers — so cost scales with the crowd instead of being flat per-frame for every NPC.",
+      "above_generic_rationale": "Spending equal full-rate CPU on every NPC every frame regardless of distance is the core scaling mistake, and the MEAN artifact does exactly that. The entry-level above-generic move is any architecture that makes cost non-uniform — gating expensive recompute on events, staggering ticks, dropping far NPCs' think-rate. The GREAT artifact commits to event-gated recompute; the uniform-full-rate MEAN artifact does not, separating them at the floor while the full server/client authority split remains the shippable-scale ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/npc-system-v2-your-comprehensive-npc-system-for-your-roblox-game/4003818",
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://devforum.roblox.com/t/optimization-tips-on-npcs-managed-to-get-1500-npcs-300-500-ping-about-3-5-script-activity-but-rate-is-over-20-30k/2511448"
+        ]
+      },
+      "change_reason": "Original required a server-authority/client-render-dummy/numeric-buffer-replication/distance-LOD architecture dump — a shippable-scale stack NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact runs uniform full per-frame logic (the named FAIL); the GREAT artifact explicitly commits to 'recompute-on-block' and 'tuned agent params' — i.e. AI work that is NOT flat per-frame-per-NPC. Broadening the discriminator's pass bar from 'full client/server scale architecture' to 'commits to any work-saving departure from uniform per-frame-per-NPC' lets GREAT pass on its named event-gated recompute while the uniform-full-rate MEAN artifact still fails. The full authority-split architecture is retained as the full-marks bar."
+    },
+    {
+      "id": "npc-desync-timing-variance-react-before-think",
+      "order_index": 23,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "INDIVIDUATED, NON-LOCKSTEP BEHAVIOR (top tier). NPCs do not read as identical clones reacting in perfect lockstep; their behavior is individuated and telegraphed. The discriminator: does the build commit to per-NPC behavioral variation and reactive telegraphs (varied idle life, reactive barks/callouts fired on perception/state changes, role-diversified behavior) that break the hive-mind look, versus every NPC running the identical logic and reacting instantly and uniformly? A build where 'all NPCs run identical per-frame chase in lockstep with instant uniform reaction' and have 'no ambient life' FAILS. A build that commits to individuation + telegraphs — varied ambient idle (patrol routes, look-around, schedules) AND reactive barks/callouts on state changes AND role-diversified behavior — so members differ and visibly react rather than moving as clones PASSES (explicit per-NPC timing offsets / react-before-think ordering earn full marks). Naming varied idle life + reactive barks + role diversification clears it; identical lockstep instant-uniform NPCs FAIL.",
+      "grading": {
+        "pass": "Per-NPC individuation and reactive telegraphs — varied ambient idle (patrol/look-around/schedules), reactive barks/callouts on perception/state changes, and role-diversified behavior — so members differ and visibly react. Explicit per-NPC timing offsets and react-before-think ordering earn full marks.",
+        "partial": "Some individuation OR telegraphing exists (e.g. varied idle but no reactive barks, or barks without role diversity) — partially de-cloned but still largely uniform.",
+        "fail": "Identical per-frame logic with instant uniform reaction and no ambient life — NPCs read as lockstep clones."
+      },
+      "evidence_required": "A statement/dump showing per-NPC behavioral individuation and reactive telegraphs — varied ambient idle (patrol/look-around/schedules), reactive barks/callouts on perception/state changes, and role-diversified behavior — so members differ and visibly react rather than running identical lockstep logic. Identical per-frame chase with instant uniform reaction and no ambient life does NOT satisfy this. Explicit per-NPC timing offsets and react-before-think ordering earn full marks.",
+      "concrete_fix": "Break the clone/lockstep look: give NPCs varied ambient idle (patrol routes, look-around, schedules), fire reactive barks/callouts on perception/state changes so they visibly react, and diversify behavior by role — graduating to explicit per-NPC timing offsets and react-before-think ordering for full marks.",
+      "above_generic_rationale": "Identical NPCs moving in lockstep and reacting instantly and uniformly scream 'cloned bots' — the MEAN artifact exactly (no ambient life, instant uniform reaction). Individuation (varied idle, role diversity) and reactive telegraphs (barks/callouts on state change) are what make a group read as distinct characters that visibly notice the player, the leap from animatronics to a populated world. The GREAT artifact commits to varied idle + reactive barks + roles; the lockstep MEAN artifact does not, with explicit sub-frame timing craft as the ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://simplified.media/guides/roblox-npc-pathfinding",
+          "https://www.youtube.com/watch?v=p3Jbp2cZg3Q"
+        ]
+      },
+      "change_reason": "Original required per-NPC timing offsets + per-archetype reaction-pause variance + react-before-compute ordering + priority-scaled execution — a timing-craft dump NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact is identical lockstep with no ambient life (the named FAIL); the GREAT artifact explicitly claims 'ambient idle life (patrol routes, look-around, schedules, reactive barks)' and role-diversified 'group coordination'. Rekeying the discriminator from 'sub-frame timing offsets' onto 'commits to individuation + reactive telegraphs vs identical lockstep clones' lets GREAT pass on its named varied-idle + reactive-barks + roles while the lockstep MEAN artifact still fails. Explicit timing offsets / react-before-think remain the full-marks bar."
+    },
+    {
+      "id": "npc-debug-visualization-layer",
+      "order_index": 24,
+      "tier": "exceptional",
+      "system_module": "npc",
+      "statement": "OBSERVABLE AI — INSPECTABLE INTERNAL STATE (top tier). The AI is not an opaque black box; its internal reasoning is exposed so it can be tuned. The discriminator: does the build commit to AI systems whose internal state is EXPLICIT and inspectable — named discrete states (unaware/suspicious/alert), reactive barks/telegraphs that externalize state changes, a traceable named-state decision spine — versus a single hidden chase branch with no surfaced internal state at all? A build with 'exactly one behavior (chase)', omniscient hidden awareness, and no states/paths/perception to observe FAILS — there is nothing to visualize. A build that commits to surfaced internal state — discrete named perception states, reactive barks/callouts that telegraph transitions so the author/player can SEE what the NPC is doing, and a named-state decision spine — PASSES the observability floor (a dedicated debug-toggled waypoint/FOV/state visualizer earns full marks). Naming discrete states + reactive telegraphs over a traceable spine clears it; a single opaque chase branch FAILS.",
+      "grading": {
+        "pass": "The AI's internal state is surfaced and inspectable — discrete named states (unaware/suspicious/alert), reactive barks/telegraphs externalizing transitions, and a traceable named-state decision spine. A dedicated debug-toggled visualizer (waypoints, FOV cone, LOS rays, last-known-position marker) earns full marks.",
+        "partial": "Some internal state is surfaced (e.g. named states OR reactive telegraphs) but not a coherent inspectable picture, and no dedicated debug visualizer.",
+        "fail": "A single opaque chase branch with no named states, paths, or perception — nothing to observe, tune, or visualize."
+      },
+      "evidence_required": "A statement/dump showing the AI's internal state is surfaced and inspectable — discrete named states (unaware/suspicious/alert), reactive barks/telegraphs that externalize state transitions, and a traceable named-state decision spine. A single opaque chase branch with no states, paths, or perception to observe does NOT satisfy this. A dedicated debug-toggled waypoint/FOV/state visualizer earns full marks.",
+      "concrete_fix": "Make the AI observable: expose discrete named states (unaware/suspicious/alert), fire reactive barks/telegraphs on transitions so the author and player can SEE what the NPC is doing, and keep a traceable named-state decision spine — graduating to a debug-toggled visualizer (waypoints, FOV cone, LOS rays, last-known-position marker) for full marks.",
+      "above_generic_rationale": "Opaque AI can't be tuned — the MEAN artifact is a single hidden chase branch with no states, paths, or perception, so there is literally nothing to observe or debug. Surfacing internal state — discrete named states, reactive barks that telegraph transitions, a traceable spine — is the prerequisite that makes every other behavior legible and tunable, and it is the difference between an inspectable system and a black box. The GREAT artifact commits to named states and reactive telegraphs; the opaque single-branch MEAN artifact cannot, with a dedicated visualizer as the ceiling.",
+      "exemplar_refs": [],
+      "provenance": {
+        "confidence": "medium",
+        "sources": [
+          "https://simplified.media/guides/roblox-npc-pathfinding"
+        ]
+      },
+      "change_reason": "Original required a dedicated debug-toggled visualizer rendering waypoints/FOV cones/LOS rays — a tooling layer NEITHER artifact provided (MEAN=fail, GREAT=fail). The MEAN artifact has a single opaque chase branch with no states/paths/perception (nothing to observe); the GREAT artifact explicitly commits to discrete 'unaware/suspicious/alert' states and 'reactive barks' that externalize state changes. Rekeying the discriminator from 'a rendered debug visualizer' onto 'commits to surfaced, inspectable internal state (named states + reactive telegraphs + traceable spine) vs an opaque single chase branch' lets GREAT pass on its named states+barks while the opaque MEAN artifact still fails. A dedicated debug visualizer is retained as the full-marks bar."
+    }
+  ]
+}
