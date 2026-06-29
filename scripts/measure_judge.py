@@ -46,6 +46,22 @@ ARTIFACTS = {
         "knockback all fire off one contact event and scale by attack strength; server-authoritative hit "
         "validation tied to the marker contact frame.",
     },
+    "audio": {
+        "mean": "One legacy Sound instance playing a single placeholder library clip at full Volume on "
+        "every event, 2D and non-spatial (no AudioEmitter/AudioListener, no RollOff) - the SAME clip every "
+        "time with no randomization or pitch/volume variation, no SoundGroup/AudioFader bus or ducking, no "
+        "AudioCompressor/Limiter, no AudioReverb/AudioEcho/occlusion, no event-marker sync - the generic "
+        "default a beginner ships.",
+        "great": "A pro audio system built ON Roblox's audio library: fitting curated SFX/music assets "
+        "chosen per event with LAYERED + RANDOMIZED variation (multiple alternate clips + per-play pitch/"
+        "volume jitter); TRUE 3D positional audio via the modern Audio API (an AudioPlayer -> effect nodes "
+        "-> AudioEmitter -> AudioListener -> AudioDeviceOutput graph wired by Wire, with tuned distance/"
+        "attenuation curves); a SoundGroup/AudioFader bus hierarchy (SFX/Music/Ambient/UI) with DUCKING "
+        "(music drops under key SFX) and AudioCompressor/AudioLimiter mastering; AudioReverb/AudioEcho effect "
+        "nodes + reverb zones + EQ-based occlusion (muffle behind walls) for environmental reflection; and "
+        "event-marker-synced one-shots (GetMarkerReachedSignal) plus adaptive LAYERED music whose stems "
+        "crossfade by game state via AudioFader.",
+    },
 }
 
 TIER_W = {"baseline": 0, "good": 1, "exceptional": 2}
