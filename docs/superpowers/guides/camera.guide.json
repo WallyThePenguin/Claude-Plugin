@@ -1,0 +1,334 @@
+{
+  "module": "camera",
+  "system_module": "camera",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "A great Roblox camera is ONE prioritized per-frame authority that OWNS the frame and composes every effect as summed offset layers over a single base pose. The build order is load-bearing: first take render-step ownership (CameraType.Scriptable + a single BindToRenderStep at RenderPriority.Camera, writing CFrame AND Focus once per frame); then build the base follow from a parameterized rig and smooth the INTERMEDIATE values (focus/zoom/shoulder/FOV) — never the final CFrame — deriving the pose with CFrame.lookAt each frame; then layer the differentiators. The five killer systems are (1) a context-driven mode state machine that retargets ONE smoother, (2) a framerate-independent critically-damped spring follow with velocity look-ahead, (3) reactive FOV plus an additive trauma/impulse shake stacked with other gameplay-driven channels over the same base, (4) collision/occlusion-aware framing that pulls in instantly and pops out smoothly, and (5) lock-on two-target composition plus a distinct cutscene system. Because this whole system is runtime/render code, the agent builds it almost entirely with run_luau (write the camera LocalScript into the place), create_instance/set_property (the script container + a Configuration of named tunables), and verifies every tier visually with capture / capture_angles / capture_animation; make_npc, make_tool, bind_hitbox and bind_behavior supply the gameplay state/events the reactive channels react to.",
+  "killer_systems": [
+    {
+      "name": "Context-driven camera mode state machine",
+      "what": "A set of distinct, individually-tuned MODES (explore/default-follow, sprint, aim-ADS, lock-on, mounted/vehicle, menu, cutscene) that all share ONE bind loop and ONE smoother. Each mode only supplies its own parameter record — FieldOfView, follow distance, shoulder/lateral offset, pitch limits, sensitivity, spring stiffness — and changing mode just retargets the spring goals so the engine blends the transition for free.",
+      "how": "With run_luau write a modes table { explore={fov,dist,shoulder,omega,sens}, sprint={...}, ads={...}, lockon={...}, mounted={...}, menu/cutscene={...} } and a currentMode field. The single render-step reads the ACTIVE record (never hardcoded numbers) and feeds mode.fov/mode.dist/mode.shoulder into the existing scalar+Vector3 springs; apply shoulder offset in camera-LOCAL space (followCF * CFrame.new(shoulder)). Flip currentMode on gameplay events — sprint key, RMB-held for ADS, lock-on toggle, entering a vehicle/seat, opening a menu. Source the events from real systems: bind_behavior state attributes, a make_tool's equip/aim, ContextActionService/UserInputService binds. Menu and cutscene modes UnbindFromRenderStep and hand off to a separate controller via a priority so only one owner writes the camera. No separate transition code — every param is already spring-driven, so the mode switch IS the blend."
+    },
+    {
+      "name": "Framerate-independent critically-damped spring follow with look-ahead",
+      "what": "The focus/position is driven by a critically-damped spring (or a dt-corrected exponential damping), not a rigid CFrame lock and not a fixed-alpha lerp, so it settles with natural weight and feels identical at 30 and 240 FPS — plus velocity-based look-ahead so fast movement leads the camera to reveal what is ahead, easing back to zero on stop.",
+      "how": "With run_luau implement the analytic critically-damped spring (Game Programming Gems 4 / Thomas Lowe form: f=1+2*dt*omega; oo=omega*omega; hoo=dt*oo; hhoo=dt*hoo; detInv=1/(f+hhoo); p,v updated each frame) which is exact for any dt. Run TWO springs: a snappier one for the look-target/focus and a softer one for distance/position so the body trails the aim and settles on stop. Add look-ahead by offsetting the position spring's GOAL by the subject's planar velocity (Vector3(vel.X,0,vel.Z)*leadFactor from AssemblyLinearVelocity or Humanoid.MoveDirection*speed); the offset springs back to 0 when the player stops. Spring POSITIONS and re-derive orientation each frame with CFrame.lookAt — never spring on Euler angles (they wrap). If the subject is physics-driven, read its velocity on RunService.Stepped/PostSimulation so the camera reads final-physics state and does not drift-and-snap. Verify the same feel across framerates by capturing at the move peak with capture / capture_animation."
+    },
+    {
+      "name": "Reactive FOV + additive trauma/impulse shake (a STACK, not one gimmick)",
+      "what": "Multiple independent reactive channels — a dynamic FieldOfView that kicks on sprint/dash/speed/ADS, an additive decaying-trauma screen-shake from smoothed Perlin noise, and a directional impulse kick — each driven by gameplay state/events and each composited OVER the same shared follow CFrame, rather than the camera shipping one lone effect.",
+      "how": "With run_luau add a dedicated scalar FOV spring whose goal rises with speed (base + clamp(speed-walk,0,max)*fovPerStud) and drops for ADS (base*zoomFactor), clamped 1..120, kept ~60..90 to avoid distortion. Keep a single trauma scalar in [0,1]; gameplay events ADD trauma (clamp to 1), each frame decay trauma toward exactly 0 and compute shake=trauma^2; sample THREE decorrelated math.noise channels (distinct seeds, t*freq) for pitch/yaw/roll plus an optional positional noise, build shakeCF = CFrame.new(posOffset)*CFrame.Angles(rx,ry,rz). For the DIRECTIONAL kick keep a separate spring-decayed offset seeded along the force direction (recoil up, hit-from-left, landing down). Apply ALL cosmetic offsets LAST as post-multiplies onto the already-smoothed follow CFrame (base * kickCF * shakeCF) so they ride on the follow and never feed back into the spring. Trigger trauma/kick from real events: bind_hitbox confirmed hits, make_npc attacks, landing detection, make_tool fire. FOV punches and shake fire on the SAME base — that is the stack."
+    },
+    {
+      "name": "Collision- and occlusion-aware framing (Popper-style)",
+      "what": "The camera never clips through geometry and never hides the subject: it raycasts from the focus toward the desired camera position and pulls IN on obstruction, pops smoothly back out when clear, and also handles TARGET occlusion (dolly/peek/fade when something blocks the subject).",
+      "how": "With run_luau, after computing the desired eye position, build RaycastParams{FilterType=Exclude, FilterDescendantsInstances={character, ignoreFolder}} and workspace:Raycast from the FOCUS outward along the eye direction at the desired distance; pierce non-collidable / >0.95-transparent / water parts by adding them to the ignore list. Take allowed = hit and (hit.Distance - nearPad) or desiredDist. Make the pull-IN INSTANT (clamp distance to allowed immediately so you never clip) but smooth ONLY the pop-OUT (spring/lerp the radius back toward desiredDist). Sample several viewport-corner rays (Camera:WorldToViewportPoint), not just center, so thin/edge geometry that the lens corners clip is caught. For TARGET occlusion use Camera:GetPartsObscuringTarget(castPoints, ignoreList) — pass Vector3 cast POINTS and add the subject to the ignoreList — and fade/peek when #obscuring>0. Verify by capturing from inside cover with capture_angles."
+    },
+    {
+      "name": "Lock-on two-target framing + distinct cutscene system",
+      "what": "A lock-on camera keeps subject AND target both readable: positioned behind the player along the player->target axis, distance/FOV scaled by their separation, eased soft-lock in and out with a yaw/pitch hand-off so unlock never snaps. Separately, a cutscene system tweens authored keyframe CFrames with eased FOV, unbinds the gameplay loop while it runs, and blends back in.",
+      "how": "With run_luau add a lockon mode: select the nearest valid target (alive + in range, magnitude + a facing dot-product cone), each frame compute look = subjectPos:Lerp(targetPos, bias~0.35) (not dead-center) and place the eye behind the subject along the subject->target vector at a distance/FOV that grows with their separation (verify both on-screen with Camera:WorldToViewportPoint); drive look-target and eye through the SAME springs (snappier omega while locked) so acquire/break ease; reuse the occlusion raycast; suppress manual yaw while locked; on unlock WRITE the current locked orientation back into the free-look yaw/pitch accumulators so it does not revert to a stale pre-lock CFrame. For cutscenes: a SEPARATE controller — UnbindFromRenderStep the gameplay loop, set CameraType.Scriptable, author waypoints as Parts/Attachments, sequence eased TweenService shots chained on Tween.Completed (not task.wait) or CFrame:Lerp along a spline, set CFrame AND Focus; on end, tween the last cutscene CFrame into the live gameplay CFrame, then re-Bind and restore CameraType. Trigger from the server via a RemoteEvent; build/animate the rig with spawn_rig / pose_joint / add_keyframe / capture_animation if it is rig-driven."
+    }
+  ],
+  "common_pitfalls": [
+    "Two writers fighting over the frame: any second script (or a leftover TweenService tween) that also writes camera.CFrame will flicker-fight the render loop. Route EVERYTHING through one BindToRenderStep authority and one write per frame. Pick ONE owner per state (a per-frame lerp and a TweenService tween writing the same FieldOfView/CFrame cancel each other).",
+    "Updating on Heartbeat or a plain RenderStepped:Connect instead of BindToRenderStep at RenderPriority.Camera.Value — the character moves on one pipeline stage and the camera on another, producing the classic 1-frame jitter. (The one exception: a camera that follows a PHYSICS object should read on Heartbeat/PostSimulation so it sees final-physics position, else it drift-and-snaps.)",
+    "Forgetting Camera.Focus. In Scriptable mode Focus does NOT auto-update; leaving it stale anchors dynamic lighting, streaming detail, occlusion culling and 3D audio at the old spot. Set CFrame AND Focus every frame.",
+    "Lerping the FINAL camera CFrame toward a moving target — it never settles, fights the render pipeline (makes the CHARACTER look jittery), and is the wrong axis to smooth. Smooth the INTERMEDIATE values (focus/pivot, zoom distance, shoulder offset, FOV) and DERIVE the CFrame with CFrame.lookAt each frame.",
+    "Framerate-dependent smoothing: a constant lerp alpha (0.2) or speed*dt as the alpha makes the camera faster on high-FPS machines and sluggish on low — the #1 'feels inconsistent / feels off' defect that looks fine only on the dev's machine. Use 1-math.exp(-stiffness*dt) or an analytic spring. Also: apply deltaTime exactly ONCE in sway/bob math (double-dt is jitter that scales with speed).",
+    "Magic numbers instead of named tunables, and one uniform damping for every axis/direction. Build the pose from a Configuration of named values (distance, height, lateral shoulder, look-target) and tune smoothing per axis AND per direction (e.g. snap-in vs spring-out, snappier aim vs softer body).",
+    "Shake/effects that erase or get eaten by the follow: overwriting camera.CFrame with the shake (instead of post-multiplying onto the base) wipes the follow/lock-on; applying shake BEFORE the spring lets the spring eat it; feeding the cosmetic offset back into the smoother makes the shake stick and drift. Compose cosmetics LAST, post-multiplied, never fed back. Use math.noise (Perlin) not math.random, with a DISTINCT seed per axis, and decay trauma to exactly 0.",
+    "Occlusion done wrong: forgetting to exclude the player's own character (camera slams to the face), smoothing the pull-IN (clips through walls for several frames), a single center ray (misses thin/edge geometry the lens corners clip), and not filtering transparent/non-collidable parts (camera 'collides' with glass, leaves, force-fields).",
+    "Aim/body coupling: aiming the weapon along the camera's forward axis when the camera has a shoulder offset makes shots miss the crosshair — raycast from the camera through screen-center (Camera:ViewportPointToRay) for the true aim point, and bake the shoulder offset into BOTH the eye and the look target. More broadly, compute the AIM direction on a channel independent of the smoothed/sprung body position so look stays responsive while the body lags.",
+    "No comfort controls. A single hard-coded FOV feels claustrophobic to some and fish-eyed to others (an expectation mismatch, not a bug), and always-on intense bob/sway/shake induces motion sickness with no recourse. Expose a player FOV slider and per-effect intensity sliders + a master motion toggle, with conservative defaults, persisted.",
+    "Cutscene mistakes: leaving the gameplay render loop bound so it overwrites the tween every frame (camera looks frozen/fighting); sequencing shots with task.wait(duration) instead of Tween.Completed (drifts if interrupted); tweening linearly through 3+ waypoints (robotic dog-legs — use a spline/eased per-segment lerp); and forgetting to restore CameraType=Custom + CameraSubject so the player is stuck with no control. Blend the last cutscene CFrame into the live camera instead of a hard cut.",
+    "Lock-on snap-back: on unlock reverting to the pre-lock CFrame snaps jarringly — write the current orientation back into the free-look angle accumulators. Also: locking onto dead/out-of-range targets (validate every frame, auto-release), and framing only the target so the player slides off-screen (bias the look toward the target ~0.35 and scale distance/FOV with separation, verify with WorldToViewportPoint)."
+  ],
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "The camera OWNS the frame through a single prioritized per-frame bind, builds a parameterized base follow, smooths the INTERMEDIATE pivot/zoom/FOV (never the final CFrame), and is structured as a base pose plus summed additive offset layers — so every later effect has one clean place to compose.",
+      "steps": [
+        {
+          "id": "cam-b1-decide-control-mode",
+          "order_index": 1,
+          "instruction": "Before scripting, decide the cheapest control tier that meets the design and record it in a Configuration. For plain first-person, set StarterPlayer.CameraMode = LockFirstPerson and stop. For tweakable third-person that needs no custom behavior, leave CameraType.Custom and just set CameraMaxZoomDistance/CameraMinZoomDistance. Only commit to a fully custom Scriptable camera when the design needs behavior the stock camera cannot do (over-the-shoulder, isometric, lock-on, cutscenes, stacked reactive game-feel). Use create_instance to make a 'CameraConfig' Configuration under StarterPlayer and set_property for the chosen mode + zoom bounds.",
+          "addresses_criteria": [
+            "camera-renderstep-ownership-bind-contract"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Jumping straight to Scriptable means re-implementing mouse-look yaw/pitch, zoom, and gamepad input the default PlayerModule gave you for free — many 'my camera feels worse than default' results are a badly-rebuilt wheel. Choose Scriptable only when you truly need custom per-frame ownership."
+        },
+        {
+          "id": "cam-b2-renderstep-ownership-contract",
+          "order_index": 2,
+          "instruction": "Take full per-frame ownership. With create_instance add a LocalScript under StarterPlayerScripts (the camera is per-client; only the owning user sees it). With run_luau (or by writing the script body) implement the contract: grab local cam = workspace.CurrentCamera (CurrentCamera, NOT workspace.Camera, and re-grab on a Changed signal), set cam.CameraType = Enum.CameraType.Scriptable so Roblox's default camera scripts stop writing CFrame, then register exactly ONE authority: RunService:BindToRenderStep('Camera', Enum.RenderPriority.Camera.Value, updateCamera). Inside updateCamera compute a single final CFrame and write cam.CFrame = finalCFrame AND cam.Focus = CFrame.new(lookAtPoint) every frame. Add a brief task.wait so the character loads, and put the script in StarterCharacterScripts (or nil-guard the character) so respawn does not error.",
+          "addresses_criteria": [
+            "camera-renderstep-ownership-bind-contract"
+          ],
+          "tools": [
+            "create_instance",
+            "run_luau",
+            "set_property",
+            "capture"
+          ],
+          "pitfalls": "Both load-bearing facts must hold or this is only a PARTIAL: (1) the per-frame write must be your bind at RenderPriority.Camera (BindToRenderStep, not Heartbeat/RenderStepped:Connect — those jitter), and (2) the stock follow camera must be OFF (CameraType.Scriptable — a raw cam.CFRame write does nothing until this is set). Also: forgetting .Value on the enum (it is an EnumItem, not the integer), referencing workspace.Camera (the edit camera), and forgetting Focus (it drives lighting/streaming/audio) are the three classic silent failures."
+        },
+        {
+          "id": "cam-b3-parameterized-base-follow",
+          "order_index": 3,
+          "instruction": "Build the base follow pose from NAMED tunables, not magic numbers. With run_luau read the tunables from the Configuration (distance, heightOffset, lateral shoulderOffset, lookTarget, pitchLimits, sensitivity) and each frame: re-fetch character + HumanoidRootPart with FindFirstChild (bail if missing — characters respawn); compute focusPoint = root.Position + Vector3.new(0, heightOffset, 0); compute the eye via camera-LOCAL composition (anchorCF * CFrame.new(shoulderOffset.X, shoulderOffset.Y, distance), MULTIPLY not add) so you never accumulate; then finalCFrame = CFrame.lookAt(eye, focusPoint). For over-the-shoulder add the lateral offset to BOTH the eye and the look target. Capture mouse delta into clamped yaw/pitch accumulators (ContextActionService MouseMovement, MouseBehavior.LockCenter) for free-look. Store the tunables in the StarterPlayer Configuration via create_instance/set_property.",
+          "addresses_criteria": [
+            "camera-parameterized-rig-and-asymmetric-tuning",
+            "camera-renderstep-ownership-bind-contract"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Reading character/HumanoidRootPart once at script start breaks on respawn — re-fetch each frame. Writing cam.CFrame = cam.CFrame + Vector3 INSIDE the render step adds the delta EVERY frame (camera shoots off forever) — recompute an absolute anchor each frame. Baking the shoulder offset only into the eye (not the look target) makes the crosshair and camera disagree so raycasts miss the reticle. Always clamp pitch (e.g. ±75) or the camera flips over the character."
+        },
+        {
+          "id": "cam-b4-layered-additive-composition",
+          "order_index": 4,
+          "instruction": "Structure the camera as a stable BASE pose plus SUMMED, independently-tunable offset layers composited ON TOP, so every later effect plugs into one pipeline. With run_luau define the compose order inside the single bind: finalCFrame = baseCFrame * shakeCFrame * bobCFrame * kickCFrame (each layer an identity transform until its system populates it), and/or route body-relative micro-offsets through Humanoid.CameraOffset. Initialize each layer (shake, bob, recoil kick, lean/ADS micro-sway, FOV delta) as a separate, named, zeroed offset the later tiers will drive. The cosmetic layers post-multiply the base and must be applied LAST.",
+          "addresses_criteria": [
+            "camera-layered-additive-composition"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Applying any layer by OVERWRITING camera.CFrame (instead of multiplying onto the base) erases the follow/lock-on. Mixing world-space and camera-local offsets is the classic 'camera ends up in the void' bug — apply offsets in camera-local space (baseCF * offsetCF). Keep each layer a separate summed term so you can tune/disable one without touching the others."
+        },
+        {
+          "id": "cam-b5-smooth-intermediate-not-final",
+          "order_index": 5,
+          "instruction": "Smooth the INPUTS, derive the CFrame — never lerp the final pose, and give each smoothed quantity its OWN persistent 'current' value AND its OWN smoothing constant. With run_luau, keep separate persistent current values for the focus/pivot point, the zoom distance, the shoulder-offset Vector3, and the FOV scalar, and ease EACH toward its goal every frame with framerate-independent damping: alpha_q = 1 - math.exp(-stiffness_q * dt), where dt is the BindToRenderStep dt and stiffness_q is a NAMED per-channel constant (focusStiffness, distanceStiffness, offsetStiffness, fovStiffness) — do NOT collapse them into one shared scalar. Then DERIVE the final camera CFrame from the smoothed intermediates with CFrame.lookAt(smoothedEye, smoothedFocus) (smoothedEye built from the smoothed distance + smoothed shoulder-offset applied via PointToWorldSpace), and set Camera.FieldOfView from the smoothed FOV. Never write currentCFrame = currentCFrame:Lerp(goalCFrame, alpha) on the final pose, and never apply one uniform damping constant to all channels. Run inside the single RenderPriority.Camera BindToRenderStep. Then use capture_animation while walking and confirm the body eases smoothly with NO final-CFrame jitter signature (no per-frame stale/desynced shake), reporting what the capture shows. (Scope: this step addresses camera-smooth-intermediate-not-final-cframe only; per-axis/per-direction ASYMMETRIC damping and rig parameterization for OTS/isometric/top-down generalization belong to the separate parameterized-rig step and must not be claimed here unless that full asymmetric, named-tunable rig is actually delivered.)",
+          "addresses_criteria": [
+            "camera-smooth-intermediate-not-final-cframe",
+            "camera-parameterized-rig-and-asymmetric-tuning"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_animation"
+          ],
+          "pitfalls": "Lerping the final CFrame toward a moving target never settles, smooths the wrong axis, and (inside a RenderPriority.Camera bind) fights the render pipeline so the CHARACTER looks jittery even though the math 'looks' right. The fix the pros converge on: smooth the OFFSET inputs (shoulder/zoom/CameraOffset/focus), not the camera itself. Use capture_animation while walking to confirm the body eases without the final-CFrame jitter signature."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "The camera becomes a context-driven state machine of tuned modes sharing one smoother, decouples aim from the lagging follow body, gates framing on movement state, fires a directional impulse kick distinct from shake, and is fully parameterized with axis- and direction-asymmetric smoothing.",
+      "steps": [
+        {
+          "id": "cam-g1-context-mode-state-machine",
+          "order_index": 1,
+          "instruction": "Build the context-driven mode state machine. With run_luau define a modes table where each mode is a record of tuned params { fov, distance, shoulderOffset (camera-local Vector3), pitchLimits, sensitivity, springOmega } and keep a currentMode. The single render loop reads the ACTIVE record (never hardcoded numbers) and feeds mode params into the smoother's goals (distance goal = mode.distance, shoulder applied as baseCF * CFrame.new(mode.shoulderOffset), FOV via a scalar smoother toward mode.fov, mouse delta scaled by mode.sensitivity). Switch currentMode on gameplay events — sprint key -> sprint, RMB held -> ads, lock-on toggle -> lockon, enter seat/vehicle -> mounted, open menu -> menu. Source the events from real systems: bind_behavior state attributes (StateChanged), a make_tool's equip/aim, ContextActionService binds. Menu/cutscene modes Unbind the render step and hand to a separate controller via a priority so only one owner writes the camera. Let the existing smoother do the blend — no separate transition code.",
+          "addresses_criteria": [
+            "camera-context-driven-mode-state-machine"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_behavior",
+            "make_tool",
+            "set_property"
+          ],
+          "pitfalls": "Hard-cutting params between modes (assigning fov/distance directly) snaps jarringly — route every mode param through the smoother so the transition IS the blend. Don't let two modes both own the camera (ADS + cutscene) — use a priority stack. A single fixed default mode (no state machine) is the generic-AI tell the rubric grades down."
+        },
+        {
+          "id": "cam-g2-look-body-decoupling",
+          "order_index": 2,
+          "instruction": "Decouple the aim/look direction from the smoothed follow body. With run_luau compute the camera's AIM channel (yaw/pitch from input, or the direction toward a tracked target) on its OWN, responsive channel — independent of the smoothed/sprung follow POSITION. Each frame: the aim updates immediately so the camera tracks where the player (or tracked target) looks, while the body/position lags through its smoother. Concretely, derive the look direction from the live aim accumulators and the eye position from the smoothed pivot, then lookAt(smoothedEye, smoothedEye + liveAimDir * far). Keep this rig-agnostic — it must work whether the subject is an R15 Humanoid, a vehicle, or a tracked object.",
+          "addresses_criteria": [
+            "camera-look-direction-body-decoupling"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Routing the AIM through the same smoother as the position makes aiming feel mushy and disconnected (and nausea-inducing). Conversely, snapping the whole pose to input with no body smoothing loses the weight. The point is two channels: responsive aim, lagging body. Don't tie the decoupling to a Humanoid-specific field — read a generic subject position/velocity so it stays rig-agnostic."
+        },
+        {
+          "id": "cam-g3-movement-state-gated-framing",
+          "order_index": 3,
+          "instruction": "Add movement-state-gated framing that eases to neutral. With run_luau read the subject's actual movement STATE/SPEED (Humanoid.MoveDirection.Magnitude / AssemblyLinearVelocity, or a bind_behavior state attribute) and change the camera's FRAMING in response — e.g. a velocity-scaled walk-bob (math.sin over time, amplitude/frequency tied to speed), a slight pull-back or height change while sprinting, an idle settle — then EASE that change back to neutral when the state clears. This must be DISTINCT from the smoother's own settle: it is a deliberate framing response to movement state, not just the spring catching up. Gate bob on actual movement (Magnitude > 0) so it does not run while standing still. Expose intensity tunables in the Configuration.",
+          "addresses_criteria": [
+            "camera-first-person-liveliness-speed-gated"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_behavior",
+            "set_property"
+          ],
+          "pitfalls": "Apply deltaTime exactly ONCE in the bob/sway math — smoothing the value frame-rate-independently AND then multiplying by dt again double-applies dt and gives speed-dependent jitter. A fixed, unchanging frame that never reacts to movement reads as a tripod, not embodied motion. Tie bob speed to walkspeed or a slowed game looks sluggish. Keep amplitude conservative and toggleable (motion sickness)."
+        },
+        {
+          "id": "cam-g4-directional-impulse-kick",
+          "order_index": 4,
+          "instruction": "Add a directional impulse kick, distinct from omnidirectional shake. With run_luau keep a separate spring-decayed offset (a Vector3/angle pair) that gameplay seeds along the force DIRECTION: recoil up, hit-from-the-left pushes the look right, landing pushes down. On the event, add an impulse along that direction; each frame let it decay back to zero via spring/damping and compose it as its own kickCFrame layer (base * kickCFrame, post-multiplied). Trigger from real events: bind_hitbox confirmed hits (use the hit vector for direction), make_tool fire (recoil up), a landing detector (down, scaled by fall speed), make_npc attacks. This conveys WHERE force came from — separate from the trauma rumble.",
+          "addresses_criteria": [
+            "camera-directional-impulse-kick"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "make_tool",
+            "make_npc"
+          ],
+          "pitfalls": "A kick that is just more omnidirectional shake fails the 'directional' bar — the offset must be seeded along the actual force direction so the player reads where it came from. Feeding the kick into the follow smoother makes it stick/drift — keep it a separate decaying layer post-multiplied onto the base. Don't reuse the trauma scalar for it; the kick is directional and discrete, the trauma is omnidirectional."
+        },
+        {
+          "id": "cam-g5-asymmetric-per-axis-tuning",
+          "order_index": 5,
+          "instruction": "Make all smoothing constants tunable PER AXIS and PER DIRECTION rather than one uniform damping. With run_luau split the smoothing constants in the Configuration: a snappier stiffness for the aim/look-target than for the body/position; a different constant for vertical vs horizontal; and asymmetric in/out (e.g. snap-in vs ease-out where relevant). Confirm the whole pose is built from named tunables (distance, height-offset, lateral shoulder-offset, look-target, per-axis/per-direction smoothing) with no magic numbers left in the loop. Persist them in the Configuration via set_property so they are designer-tunable.",
+          "addresses_criteria": [
+            "camera-parameterized-rig-and-asymmetric-tuning"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property",
+            "create_instance"
+          ],
+          "pitfalls": "One uniform damping for everything is the thing the rubric grades against — the body should lag softer than the aim, and some transitions (occlusion pull-in vs pop-out) are deliberately asymmetric. Leaving magic numbers inline (instead of named Configuration tunables) fails the parameterized-rig half of the criterion even if the feel is fine."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "The follow is a framerate-independent critically-damped spring with velocity look-ahead; reactive FOV and an additive trauma shake stack with the directional kick over ONE base; the camera is collision/occlusion-aware (snap-in, smooth-out, corner-sampled, target-occlusion handled); and a lock-on two-target composition plus a distinct cutscene system top it off — all verified visually.",
+      "steps": [
+        {
+          "id": "cam-e1-spring-follow-lookahead",
+          "order_index": 1,
+          "instruction": "Upgrade the intermediate smoothing to a framerate-independent critically-damped SPRING with look-ahead. With run_luau replace the exponential lerp on the pivot/distance with the analytic critically-damped spring (Thomas Lowe / GPG4 form: f=1+2*dt*omega; oo=omega*omega; hoo=dt*oo; hhoo=dt*hoo; detInv=1/(f+hhoo); update p and v) — exact for any dt so 30 and 240 FPS match. Run TWO springs: a snappier one for the look-target/focus and a softer one for distance/position so the body trails then settles. Add look-ahead by offsetting the position spring GOAL by the subject's planar velocity (Vector3(vel.X,0,vel.Z)*leadFactor from AssemblyLinearVelocity / Humanoid.MoveDirection*speed); the offset springs back to 0 on stop so fast movement reveals what's ahead. Spring POSITIONS and re-derive orientation with lookAt; if the subject is physics-driven read its velocity on RunService.Stepped/PostSimulation. Verify identical feel across framerates and the lead-then-settle with capture_animation.",
+          "addresses_criteria": [
+            "camera-framerate-independent-spring-follow-lookahead",
+            "camera-smooth-intermediate-not-final-cframe"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_animation",
+            "capture"
+          ],
+          "pitfalls": "Naive Lerp(goal, 0.1) is dt-dependent (faster at high fps) and asymptotic (never reaches goal). Springing on Euler angles wraps at ±2π and snaps — spring positions and recompute orientation with lookAt. A physics-tracked spring run on RenderStepped desyncs with physics and jitters — use Stepped/PostSimulation for physics targets. An over-stiff spring kills the benefit; too loose feels disconnected and nauseating."
+        },
+        {
+          "id": "cam-e2-reactive-fov-trauma-shake",
+          "order_index": 2,
+          "instruction": "Add reactive FOV plus an additive trauma shake as composed channels. With run_luau give FieldOfView its own scalar spring: goal = base + clamp(speed-walk,0,maxBonus)*fovPerStud on sprint/dash, base*zoomFactor on ADS, with a transient punch on dash that decays; clamp 1..120, keep gameplay ~60..90. For shake keep a single trauma scalar in [0,1]: gameplay events ADD trauma (clamp to 1); each frame trauma -= decay*dt toward exactly 0 and shake = trauma^2; sample THREE decorrelated math.noise channels (distinct seeds, t*freq) for pitch/yaw/roll plus optional positional noise; build shakeCF = CFrame.new(posOffset)*CFrame.Angles(rx,ry,rz) and apply it LAST as base * ... * shakeCF. Drive trauma from real events: bind_hitbox hits, make_npc attacks, landing, make_tool fire (recoil also adds to the directional kick). Verify the shake rides on the follow with capture / capture_angles.",
+          "addresses_criteria": [
+            "camera-reactive-fov-and-trauma-shake"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "make_npc",
+            "make_tool",
+            "capture"
+          ],
+          "pitfalls": "math.random instead of math.noise gives buzzy jitter; the SAME noise sample on all 3 axes shakes along one diagonal line. Applying shake BEFORE the spring lets the spring eat it, and feeding the offset back into the spring makes it stick/drift — apply LAST and post-multiply, never feed back. Constant nonzero trauma reads as a permanent wobble; trauma must decay to exactly 0, and squaring it prevents a hard linear cutoff. Tweening FOV with a fresh TweenService tween every frame on a changing speed stutters — use the scalar spring."
+        },
+        {
+          "id": "cam-e3-stacked-reactive-channels",
+          "order_index": 3,
+          "instruction": "Compose MULTIPLE reactive channels over the ONE shared base — not a single gimmick. With run_luau ensure the FOV kick (e2), the trauma shake (e2), the directional impulse kick (g4), and the movement-gated framing (g3) are each driven by gameplay state/events and each composited over the SAME base follow in a fixed order inside the single bind: base -> smoothing/spring -> occlusion clamp -> reactive FOV -> directional kick -> trauma shake -> write CFrame+Focus ONCE. Smoothing before occlusion (clamp the smoothed result), cosmetics last (must not feed the smoother). Wire high-speed/high-impact feel from a STACK of distinct channels keyed to thresholds (dash crosses a speed threshold -> FOV punch + slight shake; heavy landing -> down-kick + trauma; hit -> directional kick + trauma) so it never ships one lone effect.",
+          "addresses_criteria": [
+            "camera-stacked-reactive-effects-at-thresholds",
+            "camera-layered-additive-composition"
+          ],
+          "tools": [
+            "run_luau",
+            "bind_hitbox",
+            "make_npc"
+          ],
+          "pitfalls": "Letting each feature (shake, FOV, kick, lock-on, cutscene) write the camera independently is the core anti-pattern — they overwrite each other and flicker; keep the write-once discipline through one pipeline. Composing occlusion BEFORE smoothing lets the camera pop through walls mid-ease. Feeding the cosmetic shake back into the spring makes it stick. Shipping one channel (just shake, or just FOV) fails the 'stack at thresholds' bar."
+        },
+        {
+          "id": "cam-e4-collision-occlusion-framing",
+          "order_index": 4,
+          "instruction": "Make the framing collision- and occlusion-aware. With run_luau, after computing the desired eye, build RaycastParams{FilterType=Exclude, FilterDescendantsInstances={character, ignoreFolder}} and workspace:Raycast from the FOCUS outward along the eye direction at the desired distance; pierce non-collidable / >0.95-transparent / water parts via the ignore list. allowed = hit and (hit.Distance - nearPad) or desiredDist. Make pull-IN INSTANT (clamp distance to allowed immediately) but smooth ONLY the pop-OUT (spring/lerp the radius back toward desiredDist). Sample several viewport-corner rays (Camera:WorldToViewportPoint), not just center, to catch thin/edge geometry. For TARGET occlusion call Camera:GetPartsObscuringTarget(castPoints, ignoreList) (pass Vector3 cast POINTS; add the subject to the ignoreList) and dolly/peek/fade when #obscuring>0. Place this clamp AFTER smoothing, BEFORE the cosmetic layers. Verify from inside cover with capture_angles.",
+          "addresses_criteria": [
+            "camera-collision-occlusion-aware-framing"
+          ],
+          "tools": [
+            "run_luau",
+            "capture_angles",
+            "capture"
+          ],
+          "pitfalls": "Forgetting to exclude the player's own character slams the camera to the face. Smoothing the pull-IN lets the camera clip through the wall for several frames — pull in INSTANTLY, smooth only the pop-out. A single center ray misses thin/edge geometry the lens corners clip — sample viewport corners. Not filtering transparent/non-collidable parts makes the camera 'collide' with glass, leaves and force-fields. GetPartsObscuringTarget takes Vector3 POINTS, not instances, and you must add the target to the ignore list or it reports itself."
+        },
+        {
+          "id": "cam-e5-lockon-cinematic-composition",
+          "order_index": 5,
+          "instruction": "Add lock-on two-target framing plus a distinct cutscene system. With run_luau add a lockon mode: select the nearest VALID target (alive + in range via magnitude, plus a facing dot-product cone), then each frame compute look = subjectPos:Lerp(targetPos, bias~0.35) (not dead-center, add a thirds/headroom local pan), place the eye behind the subject along the subject->target vector at a distance/FOV that GROWS with their separation so both stay readable at any range (verify both with Camera:WorldToViewportPoint), drive look-target and eye through the SAME springs (snappier omega while locked) for an eased soft-lock, reuse the occlusion raycast, suppress manual yaw while locked, validate the target every frame (auto-release if dead/out-of-range), and on unlock WRITE the current locked orientation back into the free-look yaw/pitch accumulators so it does not snap. For the SEPARATE cutscene system: a distinct controller that UnbindFromRenderStep the gameplay loop, sets CameraType.Scriptable, authors waypoints as Parts/Attachments (or a rig built with spawn_rig + pose_joint + add_keyframe), sequences eased TweenService shots chained on Tween.Completed (or CFrame:Lerp along a spline), sets CFrame AND Focus, then on end tweens the last cutscene CFrame into the live gameplay CFrame and re-Binds + restores CameraType.Custom + CameraSubject. Trigger from the server via a RemoteEvent. Verify both with capture_animation.",
+          "addresses_criteria": [
+            "camera-lockon-cinematic-composition"
+          ],
+          "tools": [
+            "run_luau",
+            "make_npc",
+            "spawn_rig",
+            "pose_joint",
+            "add_keyframe",
+            "capture_animation"
+          ],
+          "pitfalls": "On unlock, reverting to the pre-lock CFrame snaps jarringly — hand the current orientation back to the free-look angles. Putting the look at the exact midpoint pins the enemy dead-center (no composition) — bias toward the target and add headroom; a fixed distance lets a far target fall off-screen, so scale distance/FOV with separation. For cutscenes: leaving the gameplay loop bound makes it overwrite the tween (camera looks frozen/fighting); task.wait(duration) sequencing drifts — use Tween.Completed; forgetting to restore CameraType=Custom + CameraSubject leaves the player with no control; a hard cut back is jarring — blend the last cutscene CFrame into the live camera."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "sources": [
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/input-and-camera/control-the-users-camera",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/input-and-camera/control-the-users-camera",
+      "https://devforum.roblox.com/t/smooth-camera-position-in-third-person/2644314",
+      "https://devforum.roblox.com/t/over-the-shoulder-camera-collision-problem/950861",
+      "https://devforum.roblox.com/t/dynamic-fov-script-smooth-camera-zoom/2781094",
+      "https://devforum.roblox.com/t/ez-camera-shake-ported-to-roblox/98482",
+      "https://devforum.roblox.com/t/camera-target-lock-on-system-help/2227744",
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://github.com/rduoDevs/CameraService",
+      "https://create.roblox.com/docs/tutorials/use-case-tutorials/input-and-camera/control-the-users-camera",
+      "https://devforum.roblox.com/t/short-form-guide-to-solving-physics-based-spring-jitter/2078873",
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://github.com/Sleitnick/RbxCameraShaker",
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://github.com/Roblox/Core-Scripts/blob/master/PlayerScripts/StarterPlayerScripts_NewStructure/RobloxPlayerScript/CameraScript/Poppercam/Zoom/Popper.lua",
+      "https://devforum.roblox.com/t/over-the-shoulder-camera-system/728481",
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://create.roblox.com/docs/reference/engine/classes/Camera",
+      "https://devforum.roblox.com/t/major-camera-stuttering-when-lerping-to-an-object-delta-time-issue/1765872",
+      "https://devforum.roblox.com/t/camera-jitter-even-when-using-cframelerp/2185837",
+      "https://devforum.roblox.com/t/why-is-my-custom-camera-movement-so-unsmooth/2787829",
+      "https://devforum.roblox.com/t/my-camera-sway-is-working-but-camera-is-like-jittery/2387531",
+      "https://devforum.roblox.com/t/need-help-with-smooth-camera-movement/1360856",
+      "https://devforum.roblox.com/t/character-appears-jittery-when-using-custom-camera-script-bindtorenderstep/4169577",
+      "https://devforum.roblox.com/t/fov-feels-weird-and-off/2691713",
+      "https://devforum.roblox.com/t/thoughts-on-this-advanced-camera-movement-bobbing-turning-strafing-idle-and-more/3050390",
+      "https://www.youtube.com/watch?v=0TpwPpULXxU (XTB7, human captions); https://www.youtube.com/watch?v=FhCNvyuZ-mE (BrawlDev, verified); https://www.youtube.com/watch?v=UsahcBf18jE (B Ricey); https://www.youtube.com/watch?v=MU9HFZUeg-c (script_ing)",
+      "https://www.youtube.com/watch?v=0TpwPpULXxU (XTB7, human captions)",
+      "https://www.youtube.com/watch?v=UsahcBf18jE (B Ricey)",
+      "https://www.youtube.com/watch?v=UsahcBf18jE (B Ricey); https://www.youtube.com/watch?v=0TpwPpULXxU (XTB7)",
+      "https://www.youtube.com/watch?v=LdwNqyknyPU (Previized); https://www.youtube.com/watch?v=MU9HFZUeg-c (script_ing)",
+      "https://www.youtube.com/watch?v=kq0k7UrOR-U (blox); https://www.youtube.com/watch?v=3W8C8R9X9eU (rnk); https://www.youtube.com/watch?v=FhCNvyuZ-mE (BrawlDev); https://www.youtube.com/watch?v=0TpwPpULXxU (XTB7)",
+      "https://www.youtube.com/watch?v=nd9tzpjONNA (MonkeyDev)",
+      "https://www.youtube.com/watch?v=3W8C8R9X9eU (rnk)",
+      "https://www.youtube.com/watch?v=MU9HFZUeg-c (script_ing); also https://www.youtube.com/watch?v=mu3HfDjQfwE (Teletacos) and https://www.youtube.com/watch?v=FWK4zQWSduI (Alcatraz) for corroboration",
+      "https://www.youtube.com/watch?v=FhCNvyuZ-mE (BrawlDev, verified); https://www.youtube.com/watch?v=LdwNqyknyPU (Previized)",
+      "https://www.youtube.com/watch?v=6D9T4iaQHAc (Ludius)",
+      "https://www.youtube.com/watch?v=FhCNvyuZ-mE (BrawlDev, verified)",
+      "https://www.youtube.com/watch?v=FhCNvyuZ-mE (BrawlDev, verified)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 13,
+      "criteria_addressed": 13,
+      "uncovered": []
+    }
+  }
+}
