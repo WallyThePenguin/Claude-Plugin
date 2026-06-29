@@ -1,0 +1,345 @@
+{
+  "module": "audio",
+  "system_module": "audio",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "A great Roblox soundscape is never a single Sound:Play() retriggered on every event — it is an explicitly WIRED node graph of role-separated sources, organized into a category bus tree, fed by curated and de-repeated library clips, triggered off real gameplay/animation events from emitters that ride the moving source, and finished with bus-level reverb zones, sidechain ducking, adaptive stem music and a first-class ambience layer. Because the agent CURATES audio (it picks Creator-Store asset ids; it does not author waveforms), the quality lever is selection + wiring + scripting, not sound design. Build in dependency order: (1) curate fitting, clean-license asset ids into a central registry; (2) stand up the modern Audio API graph (AudioPlayer -> Wire -> [effects] -> AudioEmitter -> AudioListener -> AudioDeviceOutput) — the foundation every later technique routes through, where a node with no outgoing Wire is SILENT; (3) build the Master -> {Music,SFX,Ambience,UI,Voice} bus tree with neutral gain staging. Then layer the 'good' systems (random+pitch-jittered pools, event-to-source binding, sidechain ducking + master limiter, per-source attenuation shape, deliberate listener placement + client prediction, a concurrent multi-role soundscape, a seamless sustained bed). Finally the exceptional systems (one shared-bus reverb-per-zone + occlusion, sample-aligned adaptive stems, a dedicated layered ambience system). Build via create_instance + set_property for the nodes, run_luau for multi-keypoint curves / Heartbeat-synced stem starts / event wiring, then verify by playtest/capture and grade with evaluate(category='audio'), refining fails-first. The spine that separates an above-the-mean mix from a generic default: WIRED positional graph + category BUSES + curated, DE-REPEATED clips + EVENT-bound source emitters + signal-level DYNAMICS (ducking/limiter/reverb-zones) + a CONTINUOUS bed.",
+  "killer_systems": [
+    {
+      "name": "Modern Audio graph for true positional 3D",
+      "what": "World audio is an EXPLICITLY WIRED node graph — AudioPlayer -> Wire -> [optional effect nodes] -> AudioEmitter -> AudioListener -> AudioDeviceOutput — where signal flows through Wire instances (SourceInstance/TargetInstance), NOT the parent-child tree, with a tuned per-emitter DistanceAttenuation curve so position and falloff are real. A node with no outgoing Wire is silent.",
+      "how": "create_instance an AudioPlayer (set AssetId='rbxassetid://<id>'), an AudioEmitter on the emitting Part/Attachment, and a Wire; set_property Wire.SourceInstance=AudioPlayer and Wire.TargetInstance=AudioEmitter. set_property SoundService.DefaultListenerLocation='Character' so the engine auto-spawns an AudioListener under each HumanoidRootPart and an AudioDeviceOutput under SoundService (or wire AudioListener->AudioDeviceOutput by hand). run_luau AudioEmitter:SetDistanceAttenuation({[0]=1,[20]=0.8,[40]=0.4,[80]=0}) sized to the source role. Route non-spatial music/UI straight AudioPlayer->AudioDeviceOutput (skip emitter/listener) so stereo isn't collapsed to a mono point. To insert any effect, SPLIT the wire: AudioPlayer->Wire->Effect and Effect->Wire->AudioEmitter."
+    },
+    {
+      "name": "Dynamic mixing bus hierarchy",
+      "what": "Every sound is organized into a small named bus tree — Master -> {Music, SFX, Ambience, UI, Voice}, with SFX able to nest sub-buses (Footsteps) — and individual sources sit at a NEUTRAL level so the buses do the balancing, never gain-doubling (source 1.0 x group 1.0 x parent 1.0) into clipping.",
+      "how": "Modern: create_instance one AudioFader per category, fan every source's Wire chain into its category fader, then category faders -> a master AudioCompressor -> a master AudioLimiter -> AudioDeviceOutput; volume lives on AudioFader.Volume (AudioPlayer has no Volume). Legacy: create_instance SoundGroups under SoundService (Master with nested Music/SFX/Ambience/UI/Voice), set each Sound.SoundGroup, and remember SoundGroup.Volume is a MULTIPLIER on each child. Keep sources ~0.5, expose per-category player sliders, and cap concurrent voices (~8 footsteps / ~16 impacts, steal oldest)."
+    },
+    {
+      "name": "Curated library use with layered + randomized variation",
+      "what": "Repeated SFX use deliberately-chosen, role/tone-matched, clean-license Creator-Store clips (not one placeholder), AND every repeated trigger is de-repeated: a pool of 4-8 alternate clips picked at random PLUS per-play PlaybackSpeed/pitch (~+/-5%) and slight volume jitter, so the same waveform is never heard identically.",
+      "how": "Curate asset ids in the Toolbox > Creator Store (category Audio), audition, Copy Asset ID, store them in a central registry ModuleScript mapping semantic names (SFX.Footstep.Grass -> a pool of ids). At each trigger, run_luau picks clip=pool[math.random(#pool)], sets PlaybackSpeed=0.95+math.random()*0.10 and jitters the per-clip AudioFader.Volume ~+/-10%, then plays. Use per-surface footstep pools and layer key combat hits as 3 clips (swing/whoosh + impact + victim reaction). Avoid the replay-same-index bug."
+    },
+    {
+      "name": "Sidechain ducking + master dynamics",
+      "what": "The music/ambient bus automatically drops under voice/critical SFX via a sidechained AudioCompressor (music on Input, voice on the Sidechain pin) — NOT by tweening every music Volume per event — and the master carries a brick-wall AudioLimiter so dense moments never clip.",
+      "how": "create_instance an AudioCompressor; Wire the music/ambient bus into its Input pin and the voice/critical-SFX bus ALSO into its Sidechain pin; set_property fast Attack, slow Release, ~4:1 Ratio, Threshold just below voice peaks, MakeupGain. Put a master AudioLimiter (set MaxLevel) LAST. Order the chain EQ -> Compressor -> Reverb/Echo -> Fader -> Limiter. Legacy: a CompressorSoundEffect on the LOW-priority SoundGroup with SideChain pointing at the HIGH-priority group."
+    },
+    {
+      "name": "Environmental acoustics on a shared listener/master bus",
+      "what": "The world has acoustic identity: ONE AudioReverb + AudioEqualizer on the listener/master bus, retuned/toggled as the listener enters a zone (room/hall/cave/outdoor), PLUS occlusion muffling behind geometry — never a reverb instance spammed on every emitter (a cave needs ONE reverb on the listener, not 40 on 40 emitters).",
+      "how": "create_instance a single AudioReverb (+AudioEqualizer) wired on the AudioListener chain. run_luau a zone detector (zone parts / Region / GetPartsInPart / magnitude) that, on enter/exit, TWEENS DecayTime/WetLevel (room ~0.5-1.5s, hall ~2.5-4s, cave ~3-5s) rather than hard-switching. For occlusion, raycast listener->source and pull down the AudioEqualizer high-frequency gain (low-pass, don't fully mute) when blocked, restoring smoothly when clear — or enable engine acoustic simulation with AcousticSimulationEnabled=true on BOTH listener AND emitters. Legacy: swap SoundService.AmbientReverb ReverbType per zone."
+    },
+    {
+      "name": "Adaptive layered music (stems, not track swaps)",
+      "what": "Music is 4-8 synchronized STEMS (drums, bass, melody, tension pad, percussion) as separate looping AudioPlayers started sample-aligned (all Play()'d within ONE Heartbeat tick) and TimePosition-synced to a leader, each on its own AudioFader, cross-faded by a gameplay-intensity state machine over a ~1.5s smoothing constant — not one looping track or a hard explore.mp3->combat.mp3 cut.",
+      "how": "create_instance 4-8 AudioPlayers (Looping=true, identical length) each with its own AudioFader. run_luau Play()s them all inside ONE RunService.Heartbeat tick for sample-aligned start, then periodically re-syncs each TimePosition to a leader stem to fight drift. A MusicState module exposes SetIntensity(0..1) and writes each fader Volume interpolated over ~1.5s (explore: drums 0.2 / tension 0; combat: drums 1.0 / tension ramps). For hard state changes use pre-rendered stingers chained on AudioPlayer.Ended — never crossfade two full loops mid-bar (phase artifacts)."
+    },
+    {
+      "name": "Dedicated layered ambience system",
+      "what": "Environmental sound is a first-class layer, not absent: a continuous low room-tone/tonal BED (30s+) UNDER many short foreground one-shots fired at randomized NON-repeating intervals, with context-specific clips that NAME the space — rather than silence between action clips.",
+      "how": "create_instance a looping ambient bed AudioPlayer routed to the Ambience bus (Looping=true, a 30s+ seamless loop). run_luau a scheduler that fires short, place-identifying foreground one-shots (bird calls, wind gusts, crosswalk beeps for Tokyo, oven/order chatter for a parlor) at randomized non-repeating task.wait intervals from positional emitters, optionally with a second tonal bed and time-of-day/region-gated variation. Pair with the reverb-zone system so the environmental layer also carries the room's acoustics."
+    }
+  ],
+  "common_pitfalls": [
+    "The #1 modern-API trap: a node with NO outgoing Wire is silent. Audio does NOT inherit down the parent-child tree like legacy Sound — a perfectly parented AudioPlayer/AudioEmitter graph with no Wires plays nothing. Always wire SourceInstance->TargetInstance through to an AudioListener/AudioDeviceOutput, and verify by ear.",
+    "Forgetting the 'rbxassetid://' prefix on AudioPlayer.AssetId / Sound.SoundId — the asset never loads. And using audio you do not own/have permission for triggers RUNTIME permission errors and copyright auto-scans — only use Creator-Store free-to-use clips or assets you have rights to.",
+    "Routing stereo music through an AudioEmitter/AudioListener pair collapses it to a mono point (like a mic against a speaker). Wire non-spatial music/UI straight AudioPlayer->AudioDeviceOutput; reserve emitter/listener for diegetic world sound.",
+    "Wiring the ducking trigger into the compressor's INPUT pin instead of its SIDECHAIN pin — it then compresses the music against itself and never ducks under voice. Legacy: the CompressorSoundEffect must sit on the LOW-priority group with SideChain pointing at the HIGH-priority group.",
+    "Gain doubling: leaving every source at full Volume under full-volume groups (source 1.0 x group 1.0 x parent 1.0) stacks gain and clips, especially when many loud sounds overlap. Keep sources neutral (~0.5) and let buses balance; SoundGroup.Volume is a MULTIPLIER, not a setter.",
+    "Replaying ONE fixed asset id at one fixed pitch on every footstep/hit is THE amateur tell (the 'machine-gun' artifact). De-repeat with a random pool of 4-8 clips + per-play pitch/volume jitter. But PlaybackSpeed pitch-shifts by RESAMPLING, so it also changes duration — keep jitter to ~+/-5% and use AudioPitchShifter for true pitch-preserving shifts.",
+    "Parenting a 3D Sound to a Model (or a big Part) instead of an Attachment/single Part makes it non-positional or scatters it through the bounding box — RollOff is ignored and you hear it everywhere. Parent to an Attachment, and bind the emitter to the moving source (foot Motor6D / blade Attachment), NOT HumanoidRootPart.",
+    "Too-low RollOffMaxDistance makes audio abruptly CUT OFF at the boundary; use a larger max with RollOffMode=InverseTapered for a natural fade, and SIZE the falloff per source role (tight campfire vs far-carrying siren) instead of one default rolloff on everything.",
+    "Spamming a reverb/EQ instance on every emitter inflates instance count and double-verbs overlapping sources — put ONE reverb on the LISTENER bus and toggle it by zone. Watch the ~300 simultaneous audio-source cap; per-emitter effect stacking burns through it fast.",
+    "Loops click at the seam unless cut at a zero-crossing on both channels and overlap-crossfaded, and MP3's leading-silence padding clicks every loop — use OGG, and match length to role (~15s+ ambient beds, ~6-10s steady sounds).",
+    "Starting music stems on different frames (or in separate coroutines) desyncs them so layers phase; Play() them all in ONE Heartbeat tick and re-sync TimePosition to a leader. Snapping intensity-driven fader volume on a state change makes combat music stutter on/off during brief enemy lulls — interpolate over ~1.5s.",
+    "Waiting for the server round-trip before playing the local player's OWN action SFX feels laggy — predict client-side for 0ms feedback while the server replicates the authoritative event to others. Preload only short time-critical one-shots with ContentProvider:PreloadAsync; a 4MB pistol shot preloaded is malpractice — stream long music/ambience.",
+    "Tuning only in the edit viewport — runtime lighting, listener placement, occlusion and timing differ. Playtest (and use capture during the playtest to confirm framing), then grade with evaluate(category='audio') and iterate fails-first."
+  ],
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "A wired positional graph fed by curated clips and organized into a category bus tree with neutral gain staging — clears the two baseline killer systems (modern spatial graph + mixing bus hierarchy).",
+      "steps": [
+        {
+          "id": "audio-curate-library-registry",
+          "order_index": 1,
+          "instruction": "Author the curated asset-id REGISTRY as a pooled, resolver-backed spine — this is the structural precondition the variation/event/stem steps depend on, so its value is the POOL structure, not the act of grabbing clips. (1) Curate with discipline (do this, but it is the floor, not the point): in the Creator Store Audio category, use keyword + genre/mood/duration filters, audition, and Copy Asset ID for clean-license clips that are role/tone-matched and length-matched to use (30s+ for loops/beds, short one-shots) — reject the first keyword grab / re-uploads (\"free\" is a price, not a license). (2) The above-generic move — author a central registry ModuleScript (via create_instance + set_property Source, or run_luau) that maps SEMANTIC names to POOLS of 4-8 variant ids per repeated event, NOT a flat name->single-id table: e.g. SFX.Footstep.Grass = { a set of 4-8 ids }, SFX.Footstep.Wood = { ... } (per-surface pools where material matters), Impact.Sword = { swing-ids, impact-ids, reaction-ids } as layered sub-pools, Music.Combat = id. (3) Expose a resolver API the downstream picker reads — e.g. registry:pool(name) returns the id list (and a pick(name) that the variation step wraps with random-without-immediate-repeat + per-play PlaybackSpeed/pitch ~+/-5% and volume jitter) — so a single semantic name resolves to a pool of variants and ids are never hardcoded scattered through scripts. A registry that is just a flat name->one-id lookup table (no pools, no resolver) is barely above the floor and does not pass; the registry must make the pool-of-variants the first-class shape the de-repetition criterion (audio-curated-library-variation-de-repetition) builds on. Pitfalls: a single fixed id retriggered identically is THE amateur audio tell — the registry exists to make pooled variation possible, so a non-pooled registry defeats its own purpose; and using audio you do not own causes runtime permission errors + copyright auto-scans, so curate only Creator-Store free-to-use or assets you have rights to, auditioning for tone/role/length fit before committing.",
+          "addresses_criteria": [
+            "audio-curated-library-variation-de-repetition"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "Using audio you do not own/have permission for causes RUNTIME permission errors and copyright auto-scans — only Creator-Store free-to-use or assets you have rights to. Grabbing the first keyword match (often a re-upload, tone-mismatched, wrong length) is a curation fail; audition and match the clip to the event's role/tone and length before committing. 'Free' is a price, not a license."
+        },
+        {
+          "id": "audio-modern-graph-wiring",
+          "order_index": 2,
+          "instruction": "Stand up the modern Audio API node graph as the foundation everything else routes through — establish ROUTING before any sounds play. For a world source: create_instance an AudioPlayer (set_property AssetId='rbxassetid://<id>', the full prefix is mandatory), an AudioEmitter on the emitting Part/Attachment, and a Wire; set_property Wire.SourceInstance=AudioPlayer and Wire.TargetInstance=AudioEmitter (signal flows source->target through the Wire, NOT through parenting). set_property SoundService.DefaultListenerLocation='Character' so the engine auto-spawns an AudioListener under each HumanoidRootPart and an AudioDeviceOutput under SoundService (or create_instance + Wire AudioListener->AudioDeviceOutput by hand). For non-spatial music/UI, Wire the AudioPlayer STRAIGHT to AudioDeviceOutput (skip the emitter/listener pair) so stereo isn't collapsed to a mono point. Then run_luau AudioPlayer:Play(). A connectDevices(src,tgt) helper that news a Wire and sets Source/Target keeps wiring DRY. (Legacy fallback for a single source: a Sound parented to an Attachment inside the Part.)",
+          "addresses_criteria": [
+            "audio-modern-graph-spatial-wiring"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "The #1 trap: a node with NO outgoing Wire is SILENT — audio does not inherit down the parent-child tree like legacy Sound, so a perfectly parented graph with no Wires plays nothing. The emitter is only spatialized because its PARENT part has a 3D position. Forgetting 'rbxassetid://' means the AssetId never loads. Listener/output setup that touches the camera must run client-side (RunContext=Client / LocalScript)."
+        },
+        {
+          "id": "audio-distance-attenuation-shape",
+          "order_index": 3,
+          "instruction": "Tune the falloff so position is real and SIZED to the source, not a default rolloff stamped on everything. run_luau AudioEmitter:SetDistanceAttenuation with a {distance->volume} curve matched to the source's role and scale — e.g. a campfire {[0]=1,[20]=0.8,[40]=0.4,[80]=0} (full to 20 studs, silent by 80), versus a siren that carries far. Values interpolate linearly between points and hold flat beyond the endpoints; GetDistanceAttenuationCurve() returns {} when default. On the legacy path instead set RollOffMode=InverseTapered (natural falloff, not the abrupt-cutoff Inverse) with RollOffMinDistance/MaxDistance sized to the source. Do this per source class so a UI prop, a campfire, and a siren each have distinct, role-appropriate falloff.",
+          "addresses_criteria": [
+            "audio-modern-graph-spatial-wiring",
+            "audio-directional-volumetric-emission"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "A too-low RollOffMaxDistance makes audio abruptly cut off at the boundary — use a larger max + InverseTapered for a gradual fade. Stamping ONE default rolloff on every source (so a 50-stud waterfall collapses to a pinprick and a PA horn sounds the same from behind) only earns partial — differentiate the curve per source role."
+        },
+        {
+          "id": "audio-bus-tree-gain-staging",
+          "order_index": 4,
+          "instruction": "Organize every source into a named category bus tree with disciplined gain staging. Modern: create_instance one AudioFader per category (Master -> Music, SFX, Ambience, UI, Voice; let SFX nest a Footsteps sub-fader), fan each source's Wire chain into its category fader, then route category faders -> master -> AudioDeviceOutput. Volume lives on AudioFader.Volume (AudioPlayer has NO Volume property). Legacy: create_instance SoundGroups under SoundService (a Master with nested Music/SFX/Ambience/UI/Voice), set_property each Sound.SoundGroup, and remember SoundGroup.Volume is a MULTIPLIER on each child (0.5 x 0.5 = 0.25). Keep individual sources NEUTRAL (~0.5) so the buses do the balancing, explicitly avoiding gain doubling (source 1.0 x group 1.0 x parent 1.0 = clipping). Expose per-category player volume sliders (mute Music, keep SFX = one property edit) and cap concurrent voices per category (~8 footsteps / ~16 impacts, stop the oldest past the limit).",
+          "addresses_criteria": [
+            "audio-mixing-bus-hierarchy-gain-staging"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "Setting Volume per-Sound with no grouping means no master/category control and no settings sliders — a flat per-sound full-volume mix that clips when loud sounds stack. Confusing workspace placement with group assignment: a Sound's SoundGroup routes it regardless of where it lives in the tree. Uncapped concurrent voices degrade mobile playback — cap and steal."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "De-repeated curated pools, event-to-source binding, signal-level ducking + a master limiter, per-source emission shape, deliberate listener placement + client prediction, a concurrent multi-role soundscape, and a seamless sustained bed — clears the seven 'good' criteria.",
+      "steps": [
+        {
+          "id": "audio-pooled-randomized-variation",
+          "order_index": 1,
+          "instruction": "De-repeat every repeated SFX so the same waveform is never heard identically. For each repeated role, pre-create a POOL of 4-8 curated AudioPlayer variants (from the registry's per-role id list; per-SURFACE for footsteps). On each trigger, run_luau picks clip=pool[math.random(#pool)], sets clip.PlaybackSpeed=0.95+math.random()*0.10 (pitch +/-5%), jitters the per-clip AudioFader.Volume ~+/-10%, then plays. Parent the AudioEmitter to the ACTUAL source (foot Motor6D / weapon muzzle) so the variation is spatially correct. Layer key combat hits as 3 clips — swing/whoosh + impact + victim reaction — for weight. Pool persistent AudioPlayers rather than instantiate-and-destroy on hot paths.",
+          "addresses_criteria": [
+            "audio-curated-library-variation-de-repetition"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "Repeating one sample at one pitch is the #1 amateur tell; jitter WITHOUT a varied pool still sounds same-y because the timbre is identical. PlaybackSpeed pitch-shifts by RESAMPLING so it also changes DURATION — keep jitter ~+/-5% on long/looping clips and reserve true pitch-preserving shifts for AudioPitchShifter. Avoid replaying the same random index twice in a row."
+        },
+        {
+          "id": "audio-event-source-binding",
+          "order_index": 2,
+          "instruction": "Trigger SFX off real gameplay/animation events from an emitter that RIDES the moving source — never a sourceless 2D clip. run_luau to fire one-shots on named events: BasePart.Touched, the Humanoid step/state, weapon fire, objective complete — and at the high end AnimationTrack:GetMarkerReachedSignal so footsteps/swings land on the EXACT frame. Emit from a positional node bound to the moving instance: an AudioEmitter wired into the chain on the foot Motor6D / blade Attachment / projectile (NOT HumanoidRootPart center), so the trigger and the spatial origin are the same object and the sound follows the actor. Add a debounce (set flag / play / await Ended / clear) against retrigger spam, and destroy one-shot instances on the AudioPlayer.Ended / Sound.Ended signal.",
+          "addresses_criteria": [
+            "audio-event-driven-source-bound-playback"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "A 2D Sound:Play() that fires on an event but from nowhere is the generic pattern and FAILS — event timing without a bound source is not enough. Without a debounce, a player standing in a Touched volume retriggers every frame. IsPlaying's Changed only signals false->true — use the Ended event to detect completion. Binding to HRP instead of the foot mislocates footsteps."
+        },
+        {
+          "id": "audio-multi-role-soundscape",
+          "order_index": 3,
+          "instruction": "Compose the soundscape as MULTIPLE concurrently-live, role-separated sources that mix simultaneously — at minimum a continuous looping bed (ambience or music) running UNDER event-fired SFX UNDER UI sound — each routed to its own bus/chain from the bus-tree step. This is the structural precondition every higher technique composes onto: stop playing one Sound object on every event. Confirm at least THREE distinct roles play at once (the bed keeps sounding while one-shots fire), each addressed as its own AudioFader bus or its own AudioPlayer->emitter chain. If the build has multiple audio SCOPES (teams, lobbies, instanced dungeons, spectator, a private/party channel), scope them with matching AudioInteractionGroup strings on the AudioEmitters and AudioListeners that should share audio — the clean replacement for per-player ReplicatedStorage-folder parenting hacks.",
+          "addresses_criteria": [
+            "audio-interaction-group-isolation"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "A single 2D Sound reused for every event (one role, no continuous bed, nothing mixing alongside) FAILS. Naming two roles or routing some audio while most events still collapse onto one shared generic source only earns partial. AudioInteractionGroup only differentiates when multiple scopes actually exist — don't bolt it on where there's one shared world."
+        },
+        {
+          "id": "audio-seamless-sustained-bed",
+          "order_index": 4,
+          "instruction": "Give the soundscape at least one deliberately CONTINUOUS sustained layer that runs under gameplay — a looping ambience/room-tone bed, a looping/adaptive-music bed, an engine drone, or a steady tonal layer — set Looping/Looped=true and route it to the Ambience or Music bus. Craft the loop so it is genuinely seamless: choose (or pre-edit in Reaper/Audacity) a clip cut at a ZERO-CROSSING on both stereo channels and overlap-crossfaded so it does not click, prefer OGG over MP3 (MP3's leading-silence padding clicks every loop), and match length to role (~15s+ ambient beds, ~6-10s steady sounds). This bed is what the reverb-zone, ducking, and stem-music systems sit on top of.",
+          "addresses_criteria": [
+            "audio-seamless-loop-craft"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "pitfalls": "A build whose entire audio output is one non-looped clip per event, with NO sustained layer, FAILS. Loops click unless start/end are at zero-crossings; MP3 padding clicks every loop — use OGG. A continuous layer with no statement of seam/format/length discipline only earns partial."
+        },
+        {
+          "id": "audio-listener-placement-client-prediction",
+          "order_index": 5,
+          "instruction": "Declare WHERE the listener lives and HOW self-audio reaches the player, rather than leaving both to engine defaults. (1) Make a deliberate AudioListener placement decision: set SoundService.DefaultListenerLocation='Character' (or parent the AudioListener to the head Motor6D, NOT the camera) so head-turns produce correct directional cues. (2) Predict self-audio: run_luau so the local player's OWN action SFX (gun, footstep, hit-confirm, UI) play CLIENT-SIDE for instant 0ms feedback, while the server authoritatively replicates the event to remote players (acknowledging ~80-120ms). For one-shot 2D cues, SoundService:PlayLocalSound avoids parenting/replication-timing choppiness. Preload only short time-critical one-shots with ContentProvider:PreloadAsync; stream long music/ambience.",
+          "addresses_criteria": [
+            "audio-client-predicted-listener-placement"
+          ],
+          "tools": [
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "No AudioListener / never naming an origin AND no client-prediction split FAILS — defaulting both is the generic pattern. Parenting the listener to the camera instead of the head breaks directional cues on head-turns in first person. Waiting for the server round-trip before local SFX feels laggy. Skipping preload on combat/UI SFX leaves the first shot/click silent; preloading a big music file wastes load/memory."
+        },
+        {
+          "id": "audio-directional-volumetric-emission",
+          "order_index": 6,
+          "instruction": "For facing-dependent and large sources, model emission SHAPE beyond an omnidirectional point with the per-source attenuation curves already in place. For a facing-dependent source (loudspeaker, megaphone, PA, directional alarm) run_luau AudioEmitter:SetAngleAttenuation() (or set the Emission-tab AngleAttenuation: Cardioid / Figure-8 / Shotgun) so it projects mainly forward — and an AudioListener:SetAngleAttenuation() for a directional mic/ear pickup. For a wide physical source (waterfall, river, force field, big machine) set_property SoundService.VolumetricAudio explicitly Enabled (not Automatic) with rolloff measured from the surface so it emits from the whole body. Verify EmissionDirection/cone orientation after any reorientation (the cone is relative to the part's front face).",
+          "addresses_criteria": [
+            "audio-directional-volumetric-emission"
+          ],
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "Every source as an omnidirectional point at the SAME default rolloff (a PA horn identical from behind, a wide source collapsed to a pinprick) FAILS. The attenuation cone is relative to the part's front face — rotating the part rotates the audible cone, which surprises people. Beware the ~300 simultaneous audio-source cap when adding many directional emitters."
+        },
+        {
+          "id": "audio-sidechain-ducking-master-limiter",
+          "order_index": 7,
+          "instruction": "Make the music/ambient bus duck under voice/critical SFX automatically at the signal level, and add a master safety ceiling. create_instance an AudioCompressor; Wire the music/ambient bus into its INPUT pin and the voice/critical-SFX bus ALSO into its SIDECHAIN pin (GetInputPins() = {Input, Sidechain}); set_property fast Attack, slow Release (~0.3s so music swells back), ~4:1 Ratio, Threshold just below voice peaks, MakeupGain — tune iteratively by ear. Put a master AudioLimiter (set MaxLevel) LAST on the master so summed voices never clip (it reacts instantly, unlike the compressor's smoothed curve). Order the chain EQ -> Compressor -> Reverb/Echo -> Fader -> Limiter. Legacy: a CompressorSoundEffect on the LOW-priority SoundGroup with SideChain pointing at the HIGH-priority group.",
+          "addresses_criteria": [
+            "audio-sidechain-ducking-dynamic-mix"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "pitfalls": "Wiring the ducking source into the compressor's INPUT instead of its SIDECHAIN pin makes it compress music against itself and never duck under voice (the defining mistake). Legacy: reversing which group holds the CompressorSoundEffect ducks the wrong thing. Tweening every music Volume per event is brittle and snaps; over-aggressive Ratio/Threshold causes obvious pumping. A mix with no master limiter clips in dense moments."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Bus-level reverb-per-zone + occlusion, sample-aligned adaptive stem music, and a dedicated layered ambience system — then verify and grade. Clears the three exceptional killer systems.",
+      "steps": [
+        {
+          "id": "audio-reverb-zones-occlusion",
+          "order_index": 1,
+          "instruction": "Give the world acoustic identity with ONE shared-bus reverb retuned by zone PLUS occlusion. create_instance a single AudioReverb (+ AudioEqualizer) wired on the AudioListener/master chain — never one per emitter. run_luau a zone detector (zone parts / Region / workspace:GetPartsInPart / magnitude) that on enter/exit TWEENS the reverb params over ~0.3-1s rather than hard-switching: DecayTime/WetLevel per environment (room ~0.5-1.5s, hall ~2.5-4s, cave ~3-5s, near-dry outdoors), with balanced Dry/Wet. Add occlusion: raycast listener->source each step and when blocked pull DOWN the AudioEqualizer high-frequency gain (a LOW-PASS muffle, do NOT fully mute — that's what real walls do), restoring smoothly on line-of-sight. Alternatively enable engine acoustic simulation with AcousticSimulationEnabled=true on BOTH the AudioListener AND every AudioEmitter (the both-ends flag amateurs miss). Legacy: swap SoundService.AmbientReverb ReverbType (Cave/Hangar/...) per zone.",
+          "addresses_criteria": [
+            "audio-environmental-reverb-eq-zones"
+          ],
+          "tools": [
+            "create_instance",
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "A reverb stamped on every emitter inflates instance count, double-verbs overlapping sources, and burns the ~300-source cap — put ONE on the listener. Hard-switching reverb on zone entry pops; always tween DecayTime/WetLevel. Occlusion that fully MUTES behind walls sounds broken — low-pass (cut highs, keep lows). Engine acoustic simulation does nothing unless BOTH listener and emitter are flagged."
+        },
+        {
+          "id": "audio-adaptive-stem-music",
+          "order_index": 2,
+          "instruction": "Replace one-track or hard-cut music with sample-aligned adaptive stems. create_instance 4-8 AudioPlayers (drums, bass, melody, tension pad, percussion), each Looping=true with IDENTICAL length, each on its own AudioFader. run_luau Play()s them ALL within ONE RunService.Heartbeat tick for sample-aligned start, then periodically re-syncs each stem's TimePosition to a leader stem to fight long-session drift. Build a MusicState ModuleScript exposing SetIntensity(0..1) that writes each fader's Volume INTERPOLATED over a ~1.5s smoothing constant from a computed gameplay intensity (enemy proximity, recent damage) — exploration holds drums 0.2 / tension 0; combat ramps drums to 1.0 and fades tension in. For hard state changes, pre-render transition STINGERS as separate assets and chain via AudioPlayer.Ended; do NOT crossfade two full loops mid-bar. Optionally beat-sync game events via Sound:AddMarker + GetMarkerReachedSignal.",
+          "addresses_criteria": [
+            "audio-adaptive-stem-layered-music"
+          ],
+          "tools": [
+            "create_instance",
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "Starting stems on different frames/coroutines desyncs them so layers phase — Play() in ONE Heartbeat tick and re-sync TimePosition to a leader. Snapping fader volume on a state change makes combat music stutter on/off during brief enemy lulls — interpolate over ~1.5s. Crossfading two full loops mid-bar causes phase cancellation; use stingers + .Ended chaining."
+        },
+        {
+          "id": "audio-layered-ambience-system",
+          "order_index": 3,
+          "instruction": "Build a dedicated environmental-audio system so the WORLD has audio presence, not just the action. Route a continuous low room-tone/tonal BED (a 30s+ seamless loop, from the sustained-bed step) to the Ambience bus, then run_luau a scheduler that fires many SHORT foreground one-shots at randomized NON-repeating task.wait intervals (so no two minutes match) from positional emitters — using context-specific, place-IDENTIFYING clips that name the space (bird calls + wind/rustle for a forest; crosswalk beeps + traffic for Tokyo; oven/order/chatter for a pizza parlor). Layer it up: a low tonal bed UNDER an ambient bed UNDER the randomized foreground, optionally with time-of-day variation and region-gated transitions (VolumetricAudio + zero rolloff on a region source). Pair with the reverb-zone system so the ambience also carries the room's acoustics.",
+          "addresses_criteria": [
+            "audio-layered-ambience-bed-randomized-oneshots"
+          ],
+          "tools": [
+            "create_instance",
+            "run_luau",
+            "set_property"
+          ],
+          "pitfalls": "No environmental/ambience audio at all (only action clips, dead silence between) FAILS. Merely naming an 'Ambient' mixer bus, or one flat generic looping ambience clip, with neither a constructed bed-under-randomized-non-repeating-foreground layer NOR space-aware treatment, only earns partial. Foreground one-shots at a FIXED interval re-introduce the repetition tell — randomize and avoid immediate repeats."
+        },
+        {
+          "id": "audio-verify-and-evaluate-loop",
+          "order_index": 4,
+          "instruction": "Verify it actually sounds right at runtime and grade before calling it done. Audio differs in a real playtest (listener placement, occlusion, ducking, timing, mobile voice caps) from the edit viewport, so run_luau a quick playtest path (or trigger the events) and listen; use capture during the playtest to confirm the scene/framing that the sound accompanies. Then call evaluate(category='audio', subject=<the audio system / scene path>, design=<your summary of the graph, buses, pools, events, ducking, reverb zones, stems and ambience you built>) to grade against the audio rubric, and refine the fails-first criteria (silent unwired nodes, default rolloff, gain doubling, single-clip repetition, missing limiter/ducking, dry-everywhere reverb) in small passes.",
+          "addresses_criteria": [
+            "audio-modern-graph-spatial-wiring",
+            "audio-mixing-bus-hierarchy-gain-staging",
+            "audio-curated-library-variation-de-repetition",
+            "audio-event-driven-source-bound-playback",
+            "audio-sidechain-ducking-dynamic-mix"
+          ],
+          "tools": [
+            "run_luau",
+            "capture",
+            "evaluate"
+          ],
+          "pitfalls": "Tuning only in the edit viewport hides the silent-unwired-node trap, listener-placement mistakes, and occlusion/ducking behavior that only manifest at runtime — playtest and listen. capture is visual only; confirm the audio by triggering the events and (if needed) reading levels via an AudioAnalyzer, not by trusting the edit-time preview."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "sources": [
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/audio/assets.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/audio/add-3D-audio.md",
+      "https://devforum.roblox.com/t/new-audio-api-features-directional-audio-audiolimiter-and-more/3282100",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/sound/groups.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/sound/groups.md",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/sound/objects.md",
+      "https://devforum.roblox.com/t/new-audio-api-features-directional-audio-audiolimiter-and-more/3282100",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/audio/add-3D-audio.md",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/sound/dynamic-effects.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/tutorials/use-case-tutorials/audio/add-3D-audio.md",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/engine/classes/AudioCompressor.yaml",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/reference/engine/classes/AudioReverb.yaml",
+      "https://simplified.media/guides/roblox-sound-design",
+      "https://devforum.roblox.com/t/how-do-i-fix-my-custom-footstep-sounds-from-being-sped-up-and-high-pitched/3181149",
+      "https://devforum.roblox.com/t/whats-wrong-with-the-sound/1394625",
+      "https://devforum.roblox.com/t/footstep-sounds/3140131",
+      "https://devforum.roblox.com/t/help-with-audio-how-to-use-rolloff-max-and-min-distance/1079944",
+      "https://devforum.roblox.com/t/very-poor-audio-quality-with-the-new-audio-api/3264049",
+      "https://devforum.roblox.com/t/sound-behaves-differently-in-studio-and-in-game/1383549",
+      "https://devforum.roblox.com/t/sound-design-feedback/2621147",
+      "https://www.youtube.com/watch?v=FminS9nvqJg (Cookie Tech, 33:13, 20.7K views); https://www.youtube.com/watch?v=sPCZ2-VUP48 (Paul1Rb, 13:10); https://www.youtube.com/watch?v=b0hawic22jg (BrawlDev verified, 24:43, 34.3K)",
+      "https://www.youtube.com/watch?v=LAYhd_j-thI (ByteBlox verified, 6:43, 10.2K); https://www.youtube.com/watch?v=b0hawic22jg (BrawlDev verified)",
+      "https://www.youtube.com/watch?v=FminS9nvqJg (Cookie Tech); https://www.youtube.com/watch?v=sPCZ2-VUP48 (Paul1Rb)",
+      "https://www.youtube.com/watch?v=b0hawic22jg (BrawlDev verified); https://www.youtube.com/watch?v=FminS9nvqJg (Cookie Tech)",
+      "https://www.youtube.com/watch?v=b0hawic22jg (BrawlDev verified); https://www.youtube.com/watch?v=FminS9nvqJg (Cookie Tech, party-speakers AudioInteractionGroup variant)",
+      "https://www.youtube.com/watch?v=Ie_woKhjj3E (Paul1Rb, 12:01, 19.8K views)",
+      "https://www.youtube.com/watch?v=Ie_woKhjj3E (Paul1Rb)",
+      "https://www.youtube.com/watch?v=Ie_woKhjj3E (Paul1Rb)",
+      "https://www.youtube.com/watch?v=mTrPujQ4UJ0 (Paul1Rb, 9:21, 12.9K views)",
+      "https://www.youtube.com/watch?v=iZlh13mUwtU (BrawlDev verified, 23:44, 80.2K views); https://www.youtube.com/watch?v=qB_a7GEKy7c (VJZ, 12:02)",
+      "https://www.youtube.com/watch?v=iZlh13mUwtU (BrawlDev verified)",
+      "https://www.youtube.com/watch?v=iZlh13mUwtU (BrawlDev verified)",
+      "https://www.youtube.com/watch?v=BjgA5rZpfKU (RKGAM3ZS, 5:29); https://www.youtube.com/watch?v=iZlh13mUwtU (BrawlDev verified); https://www.youtube.com/watch?v=FminS9nvqJg (Cookie Tech, for the API-effect analogues)",
+      "https://www.youtube.com/watch?v=BjgA5rZpfKU (RKGAM3ZS); https://www.youtube.com/watch?v=qB_a7GEKy7c (VJZ, Doppler/3D basics)",
+      "https://www.youtube.com/watch?v=HinufekZrRo (ShaboNeeno, 0:36)",
+      "https://www.youtube.com/watch?v=L_Jga2MgRdU (AlvinBlox verified, 18:59, 325.8K views)",
+      "https://www.youtube.com/watch?v=EWsOEIsGkzc (RoScripter, 8:53, 47.2K views)",
+      "https://www.youtube.com/watch?v=OdD6tdpcbJc (PineappleDev, 2:30)",
+      "https://www.youtube.com/watch?v=qB_a7GEKy7c (VJZ, 12:02)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 12,
+      "criteria_addressed": 12,
+      "uncovered": []
+    }
+  }
+}
