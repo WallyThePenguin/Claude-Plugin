@@ -1,0 +1,360 @@
+{
+  "module": "characters",
+  "system_module": "characters",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "Roblox hands every game the stock blocky R15 avatar — default proportions, default body colors, the default decal face, no accessories, no custom geometry, the same look on every character — and that IS the generic \"AI did it\" mean this guide beats. The whole approach pivots on treating the character as a DESIGNED IDENTITY built from five killer systems, in this order: (1) deliberate per-archetype PROPORTIONS via the HumanoidDescription scale axes, applied with run_luau so the silhouette reads its role before any texture; (2) a COHESIVE THEMED OUTFIT mixing rigid hardpoint accessories with deformable layered clothing on the correct attachment points, bound by one theme spine; (3) a CUSTOM BODY where the design needs it — custom MeshPart limbs/heads or a non-humanoid creature rig (generate_mesh/author_mesh/spawn_rig), Motor6D-jointed and weighted with no clipping; (4) a DESIGNED COLOR + PBR MATERIAL palette (limited 3-5 colors with a 60/30/10 accent hierarchy, plus SurfaceAppearance maps so metal/cloth/skin read as different physical materials), value-validated and authored on the face/skin too; and (5) a HumanoidDescription-driven VARIATION SYSTEM (one description payload mutated and applied via ApplyDescription) that produces the whole cohesive cast/crowd from one design language. Because the agent has no dedicated ApplyDescription or SurfaceAppearance tool, all description assembly, scaling, accessory composition, and PBR-material wiring is done through run_luau (+ create_instance/set_property), while geometry comes from the mesh/rig tools and every visual claim is verified with capture/capture_angles. Baseline = a custom body that commits to a deliberately-scaled archetype and a themed multi-class outfit. Good = the designed color+PBR palette, authored layered clothing, custom rig fidelity, an authored 3D face, and the ApplyDescription variation system. Exceptional = a per-archetype-distinct silhouette validated at distance, a governing shape-language hierarchy, an authored surface/baked-light treatment, a single deliberate focal point, and one shared identity system locking the whole cast.",
+  "killer_systems": [
+    {
+      "name": "Deliberate Proportions & Scaling (silhouette-first)",
+      "what": "Body proportions are a CHOSEN, role-readable decision anchored to a named archetype (Classic ~4.75 studs blocky; Rthro Normal ~5.75-6.5 wide-shoulder/narrow-hip; Rthro Slender ~5.25-6.25 narrow-shoulder/wide-hip) and driven by the five HumanoidDescription scale axes — BodyTypeScale, HeightScale, WidthScale, HeadScale, ProportionScale — so the solid-black outline reads hero / grunt / heavy / lithe / creature before any texture. This is the FIRST identity decision and the thing the stock cast cannot satisfy because everyone shares one silhouette.",
+      "how": "With run_luau build an Instance.new('HumanoidDescription'), set per-archetype presets — e.g. HEAVY = WidthScale ~1.25, HeightScale ~1.1, HeadScale ~0.85; HERO = HeightScale ~1.1, BodyTypeScale ~0.6, ProportionScale ~0.8; SCOUT = HeightScale ~0.9, WidthScale ~0.9, HeadScale ~1.1 — then apply with humanoid:ApplyDescription(desc) (or Player:LoadCharacterWithHumanoidDescription on spawn). CRITICAL ORDER: ProportionScale is a no-op while BodyTypeScale is 0, so raise BodyTypeScale ABOVE 0 first; all five axes are R15-only and clamped 0-1. Exaggerate per-region against a reference, not a uniform stretch. Verify by filling the rendered character solid black (capture) and confirming the archetype is nameable from the outline; for extreme silhouettes the axes are not enough — author custom MeshParts (generate_mesh/author_mesh) instead. Store the numbers as a named preset table keyed by archetype so the variation system reuses them."
+    },
+    {
+      "name": "Cohesive Themed Outfit (rigid + layered composition)",
+      "what": "Accessories and clothing are composed into ONE theme-coherent identity — a curated set with consistent shape language and a single era/faction/theme spine — deliberately MIXING accessory classes (deformable layered/cage-driven clothing for body-conforming coverage PLUS rigid hardpoint pieces like helmet/backpack/pauldrons for crisp silhouette shapes) on the correct standardized attachment points, with restraint (solid clothing + a few accent accessories, not a 100-item pile), rather than a random unthemed marketplace hat-pile.",
+      "how": "Pick one theme spine first, then compose. Build the outfit as a single typed list and apply atomically via run_luau: desc:SetAccessories(specs) then humanoid:ApplyDescription(desc), where each spec is {AssetId=<id>, AccessoryType=Enum.AccessoryType.<slot>, IsLayered=<bool>, Order=<n for layered>}; lower Order sits closer to skin (shirt Order=1, jacket Order=2, backpack Order=3) so the stack reads coherent instead of clipping. Rigid pieces set IsLayered=false; layered set IsLayered=true with an Order. Author the character's OWN handheld/hardpoint props as accessories with make_tool (then grip_tool to seat them on the grip attachment), and custom worn meshes with generate_mesh/author_mesh parented to an Accessory + Attachment whose name matches the body attachment (HatAttachment, NeckAttachment, RightShoulderAttachment, etc.) so the engine snaps it. Know that shoulder attachments move with the arm and collar attachments do not — put a pauldron on the shoulder, a cape on the collar. Budget the count and verify centered, non-clipping placement with capture_angles."
+    },
+    {
+      "name": "Custom Body / Non-Humanoid Rig Fidelity",
+      "what": "Where the design's identity calls for non-stock geometry, the build commits to custom MeshPart limbs/heads or a fully custom non-humanoid creature rig — Motor6D on animated parts (welds on static), skin-weighted, distinct per-part shapes, and no clipping/gaps at the joints — instead of leaving every character on the stock blocky humanoid. This is the foundation the color/material/face layers compose onto.",
+      "how": "For man-made parts (armor pieces, mechanical limbs) use generate_mesh (Cube text-to-3D); for organic creature forms (rock-like carapace, pine-like crests) use author_mesh; persist owned/shippable geometry with save_mesh. Stand the body up on a spawn_rig R15 Motor6D rig so clips and clothing map joints correctly; for a creature, build the part chain (RootPart -> lower torso -> upper torso -> limbs) and rig joints with run_luau (create Motor6D, set Part0/Part1 and C0/C1 so the pivot sits at the real hinge), name one part exactly 'Head', set a forward-facing PrimaryPart, and tune Humanoid.HipHeight in a playtest so it stands rather than slides/floats. Pose-test deformation with pose_joint/ik_reach + capture before committing. Keep <=4 joint influences per vertex and concentrate joints in expressive appendages."
+    },
+    {
+      "name": "Designed Color + PBR Material Palette",
+      "what": "A constrained, harmonized color palette (3-5 colors, 2-3 for a skin) with a 60% dominant / 30% secondary / 10% accent value hierarchy and a named analogous/complementary harmony, PLUS an intentional per-region material hierarchy where metal vs rough cloth/canvas vs skin read as different physical surfaces — not default gray, random saturated limbs, or uniform Plastic. The palette is value-validated (desaturate under multiple lights) and the materials use physically-based values.",
+      "how": "Color: with run_luau set the HumanoidDescription per-limb Color3 fields (HeadColor/TorsoColor/LeftArmColor/RightArmColor/LeftLegColor/RightLegColor, which populate BodyColors on apply); concentrate the accent/highest contrast on the role-relevant zone (face/weapon/chest). For Parts, paint_texture authors a tiling procedural surface (PARTS ONLY — MeshParts are rejected). Materials: for custom MeshParts add a SurfaceAppearance child via create_instance and wire the four PBR maps (ColorMap/NormalMap/RoughnessMap/MetalnessMap) with set_property — metal = MetalnessMap ~1.0 + low RoughnessMap, cloth = metalness 0 + high roughness + a normal carrying weave, skin = mid roughness + metalness 0; use an OpenGL-tangent normal and one atlas/material per mesh. SurfaceAppearance.Color is the only runtime-mutable channel (tint a near-white ColorMap to make recolor variants for free). VALIDATE value structure by desaturating under front/side/rim lighting (capture under varied Lighting) and confirm forms stay separated and the accent still reads."
+    },
+    {
+      "name": "HumanoidDescription-Driven Variation System (cast-wide)",
+      "what": "Customization/variation is driven as a SYSTEM by one HumanoidDescription carrying the FULL identity payload (scales + BodyColors + Shirt/Pants/ShirtGraphic + rigid SetAccessories + layered accessories + body-part mesh IDs + face), cloned-and-mutated to produce skin/palette/accessory swaps for player choice or NPC crowd variety — NOT one hardcoded look duplicated on every character. One shared description design language drives the whole cohesive cast.",
+      "how": "With run_luau, author a base description once (humanoid:GetAppliedDescription(), Players:GetHumanoidDescriptionFromUserIdAsync(userId) wrapped in pcall, or a hand-built Instance.new). Then desc:Clone() PER character and mutate before apply — randomize TorsoColor/HeadColor from a palette pool, pick one of N SetAccessories sets, jitter HeightScale/WidthScale — and call humanoid:ApplyDescription(clone) on each. ALWAYS Clone() before mutating or all your 'varied' NPCs share one mutated record. For NPC crowds spawn the population with make_npc and apply a mutated clone per spawn (batch/stagger — ApplyDescription yields and rebuilds the character, so don't apply to a huge crowd in one frame). Keep ONE committed cast-wide treatment (shared palette + material language) so the population reads as one authored world; lock a hero/anchor asset and render each new character side-by-side at matched lighting (capture) to catch drift."
+    }
+  ],
+  "common_pitfalls": [
+    "Leaving the stock R15 body untouched and only setting a single Color or shirt — that is the generic mean the rubric scores as FAIL on nearly every criterion (proportions, custom body, silhouette, shape language, focal point, cast cohesion). A color/shirt swap is not a design; you must commit to deliberate scale + custom geometry + a themed outfit to pass.",
+    "Setting ProportionScale while BodyTypeScale is still 0 — it silently does nothing and looks like a no-op bug. Raise BodyTypeScale above 0 FIRST. And all five scale axes are R15-only and clamped 0-1, so extreme silhouettes need custom MeshParts (generate_mesh/author_mesh), not the axes.",
+    "Mutating a HumanoidDescription in place and applying it to every character — they all end up sharing one mutated record instead of varying. Always desc:Clone() before per-character randomization, and verify on a small spawned crowd (make_npc) that individuals actually differ.",
+    "Trying to paint_texture a MeshPart — it is rejected (procedural tiling smears on arbitrary mesh UVs). paint_texture is PARTS ONLY; custom meshes get their material from generate_mesh's built-in texturing or an authored SurfaceAppearance (create_instance + set_property) instead.",
+    "Expecting to swap SurfaceAppearance maps by script at runtime — the ColorMap/Normal/Roughness/Metalness are pre-processed and NOT runtime-mutable. Only SurfaceAppearance.Color (tint) is dynamic. All non-tint material variation must exist as authored assets, so author the material set up front.",
+    "Mismatching accessory/clothing scale type, or putting a layered garment on a non-caged/blocky avatar — rigid accessories tied to one body scale float/clip on another, and ApplyDescription can fail to wrap layered clothing onto a stock blocky body (it needs a WrapTarget cage). Match the scale type and commit to a cageable custom body before composing layered clothing.",
+    "Getting accessory layer Order wrong — a sweater with a lower Order than the shirt renders UNDER it. Lower Order = closer to skin; verify the stack with capture_angles, not by assumption.",
+    "Mixing the two accessory APIs — the legacy comma-string properties (HatAccessory='id1,id2') and the modern SetAccessories table conflict. Pick SetAccessories and stick to it.",
+    "Designing a character in isolation — readability is RELATIVE to what it stands next to. A hero whose palette/silhouette mirrors the enemy is unreadable in-context. Render the character beside its cast/enemies (capture) and confirm allegiance and archetype read at a glance.",
+    "Judging the build from a low-quality capture — no anti-aliasing, low graphics, default lighting produces false 'bad model / bad material' verdicts. Force max graphics + AA + Future lighting before capture, then grade the BUILD, not the render settings.",
+    "Grading deliberate stylization against a realism ideal — a 'cute' or intentionally rough design is not a flaw. Capture the stated intent first and prefer fixes that REINFORCE the chosen style over ones that normalize it toward the generic mean.",
+    "Mis-rigging the custom body — a backwards-facing PrimaryPart makes it walk the wrong way; HipHeight left at 0 makes it slide/levitate; a part driven by multiple Motor6Ds won't appear on the animation timeline. Verify the rig stands and the joints sit at real hinges (capture) before layering look on top."
+  ],
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "A custom-bodied character that has stopped being the stock avatar: a deliberately-scaled, named archetype whose silhouette reads its role, wearing a theme-coherent outfit that mixes rigid and layered accessory classes on the correct attachment points — the structural seam every look-and-variation system composes onto.",
+      "steps": [
+        {
+          "id": "char-base-1-archetype-and-scale",
+          "order_index": 1,
+          "instruction": "Decide the proportion archetype and body language FIRST (hero / grunt / heavy / lithe / creature, mapped to Classic ~4.75 studs blocky, Rthro Normal ~5.75-6.5 wide-shoulder/narrow-hip, or Rthro Slender ~5.25-6.25 narrow-shoulder/wide-hip), then with run_luau build an Instance.new('HumanoidDescription') and set the five R15 scale axes to a named per-archetype preset (e.g. HEAVY = WidthScale ~1.25, HeightScale ~1.1, HeadScale ~0.85; HERO = HeightScale ~1.1, BodyTypeScale ~0.6, ProportionScale ~0.8). Raise BodyTypeScale ABOVE 0 before touching ProportionScale (it is a no-op otherwise), exaggerate per-region rather than uniformly stretching, then apply via humanoid:ApplyDescription(desc). Capture the result filled solid black and confirm the archetype is nameable from the outline alone. State the archetype target AND the specific axis values you set.",
+          "addresses_criteria": [
+            "char-archetype-proportions-humanoiddescription-scaling"
+          ],
+          "tools": [
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "ProportionScale does nothing while BodyTypeScale is 0; all five axes are R15-only and clamped 0-1, so a uniform whole-body stretch (no per-region intent) only earns partial and extreme silhouettes need custom MeshParts. Setting only a Color/shirt and never touching scale FAILS."
+        },
+        {
+          "id": "char-base-2-custom-body-geometry",
+          "order_index": 2,
+          "instruction": "Commit to a CUSTOM body instead of the stock blocky R15, and author it to SHIP — not just to exist. (1) Generate the geometry the design needs: generate_mesh (Cube text-to-3D) for man-made limbs/heads/armor shells, author_mesh for organic creature forms, keeping distinct per-part shapes (never one merged blob). (2) Stand it on a spawn_rig R15 Motor6D rig; for a non-humanoid creature, build the part chain RootPart -> lower torso -> upper torso -> limbs and create each Motor6D with run_luau, setting Part0/Part1 and C0/C1 so every pivot sits at the real hinge. Give each animated part exactly ONE Motor6D (a part driven by two won't appear on the timeline), weld static cosmetic parts, name one part exactly 'Head', set a forward-facing PrimaryPart, and tune HipHeight so the rig neither slides nor floats. (3) Hold the geometry to the avatar STRUCTURAL CONTRACT + MESH HYGIENE so catalog clothing still fits and it deforms clean: trace the stock rig to keep the 15 MeshParts / R15 16-bone skeleton / WrapTarget cages / 19 standardized Attachments, cap skin weights at <=4 influences/vertex, seal watertight openings, check (don't flip) normals, add deformation loop-cuts at bending joints, and average seam normals. (4) Author it as SHIPPABLE: bake one material/atlas per mesh (no UDIM/per-part sprawl), keep each mesh under ~10k triangles with 2-4px UV-island padding and at least one LOD at ~25-50% tri count, and keep textures within 1024x1024. (5) Persist owned geometry with save_mesh (CreateAssetAsync) so it survives play/save/ship. (6) Pose-test the joints with pose_joint and capture to confirm clean, non-clipping deformation at every hinge BEFORE any look work. FAIL conditions: shipping the stock R15 body with no custom mesh; a part with multiple Motor6Ds; a backwards PrimaryPart; HipHeight left at 0; a merged-blob body; or authored geometry with no stated atlas/triangle/LOD budget gate.",
+          "addresses_criteria": [
+            "char-avatar-structural-contract-mesh-hygiene",
+            "char-custom-meshpart-nonhumanoid-rig-fidelity",
+            "char-performance-budget-atlas-lod"
+          ],
+          "tools": [
+            "generate_mesh",
+            "author_mesh",
+            "spawn_rig",
+            "run_luau",
+            "pose_joint",
+            "save_mesh",
+            "capture"
+          ],
+          "pitfalls": "Shipping the stock R15 body with no custom mesh FAILS the custom-body floor outright. A part driven by multiple Motor6Ds won't appear on the timeline; a backwards PrimaryPart walks the wrong way; HipHeight left at 0 slides/floats. Keep distinct per-part shapes (not one merged blob) and <=4 weight influences per vertex."
+        },
+        {
+          "id": "char-base-3-themed-outfit-composition",
+          "order_index": 3,
+          "instruction": "Pick ONE theme/era/faction spine, then compose the outfit from at least two accessory classes on the custom body. With run_luau assemble a single typed list and apply atomically: desc:SetAccessories(specs); humanoid:ApplyDescription(desc), where each spec is {AssetId, AccessoryType=Enum.AccessoryType.<slot>, IsLayered, Order}. Use rigid hardpoint pieces (helmet/backpack/pauldrons, IsLayered=false) for crisp silhouette shapes AND layered/cage-driven clothing (IsLayered=true, ascending Order from skin outward) for body-conforming coverage. Author the character's own props as accessories with make_tool and seat them with grip_tool; parent custom worn meshes to an Accessory+Attachment whose name matches the body attachment (HatAttachment, NeckAttachment, RightShoulderAttachment, etc.). Put a pauldron on the shoulder attachment (moves with the arm), a cape on the collar (does not). Budget the count for an uncluttered silhouette and verify centered, non-clipping placement with capture_angles.",
+          "addresses_criteria": [
+            "char-themed-accessory-outfit-composition"
+          ],
+          "tools": [
+            "run_luau",
+            "make_tool",
+            "grip_tool",
+            "generate_mesh",
+            "capture_angles"
+          ],
+          "pitfalls": "An unthemed pile of random catalog hats, or a single flat shirt/pants, FAILS; a theme with only one accessory class earns partial. Wrong Order inverts the stack (sweater under shirt). Don't mix the legacy comma-string accessory API with SetAccessories. Layered clothing needs a cageable custom body or ApplyDescription may not wrap it."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "The character's LOOK and identity are fully art-directed: a designed limited color palette with an accent and a value check, an intentional per-region PBR material hierarchy, authored layered clothing that conforms to the body, a high-fidelity custom rig, an authored 3D/material face, and a theme spine binding every choice — all driven by a HumanoidDescription variation SYSTEM rather than a hardcoded one-off.",
+      "steps": [
+        {
+          "id": "char-good-1-color-palette",
+          "order_index": 1,
+          "instruction": "Lock a constrained, harmonized palette BEFORE texturing: choose 3-5 colors (2-3 for a skin) with a named harmony (analogous or complementary) and a 60% dominant / 30% secondary / 10% accent weighting, placing the single accent as the focal point on the role-relevant zone (face/chest/weapon). With run_luau set the HumanoidDescription per-limb Color3 fields (HeadColor/TorsoColor/LeftArmColor/RightArmColor/LeftLegColor/RightLegColor) so they populate BodyColors on apply; for Parts, paint_texture a tiling procedural surface. Then VALIDATE the value structure: desaturate the character to ~25% under front/side/rim lighting (capture under varied Lighting) and confirm forms stay separated and the accent still reads as focal — adjust values until they do. State the palette, the harmony, the 60/30/10 split, AND the desaturation check.",
+          "addresses_criteria": [
+            "char-limited-harmonized-color-palette"
+          ],
+          "tools": [
+            "run_luau",
+            "paint_texture",
+            "capture"
+          ],
+          "pitfalls": "Default gray or six random saturated equal-weight limb colors is the canonical 'AI did it' look and FAILS; a limited palette with no value check (or a value check with no deliberate accent) earns partial. BodyColors only color stock body parts — colored MeshParts/SurfaceAppearance ignore them, so keep the mesh's baked color in the same palette. paint_texture rejects MeshParts."
+        },
+        {
+          "id": "char-good-2-pbr-material-hierarchy",
+          "order_index": 2,
+          "instruction": "Give surfaces a per-region material hierarchy so metal vs rough cloth/canvas vs skin read as different physical materials. For each custom MeshPart region add a SurfaceAppearance child with create_instance and wire the four PBR maps with set_property: metal = MetalnessMap ~1.0 + low RoughnessMap; cloth/canvas = metalness 0 + high roughness + a NormalMap carrying weave/stitch; skin = mid roughness + metalness 0 + subtle normal. Use an OpenGL-tangent-space NormalMap, keep metalness binary (0 or 1, intermediate grays only for weathering), and one atlas/material per mesh. Use SurfaceAppearance.Color as a runtime-safe tint over a near-white ColorMap to make recolor variants for free. Verify >=2 distinct material reads under SEVERAL lighting environments (capture), not tuned to one scene.",
+          "addresses_criteria": [
+            "char-pbr-material-hierarchy-surfaceappearance",
+            "char-baked-light-stylized-texturing",
+            "char-performance-budget-atlas-lod"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "Uniform default Plastic (metalness 0 / roughness 0) on the whole body FAILS. SurfaceAppearance maps are NOT runtime-swappable (only Color tint is) — author the set up front. A flipped normal G-channel (DirectX vs OpenGL) inverts bumps; per-region variation with arbitrary non-physical metalness/roughness only earns partial. Bump roughness ~0.1 to compensate Fresnel across lighting."
+        },
+        {
+          "id": "char-good-3-layered-clothing",
+          "order_index": 3,
+          "instruction": "Author at least one deformable layered (WrapLayer/cage-driven) garment that conforms to the body and stretches over any scale — not a flat 2D shirt/pants decal — and compose it into the outfit identity from the baseline step. Author the garment mesh with generate_mesh/author_mesh, bind it to the R15 skeleton (spawn_rig as the reference body), and apply it through the SetAccessories list with IsLayered=true and an explicit Order via run_luau. Commit to a fit/no-clip behavior: the inner cage controls fit tightness, the outer cage sits just outside along the normals (enabling Hidden Surface Removal so layers below are culled), edge loops stay even, and rigid spikes/pauldrons are left OUTSIDE the cage. Verify the garment conforms with no clipping across a scale change with capture_angles.",
+          "addresses_criteria": [
+            "char-layered-clothing-cage-authoring"
+          ],
+          "tools": [
+            "generate_mesh",
+            "author_mesh",
+            "spawn_rig",
+            "run_luau",
+            "capture_angles"
+          ],
+          "pitfalls": "No clothing, or a flat classic shirt/pants decal, FAILS; naming layered clothing with no conform/no-clip behavior earns partial. A cage tighter than the mesh clips; too loose balloons. Layered clothing won't wrap reliably on a non-caged blocky avatar — it needs the custom cageable body from baseline. Keep <=4 bone influences per vertex."
+        },
+        {
+          "id": "char-good-4-custom-rig-fidelity",
+          "order_index": 4,
+          "instruction": "Take the baseline custom body to full rig fidelity where the design's identity needs non-stock geometry: confirm Motor6D on every animated part (welds on static), skin weighting with clean deformation, distinct per-part shapes, and no clipping/gaps at the joints. Concentrate joints in expressive appendages, model in a neutral pose, drag each pivot to its real hinge (run_luau editing C0/C1), keep <=4 joint influences per vertex, and tune Humanoid.HipHeight in a playtest so the character stands rather than slides/floats. For a skinned creature use a Custom Bone / AnimationController rig (Bone.Transform like Motor6D.Transform) with translation-based squash/stretch. Drive the rig into its extreme poses with pose_joint/ik_reach and capture_angles to prove no joint tears or gaps.",
+          "addresses_criteria": [
+            "char-custom-meshpart-nonhumanoid-rig-fidelity"
+          ],
+          "tools": [
+            "spawn_rig",
+            "run_luau",
+            "pose_joint",
+            "ik_reach",
+            "capture_angles"
+          ],
+          "pitfalls": "A pure stock-avatar build with no custom geometry FAILS (no longer partial-by-default). Bad weight painting deforms weirdly near joints; a wrong C0/C1 pivot leaves gaps; joint names in the mesh asset must match Bone names or skinning silently fails. Gesturing at custom rigs without the Motor6D/weighting or no-clip commitment earns partial."
+        },
+        {
+          "id": "char-good-5-authored-face",
+          "order_index": 5,
+          "instruction": "Author the face/skin in the SAME dimensional language as the custom 3D head — not the default flat decal face. Either model the features as real geometry (e.g. the eye as a cylinder-over-sphere shaded Smooth) with generate_mesh, and/or give the skin an authored SurfaceAppearance/material that reads correctly (create_instance + set_property), so features share the head's 3D/material language. Push toward full marks by treating the face as an identity carrier: symmetric (X-mirrored) painting, a layered dark-to-bright iris, intentional grunge/scars/wrinkles, dark-shade shadows — built non-destructively (move existing verts only, edge flow on muscle groups, the four expression regions preserved). Capture the head close-up to confirm the face reads as 3D, consistent with the body.",
+          "addresses_criteria": [
+            "char-face-feature-dimensional-consistency"
+          ],
+          "tools": [
+            "generate_mesh",
+            "create_instance",
+            "set_property",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "Relying on the default Roblox decal face, or mixing a flat decal feature onto a 3D head, FAILS; authoring skin as a material but leaving features on a flat decal (mixed dimensional language) earns partial. paint_texture can't be used on the MeshPart head — author the skin via SurfaceAppearance instead."
+        },
+        {
+          "id": "char-good-6-theme-spine",
+          "order_index": 6,
+          "instruction": "Make every garment, material, prop, and palette choice serve ONE coherent theme spine encoding the character's story (purpose / personality / history / faction / status) — e.g. pirate -> sea -> squid -> Davy Jones. Audit each element from the prior steps and cut or re-theme anything off-spine; choose materials and props to encode meaning (silk vs wool, rusted vs clean steel; a carried tool reads as profession). Position the design on deliberate axes (functional<->fantasy, historical<->fictional) from a two-column reference board (real-world fashion + aesthetic/feeling). Ensure the theme reads WITHOUT heavy lore (if it needs five layers of explanation it's incoherent) and place detail where the camera/medium sees it (top-down vs 360-camera — detail on the back too). Restraint can BE characterization (a muted palette = coldness). Capture from the gameplay camera angle to confirm the read.",
+          "addresses_criteria": [
+            "char-theme-spine-costume-storytelling"
+          ],
+          "tools": [
+            "run_luau",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "A pile of unrelated 'cool' elements, or a design needing five layers of lore, FAILS; a loose theme with some off-theme elements, or detail placed with no medium awareness, earns partial. Don't lavish detail on the front only if the game has a 360 camera."
+        },
+        {
+          "id": "char-good-7-variation-system",
+          "order_index": 7,
+          "instruction": "Move the WHOLE identity into one HumanoidDescription payload (scales + BodyColors + Shirt/Pants/ShirtGraphic + rigid SetAccessories + layered accessories + body-part mesh IDs + face) and drive variation from it as a SYSTEM. With run_luau author a base description once (humanoid:GetAppliedDescription(), Players:GetHumanoidDescriptionFromUserIdAsync wrapped in pcall, or Instance.new), then desc:Clone() PER character and mutate before apply — randomize TorsoColor/HeadColor from the locked palette pool, pick one of N accessory sets, jitter HeightScale/WidthScale — calling humanoid:ApplyDescription(clone) on each. Generate the NPC population with make_npc and apply a mutated clone per spawn (batch/stagger spawns; ApplyDescription yields and rebuilds the character). Capture a small crowd to prove multiple DISTINCT looks come from the one system. For full marks add reusable skin-tone handling (texture opacity x MeshPart.Color or Overlay AlphaMode, verified across several tones).",
+          "addresses_criteria": [
+            "char-humanoiddescription-variation-system"
+          ],
+          "tools": [
+            "run_luau",
+            "make_npc",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "Hardcoding one look (a Color/shirt set the same on every character) FAILS; a HumanoidDescription applied as only ONE look earns partial. Mutating in place without Clone() makes all 'varied' NPCs share one record. GetHumanoidDescriptionFromUserIdAsync is a throttling web call — pcall + cache it. Applying to a huge crowd in one frame hitches."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Top-studio craft layered on the designed character: a per-archetype-DISTINCT silhouette validated at distance and across poses, a governing shape-language hierarchy, an art-directed surface/baked-light treatment, a single deliberate focal point against quieter surroundings, and ONE shared identity system that locks the entire cast into one world.",
+      "steps": [
+        {
+          "id": "char-exc-1-distinct-silhouette",
+          "order_index": 1,
+          "instruction": "Make the OUTER SHAPE a per-archetype-distinct identity carrier so the solid-black outline reads the specific character/archetype and is distinguishable from the rest of the cast before any texture. Tune proportions/forms per archetype (reuse and push the scale presets from baseline; for shapes the axes can't reach, author custom MeshParts with generate_mesh/author_mesh). Then VALIDATE with explicit readability tests the design is stated to pass: a multi-distance black-silhouette check via capture at ~5m / ~15m / ~50-100m; a multi-pose & multi-angle recognition check (idle/attack/traversal/hit/victory) via capture_angles + pose_joint; and a grayscale/blur value-collapse check. Render the cast's archetypes side by side and confirm their outlines are mutually distinguishable. State which tests it passes.",
+          "addresses_criteria": [
+            "char-silhouette-distance-and-pose-readability"
+          ],
+          "tools": [
+            "run_luau",
+            "pose_joint",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "The default R15 body, or any cast that's shape-identical and told apart only by close-up texture/color, FAILS. A generically asserted 'strong silhouette' tied to no per-archetype distinctness and no readability test earns partial. Bulky clipping accessories can erase the very proportion contrast the scale axes created — re-check the black outline with the outfit on."
+        },
+        {
+          "id": "char-exc-2-shape-language-system",
+          "order_index": 2,
+          "instruction": "Govern the design with an explicit shape-language hierarchy rather than an additive parts-pile. Name the DOMINANT shape mapped to personality (round=friendly, angular=dangerous, square=stable) that the outline broadcasts per archetype, a subordinate/secondary accent shape under a clear hierarchy, and a FORBIDDEN shape that would break the read. For creatures, give each appendage its own readable concept-driven shape (author distinct forms with author_mesh/generate_mesh and pose-test with pose_joint). Tie this back to the silhouette so the dominant shape is what the black outline shows. Capture to confirm the dominant shape dominates and no forbidden shape has crept in via an accessory.",
+          "addresses_criteria": [
+            "char-shape-language-system"
+          ],
+          "tools": [
+            "author_mesh",
+            "generate_mesh",
+            "pose_joint",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "The stock blocky avatar, or an additive catalog-parts pile with no governing shape logic, FAILS; mentioning proportions/shapes loosely with no archetype/role intent earns partial. An equal-weight mix of competing shapes reads as noise — enforce the dominant/subordinate hierarchy."
+        },
+        {
+          "id": "char-exc-3-authored-surface-treatment",
+          "order_index": 3,
+          "instruction": "Art-direct how the surface READS with an authored treatment, beyond just correct PBR. Either deepen the SurfaceAppearance maps so cloth/metal/skin form is carried by the maps (from the good-tier material step), OR bake a stylized light story into the albedo — hand-paint unlit AO/shadows (cool in shadow, warm in crevices), use a tiny shared gradient atlas with deliberate dark/light-band UV placement, block value-first in black-and-white before hue, repaint over the baker, add colored AO and features drawn into the texture. Apply it consistently with seam/bleed padding so UV islands don't show. Author the maps/atlas with generate_mesh's texturing and wire via create_instance/set_property; verify under varied lighting with capture that the authored read holds rather than collapsing to the default-lit flat look.",
+          "addresses_criteria": [
+            "char-baked-light-stylized-texturing"
+          ],
+          "tools": [
+            "generate_mesh",
+            "create_instance",
+            "set_property",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "A flat-shaded body under default real-time lighting, or a default decal face, FAILS; naming authored materials with no deliberate read-control (no per-material correctness, no baked/value/AO technique) earns partial. Forgetting seam/bleed padding makes UV islands show as seams."
+        },
+        {
+          "id": "char-exc-4-focal-point",
+          "order_index": 4,
+          "instruction": "Designate ONE deliberate focal point and make it win. Pick a single accent (the 10% accent color from the palette, an emissive/high-contrast feature, or a concentrated detail zone) positioned where the eye should land, and keep the surroundings comparatively quiet. For an energy/tech character add a separate self-illuminating neon MeshPart plus a small dedicated light part at the point of contrast (create_instance + set_property). Build a full detail-density hierarchy for full marks: dense detail in the focal zone, low-density eye-rest areas elsewhere, small details reinforcing (not fighting) the major silhouette, dark masses balanced against larger light areas, and a repeated motif deliberately broken at the focal point. Capture and confirm the eye lands on the one focal point, not several competing ones.",
+          "addresses_criteria": [
+            "char-detail-density-focal-hierarchy"
+          ],
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau",
+            "capture"
+          ],
+          "pitfalls": "The uniform stock look with no focal point, or uniform detail/texture spread everywhere (which flattens hierarchy just as badly), FAILS; an accent contradicted by competing emphasis (no single dominant point) earns partial."
+        },
+        {
+          "id": "char-exc-5-cast-cohesion-style-lock",
+          "order_index": 5,
+          "instruction": "Lock the whole cast to ONE shared identity system so it reads as one world. Drive every character from the good-tier HumanoidDescription/ApplyDescription design language (one source of truth generating the NPC crowd/population via make_npc + a mutated clone per spawn) AND commit one cast-wide treatment — a shared palette + material/rendering language every character is built to. For full marks anchor with a locked hero/anchor asset that fixes numeric ratios (head-to-body, limb-to-torso, shoulder breadth), a polycount/silhouette-tier and texel-density budget, and render each new character side-by-side with the hero at MATCHED lighting at every milestone (capture) to catch drift; build a concept-art-driven signature silhouette family. Capture the assembled cast to confirm cohesion plus per-archetype distinctness coexist.",
+          "addresses_criteria": [
+            "char-cast-cohesion-hero-asset-style-lock"
+          ],
+          "tools": [
+            "run_luau",
+            "make_npc",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "Unmanaged one-off characters that drift, or the same stock look duplicated on everyone, FAILS; driving variation from one system but committing no cast-wide treatment (or committing a treatment but letting the system/ratios drift) earns partial. Render at matched lighting/graphics or drift checks give false readings."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "sources": [
+      "https://create.roblox.com/docs/art/accessories/body-scale",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/characters/appearance.md",
+      "https://create.roblox.com/docs/reference/engine/classes/HumanoidDescription",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/characters/appearance.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/characters/appearance.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/characters/index.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/modeling/rig-a-humanoid-model.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/accessories/creating/caging-setup.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/accessories/layered-clothing.md",
+      "https://create.roblox.com/docs/reference/engine/classes/Attachment",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/modeling/surface-appearance.md",
+      "https://create.roblox.com/docs/characters/adaptive-animation",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/avatar/index.md",
+      "https://devforum.roblox.com/t/how-do-people-create-amazing-character-designs/3248648",
+      "https://create.roblox.com/docs/reference/engine/classes/HumanoidDescription",
+      "https://medium.com/@xavierck/character-readability-in-team-fortress-2-and-overwatch-68c41d454465",
+      "https://create.roblox.com/docs/en-us/reference/engine/classes/HumanoidDescription.md",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/art/accessories/layered-clothing.md",
+      "https://medium.com/@xavierck/character-readability-in-team-fortress-2-and-overwatch-68c41d454465",
+      "https://create.roblox.com/docs/art/modeling/surface-appearance",
+      "https://devforum.roblox.com/t/skinneddeformation-rigs-your-pro-guide-rewrite/1514277",
+      "https://create.roblox.com/docs/en-us/reference/engine/classes/HumanoidDescription.md",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431 ; https://devforum.roblox.com/t/how-can-i-improve-my-build/815013",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431 ; https://devforum.roblox.com/t/how-can-i-improve-my-build/815013",
+      "https://devforum.roblox.com/t/why-are-my-models-so-bad/2516105 ; https://devforum.roblox.com/t/why-this-build-looks-bad/3117431 ; https://devforum.roblox.com/t/how-can-i-improve-my-build/815013",
+      "https://devforum.roblox.com/t/why-is-my-lighting-so-bad/3145846 ; https://devforum.roblox.com/t/why-this-build-looks-bad/3117431",
+      "https://devforum.roblox.com/t/why-my-games-look-bad-or-lame/2852076",
+      "https://devforum.roblox.com/t/why-my-games-look-bad-or-lame/2852076",
+      "https://devforum.roblox.com/t/why-do-my-animations-look-stiff/2947662 ; https://devforum.roblox.com/t/animations-are-stiff-without-anything-overlapping-them/2946026",
+      "https://devforum.roblox.com/t/animations-are-stiff-without-anything-overlapping-them/2946026",
+      "https://devforum.roblox.com/t/does-my-main-character-look-okay/1827023",
+      "https://devforum.roblox.com/t/why-are-my-models-so-bad/2516105 ; https://devforum.roblox.com/t/need-feedback-on-a-model/3310341",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431 ; https://devforum.roblox.com/t/why-are-my-models-so-bad/2516105 ; https://devforum.roblox.com/t/does-my-main-character-look-okay/1827023",
+      "https://devforum.roblox.com/t/does-my-main-character-look-okay/1827023 ; https://devforum.roblox.com/t/why-is-my-lighting-so-bad/3145846",
+      "https://devforum.roblox.com/t/feedback-on-character-design/3876966 ; https://devforum.roblox.com/t/need-feedback-on-a-model/3310341 ; https://devforum.roblox.com/t/need-feedback-on-a-model/3310341",
+      "https://www.youtube.com/watch?v=x2MFFBvIF6Y",
+      "https://www.youtube.com/watch?v=2KdzgpHIA6s",
+      "https://www.youtube.com/watch?v=x2MFFBvIF6Y",
+      "https://www.youtube.com/watch?v=2KdzgpHIA6s",
+      "https://www.youtube.com/watch?v=x2MFFBvIF6Y",
+      "https://www.youtube.com/watch?v=6YlWYGVo7KI",
+      "https://www.youtube.com/watch?v=R5KOQbz2rsI",
+      "https://www.youtube.com/watch?v=R5KOQbz2rsI",
+      "https://www.youtube.com/watch?v=Fsj-y9NHOgo",
+      "https://www.youtube.com/watch?v=fW2mpmO2XHY",
+      "https://www.youtube.com/watch?v=pVD-HBlfv4g",
+      "https://create.roblox.com/docs/reference/engine/classes/Humanoid#ApplyDescriptionAsync",
+      "https://www.youtube.com/watch?v=3oL5NLigSc4"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 16,
+      "criteria_addressed": 16,
+      "uncovered": []
+    }
+  }
+}
