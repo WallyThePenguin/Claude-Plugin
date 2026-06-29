@@ -160,10 +160,11 @@ phase('Harden')
 // grade one artifact against the current rubric; order='shuffled' reverses criteria for the bias check
 async function grade(rb, artifact, label, order) {
   const crit = order === 'shuffled' ? [...rb.criteria].reverse() : rb.criteria
-  const r = await agent(
+  const r = await agentTry(
     `Grade this ${CATEGORY} ARTIFACT against the rubric: one row per criterion id, score pass/partial/fail with cited evidence. Grade ONLY on the artifact's described behavior/structure vs each criterion's evidence_required — never on vibe.\n\nARTIFACT:\n${JSON.stringify(artifact)}\n\nCRITERIA:\n${JSON.stringify(crit.map(c => ({ id: c.id, tier: c.tier, statement: c.statement, evidence_required: c.evidence_required })), null, 1)}`,
     { label, phase: 'Harden', schema: GRADE_SCHEMA })
-  return r.rows || []
+  if (!r || !Array.isArray(r.rows)) throw new Error(`grade(${label}) produced no rows for ${CATEGORY} (rate-limited?) — re-run`)
+  return r.rows
 }
 
 // scoring-bias check: grade the MEAN artifact normal vs shuffled; aggregate must be stable
