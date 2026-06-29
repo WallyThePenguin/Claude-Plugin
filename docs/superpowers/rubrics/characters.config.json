@@ -1,0 +1,18 @@
+{
+  "category": "characters",
+  "description": "Roblox character and avatar VISUAL design — the LOOK and identity of player characters, NPCs and creatures: body proportions and scaling, accessory/clothing/outfit composition, color and material (PBR) palette, custom character meshes/parts and non-humanoid rigs, silhouette readability, and avatar customization/variation — built with Humanoid/HumanoidDescription, Accessories, layered clothing, MeshParts, SurfaceAppearance, BodyColors and Motor6D. This is the character's APPEARANCE and identity, NOT how it moves (locomotion) or attacks (combat).",
+  "killerSystems": [
+    "silhouette-readable-proportions-and-scaling (deliberate body proportions via HumanoidDescription scaling — HeightScale/WidthScale/HeadScale/BodyTypeScale/ProportionScale — tuned for a distinctive, role-readable silhouette per archetype (hero / grunt / heavy / creature), passing a silhouette/squint test, NOT the default blocky R15 proportions)",
+    "cohesive-themed-accessory-and-outfit-composition (a curated, theme-coherent set of accessories + layered clothing composed into ONE unified character identity — shape language, era/faction, layered + rigid accessories that fit the silhouette — not a random unthemed pile of marketplace hats)",
+    "deliberate-limited-color-and-pbr-material-palette (a designed, limited body+outfit color palette with a clear value structure and an accent, and intentional material / SurfaceAppearance (PBR ColorMap/Normal/Roughness/Metalness) choices — cloth vs metal vs skin reads correctly — not default gray or random saturated colors)",
+    "custom-meshpart-parts-and-nonhumanoid-rig-fidelity (custom MeshPart limbs/heads or fully custom non-humanoid creature rigs (Motor6D-jointed, properly weighted/pivoted) where the design calls for it — beyond the stock blocky avatar — with clean joints and no gaps/clipping)",
+    "humanoiddescription-driven-customization-and-variation (a HumanoidDescription-driven customization / variation SYSTEM applied via Humanoid:ApplyDescription — skin/palette/accessory swaps for player choice or NPC crowd variety — not a single hardcoded look duplicated on every character)"
+  ],
+  "meanArtifact": {
+    "name": "default blocky avatar",
+    "description": "The default Roblox R15 blocky avatar used as-is: default proportions and scaling, default/random body colors, no accessories or an unthemed random pile of marketplace hats, no custom meshes, no deliberate material or palette choices, and no customization/variation system — the same stock look on every character, what you get by not designing the character at all."
+  },
+  "greatArtifactHint": "A designed character system: silhouette-tuned body proportions via HumanoidDescription scaling per archetype; a cohesive themed accessory + layered-clothing outfit composition forming one identity; a deliberate limited color palette with accent and intentional PBR SurfaceAppearance materials (cloth/metal/skin read correctly); custom MeshPart limbs or non-humanoid creature rigs (Motor6D, weighted, no clipping) where the design needs them; and a HumanoidDescription-driven customization/variation system (ApplyDescription) for player choice or NPC crowd variety.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}

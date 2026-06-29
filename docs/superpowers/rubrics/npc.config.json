@@ -1,0 +1,18 @@
+{
+  "category": "npc",
+  "description": "Roblox NPC AI and behavior — the intelligence, navigation and life of non-player characters and enemies: perception/sensing, pathfinding and navigation, a decision/behavior architecture (state machine / behavior tree / utility AI), group and coordination behavior, and ambient/idle life — built with PathfindingService, Humanoid:MoveTo, raycast/OverlapParams perception and RunService loops. This is NPC INTELLIGENCE quality (beyond a zombie that walks straight at the player), distinct from combat (the player's own attack feel) and from the basic make_npc idle/chase/attack/dead FSM.",
+  "killerSystems": [
+    "perception-and-sensing-model (NPCs perceive via raycast line-of-sight + a FOV cone + range, plus hearing (noise events) and short-term memory (last-known-position), with unaware/suspicious/alert detection states and timers — NOT omniscient instant awareness or a pure distance check)",
+    "quality-pathfinding-and-navigation (PathfindingService with proper waypoints, recompute on Blocked/stuck, jump/link handling, path smoothing and agent params (AgentRadius/Height/CanJump) so NPCs route around obstacles — NOT a straight-line Humanoid:MoveTo through walls)",
+    "decision-architecture-fsm-bt-utility (a real decision system — hierarchical state machine, behavior tree, or utility AI — with multiple behaviors (patrol/investigate/chase/attack/flee/search) and clean prioritized transitions, NOT a single chase-if-close branch)",
+    "group-and-coordination-behavior (multiple NPCs coordinate — flanking, separation/spacing so they don't stack on one point, role assignment, shared alert propagation, surround/cover — NOT each NPC acting in identical isolation)",
+    "ambient-life-and-believability (idle/ambient behavior when unengaged — patrol routes, look-around, environmental reactions, schedules/routines, micro-animations and barks/callouts on state change — so the world feels alive, NOT frozen statues until a player triggers them)"
+  ],
+  "meanArtifact": {
+    "name": "straight-line zombie",
+    "description": "An enemy NPC that calls Humanoid:MoveTo(nearestPlayer) every frame: it walks in a straight line toward the nearest player through walls and obstacles, is instantly and omnisciently aware of the player at any distance with no line-of-sight or perception, has exactly one behavior (chase), no real pathfinding, no coordination (every NPC stacks on the same point), and no ambient life (frozen in place until a player comes near) — the generic default a beginner ships."
+  },
+  "greatArtifactHint": "A believable NPC AI: a perception model (raycast LOS + FOV cone + hearing + last-known-position memory + unaware/suspicious/alert states); PathfindingService navigation with recompute-on-block, jumps, smoothing and tuned agent params; a behavior-tree/FSM/utility decision system spanning patrol/investigate/chase/attack/flee/search with prioritized transitions; group coordination (flanking, separation, role assignment, alert propagation); and ambient idle life (patrol routes, look-around, schedules, reactive barks) so the world feels alive.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}

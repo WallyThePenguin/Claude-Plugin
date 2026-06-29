@@ -1,0 +1,18 @@
+{
+  "category": "vehicles",
+  "description": "Roblox vehicle design and vehicle GAME-FEEL — the handling, feel and presentation of player-controlled vehicles (cars, bikes, hovercraft, aircraft, boats): physics chassis and suspension, drive/steering model, grip/drift/traction, speed sensation and feedback coupling, and networked ownership/control — built with VehicleSeat and physics constraints (CylindricalConstraint/SpringConstraint/Torque/VectorForce/AngularVelocity) or raycast suspension + SetNetworkOwner. NOT a part welded to a seat that teleports by CFrame.",
+  "killerSystems": [
+    "physics-chassis-and-tuned-suspension (a real physics chassis — wheels via constraints (CylindricalConstraint/SpringConstraint) or a raycast-suspension model — with TUNED spring stiffness/damping/ride-height so the body leans into turns, dips under braking and absorbs bumps; a single anchored/welded part CFrame-teleported FAILS)",
+    "tuned-drive-and-steering-model (a deliberate acceleration/torque curve, a top-speed limit, braking, and steering that SCALES with speed (less lock at high speed) via Torque/VectorForce/AngularVelocity or motor constraints, tuned per vehicle class; instant max speed and tank-style instant turning FAILS)",
+    "grip-drift-and-traction-model (a lateral grip/traction model with slip — weight transfer, oversteer/understeer, handbrake or throttle drift, tire-grip falloff — so cornering has weight and the back steps out under power; perfectly on-rails turning with infinite grip FAILS)",
+    "speed-sensation-and-feedback-coupling (speed COMMUNICATED through coupled channels — FOV widening + camera shake/pull-back, engine pitch tied to RPM/speed, wheel-spin, skid/tire smoke + skid marks, and screen effects — all scaled to actual velocity; a vehicle that moves with no speed feedback FAILS)",
+    "networked-ownership-and-smooth-control (BasePart:SetNetworkOwner to the driver for responsive local physics, server-validated, with smooth replication to remote players (no rubber-banding/jitter) and clean enter/exit/seat + control handoff; leaving default ownership so the driver fights server lag earns partial)"
+  ],
+  "meanArtifact": {
+    "name": "welded part on a seat",
+    "description": "A single part (or rigid welded body) parented to a VehicleSeat and moved by setting a constant velocity or CFrame: instant constant top speed, tank-style instant rotation to steer, no suspension (the body never leans or dips), no grip or drift model (on-rails turning), no speed feedback of any kind (fixed FOV, no engine pitch, no skid/particles), and default network ownership so remote players see it rubber-band — the generic default a beginner ships."
+  },
+  "greatArtifactHint": "A tuned physics vehicle: a constraint or raycast suspension with tuned spring/damping/ride-height so the body leans and dips; an acceleration/torque curve + speed-scaled steering + braking tuned to the vehicle class; a grip/drift traction model with weight transfer and handbrake drift; speed sensation coupled to FOV/camera-shake/engine-pitch/wheel-spin/skid-trails; and SetNetworkOwner to the driver with server validation, smooth remote replication and clean seat/enter-exit handling.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
