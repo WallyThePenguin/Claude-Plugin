@@ -1,0 +1,375 @@
+{
+  "module": "vehicles",
+  "system_module": "vehicles",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "A great Roblox vehicle is a FORCE-DRIVEN physics body, never a part teleported by CFrame or pinned at constant velocity. Everything hangs off three commitments made in BUILD ORDER before any handling tuning: (1) a genuine multi-body assembly — a heavy chassis PrimaryPart with separate UNANCHORED wheels, deliberate mass/CoM/collision-group treatment; (2) a NAMED suspension architecture per corner — either a constraint axle (CylindricalConstraint slide + SpringConstraint) OR a raycast spring-damper force model — so the body dips/leans on real travel; (3) DRIVER network ownership handed over on sit so physics simulate locally with zero input latency. Only after the assembly moves as one owned rigid body do you layer the tuned drive/steer model (acceleration ramp toward a top speed, speed-scaled steer lock), an explicit per-wheel lateral grip/traction model (decompose tire force into Y suspension / X lateral / Z longitudinal and apply each independently), the multi-channel speed-sensation layer (velocity-scaled FOV + camera + audio, all read from AssemblyLinearVelocity), and slip-GATED skid effects (trails/smoke/SFX fire only when measured slip exceeds threshold). The exceptional tier deepens the SAME systems: load-sensitive grip (scale each tire's coefficient by its suspension compression so weight transfers), a Pacejka slip-curve + friction circle, a build-speed powertrain elaborated into a gearbox, braking-as-character on top of a real powertrain, server-side ownership validation with a multi-seat tradeoff, and frame-rate-independent force integration across 30-240 FPS. The agent has no dedicated vehicle tool — you build the entire thing from create_instance/set_property (chassis, wheels, constraints, attachments, VehicleSeat, particles, sounds) and run_luau (network ownership, the per-frame raycast/force/grip/steer loop, the speed-feedback loop, the server validator). spawn_rig only seeds a test driver; capture/capture_angles verify the body dips and the wheels sit on the ground.",
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "Stand up a real physics vehicle: a multi-body assembly (heavy chassis PrimaryPart + separate unanchored wheels, deliberate mass/CoM/collision groups), a NAMED per-wheel suspension architecture (constraint axle OR raycast spring-damper) so the body rides on real travel, a VehicleSeat as the input source, and explicit DRIVER network ownership handed over on sit — force-driven, never CFrame-teleported or constant-velocity.",
+      "steps": [
+        {
+          "id": "b1",
+          "order_index": 1,
+          "instruction": "Build the vehicle as a Model with a HEAVY chassis PrimaryPart, NOT a single welded/anchored part. With create_instance make a Model and add the body Part/MeshPart as the chassis; set_property Model.PrimaryPart to it. Tune its mass DELIBERATELY via CustomPhysicalProperties density (or add an internal low ballast part) so the center of mass sits LOW — this alone removes most tipping. Keep the chassis UNANCHORED (anchored parts can never receive network ownership and stay server-simulated/laggy). The body is NEVER moved by CFrame each frame — every later step drives it with forces/constraints. This is the single line that separates a real vehicle from the generic anti-pattern.",
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-mass-com-collision-tuning",
+            "veh-nonwheeled-aero"
+          ],
+          "pitfalls": "A body welded to a seat and CFrame-teleported (or pinned at constant velocity) is the exact anti-pattern the whole rubric rejects — it has no suspension travel and fails the lean/dip requirement entirely. Default density gives a too-heavy body the suspension can't hold up; tune mass via density and seat the CoM low. Forgetting PrimaryPart breaks later seat.Parent.PrimaryPart lookups."
+        },
+        {
+          "id": "b2",
+          "order_index": 2,
+          "instruction": "Make it a genuine MULTI-BODY assembly: separate wheel parts, not one rigid block. With create_instance add four UNANCHORED Cylinder PHYSICS wheels (never the visual mesh — weld a CanCollide-off mesh onto each cylinder later). Give wheels REAL mass via CustomPhysicalProperties (massless/too-light wheels oscillate, clip through ground, and make springs freak out). Then put the chassis and wheels in separate collision groups via run_luau (PhysicsService) so wheels never collide with the body — skipping this is a classic source of a car that vibrates/hops/launches on spawn.",
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-mass-com-collision-tuning"
+          ],
+          "pitfalls": "Massless or CustomPhysicalProperties-light wheels oscillate and clip through the ground. Skipping the car<->wheel collision-group exclusion makes the wheels jam against the chassis and the car twitches/launches on spawn. A single rigid/welded part with no separate wheels fails the multi-body criterion outright."
+        },
+        {
+          "id": "b3",
+          "order_index": 3,
+          "instruction": "Commit to a NAMED per-wheel suspension architecture and CONSTRAIN its travel — this is the load-bearing baseline decision. Pick ONE and name it: (A) CONSTRAINT AXLE: per wheel, create_instance two aligned Attachments (one on the body hub, one at the wheel center directly under it) + a CylindricalConstraint (Attachment0=body, Attachment1=wheel); its linear/slide axis is the vertical suspension travel (rotate the body attachment 90° on Z so travel is vertical), its angular axis is the wheel spin. set_property LimitsEnabled with UpperLimit/LowerLimit to BOUND travel (leave a small gap at the top, e.g. UpperLimit -1 not 0, so the spring always has room). OR (B) RAYCAST FORCE MODEL: no physical wheels — each corner Attachment casts a ray down -chassis.UpVector for RAYCAST_LENGTH and applies a spring-damper force (see g-suspension). Either way the body must ride on real travel that dips/leans, not a teleport.",
+          "tools": [
+            "create_instance",
+            "set_property",
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-chassis-physics-suspension",
+            "veh-suspension-architecture-robustness"
+          ],
+          "pitfalls": "Misaligned hub/center attachments make wheels oscillate and wander. Put the slide on Attachment0 of the BODY, not relative to the wheel, or the suspension acts in the wrong frame. A wheel that slides left/right instead of up/down means you didn't rotate the body attachment 90° on Z. A single welded/CFrame-driven rigid part has NO suspension architecture and fails both criteria. Bad chassis geometry (impossible attachment angles) makes any suspension jitter — get geometry right before tuning."
+        },
+        {
+          "id": "b4",
+          "order_index": 4,
+          "instruction": "Weld in a VehicleSeat as the INPUT source and know its hard limit. With create_instance add a VehicleSeat (NOT a normal Seat) and WeldConstraint it rigidly into the chassis (seat=Part0, body=Part1); place it LOW and centered for a low CoM. The VehicleSeat auto-welds the player on touch and auto-exposes ThrottleFloat (-1..1) and SteerFloat (-1..1) you read in script — no input code needed. Its built-in MaxSpeed/Torque/TurnSpeed only auto-drive Motor6D joints RIGIDLY connected to the seat, so for a constraint/raycast car you IGNORE the auto-drive and read the Float inputs yourself.",
+          "tools": [
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-drive-steer-model"
+          ],
+          "pitfalls": "VehicleSeat auto-control only detects motors connected directly to the seat or through a rigid connection — a wheel reached through a HingeConstraint/CylindricalConstraint is NOT detected, so its built-in driving silently does nothing. That's why constraint/raycast cars read ThrottleFloat/SteerFloat and apply forces by hand. The integer Throttle/Steer are deprecated; use the Float versions. A seat buried inside the body can't be touched to sit — handle entry later with a ProximityPrompt."
+        },
+        {
+          "id": "b5",
+          "order_index": 5,
+          "instruction": "Hand the DRIVER explicit network ownership on sit so physics simulate locally with zero input latency — wire this BEFORE any handling tuning. With run_luau, a SERVER Script watches the seat: connect VehicleSeat:GetPropertyChangedSignal('Occupant') (or Humanoid.Seated). On sit, resolve the player and call chassisPrimaryPart:SetNetworkOwner(player); because ownership applies to the whole UNANCHORED welded assembly, the entire car transfers and the driver simulates it locally. On exit (Occupant==nil) call SetNetworkOwnershipAuto() (or SetNetworkOwner(nil)). Must be called server-side; parts must be unanchored. Name-guard the seat so you don't hand ownership for every seat in the game.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-network-ownership-responsive"
+          ],
+          "pitfalls": "Leaving DEFAULT auto-ownership means the server owns the car and the driver fights round-trip lag on every input (the laggy/rubber-bandy failure) — and the engine's auto-owner is often the closest/first-to-sit character, NOT the driver. Anchored parts can never change owner. SetNetworkOwner errors if called from the client or on an anchored part. Forgetting to reset on exit leaves the car owned by a player who left (jitter/stall limbo)."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "Make the same physics FEEL like a tuned vehicle: per-corner suspension contact from real raycasts/constraints with a critical-damping tune, a built acceleration ramp toward top speed with bounded speed-scaled steering, an explicit per-wheel lateral grip/traction model (Y/X/Z decomposition) with controllable slip, velocity-scaled multi-channel speed sensation (FOV+camera+audio), skid effects GATED on measured slip, and a feel-and-framing layer a tank-style fixed-camera car cannot have.",
+      "steps": [
+        {
+          "id": "g1",
+          "order_index": 1,
+          "instruction": "Compute per-corner suspension contact from REAL raycasts/constraints and tune it from physics, not by guessing. RAYCAST route: each frame in a RunService.Heartbeat/PreSimulation loop (run_luau), per corner Attachment raycast straight down (workspace:Raycast, RaycastParams filtering OUT the car's own body); compression = SUSPENSION_HEIGHT - hitDistance; derive Stiffness from equilibrium so the car rides at target height (k = mass*gravity/(targetHeight*numWheels)); Damping = dampingRatio * 2*sqrt(massPerWheel*k) with ratio ~0.8 (HIGH damping kills bounce; under-damping pogos); totalForce = k*compression - damping*springVelocity, applied UP the ray via ApplyImpulseAtPosition (force*dt) or a per-wheel VectorForce. CONSTRAINT route: add a SpringConstraint across the same two attachments — FreeLength=ride height, Stiffness=(mass*g)/height/wheelCount, Damping=2*sqrt(mass*Stiffness)*0.3..0.9/wheelCount (critical damping). When zero rays hit, the car is airborne — skip suspension.",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-suspension-contact-quality",
+            "veh-chassis-physics-suspension",
+            "veh-suspension-architecture-robustness"
+          ],
+          "pitfalls": "RAYCAST_LENGTH shorter than rest height = the car snaps/clips through ground or never finds it on bumps. Pure spring with no damping oscillates forever; LOW damping (the common mistake — people assume low=less bounce) leaves a pogo-stick. Forgetting to store last-frame length per wheel means the damper has no velocity to act on. ApplyImpulse must be scaled by dt or it explodes on frame-rate changes. Re-derive force when assembly mass changes (a passenger enters) or ride height jumps."
+        },
+        {
+          "id": "g2",
+          "order_index": 2,
+          "instruction": "Build a TUNED drive + steering model — a built acceleration toward top speed, never instant-max or tank-turn. DRIVE (read VehicleSeat.ThrottleFloat on the OWNING client): ramp the powered wheels' target rather than snapping it — lerp/tween the motor AngularVelocity (or VectorForce magnitude) toward ThrottleFloat*targetSpin each frame for an acceleration CURVE, capped at top speed. Cap correctly: targetAngularVelocity = MaxSpeed/(wheel.Size.Y/2) (linear speed ÷ tyre radius → rad/s) so the MaxSpeed dial is truthful, NOT a hardcoded spin rate. For Motor wheels set AngularActuatorType=Motor + a FINITE MotorMaxAccel (~5-50, never inf), and negate one side's velocity for mirrored geometry. STEER (read SteerFloat): rotate the front attachments / drive a Servo HingeConstraint, but INTERPOLATE TargetAngle over frames (a SteerSpeed/tween ~0.4s) instead of snapping, and scale max steer lock DOWN with speed (effectiveSteer = Steer*maxAngle*(1 - clamp(speed/MaxSpeed,0,1)*0.6)) so it turns sharp slow and gentle fast.",
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-drive-steer-model"
+          ],
+          "pitfalls": "Snapping AngularVelocity/TargetAngle to its goal = instant max speed and tank-style instant turning, which FAILS the brief and can flip the car at speed. MotorMaxAngularAcceleration left at inf gives unlimited grab and instability; MotorMaxTorque can't be negative (wrap throttle in math.abs). Forgetting the left/right sideSign makes one axle fight the other ('spins in place'). Hardcoding the spin rate makes MaxSpeed lie (reads 25, does 200); radians/sec vs studs/sec confusion is the #1 'why is my car insanely fast' bug. Ramp on the network-owner client, not the server."
+        },
+        {
+          "id": "g3",
+          "order_index": 3,
+          "instruction": "Add an EXPLICIT per-wheel lateral grip/traction model — kill the 'sliding on ice' default friction. In the per-frame run_luau loop, per wheel compute the contact-point velocity = chassis.AssemblyLinearVelocity + chassis.AssemblyAngularVelocity:Cross(point - chassis.Position). Transform into the wheel/chassis LOCAL frame (CFrame:VectorToObjectSpace) and DECOMPOSE into Y (suspension, from g1), X (lateral/steering grip) and Z (longitudinal accel/brake) and apply each INDEPENDENTLY. For X: apply an opposing impulse along the wheel's right vector = -lateralSlipVel * gripCoefficient * normalLoad via ApplyImpulseAtPosition (or a per-wheel VectorForce) AT THE CONTACT POINT (not body center — that yaw torque is what makes drift read real). DRIFT: make gripCoefficient a function of slip/handbrake — high grip at low slip, drop it (especially rear) as slip angle grows so the tail steps out controllably. For constraint cars, the cheap baseline is wheel Friction ~1.5 + lower Elasticity, but the real model is the lateral counter-force.",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-grip-traction-drift"
+          ],
+          "pitfalls": "A FIXED grip coefficient regardless of slip is the classic bug — either glued (can't drift) or slides forever like ice; grip must scale DOWN past a slip threshold. Forgetting normalLoad means airborne/light wheels still grab. Applying the lateral force at the body center instead of each contact point removes the yaw torque that makes drift feel real. Raycast wheels with NO lateral force slide like ice — you must explicitly kill side velocity."
+        },
+        {
+          "id": "g4",
+          "order_index": 4,
+          "instruction": "COMMUNICATE speed through multiple channels all scaled to MEASURED velocity, not throttle and not a fixed camera. On the OWNING client each RenderStepped (run_luau), read chassis.AssemblyLinearVelocity.Magnitude and drive: (1) Camera FOV — LERP workspace.CurrentCamera.FieldOfView from ~70 toward ~90+ as speed rises (the single biggest 'fast' cue), using dt in the lerp so it's frame-rate-independent; (2) a slight speed-scaled camera pull-back + low-frequency shake (small CFrame offset) that grows with speed and is capped; (3) engine audio — map a looping Sound.PlaybackSpeed to speed/RPM with an idle floor and a redline ceiling (optionally crossfade idle/redline loops by Volume). Because the owning client simulates the physics, all of this is local and frame-perfect.",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-speed-sensation-feedback"
+          ],
+          "pitfalls": "Hard-cutting FOV/audio instead of lerping is nauseating/jittery — always smooth toward the target. Tying FOV/pitch to THROTTLE instead of real velocity widens it even against a wall and desyncs from motion (coasting should still read fast). Maxing shake/FOV makes high speed unreadable and sickening — keep the curve gentle and capped. No upper clamp = the engine pitch screeches at high speed. Doing camera/FOV off the owning client adds latency and stutter."
+        },
+        {
+          "id": "g5",
+          "order_index": 5,
+          "instruction": "Gate skid effects on MEASURED slip so they are a truthful readout, not a keypress toggle. Reuse the SAME lateral-slip value the tire model computes in g3: when |lateralVelocity| (or slip angle / grip-breakaway) exceeds a threshold, Enable a ParticleEmitter (tire smoke) at the rear-wheel CONTACT POINT, stamp skid-mark Decals/Trails behind the wheels, and play a skid SFX; DISABLE all of them when grip is regained. Scale emitter Rate and particle Size with the magnitude of slip (gentle drift smokes lightly, full handbrake slide smokes hard). Place smoke/marks at the raycast hit position so they stay on the ground. Clean up skid decals over time so they don't leak.",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-slip-gated-effects"
+          ],
+          "pitfalls": "Emitting smoke constantly (a cosmetic keypress toggle, not gated on real slip) looks fake and tanks performance — drive it off the same slip value the tire model uses. Particles spawned at the wheel CENTER instead of the ground contact float in the air. Skid decals never cleaned up leak instances over a session. Effects driven by a handbrake KEY rather than measured slip fail the 'truthful readout' bar even if the key usually correlates."
+        },
+        {
+          "id": "g6",
+          "order_index": 6,
+          "instruction": "Add the FEEL-AND-FRAMING layer that a tank-on-rails fixed-camera car cannot have — on top of the real grip model from g3 so slip and counter-steer are meaningful. The FLOOR is that steering already comes from an actual grip/traction model (g3 makes slip and counter-steer real) AND the camera responds to motion (g4 ties FOV/shake/pull-back to measured velocity). Layer in: tighten the camera follow and add a small body/camera ROLL on hard cornering (read steer input + lateral slip), and a slight look-into-the-turn. Optionally add an automatic counter-steer assist (compare facing vs velocity vector and nudge steering toward velocity when the rear steps out) so a physically-correct car stays drivable for casual players.",
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-counter-steer-camera-feel",
+            "veh-speed-sensation-feedback"
+          ],
+          "pitfalls": "A fixed default camera over a tank-style instant-turn car cannot satisfy this — the floor REQUIRES the real grip model (g3) plus a motion-responsive camera (g4) before the feel layer means anything. Over-rolling the camera on corners is disorienting; keep it subtle. A physically-correct car with no counter-steer assist frustrates casual players (they spin out) — add the assist but don't let it fully autopilot the steering."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Deepen the SAME systems into emergent, fair, robust handling: load-sensitive grip with weight transfer, a Pacejka slip-curve + friction circle elaborating the existing tire model, a build-speed powertrain elaborated into a gearbox, braking-as-character on top of a real powertrain, server-validated driver ownership with a deliberate multi-seat tradeoff, frame-rate-independent integration across 30-240 FPS, and a force-native non-wheeled (boat/hover/aircraft) variant.",
+      "steps": [
+        {
+          "id": "e1",
+          "order_index": 1,
+          "instruction": "Make grip LOAD-SENSITIVE so weight transfer emerges. In the per-wheel loop (run_luau), scale each tire's grip coefficient (and its force budget) by that wheel's CURRENT suspension load — the spring compression from the constraint or the suspension force magnitude from the raycast (g1). Now braking dives weight onto the front tires (they bite more, rear bites less), cornering loads the outer wheels, and throttle squats the rear — redistributing which wheels grip and producing emergent throttle/inertia oversteer-understeer instead of flat on-rails grip on all four.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-load-sensitive-grip-weight-transfer"
+          ],
+          "pitfalls": "Treating tire load as constant (flat identical grip on all four wheels) means no dive/squat/weight-transfer and the car feels on rails — the criterion explicitly wants grip scaled by live spring compression. Forgetting normalLoad on airborne/unloaded wheels lets light wheels grab. This PRESUPPOSES the explicit tire model from g3 already exists — without it there is no coefficient to scale."
+        },
+        {
+          "id": "e2",
+          "order_index": 2,
+          "instruction": "Elaborate the EXISTING tire model into a slip-curve + friction circle (Pacejka). PRESUPPOSES g3's explicit grip model exists — this is its exceptional elaboration, not a from-scratch system. Per wheel compute slip angle (angle between wheel forward and its point-velocity) and feed Pacejka: D*sin(C*atan(B*x - E*(B*x - atan(B*x)))) (starter B=1, C=2.8, D=1.6, E=1.2) so grip RISES to peak then FALLS OFF past the slip limit (what makes the back step out under power). Couple it to e1's load. Then enforce a shared longitudinal+lateral budget — clamp the combined demand to a friction CIRCLE so throttle-while-cornering breaks traction — NOT a fixed coefficient or a hard F=uN clamp. Tune the coefficients visually (e.g. in Desmos).",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-friction-circle-pacejka",
+            "veh-grip-traction-drift"
+          ],
+          "pitfalls": "A fixed friction coefficient or a hard F=uN clamp fails this — it must be a slip-based curve with a shared friction-circle budget. Un-clamped friction can spike to absurd numbers and fling the car; always clamp to the circle. This is the elaboration of an EXISTING model — building Pacejka with no prior explicit tire model would skip the floor it presupposes."
+        },
+        {
+          "id": "e3",
+          "order_index": 3,
+          "instruction": "Elaborate the build-speed powertrain into a real DRIVETRAIN/GEARBOX. PARTIAL FLOOR (must already be true from g2): throttle produces a BUILT acceleration — a torque/AngularVelocity curve feeding POWERED wheels toward a top speed, not an instant constant top speed. To clear the exceptional bar, elaborate that into a powertrain: an engine torque curve vs RPM, discrete gear ratios (each gear maps wheel-spin to an RPM band), shift points (up/down), and a final-drive ratio scaling MotorMaxTorque/target spin per gear. Choose a drive layout (RWD = power rear wheels only, AWD = all four) as a deliberate character decision. Wheel-spin reads back into RPM so acceleration tapers near each gear's top and resumes after a shift.",
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-drivetrain-gearbox",
+            "veh-drive-steer-model"
+          ],
+          "pitfalls": "A build whose throttle sets an instant constant top speed (velocity/CFrame) has NOT even cleared the partial floor and cannot reach this tier. A single fixed acceleration with no gears/ratios is only the floor, not the exceptional elaboration. Keep the gearbox data-driven (a ratios table) rather than hardcoded per-vehicle."
+        },
+        {
+          "id": "e4",
+          "order_index": 4,
+          "instruction": "Give BRAKING and drivetrain layout CHARACTER — presupposes BOTH a real powertrain AND a real braking model exist. FLOOR: a real powertrain (e3) plus a real braking model — brake = drive the powered wheels' target toward 0 with high MotorMaxTorque (or a strong reverse longitudinal force), handbrake = apply that to the REAR wheels only (which, with e1/e2, locks the rear and lets the tail slide). On that floor, add character: front/rear brake bias, an engine-brake/idle torque so the car holds on hills and decelerates naturally (default a small MotorMaxTorque when throttle is released), and per-layout behavior (RWD vs AWD vs FWD feel). Tune brake force and bias so the car dives and stays stable under heavy braking rather than spinning.",
+          "tools": [
+            "run_luau",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-braking-drivetrain-character",
+            "veh-drivetrain-gearbox"
+          ],
+          "pitfalls": "This PRESUPPOSES both a real powertrain and a real braking model — bolting brake character onto a constant-velocity car fails. Zero idle/engine-brake torque makes the car roll away on slopes and coast forever ('floaty, no engine'); too high a baseline makes it impossible to coast. A handbrake applied to all four wheels won't step the tail out — rear-only."
+        },
+        {
+          "id": "e5",
+          "order_index": 5,
+          "instruction": "GUARD the driver-owned physics server-side and handle the multi-occupant tradeoff deliberately. PRESUPPOSES explicit driver ownership (b5) with a server-validation intent. On the server (run_luau), sample the chassis position every ~1s, compute distance traveled vs the physically-possible max (topSpeed*dt + margin); if exceeded, CFrame-snap the car back to the last valid position (validate over a WINDOW, not a single frame, so lag spikes don't rubber-band legit drivers). Put the vehicle in its own CollisionGroup so an owned car can't be weaponized to fling players. Handle the MULTI-SEAT tradeoff explicitly: only the DRIVER seat grants network ownership (passengers never take it), and decide what happens to ownership on driver swap/exit — re-assign to the new driver or back to the server, never leave it in no-owner limbo.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-ownership-validation-multiseat",
+            "veh-network-ownership-responsive"
+          ],
+          "pitfalls": "Trusting the client outright lets exploiters teleport/speed/fling the owned car. Over-aggressive single-frame snap-back rubber-bands legit drivers on lag — validate over a window with a generous margin. This PRESUPPOSES b5's explicit driver ownership; without it there's nothing to validate. Handing ownership to a passenger or leaving it in limbo on driver swap is the multi-seat failure."
+        },
+        {
+          "id": "e6",
+          "order_index": 6,
+          "instruction": "Make the physics FRAME-RATE INDEPENDENT across 30-240 FPS — presupposes there IS a force/integration loop (g1-g3) to make independent. In the per-frame run_luau loop, drive every force/impulse by the real dt: impulse = force*dt for ApplyImpulseAtPosition, integrate spring/damper velocities with dt, and lerp camera/FOV/steer with dt-aware factors. For stability under variable frame time use a FIXED-STEP accumulator (accumulate dt, run the physics substep at a constant timestep, interpolate the remainder) so the suspension/grip/Pacejka forces behave identically at 30 and 240 FPS. Test at capped and uncapped frame rates and confirm ride height, top speed, and grip don't change.",
+          "tools": [
+            "run_luau"
+          ],
+          "addresses_criteria": [
+            "veh-framerate-independence"
+          ],
+          "pitfalls": "Applying forces/impulses without dt (or with raw per-frame deltas) makes the car accelerate/bounce differently at 30 vs 240 FPS and can explode on frame-rate changes. Pacejka/sway-bar forces are notoriously FPS-sensitive — the friction-circle build that jitters outside 40-60 FPS is the classic failure; use a fixed-step accumulator. This PRESUPPOSES a force/integration loop exists — a CFrame-teleported body has nothing to make frame-independent."
+        },
+        {
+          "id": "e7",
+          "order_index": 7,
+          "instruction": "Provide a FORCE-NATIVE non-wheeled variant (boat/hover/aircraft) so the force-driven-mover commitment holds for any vehicle class. Keep the SAME spine — VehicleSeat input + driver SetNetworkOwner + owning-client loop — and swap the ground suspension for a buoyancy/lift/hover force. THRUST: a VectorForce (object-space, along the hull's CFrame.LookVector*throttle*speed) so it rotates WITH the craft. STEER/YAW: an AngularVelocity constraint about the up axis (watch RelativeTo). STABILIZE: AlignOrientation (the modern replacement for deprecated BodyGyro) to keep it upright. FLOAT: boats add an upward buoyancy VectorForce below the waterline (several sample points for tilt); hovercraft a constant hover force ≈ weight; aircraft a lift force scaled by forward speed (per-part GetVelocityAtPosition + dot products for independent wing forces / angular drag). Motion comes from physics-native force/velocity controllers, NEVER per-frame teleporting the body.",
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "set_property"
+          ],
+          "addresses_criteria": [
+            "veh-nonwheeled-aero",
+            "veh-drive-steer-model"
+          ],
+          "pitfalls": "A WORLD-space VectorForce doesn't rotate with the craft — apply thrust in the hull's CFrame frame or it keeps pushing the original direction after you turn (object-space Z is reversed — negate thrust). BodyGyro/BodyVelocity are deprecated; use AlignOrientation/LinearVelocity. An unset AngularVelocity.RelativeTo spins it in the wrong frame. Using AssemblyLinearVelocity instead of per-part GetVelocityAtPosition gives both wings identical force (no roll/yaw authority). Any per-frame CFrame teleport of the body fails the force-native floor entirely."
+        }
+      ]
+    }
+  ],
+  "killer_systems": [
+    {
+      "name": "Named per-wheel suspension architecture (constraint axle OR raycast spring-damper)",
+      "what": "The chassis rides on real per-corner suspension travel — either a CylindricalConstraint slide axis + SpringConstraint, or a raycast spring-damper force applied per corner — so the body visibly dips under braking, leans in corners, and absorbs bumps. This is the floor that separates a real vehicle from a CFrame-teleported/constant-velocity block.",
+      "how": "Constraint route: per wheel, two aligned Attachments (body hub + wheel center) → CylindricalConstraint (slide=suspension travel with LimitsEnabled/Upper/LowerLimit bounding it, angular=wheel spin) + a SpringConstraint across the same attachments with FreeLength=ride height, Stiffness=(mass*g)/height/wheelCount, Damping=2*sqrt(mass*Stiffness)*0.3..0.9/wheelCount (critical damping — HIGH damping, not low). Raycast route: each Heartbeat cast down -UpVector per corner, compression=SUSPENSION_HEIGHT-hitDistance, force=k*compression-damping*springVel applied via ApplyImpulseAtPosition(force*dt) or a per-wheel VectorForce; filter the car's own body out of the ray; skip suspension when no ray hits (airborne). Build via create_instance/set_property + the run_luau per-frame loop."
+    },
+    {
+      "name": "Per-wheel tire force model (Y/X/Z decomposition with slip)",
+      "what": "Each tire's force is computed in its own local frame and decomposed into Y (suspension), X (lateral/steering grip) and Z (longitudinal accel/brake), applied INDEPENDENTLY at the contact point — replacing Roblox default part-vs-part friction (slides like ice or grabs unpredictably) with a real traction model that enables controllable drift.",
+      "how": "In the per-frame run_luau loop, contactVel = AssemblyLinearVelocity + AssemblyAngularVelocity:Cross(point - chassis.Position); CFrame:VectorToObjectSpace into the wheel frame; the X (right) component is lateral slip → apply -slip*gripCoef*normalLoad along the wheel right vector via ApplyImpulseAtPosition AT THE CONTACT POINT (the yaw torque sells the drift). gripCoef falls off past a slip threshold (drift). Exceptional: scale gripCoef by live suspension load (weight transfer) and replace the linear falloff with a Pacejka slip-curve + a friction-circle clamp on combined X/Z demand."
+    },
+    {
+      "name": "Driver network ownership + server validation",
+      "what": "Network ownership of the whole unanchored assembly is handed to the DRIVER on sit so steering/physics simulate locally with zero input latency (vs server-owned round-trip lag or no-owner jitter), while the server stays the authority on legitimacy and the multi-seat tradeoff is handled deliberately.",
+      "how": "A server Script (run_luau) watches VehicleSeat:GetPropertyChangedSignal('Occupant'); on sit, chassisPrimaryPart:SetNetworkOwner(player); on exit, SetNetworkOwnershipAuto(). Only the DRIVER seat grants ownership; on driver swap re-assign or return to server (never limbo). Server-side validation: sample position every ~1s, compare distance vs topSpeed*dt+margin over a WINDOW, CFrame-snap back on violation; put the vehicle in its own CollisionGroup so it can't be weaponized. Parts must be unanchored; calls are server-side only."
+    },
+    {
+      "name": "Tuned drive + steer model with truthful top speed",
+      "what": "Throttle produces a BUILT acceleration (a ramp toward top speed, not instant-max), steering is BOUNDED and speed-scaled (sharp slow, gentle fast, interpolated not snapped), and the MaxSpeed dial actually matches real speed — the deliberate model that replaces instant-max-speed and tank-style instant turning.",
+      "how": "On the owning client (run_luau), lerp/tween the motor AngularVelocity (or force magnitude) toward ThrottleFloat*target each frame, capped at targetAngularVelocity = MaxSpeed/(wheel.Size.Y/2) so MaxSpeed is truthful; Motor wheels use AngularActuatorType=Motor + finite MotorMaxAngularAcceleration + math.abs(throttle)*torque with one side's velocity negated. Steering interpolates TargetAngle (Servo HingeConstraint) or rotates the front attachments over ~0.4s and scales max lock down with speed. Exceptional: elaborate the drive ramp into a gearbox (torque curve + gear ratios + shift points) and add braking-as-character (rear-only handbrake, engine-brake idle torque, brake bias)."
+    },
+    {
+      "name": "Velocity-scaled speed-sensation + slip-gated effects bus",
+      "what": "Speed is communicated through multiple channels all read from the vehicle's MEASURED AssemblyLinearVelocity (FOV widens on a curve, camera pulls back/shakes, engine pitch rises), and skid trails/smoke/SFX fire ONLY when measured slip exceeds threshold — a truthful readout of physics state, not a fixed camera or a cosmetic keypress toggle.",
+      "how": "On the owning client each RenderStepped (run_luau): lerp Camera.FieldOfView ~70→~90+ by speed (dt-aware, capped), grow a small camera pull-back + shake with speed, map Sound.PlaybackSpeed to speed/RPM between an idle floor and redline ceiling. Reuse the tire model's lateral-slip value to gate ParticleEmitter smoke + skid Decals/Trails + skid SFX at the rear-wheel CONTACT point, scaling emit Rate/Size with slip magnitude and disabling on regrip; clean up decals over time. Build emitters/sounds via create_instance/set_property."
+    }
+  ],
+  "common_pitfalls": [
+    "The cardinal sin: moving the body by CFrame teleport (or pinning it at constant velocity / a single linear Tween) instead of physics forces. It has no suspension travel, no lean/dip, and fails nearly every criterion. Drive the chassis with constraints/forces and let it ride on real per-wheel suspension.",
+    "Anchored or welded-into-one-rigid-part chassis: anchored parts can NEVER receive network ownership (stay server-laggy), and a single rigid block fails the multi-body/suspension criteria. Keep the chassis and separate wheels unanchored; give both real mass.",
+    "Leaving DEFAULT network ownership (server-owned) — every input round-trips and the car feels laggy/rubber-bandy — or no-owner limbo (jitter/stall). Explicitly SetNetworkOwner(driver) on sit and reset on exit; only the driver seat grants it.",
+    "Snapping motor speed/steer angle to the goal = instant max speed + tank-style instant turning (the brief's headline failure). Ramp the throttle toward top speed (finite MotorMaxAngularAcceleration), interpolate steering, and scale steer lock down with speed.",
+    "Hardcoding the wheel spin rate so the MaxSpeed property lies (reads 25, does 200); radians/sec vs studs/sec confusion is the #1 'why is my car insanely fast' bug. Cap at MaxSpeed/(wheel radius).",
+    "Under-damped suspension (assuming low damping = less bounce — it's the opposite): the chassis pogos forever and reads as fake. Derive Damping from critical-damping (HIGH relative to Stiffness) and confirm it settles in one bounce after a drop.",
+    "RAYCAST_LENGTH shorter than rest height (car clips through / never finds ground), not filtering the car's own body out of the suspension ray (it detects itself as the floor and climbs itself), or applying impulse without *dt (explodes on frame-rate change).",
+    "A FIXED lateral grip coefficient regardless of slip — glued (can't drift) or slides like ice forever. Grip must rise then fall past a slip threshold; raycast cars must explicitly cancel side velocity or they have zero traction.",
+    "Applying lateral grip force at the body center instead of each contact point — removes the yaw torque that makes drift feel real; and forgetting normalLoad lets airborne/light wheels grab.",
+    "Speed feedback tied to THROTTLE instead of measured velocity (FOV widens against a wall, coasting reads slow), or hard-cut instead of lerped (nauseating), or maxed/uncapped (unreadable, screeching audio). Read AssemblyLinearVelocity, lerp dt-aware, cap the curve.",
+    "Skid smoke/marks emitted constantly or off a handbrake KEY rather than gated on the same measured slip the tire model computes — looks fake, tanks performance, leaks un-cleaned decals. Gate on slip, place at the ground contact point, clean up.",
+    "Massless/too-light wheels and skipped car<->wheel collision groups (or missing raycast filter) — the car oscillates, hops, and launches on spawn; bad chassis geometry makes any suspension jitter no matter how you tune damping.",
+    "Exceptional criteria built without their floor: a friction circle / gearbox / braking-character / ownership validation / framerate-independence each PRESUPPOSES the underlying explicit tire model, build-speed powertrain, braking model, driver ownership, and force loop already exist — skipping the floor fails the elaboration.",
+    "Porting BeamNG/real-world numbers 1:1 (too floaty/drifty) and changing Workspace.Gravity without re-tuning suspension; loading a fresh AnimationTrack per steering frame (memory leak); building proportions by eye instead of real-world dimensions (doll-house scale)."
+  ],
+  "provenance": {
+    "sources": [
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/physics/network-ownership.md",
+      "https://devforum.roblox.com/t/how-to-implement-vehicle-mechanics-using-constraints/3575431",
+      "https://robloxapi.github.io/ref/class/CylindricalConstraint.html",
+      "https://raw.githubusercontent.com/Roblox/creator-docs/main/content/en-us/reference/engine/classes/VehicleSeat.yaml",
+      "https://raw.githubusercontent.com/Arctxrus/Roblox-Dynamic-Suspension/main/RaycastSuspension.lua",
+      "https://devforum.roblox.com/t/how-could-i-change-my-raycast-cars-grip-based-on-its-drift-angle/1457331",
+      "https://devforum.roblox.com/t/boat-and-velocity/2741308",
+      "https://create.roblox.com/docs/reference/engine/classes/VehicleSeat",
+      "https://robloxapi.github.io/ref/class/CylindricalConstraint",
+      "https://devforum.roblox.com/t/outdated-how-to-properly-tune-spring-constraints-for-cars-critical-damping-formula/2007050",
+      "https://github.com/Arctxrus/Roblox-Dynamic-Suspension",
+      "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+      "https://devforum.roblox.com/t/how-could-i-change-my-raycast-cars-grip-based-on-its-drift-angle/1457331",
+      "https://devforum.roblox.com/t/realistic-vehicleseat-acceleration/2391414",
+      "https://devforum.roblox.com/t/camera-fov-handler-based-on-velocity/1910355",
+      "https://devforum.roblox.com/t/how-to-set-sound-pitch-based-on-car-speed/820152",
+      "https://devforum.roblox.com/t/struggling-to-implement-an-intense-vehicle-camera-fov-camera-shake-motion-blur/2508964",
+      "https://create.roblox.com/docs/physics/network-ownership",
+      "https://devforum.roblox.com/t/reducing-vehicle-lag-with-setnetworkownerplayer-but-worried-about-exploits/1388561",
+      "https://devforum.roblox.com/t/feedback-on-car-suspension/2540574",
+      "https://devforum.roblox.com/t/my-most-realistic-car-chassis-yet-a-mixture-of-constraints-and-scripted-suspension/1547681",
+      "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+      "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+      "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+      "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+      "https://devforum.roblox.com/t/feedback-on-my-vehicle-system/2510291",
+      "https://devforum.roblox.com/t/tweening-vehicle-looks-very-bad/3056458",
+      "https://devforum.roblox.com/t/vehicle-chassis-suspension-freaking-out/1672973",
+      "https://devforum.roblox.com/t/feedback-on-my-vehicle-system/2510291",
+      "https://devforum.roblox.com/t/are-proportions-off-or-is-it-simply-the-style-of-building-im-making/275601",
+      "https://devforum.roblox.com/t/why-this-build-looks-bad/3117431",
+      "https://devforum.roblox.com/t/feedback-on-car-models/2182000",
+      "https://devforum.roblox.com/t/feedback-on-my-realistic-car-suspension/1652137",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, Cars With Suspension, 01:33-03:04); corroborated https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, Raycast Suspension 2, 00:00-03:23 chassis+PrimaryPart)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 03:04-09:09)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 06:06-07:37); raycast-filter corroboration https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, 04:59-05:44)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 09:09-13:43 limits+spring, 21:19 rear FreeLength); raycast spring+damper https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, 00:47-02:01); hinge+spring+prismatic variant https://www.youtube.com/watch?v=oxVaINPVXl4 (BlockyScript, 01:00-02:03)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 15:14-22:53); VehicleSeat foundation https://www.youtube.com/watch?v=Zs-QXSEvQv4 (Roblox official, Making a Car: VehicleSeat)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 22:53-27:26); aircraft identical pattern https://www.youtube.com/watch?v=V3nKBCnJOKQ (Suphi Kaner, Flight Physics, 13:09-16:11); manual per-car ownership https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, 03:23-04:10)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 28:56-36:32, connection-leak fix at 33:28-34:58)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 27:26-28:56, 37:36-42:41); hinge-motor + sign-flip https://www.youtube.com/watch?v=Zs-QXSEvQv4 (Roblox official, 03:12-04:13); https://www.youtube.com/watch?v=oxVaINPVXl4 (BlockyScript, 08:09-09:09 negate right wheels)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 42:41-45:43); radians/sec caveat https://www.youtube.com/watch?v=Zs-QXSEvQv4 (Roblox official, 01:07-01:38)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 27:26-28:56 handbrake-torque, 40:23-41:08 idle-brake default)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 45:43-53:26, tween at 50:24); servo-steer https://www.youtube.com/watch?v=Zs-QXSEvQv4 (Roblox official, 02:42-03:12) and https://www.youtube.com/watch?v=C9yr8CUeROk (Roblox official, Joints, 01:36-02:38); servo+drift https://www.youtube.com/watch?v=oxVaINPVXl4 (BlockyScript, 02:03-03:05)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 13:43-15:14 friction/elasticity); lateral-velocity grip https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, 02:01-02:37); drift-key https://www.youtube.com/watch?v=oxVaINPVXl4 (BlockyScript, 10:10-16:23)",
+      "https://www.youtube.com/watch?v=FVOowr2DXbM (Suphi Kaner, 53:26-1:06:59 center-of-mass, prompt, multi-attachment exit)",
+      "https://www.youtube.com/watch?v=WSxGsKypFCw (Krokosha666, 04:59-06:30 visual wheels in separate loop over folder)",
+      "https://www.youtube.com/watch?v=V3nKBCnJOKQ (Suphi Kaner, Flight Physics, 12:08-1:06:41; per-part velocity fix 47:14-48:28, occluded-face raycast 49:00-58:29, global wind 58:29, air-density falloff 1:00:31-1:04:31)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 17,
+      "criteria_addressed": 17,
+      "uncovered": []
+    }
+  }
+}
