@@ -1,0 +1,488 @@
+{
+  "module": "vehicles",
+  "version": "1.0",
+  "criteria": [
+    {
+      "id": "veh-chassis-physics-suspension",
+      "order_index": 1,
+      "tier": "baseline",
+      "system_module": "vehicles",
+      "statement": "The vehicle is a real physics body riding on a per-wheel suspension model, NOT a single anchored/welded part moved by constant velocity or CFrame. The chassis must commit to a named suspension mechanism — a raycast-suspension force model OR a constraint-based axle (CylindricalConstraint/SpringConstraint) — that gives the body its OWN sprung degree of freedom relative to the wheels, with a stated ride-height/rest length and BOTH a spring (stiffness/Hooke) term AND a damping term so the body settles rather than pogos or sits rigid. The discriminating commitment is that the body is decoupled from a kinematic mover: a chassis whose position/velocity is set directly (constant velocity, CFrame-teleport, or a rigid weld to a kinematically-driven seat) cannot satisfy this no matter what else is claimed.",
+      "above_generic_rationale": "The single most common generic failure is a part welded to the seat and CFrame-teleported (zero suspension), or a constraint chassis that models only the spring and bounces forever. Requiring an explicit F = kx - cv per-wheel force with a tuned stiffness:damping ratio is exactly the mechanism that produces ride compression, rebound, and the body-roll/weight cue that sells weight - and it is the foundation every serious handling model is built on.",
+      "grading": {
+        "pass": "The body is NOT moved by constant velocity / CFrame / a rigid weld to a kinematic seat; it has its own sprung degree of freedom. A named suspension mechanism (raycast force OR constraint axle) is committed to, with a stated rest/ride-height and BOTH a spring and a damping term so the body settles rather than pogos or sits rigid.",
+        "partial": "A real sprung-body mechanism is named but only the spring term is present (damping missing/untuned, so it pogos), OR a constraint chassis is used at default damping — a genuine physics body but not a settled, damped ride.",
+        "fail": "A single anchored/welded part moved by constant velocity or CFrame, a body rigidly welded to a kinematically-driven seat, or any chassis with no per-wheel spring mechanism — the body never gets its own sprung travel."
+      },
+      "evidence_required": "Confirm the chassis names a suspension MECHANISM (raycast-force suspension OR a constraint axle with a spring) that gives the body a sprung degree of freedom relative to its wheels, with a stated rest/ride-height and both a spring term AND a damping term. The decisive check: is the body's motion an OUTPUT of forces, or is it set directly? A body moved by constant velocity, per-frame CFrame, or rigidly welded to a kinematically-driven seat FAILS regardless of other claims. A welded part with no force model FAILS.",
+      "concrete_fix": "Decouple the body from any kinematic mover. Commit to one suspension mechanism: per-wheel raycast applying an upward force of stiffness*(restLength-hitDistance) minus a velocity-proportional damping term, OR a CylindricalConstraint axle plus a parallel SpringConstraint with a set FreeLength, Stiffness, and non-default Damping. Tune damping below stiffness so the ride settles in one or two oscillations.",
+      "exemplar_refs": [
+        "Per-wheel raycast suspension: VectorForce = stiffness*(restLength - hitDistance) - damping*suspensionAxisVelocity at the wheel contact point",
+        "CylindricalConstraint axle + parallel SpringConstraint, Stiffness ~3500 / Damping ~200, settles in 1-2 oscillations"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628",
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/feedback-on-my-realistic-car-suspension/1652137",
+          "https://devforum.roblox.com/t/feedback-on-custom-made-raycast-based-suspension-system/2092891",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM",
+          "https://www.youtube.com/watch?v=WSxGsKypFCw",
+          "https://devforum.roblox.com/t/raycast-suspension-or-spring-constraints-suspension/1986455"
+        ]
+      },
+      "change_reason": "Original keyed PASS on inspecting code for an explicit F=stiffness*compression-damping*compressionVelocity formula with separately-named constants and observed settle-in-1-2-oscillations behavior. Neither artifact ships inspectable code, so the GREAT artifact's genuine claim ('a constraint or raycast suspension with tuned spring/damping/ride-height so the body leans and dips') failed the formula bar and landed at the same 'fail' as the MEAN's explicit welded-part-on-constant-velocity. Rewrite moves the bar to the named-mechanism + sprung-decoupling commitment the GREAT artifact states and the MEAN explicitly negates, so it now discriminates."
+    },
+    {
+      "id": "veh-mass-com-collision-tuning",
+      "order_index": 2,
+      "tier": "baseline",
+      "system_module": "vehicles",
+      "statement": "The vehicle is a genuine multi-body assembly — separate wheels and a chassis — whose handling presupposes deliberate mass/CoM/collision treatment, NOT a single rigid/welded part. A real per-wheel suspension (raycast or constraint) is itself the structural proof of separate wheels-and-body, since you cannot ride wheels on springs if the body IS the wheels. On top of that physical assembly the build should treat mass as a handling input: intentional Density/CustomPhysicalProperties (not all-default), a seat/CoM lowered into the chassis for rollover resistance, front vs rear suspension tuned so the car sits level under its weight bias, a collision group disabling wheel-vs-body collisions, and a rounded ground collider so the car slides over kerbs instead of catching and flinging. The decisive discriminator is multi-body-with-suspension (separate wheels riding a sprung chassis) versus a single welded/CFrame-driven rigid mass: the latter has no wheels to tune, no CoM to lower relative to, and no wheel-vs-body collision to resolve, and FAILS no matter what else is claimed.",
+      "above_generic_rationale": "The most common generic failure is the single welded/CFrame body with no wheels at all (nothing to tune), followed by default-density parts with a high CoM (tippy, floaty), identical springs (nose-up/down stance), no wheel/body collision group (the car spasms), and a boxy collider that snags kerbs. Requiring a genuine wheels-and-body assembly first, then mass/CoM/asymmetric-spring/collision-group/collider-shape tuning, is the baseline pass that separates a tuned vehicle from a dropped-in or welded kit.",
+      "grading": {
+        "pass": "Genuine separate wheels and body (a named per-wheel suspension establishes this) AND deliberate mass treatment: intentional Density/CustomPhysicalProperties, a lowered/centered CoM, front vs rear suspension balanced for weight bias, a collision group disabling wheel-vs-body collisions, and a rounded ground collider so the car slides along a kerb.",
+        "partial": "The vehicle is a genuine wheels-and-body assembly (a named raycast/constraint suspension, so separate sprung wheels exist) but the full mass/CoM/collision-group/collider bundle is not all spelled out — a real multi-body car that is not yet fully mass-tuned.",
+        "fail": "A single welded/rigid/CFrame-driven body (or all-default-density parts) with no separate sprung wheels — a dropped-in or welded mass with no wheels to tune, no CoM to lower, and no wheel-vs-body collision to resolve."
+      },
+      "evidence_required": "First confirm the vehicle is a genuine multi-body assembly — separate wheels riding a sprung chassis — which a named raycast/constraint per-wheel suspension establishes. A single welded/rigid/CFrame-driven body with no separate wheels FAILS outright (there is nothing to tune mass/CoM/collision against). Then, for PASS, confirm the mass treatment is deliberate: non-default Density/CustomPhysicalProperties, a lowered/centered CoM, front vs rear suspension balanced for weight bias, a collision group disabling wheel-vs-body collisions, and a rounded ground collider. A multi-body car that names suspension but no further mass/CoM/collision tuning earns PARTIAL; a single welded/default mass FAILS.",
+      "concrete_fix": "Build the car from separate wheels and a body. Set deliberate CustomPhysicalProperties on each. Lower an invisible seat to drop CoM. Tune the heavier axle's spring so the car sits level. Create 'Car' and 'Wheel' collision groups with their intersection disabled. Use a rounded primary ground collider with cosmetic wheels on visual joints.",
+      "exemplar_refs": [
+        "'Car' and 'Wheel' collision groups with the intersection unticked so sprung wheels travel into the body volume without physics-fighting",
+        "Lowered invisible seat to drop CoM; rear spring FreeLength raised on a rear-heavy car so it sits level; rounded pill ground collider"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/car-slides-like-ice-how-do-you-add-traction/1316807",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM",
+          "https://www.youtube.com/watch?v=FoLLZDg36Hg",
+          "https://www.youtube.com/watch?v=DnOYqtZY6u4",
+          "https://devforum.roblox.com/t/my-most-realistic-car-chassis-yet-a-mixture-of-constraints-and-scripted-suspension/1547681"
+        ]
+      },
+      "change_reason": "The prior rewrite still keyed PASS on an enumerated tuning bundle (intentional densities + low CoM + differing front/rear free-lengths + collision group + rounded collider) that the GREAT artifact's prose names none of, so GREAT scored the same 'fail' as the MEAN's single welded part. The new decisive discriminator is structural and provable from the artifact's own words: a named raycast/constraint suspension logically REQUIRES separate wheels riding a sprung body, which the GREAT artifact explicitly claims and the MEAN explicitly negates ('a single part or rigid welded body'). This makes GREAT clear the floor (multi-body assembly that necessarily has wheels-and-body to tune) at PARTIAL while the MEAN's single rigid mass FAILS, restoring discrimination, while keeping the full mass/CoM/collision bundle as the PASS ceiling."
+    },
+    {
+      "id": "veh-suspension-contact-quality",
+      "order_index": 3,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "Suspension contact is computed per-corner from real raycasts (or constraints) against the world, which PRESUPPOSES a raycast/constraint suspension exists at all — a build that names such a suspension has cleared this criterion's floor, and a constant-velocity/CFrame body with no suspension has not. On top of a real suspension, the PASS ceiling is the correctness polish that separates a clean raycast car from a janky one: damping taken against the true per-wheel contact-point velocity (AssemblyLinearVelocity + AssemblyAngularVelocity:Cross(point-CoM)) rather than frame-to-frame ray-length delta, multi-ray/footprint sampling instead of a single down-ray, and a RaycastParams/collision-group self-exclusion so rays never read the chassis as ground. A vehicle with NO suspension and NO raycasts cannot reach even the floor.",
+      "above_generic_rationale": "Hobby raycast suspensions damp the wrong quantity (ray-length delta, frame-rate dependent) so the car pogos, fire a single ray so wheels pop on edges, and self-intersect so the car launches. Requiring contact-point cross-product velocity, footprint sampling, and a self-exclusion filter targets the three specific documented bugs that plague generic raycast cars and are invisible in a screenshot — but the prerequisite floor is simply that a real per-wheel suspension exists to be polished at all.",
+      "grading": {
+        "pass": "A real raycast/constraint suspension exists AND all three correctness details are present: cross-product contact-point velocity damping, multi-ray footprint sampling, and self-exclusion filtering. The wheel climbs a kerb smoothly with no pop or self-launch.",
+        "partial": "A real raycast/constraint per-wheel suspension is committed to, but one or more correctness internals are unstated or missing — e.g. damping may use ray-length delta, a single down-ray, or only self-exclusion is described. A genuine suspension whose contact-quality polish is not fully shown.",
+        "fail": "No suspension and no raycasts at all (the body is moved by constant velocity/CFrame) — there is nothing for the contact-quality details to apply to."
+      },
+      "evidence_required": "First confirm a raycast or constraint per-wheel suspension actually EXISTS — a named raycast/constraint suspension clears the floor (PARTIAL minimum); a constant-velocity/CFrame body with 'no suspension' FAILS outright. Then, for PASS, read the suspension loop for the correctness details: damping against a cross-product contact-point velocity (not ray-length delta), multi-ray/footprint sampling (not a single down-ray), and RaycastParams/collision-group self-exclusion so rays don't self-hit. Driving a kerb, the wheel should climb smoothly with no pop or self-launch.",
+      "concrete_fix": "Ensure a real per-wheel raycast suspension exists. Compute per-wheel velocity as AssemblyLinearVelocity + AssemblyAngularVelocity:Cross(worldPoint-Position) and damp on the spring axis. Replace the single down-ray with ~8-10 rays fanned across the wheel's leading arc, nearest hit wins. Set RaycastParams.FilterType=Exclude with the car model in FilterDescendantsInstances.",
+      "exemplar_refs": [
+        "Contact-point velocity: AssemblyLinearVelocity + AssemblyAngularVelocity:Cross(worldPoint - assembly.Position), damped on the spring axis",
+        "~8-10 rays fanned across the wheel's leading arc (shortest hit wins); RaycastParams.FilterType=Exclude with the car model"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628",
+          "https://devforum.roblox.com/t/feedback-on-custom-made-raycast-based-suspension-system/2092891",
+          "https://www.youtube.com/watch?v=WSxGsKypFCw"
+        ]
+      },
+      "change_reason": "The prior version's grading allowed only PASS (all three correctness details) or FAIL (no suspension), with no rung for 'suspension exists but internals unstated' — so the GREAT artifact's named 'constraint or raycast suspension' collapsed to the same 'fail' as the MEAN's no-suspension constant-velocity body. The rewrite makes the named-suspension floor an explicit PARTIAL: a build that commits to a raycast/constraint suspension (which GREAT does and MEAN explicitly lacks) reaches PARTIAL, while the three correctness internals remain the PASS ceiling. Now GREAT=partial separates from MEAN=fail."
+    },
+    {
+      "id": "veh-drive-steer-model",
+      "order_index": 4,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "Drive and steering form a deliberate, tuned model rather than instant-max-speed and tank-style instant turning. The build must commit to: throttle producing a BUILT acceleration (an acceleration/torque ramp toward a top speed, not an instant constant top speed set by velocity/CFrame), and steering that is BOUNDED and speed-aware (a finite steer lock that scales DOWN with speed, not a tank-style instant rotation). On top of that floor, the polished model reads the analog SteerFloat/ThrottleFloat (-1..1) and smooths them (not deprecated discrete -1/0/1), drives through a bounded actuator with FINITE MotorMaxTorque AND MotorMaxAcceleration, governs top speed by the FORWARD velocity component (velocity:Dot(lookVector), not total magnitude, so the cap doesn't kill drift), derives motor target AngularVelocity from MaxSpeed/(wheelRadius) so the stated top speed is honest, eases steering via a Servo/tween rather than snapping, and applies engine-braking on throttle release. The decisive discriminator is a tuned acceleration-curve + speed-scaled steering model versus instant-constant-top-speed + tank-instant-turning.",
+      "above_generic_rationale": "The generic vehicle reads binary input, cranks AngularVelocity with infinite acceleration, instant-snaps steering, caps total speed (killing drift), and hard-codes the spin rate so MaxSpeed is a lie. Requiring a built acceleration curve and speed-scaled bounded steering as the floor, then analog input, bounded actuators, forward-component speed governing, radius-derived angular velocity, eased steering, and engine-braking as the ceiling, is the bundle of concrete tunable details that separates a drivable car from an on/off twitch box.",
+      "grading": {
+        "pass": "A built acceleration curve and speed-scaled bounded steering, PLUS the polish: SteerFloat/ThrottleFloat read and smoothed; FINITE MotorMaxAcceleration and MotorMaxTorque; speed cap via velocity:Dot(chassisLook) not magnitude; motor AngularVelocity = MaxSpeed/(wheelRadius); Servo/eased steering with lock scaling DOWN at speed; and throttle-release engine-braking.",
+        "partial": "The model floor is met — throttle builds an acceleration/torque curve toward top speed (not instant constant speed) AND steering is bounded and speed-scaled (not tank-instant) — but one or more of the code-level refinements are unstated or missing (e.g. total-magnitude speed cap, snapped steering, no engine-braking, or analog-input use unconfirmed).",
+        "fail": "Instant constant top speed set via velocity/CFrame, and/or tank-style instant rotation to steer — an on/off twitch box with no built acceleration and no speed-scaled bounded steering."
+      },
+      "evidence_required": "First confirm the floor: throttle produces a BUILT acceleration toward a top speed (an acceleration/torque curve), NOT an instant constant top speed set via velocity/CFrame; AND steering is a bounded, speed-scaled lock (lock reduces at speed), NOT a tank-style instant rotation. Instant constant top speed and/or tank-instant turning FAILS outright. Then, for PASS, confirm the polish: code reads SteerFloat/ThrottleFloat (not discrete Steer/Throttle) and smooths them; MotorMaxAcceleration and MotorMaxTorque are finite (not math.huge/default); the speed cap uses velocity:Dot(lookVector) not velocity.Magnitude; motor AngularVelocity = MaxSpeed/(wheelRadius); steer is reached via a Servo/tween ease (not an instant set); and throttle-release applies engine-braking.",
+      "concrete_fix": "Swap discrete inputs for SteerFloat/ThrottleFloat and lerp them. Bound MotorMaxAcceleration (e.g. a few thousand) and MotorMaxTorque. Cap drive by curtailing force only when velocity:Dot(chassisLook) nears MaxSpeed. Set motor target = (MaxSpeed/(wheelRadius)) * throttle. Steer via a Servo with AngularSpeed, scale max steer angle by 1/(1+speed*k). On throttle=0, keep a residual hold torque (~2000) and use math.abs(torque) with math.sign(velocity) for direction.",
+      "exemplar_refs": [
+        "Motor target AngularVelocity = (MaxSpeed/(wheel.Size.Y/2)) * throttle; speed cap via velocity:Dot(chassisLook)",
+        "Servo steering with AngularSpeed, max steer angle scaled by 1/(1+speed*k); residual hold torque ~2000 on throttle release"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/reference/engine/classes/VehicleSeat",
+          "https://create.roblox.com/docs/physics/constraints/cylindrical",
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM",
+          "https://devforum.roblox.com/t/how-to-implement-vehicle-mechanics-using-constraints/3575431"
+        ]
+      },
+      "change_reason": "The prior PASS required a long list of code-level specifics (SteerFloat read, finite MotorMaxAcceleration, Dot-product speed cap, radius-derived AngularVelocity, Servo easing, engine-braking) none of which the GREAT artifact's prose substantiates, so GREAT's genuine 'acceleration/torque curve + speed-scaled steering + braking' claim scored the same 'fail' as the MEAN's explicit 'instant constant top speed + tank-style instant rotation'. The rewrite adds an explicit floor — built acceleration (not instant top speed) AND speed-scaled bounded steering (not tank turning) — that the GREAT artifact's named claims clear at PARTIAL and the MEAN explicitly negates, while keeping the analog-input/bounded-actuator/Dot-cap/radius-AngularVelocity/Servo/engine-braking bundle as the PASS ceiling."
+    },
+    {
+      "id": "veh-grip-traction-drift",
+      "order_index": 5,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "The vehicle has an explicit lateral grip / traction model with slip, not Roblox default part-vs-part friction (which slides like ice or grabs unpredictably). Tire forces are decomposed in a per-wheel local frame into Y (suspension), X (lateral/steering grip) and Z (longitudinal accel/brake) and applied independently. Lateral grip is produced by projecting each wheel's velocity onto its local axes, isolating the SIDEWAYS component, and applying a counter-force that opposes it; the STRENGTH of that cancellation is the tunable grip (full cancel = railed traction, partial cancel = controllable drift). The model produces weight to cornering and lets the back step out under power. Perfectly on-rails infinite-grip turning FAILS; controllable, intentional drift/slide PASSES.",
+      "above_generic_rationale": "The most common complaint in the source threads is 'car slides like ice'; the naive fix (crank friction) is unstable and surface-dependent. Explicitly decomposing tire force into 3 axes and opposing lateral slip with a tunable counter-force is the precondition for any believable handling and the exact mechanism that makes a car both corner crisply AND drift on purpose.",
+      "grading": {
+        "pass": "Per-wheel velocity is projected onto wheel-local axes and a counter-force opposes the isolated SIDEWAYS component (a vector projection + counter-force), with a tunable grip coefficient (ideally per axle) - NOT a reliance on cranking CustomPhysicalProperties.Friction. A hard corner has weight, and throttle/handbrake mid-corner breaks the rear into a holdable, recoverable slide.",
+        "partial": "Some lateral-grip authoring exists (e.g. a counter-force on sideways velocity) but the tire force is not cleanly decomposed into independent X/Y/Z axes or the grip strength is fixed/not tunable - cornering has some weight but drift is not controllable, OR grip is partly faked with raised part Friction.",
+        "fail": "No lateral-slip model - the car relies on default part-vs-part friction (slides like ice or grabs unpredictably), or turning is perfectly on-rails with infinite grip and no breakaway."
+      },
+      "evidence_required": "Read the per-wheel force code. Confirm velocity is projected onto wheel-local axes and that a force opposes the sideways/lateral component specifically (a vector projection + counter-force), NOT a reliance on cranking CustomPhysicalProperties.Friction. Confirm the lateral grip coefficient is a tunable value (and ideally adjustable per axle). In a playtest: a hard corner should have weight, and applying throttle/handbrake mid-corner should break the rear into a slide that the player can hold and recover - not a perfectly glued turn and not an uncontrolled ice skid.",
+      "concrete_fix": "For each wheel, take its contact-point velocity, project onto the wheel's right vector to get lateral slide, and apply VectorForce = -lateralSlide * gripCoefficient * load at the wheel. Expose gripCoefficient per axle (lower at the rear for an oversteer/drift bias). Do not raise part Friction to fake traction.",
+      "exemplar_refs": [
+        "VectorForce = -lateralSlide * gripCoefficient * load, lateralSlide = velocity projected onto the wheel right vector",
+        "gripCoefficient exposed per axle (lower rear) for an oversteer/drift bias; full cancel = railed, partial = controllable drift"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/how-do-i-script-drifting-for-a-raycastscripted-suspension-vehicle/2578527",
+          "https://devforum.roblox.com/t/car-slides-like-ice-how-do-you-add-traction/1316807",
+          "https://devforum.roblox.com/t/how-could-i-change-my-raycast-cars-grip-based-on-its-drift-angle/1457331",
+          "https://www.youtube.com/watch?v=WSxGsKypFCw",
+          "https://devforum.roblox.com/t/inconsistent-tire-friction-at-different-angles/3008645"
+        ]
+      }
+    },
+    {
+      "id": "veh-speed-sensation-feedback",
+      "order_index": 6,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "Speed is COMMUNICATED through multiple feedback channels all scaled to the vehicle's actual measured velocity, not left to a fixed camera that makes 20 studs/s look identical to 200. At minimum: camera FieldOfView widens on a curve as speed rises (e.g. an asymptotic function toward a max FOV) eased/lerped rather than snapped; AND a second velocity-coupled cue from {speed-gated camera shake/bob using lerp-smoothed sin/cos that only activates past a speed threshold and scales amplitude AND frequency with speed; engine Sound PlaybackSpeed/pitch and volume driven by wheel RPM or forward speed; wheel-spin / skid; motion blur or vignette intensifying with speed; a slight camera trail/lag that falls back under acceleration}. All cues read from real velocity (AssemblyLinearVelocity), so they stay truthful on hills, collisions and slip. A vehicle that moves with no speed feedback FAILS; multi-channel velocity-scaled feedback PASSES.",
+      "above_generic_rationale": "The entire generic VehicleSeat pipeline ignores the camera and audio, so a mechanically fast car still feels slow and a constant-pitch engine loop is an instant AI-built tell. Speed-coupled FOV is the cheapest highest-impact lever, and stacking shake + engine-pitch + blur all driven off real velocity is the authored 'juice' that makes the same physics feel exhilarating - the feedback-coupling half of the brief that chassis-only builds omit.",
+      "grading": {
+        "pass": "Camera FieldOfView is a continuous, lerped/eased function of measured speed (not constant, not snapped) AND at least one more channel scales with the same measured velocity (speed-gated lerp-smoothed shake/bob; engine Sound pitch/volume from RPM or forward speed; or speed-tied motion blur/vignette). Every cue reads from AssemblyLinearVelocity/RPM, not raw throttle input; coasting/braking reverses all of them.",
+        "partial": "Exactly ONE velocity-scaled channel is present (e.g. FOV widening alone, or engine pitch alone), OR a cue is driven by throttle INPUT rather than measured velocity (so it lies on hills/collisions/slip) - some speed feel but not multi-channel and truthful.",
+        "fail": "No speed feedback - fixed FOV, constant-pitch engine loop, no shake/blur, so 20 studs/s and 200 studs/s look and sound identical."
+      },
+      "evidence_required": "Confirm camera FOV is a continuous function of measured speed (lerped, not constant, not snapped) AND at least one more channel scales with the same measured velocity: shake/bob gated by a speed threshold and lerp-smoothed; engine sound pitch/volume mapped to RPM or speed; or motion blur/vignette tied to speed. Confirm cues read AssemblyLinearVelocity/RPM, not raw throttle input. In a playtest: accelerating should visibly rush the world in (FOV), agitate the view at high speed only, and rise engine pitch; coasting/braking should reverse all of them.",
+      "concrete_fix": "Lerp camera.FieldOfView along a curve like -100000/(100*speed+3500)+90. Add a CameraOffset bob of amplitude and frequency scaling with speed, gated above ~60 studs/s and lerp-eased each frame. Drive engineSound.PlaybackSpeed and Volume from wheel RPM. Optionally add a speed-scaled motion-blur/vignette and a spring-lagged camera. Source every cue from AssemblyLinearVelocity, not input.",
+      "exemplar_refs": [
+        "Camera FOV lerped along -100000/(100*speed+3500)+90 toward a max FOV asymptote",
+        "CameraOffset bob gated above ~60 studs/s, amplitude+frequency scaling with speed; engine Sound PlaybackSpeed/Volume from wheel RPM"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/struggling-to-implement-an-intense-vehicle-camera-fov-camera-shake-motion-blur/2508964",
+          "https://www.youtube.com/watch?v=e9OriySqLjQ",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM"
+        ]
+      }
+    },
+    {
+      "id": "veh-slip-gated-effects",
+      "order_index": 7,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "Tire/grip feedback effects are a truthful READOUT of physics state, not a cosmetic keypress toggle. Ground skid-mark Trails, tire-smoke particles, and skid SFX are enabled ONLY when a wheel's measured slip (lateral velocity magnitude / grip breakaway) exceeds a threshold - driven by the same slip value the tire model uses - and are disabled when the wheel is airborne. The player can read grip loss from the effects because they fire exactly when the tire is actually sliding.",
+      "above_generic_rationale": "Amateur skid effects fire on a keypress or play in mid-air, so they're decorative and lie about grip. Gating Trails/smoke/sound on the actual slip magnitude the physics computes makes the feedback diagnostic - the hallmark of polished drift games - and keeps the presentation honest, the same discipline as sourcing speed cues from real velocity.",
+      "grading": {
+        "pass": "Skid-mark Trails / tire-smoke particles / skid SFX are gated on the wheel's computed slip magnitude (the same quantity the grip model produces) AND suppressed when the wheel is airborne. In a playtest the effects appear precisely on traction loss (drift/handbrake/hard corner), stop when grip returns, and never play mid-air or on a straight grippy line; emit rate/opacity ideally scales with slip magnitude.",
+        "partial": "Effects are tied to a physics-ish proxy (e.g. throttle level or speed) rather than the actual slip magnitude, OR they fire on slip but are not suppressed when airborne - partly truthful but not a clean readout of the tire model's slip.",
+        "fail": "Skid marks/smoke/sound fire on a keybind or throttle input, play in mid-air, or run from an always-on emitter - decorative effects that lie about grip."
+      },
+      "evidence_required": "Read the effect-enabling logic. Confirm Trails/smoke/SFX are gated on the wheel's computed slip magnitude (the same quantity the grip model produces), NOT on a keybind, throttle input, or an always-on emitter, and that they're suppressed in the air. In a playtest: skid marks and smoke should appear precisely when the car breaks traction (drift/handbrake/hard corner) and stop when grip returns, never in mid-air and never on a straight grippy line.",
+      "concrete_fix": "Expose the lateral-slip magnitude from the tire model. In the effect loop, set Trail.Enabled / ParticleEmitter.Enabled / play skid Sound only when slip > slipThreshold AND the wheel is grounded; disable otherwise. Drive emit rate/opacity from the slip magnitude for proportional intensity.",
+      "exemplar_refs": [
+        "Trail.Enabled / ParticleEmitter.Enabled / skid Sound set only when slip > slipThreshold AND wheel grounded",
+        "Emit rate and opacity driven from the lateral-slip magnitude for proportional intensity; disabled in mid-air"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-chassis-tire-marks-and-smoke/1399093",
+          "https://devforum.roblox.com/t/how-could-i-change-my-raycast-cars-grip-based-on-its-drift-angle/1457331"
+        ]
+      }
+    },
+    {
+      "id": "veh-network-ownership-responsive",
+      "order_index": 8,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "Network ownership is explicitly handed to the DRIVER so steering/physics simulate locally with zero input latency, instead of being left server-owned (every input round-trips, car feels laggy/rubber-bandy) or in no-owner limbo (jitter/stall). On seat entry (hook VehicleSeat Occupant change / Humanoid.Seated, resolve the player), call SetNetworkOwner(player) on the vehicle assembly; on exit, explicitly reclaim ownership to the server (SetNetworkOwnershipAuto / clear) so the car never sits in limbo. The whole connected assembly (and any cargo/loose parts riding on it) is kept on the single owner. Leaving default/server ownership so the driver fights server lag earns at most partial credit.",
+      "above_generic_rationale": "Driver network ownership is the single biggest feels-responsive-vs-feels-laggy lever and it's invisible in screenshots, so generic builds skip it and leave the server (or a random passenger) owning the car, adding round-trip delay to every steer input. The distinguishing detail beyond the entry call is the clean exit-handback - exactly where naive implementations leave cars in jittering limbo.",
+      "grading": {
+        "pass": "SetNetworkOwner(driver) is called when the player occupies the VehicleSeat AND ownership is explicitly reset on exit (SetNetworkOwnershipAuto / handback, not left dangling). The ownership target is the whole connected assembly (plus any cargo/loose parts), not just the seat. With two clients, the driving client has responsive, lag-free control.",
+        "partial": "SetNetworkOwner(driver) is set on entry but ownership is never reclaimed on exit (left in limbo), OR only the seat is owned rather than the whole assembly, OR ownership is left at default/server so the driver fights server lag - the responsive-feel lever is partly applied.",
+        "fail": "No explicit SetNetworkOwner at all - the car stays server-owned (every input round-trips, rubber-bands) or in no-owner limbo (jitter/stall)."
+      },
+      "evidence_required": "Confirm SetNetworkOwner(driver) is called when the player occupies the VehicleSeat and that ownership is explicitly reset on exit (not left dangling). Confirm the whole assembly is the ownership target, not just the seat. Check for the clean exit-handback specifically - many implementations set ownership on entry but never reclaim it. With two clients, the driving client should have responsive, lag-free control.",
+      "concrete_fix": "On VehicleSeat.Occupant change, resolve the player from the Humanoid and call vehicleSeat:SetNetworkOwner(player); on exit call SetNetworkOwnershipAuto(). Assign any parts riding on the vehicle to the same owner so the assembly stays single-owner. Re-assert driver ownership if a passenger entered first.",
+      "exemplar_refs": [
+        "VehicleSeat.Occupant change -> resolve player -> SetNetworkOwner(player); on exit -> SetNetworkOwnershipAuto()",
+        "Cargo/loose parts assigned to the same owner so the whole assembly stays single-owner"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://create.roblox.com/docs/physics/network-ownership",
+          "https://devforum.roblox.com/t/reducing-vehicle-lag-with-setnetworkownerplayer-but-worried-about-exploits/1388561",
+          "https://devforum.roblox.com/t/handling-client-sided-vehiclesnetwork-ownershipreplication/1910438",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM"
+        ]
+      }
+    },
+    {
+      "id": "veh-counter-steer-camera-feel",
+      "order_index": 9,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "On top of a real grip/steering model, the vehicle adds a feel-and-framing layer that a tank-style on-rails car with a fixed default camera cannot have. The FLOOR is that steering comes from an actual grip/traction model (so slip and counter-steer are even meaningful) AND the camera responds to motion rather than being a fixed default seat-lock (e.g. speed-coupled FOV/shake, a chase camera that reacts to the car's movement). The PASS ceiling is the two authored layers: (1) a counter-steer assist that computes the slip angle between the chassis velocity vector and its heading and blends a proportional corrective steer (k*angle) while still letting deliberate handbrake/throttle drift be sustained; and (2) a movement-aware chase camera (NOT seat-locked) that auto-rotates toward the behind-car yaw only above a speed threshold, follows chassis pitch on slopes, and loosens its orientation-follow as AssemblyAngularVelocity rises so it detaches during spins. A tank-style on-rails car (no grip model) with a fixed default camera fails the floor outright.",
+      "above_generic_rationale": "Generic realistic chassis are unforgiving and feel bad while pure arcade chassis feel weightless, and a rigidly seat-locked camera snaps and nauseates during spins. The floor — steering that comes from a grip model plus a camera that reacts to motion — is what makes the action even legible; velocity-vs-heading counter-steer and Roblox's own movement-gated auto-rotate / slope pitch-follow / spin detachment are the accessibility and framing ceiling that makes the action readable without sickness.",
+      "grading": {
+        "pass": "BOTH layers present: a proportional velocity-vs-heading counter-steer that preserves intentional drift, AND a movement-aware chase camera exhibiting all three behaviors (speed-gated yaw auto-rotate, slope pitch-follow, spin detachment via AssemblyAngularVelocity).",
+        "partial": "The floor is met — steering comes from a real grip model AND the camera responds to motion (speed-coupled FOV/shake or a motion-reactive chase camera) — but neither full authored layer is present, OR exactly one authored layer (counter-steer OR the three-behavior camera) is present, OR the counter-steer kills intentional drift.",
+        "fail": "On-rails/tank steering with no grip model AND a fixed/default seat-locked camera that doesn't react to motion — neither the feel floor nor either authored layer is present."
+      },
+      "evidence_required": "First confirm the floor: steering derives from a real grip/traction model (not on-rails tank rotation) AND the camera responds to vehicle motion rather than being a fixed default seat-lock (speed-coupled FOV/shake or a motion-reactive chase camera counts). A tank-style on-rails car with a fixed default camera FAILS outright. Then, for PASS, confirm BOTH authored layers: a counter-steer assist computing the velocity-vs-heading slip angle and applying a proportional correction while leaving intentional drift sustainable, AND a chase camera that auto-rotates only when moving, follows slope pitch, and loosens during high rotational velocity.",
+      "concrete_fix": "Add steerCorrection = k*angle(velocityVector, headingVector) blended into the steer input, tuned so intentional drift survives. For the camera, lerp toward the behind-car yaw only above a speed threshold, follow chassis pitch on slopes, and scale orientation-follow strength down as AssemblyAngularVelocity rises so it detaches during spins.",
+      "exemplar_refs": [
+        "steerCorrection = k * angle(velocityVector, headingVector) blended into steer input, but intentional drift stays sustainable",
+        "Chase camera: yaw-follow gated by speed threshold + slope pitch-follow + orientation-follow strength scaled down as AssemblyAngularVelocity rises"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/driving-a-better-vehicle-camera/881216",
+          "https://www.youtube.com/watch?v=e9OriySqLjQ"
+        ]
+      },
+      "change_reason": "The prior rewrite's floor still required at least ONE of the two specific authored layers (slip-angle counter-steer OR a three-behavior movement-aware camera), and the GREAT artifact names neither — its camera-shake/FOV is only a speed cue — so GREAT scored the same 'fail' as the MEAN's explicit on-rails tank steering + fixed FOV. The discrimination failure was that the floor sat above what GREAT claims. The rewrite lowers the floor to 'real grip-based steering + a camera that responds to motion at all' (which GREAT clears: it has a grip/drift model and speed-coupled camera shake/FOV, while the MEAN explicitly has tank steering + fixed default FOV), making GREAT=partial vs MEAN=fail, and keeps the slip-angle counter-steer + full movement-aware chase camera as the PASS ceiling."
+    },
+    {
+      "id": "veh-suspension-architecture-robustness",
+      "order_index": 10,
+      "tier": "good",
+      "system_module": "vehicles",
+      "statement": "The chassis commits to a NAMED, deliberate suspension architecture — a raycast-force-per-wheel model OR a constraint-based axle (CylindricalConstraint/SpringConstraint) — rather than a single welded/CFrame-driven rigid part that has no suspension architecture to speak of. Naming a real per-wheel suspension architecture (raycast OR constraint) is the FLOOR: it is the structural precondition for every robustness judgment below, and a single welded/anchored/constant-velocity/CFrame body has no architecture to harden. On top of that floor, the PASS ceiling is the production-load and edge-case hardening that separates a single tuned test car from a build that survives a full server: the suspension type is justified for multiplayer load (lightweight raycast + VectorForce per wheel preferred over dozens of live SpringConstraints when many vehicles share a server, since constraint springs cause server-wide physics lag at scale); CylindricalConstraint travel limits are set to a deliberately offset range (e.g. upper -1, lower -2) that reserves spring headroom so the suspension never bottoms out; cosmetic wheels on a raycast chassis are animated from physics the system already produced (spin from speed/distance, vertical offset from compression, visible steer from steer input) for EVERY car in the folder including remote cars; and exit logic picks a safe (highest-Y) attachment so a player is never dumped through the floor of a flipped car. The decisive discriminator is a build that commits to a named per-wheel suspension architecture (raycast-force OR constraint axle) versus a single rigid welded/CFrame mass with no architecture at all.",
+      "above_generic_rationale": "A generic build picks one suspension type with no awareness of cost, leaves constraint limits at defaults so the wheel slams the body, freezes remote cars' wheels because only the local car is animated, and dumps players through the floor of a flipped car on exit. Choosing raycast for multiplayer scale, reserving spring headroom, animating cosmetic wheels from real physics state for all cars, and safe-exit handling are the architecture and robustness judgments that affect how the whole game feels under real player load.",
+      "grading": {
+        "pass": "A named per-wheel suspension architecture exists AND it is hardened for production: the type is justified for many-vehicle servers (raycast + VectorForce over dozens of live SpringConstraints where relevant); CylindricalConstraint travel limits reserve headroom (offset range, not 0/default) so the spring never bottoms out; cosmetic wheels are driven from real physics state (spin from distance, Y offset from compression, steer from input) for ALL cars in the folder; and exit logic picks a safe (highest-Y) attachment.",
+        "partial": "The build commits to a NAMED per-wheel suspension architecture (raycast-force OR constraint axle), clearing the floor, but the multiplayer-load/travel-limit/cosmetic-wheel/safe-exit hardening is not all spelled out — e.g. an architecture is chosen but constraint limits may bottom out, remote cars' cosmetic wheels are frozen, or safe-exit handling is unstated. A real suspension architecture that is not yet fully hardened.",
+        "fail": "A single welded/anchored/rigid/CFrame-driven body with no per-wheel suspension architecture at all — there is nothing to justify for load, no travel limits to reserve, no cosmetic wheels to drive, and no safe-exit to handle."
+      },
+      "evidence_required": "First confirm the chassis commits to a NAMED per-wheel suspension architecture — a raycast-force model OR a constraint axle (CylindricalConstraint/SpringConstraint). Naming such an architecture clears the floor (PARTIAL minimum); a single welded/anchored/constant-velocity/CFrame rigid body with no per-wheel suspension architecture FAILS outright (there is no architecture to harden). Then, for PASS, confirm the hardening: the suspension type is justified for many-vehicle servers (raycast + VectorForce over dozens of live SpringConstraints where relevant); CylindricalConstraint travel limits reserve headroom (an offset range, not 0/default) so the spring never bottoms out; cosmetic wheels are driven from compression/speed/steer for ALL cars in the folder (remote cars included, not just the local one); and exit logic picks a safe (highest-Y) attachment. A named-architecture car that states none of the load/edge-case hardening earns PARTIAL; a single rigid mass FAILS.",
+      "concrete_fix": "For crowded servers, use raycast + VectorForce suspension instead of many SpringConstraints. Set CylindricalConstraint UpperLimit/LowerLimit to reserve ~1 stud of headroom above rest (e.g. -1/-2; widen to -4 for monster-truck travel). Drive cosmetic wheels: spin from distance traveled, Y offset from suspension compression, steer rotation from steer input, looped for every car in the vehicles folder. On exit, pick the highest-Y exit attachment.",
+      "exemplar_refs": [
+        "Raycast + VectorForce per wheel over dozens of live SpringConstraints for crowded servers; CylindricalConstraint limits -1/-2 reserving headroom",
+        "Cosmetic wheels driven for every car: spin from distance, Y offset from compression, steer from input; exit picks the highest-Y attachment"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/raycast-suspension-or-spring-constraints-suspension/1986455",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM",
+          "https://www.youtube.com/watch?v=WSxGsKypFCw",
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628"
+        ]
+      },
+      "change_reason": "The prior version's FAIL kept 'one suspension type picked with no cost awareness, constraint limits left at defaults' as failing, and even PARTIAL demanded that 'some of the architecture/robustness judgments are present' (cost awareness, travel limits, cosmetic-wheel animation, or safe-exit). The GREAT artifact names a real suspension type ('a constraint or raycast suspension') but states none of those robustness specifics, so it scored the same 'fail' as the MEAN's single welded/CFrame part — no discrimination. The rewrite lowers the floor to the architecture COMMITMENT itself: naming a raycast-force OR constraint-axle per-wheel suspension (which GREAT does and the MEAN explicitly negates with 'a single part or rigid welded body') clears the floor to PARTIAL, while the multiplayer-load justification, reserved travel-limit headroom, cosmetic-wheel animation for all cars, and safe-exit logic remain the PASS ceiling. Now GREAT=partial separates from MEAN=fail, and the deep robustness detail still discriminates a hardened build from a single tuned car."
+    },
+    {
+      "id": "veh-load-sensitive-grip-weight-transfer",
+      "order_index": 11,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Grip is load-sensitive: each tire's grip coefficient is scaled by that wheel's current suspension load (spring compression or suspension force magnitude), so braking/cornering/acceleration redistribute which wheels bite and produce emergent inertia/throttle oversteer-understeer. This exceptional elaboration PRESUPPOSES both a per-wheel suspension (to read compression from) and an explicit lateral grip model (to scale) — a build that commits to BOTH a suspension and a grip/traction model with weight-transfer has cleared this criterion's prerequisite floor, whereas a vehicle with no suspension and no grip model has not. The PASS ceiling is grip that demonstrably changes frame-to-frame with measured spring load; 'weight transfer' asserted only as an outcome with grip held constant sits at PARTIAL, not PASS.",
+      "above_generic_rationale": "Almost no generic build couples grip to load — all four tires get constant grip, so the car either rails or slides uniformly and weight transfer has no handling effect. Scaling grip by spring compression is the specific mechanism that makes braking/cornering/throttle actually redistribute traction, the heart of believable weight transfer and a clear above-generic ceiling — but the prerequisite is that a suspension and a grip model exist to couple in the first place.",
+      "grading": {
+        "pass": "A per-wheel suspension and lateral grip model exist, AND each wheel's grip coefficient is multiplied by its live suspension load so grip changes frame-to-frame; braking shifts grip forward (lift-off/trail-braking oversteer) and acceleration unloads the front.",
+        "partial": "Both a suspension and an explicit grip model exist and weight transfer is claimed, but grip's coupling to live per-wheel load is asserted only as an outcome / not shown to scale frame-to-frame with measured compression (e.g. a static or clamped normal-load term) — the prerequisite is met but the load-sensitivity is not demonstrably live.",
+        "fail": "No suspension and/or no grip model at all — there is nothing to read load from or to scale, so load-sensitive grip cannot exist."
+      },
+      "evidence_required": "First confirm BOTH a per-wheel suspension and an explicit lateral grip/traction model exist (a build naming a grip model with weight-transfer over a real suspension clears the floor; no suspension and no grip model FAILS outright). Then, for PASS, confirm the per-wheel grip coefficient is MULTIPLIED by that wheel's current suspension load (spring compression or force magnitude) so it changes frame-to-frame. 'Weight transfer' named only as an outcome, with grip held constant or its load-coupling unstated, earns PARTIAL, not PASS.",
+      "concrete_fix": "Compute each wheel's normal load from its current spring force, normalize it, and multiply that wheel's grip coefficient by the load factor before applying the lateral counter-force. Optionally add an anti-roll term transferring a fraction of the same-axle compression difference back as opposing force.",
+      "exemplar_refs": [
+        "Per-wheel grip = baseGrip * normalize(currentSpringForce); braking shifts grip forward -> lift-off oversteer",
+        "Anti-roll bar: transfer a fraction of the same-axle compression difference back as opposing force to control body roll"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/realistic-vehicle-simulation-system/2894431"
+        ]
+      },
+      "change_reason": "The prior version offered PASS (grip multiplied by live load) or FAIL (no model / constant grip), with the 'weight transfer named only as an outcome' case routed to FAIL — so the GREAT artifact's 'grip/drift traction model with weight transfer' collapsed to the same 'fail' as the MEAN, which has neither suspension nor grip. The rewrite establishes an explicit prerequisite floor (a suspension AND a grip model must both exist) that the GREAT artifact clears and the MEAN explicitly lacks, routing the 'weight transfer asserted as an outcome over an existing grip model' case to PARTIAL while reserving PASS for grip actually scaled by measured per-wheel load. Now GREAT=partial separates from MEAN=fail."
+    },
+    {
+      "id": "veh-friction-circle-pacejka",
+      "order_index": 12,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Tire grip is an exceptional elaboration of an EXISTING explicit tire/grip model: a slip-based grip curve and a shared longitudinal/lateral budget (friction circle), not a fixed friction coefficient or a hard F=uN clamp. This PRESUPPOSES a real grip/traction model with slip exists at all — and the presence of that named grip model is itself the FLOOR (PARTIAL minimum). A build that commits to an explicit grip/drift traction model with slip has cleared the floor and CANNOT be scored FAIL on this criterion, even if neither exceptional feature is itemized; only on-rails turning with no tire model, or a single fixed friction coefficient / hard F=uN clamp, lacks anything to elaborate and FAILS. The PASS ceiling is BOTH a friction-circle shared budget (spending grip on acceleration cuts cornering grip) AND a non-linear slip-angle-to-grip curve (Pacejka or rising-then-falling) giving progressive breakaway. The discriminator is a real grip model that can be elaborated toward sim-grade tire feel versus on-rails/no-tire-model/fixed-coefficient grip.",
+      "above_generic_rationale": "Generic cars use a single fixed friction coefficient: full grip until it snaps loose. A friction circle plus a Pacejka slip curve gives the soft peak-then-falloff that lets a car be balanced on the limit and slid intentionally — sim-grade tire feel, a clear quality ceiling — but only a build that already has an explicit slip-based grip model has anything to elaborate into a friction circle.",
+      "grading": {
+        "pass": "An explicit tire model exists with BOTH a friction-circle/shared-budget relationship AND a non-linear slip-angle-to-grip curve (rising-then-falling). The car gives a soft progressive breakaway and a spin-out is recoverable.",
+        "partial": "An explicit grip/traction model with slip exists (the floor is cleared) but at most ONE of the two ceiling features is present or shown — a slip-angle curve without a shared budget, a friction-circle clamp over otherwise flat-scalar grip, OR a real grip/drift model with NEITHER exceptional feature itemized. A named grip model short of full sim-grade tire feel is always at least PARTIAL.",
+        "fail": "On-rails turning with no tire model, or a single fixed friction coefficient / hard F=uN clamp — full grip until it snaps, with no slip-based grip model to elaborate into a friction circle or slip curve."
+      },
+      "evidence_required": "First determine whether an explicit tire/grip model with slip EXISTS. A named grip/drift traction model with slip clears the floor and is a PARTIAL minimum — it MUST NOT be scored FAIL on this criterion regardless of whether the exceptional features are itemized. FAIL is reserved strictly for on-rails turning with no tire model, or a single fixed friction coefficient / hard F=uN clamp with no slip-based grip. Then, for PASS, confirm BOTH a friction-circle/shared-budget relationship (lateral grip reduced under high longitudinal demand or vice versa) AND a non-linear slip-angle-to-grip curve (Pacejka or rising-then-falling equivalent), not a single scalar or flat clamp. A named grip model with neither exceptional feature itemized earns PARTIAL, not FAIL.",
+      "concrete_fix": "Compute slip angle per wheel and feed it through a Pacejka curve grip = D*sin(C*atan(B*slip - E*(B*slip - atan(B*slip)))), and clamp combined longitudinal+lateral demand to one friction circle of radius uN. Tune the curve so grip rises to a peak then falls.",
+      "exemplar_refs": [
+        "Pacejka: grip = D*sin(C*atan(B*slip - E*(B*slip - atan(B*slip)))) with tuned B/C/D/E (rise to peak, then falloff)",
+        "Combined longitudinal+lateral demand clamped to one friction circle of radius uN (spending grip on accel reduces cornering grip)"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/inconsistent-tire-friction-at-different-angles/3008645"
+        ]
+      },
+      "change_reason": "The prior version DID define a partial rung ('an explicit grip/traction model with slip exists ... neither itemized over an otherwise-real grip model'), but its grading wording let a strict grader apply the PASS bar and route the GREAT artifact — which names a 'grip/drift traction model' but no friction circle or Pacejka curve — to FAIL, tying it with the MEAN's on-rails no-tire-model. The rewrite makes the floor unmissable and FORCED: an existing named grip/traction model with slip is, by itself, a PARTIAL minimum that CANNOT be scored FAIL, and FAIL is reserved strictly for on-rails/no-tire-model or a fixed-coefficient/F=uN clamp. The friction-circle + slip-curve behavior remains the PASS ceiling. Now GREAT (named grip model) = partial separates from MEAN (on-rails, no tire model) = fail."
+    },
+    {
+      "id": "veh-drivetrain-gearbox",
+      "order_index": 13,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Acceleration is an exceptional elaboration of a powertrain that BUILDS speed — and the presence of that build-speed powertrain is the FLOOR. A build whose throttle produces a BUILT acceleration (an acceleration/torque curve feeding powered wheels toward a top speed) has cleared the floor (PARTIAL minimum) and CANNOT be scored FAIL on this criterion; only a car set to an instant constant top speed via velocity/CFrame, with no powered wheels and nothing accelerating, FAILS. The PASS ceiling is a simulated drivetrain on top of that curve: current gear and engine RPM derived from ACTUAL wheel-rotation rate (not a timer or fixed speed-to-gear table), RPM feeding a torque curve so available torque varies through the powerband, and a gear-ratio/final-drive chain (engine torque * gear ratio * final drive * wheel radius * efficiency) as the lever tuning top-speed vs acceleration. The discriminator is a torque-curve-driven build that accelerates over time versus an instant-constant-top-speed kinematic set.",
+      "above_generic_rationale": "Most chassis fake speed with a flat curve and a linear cutoff, or worse an instant top speed set by velocity/CFrame. A wheel-speed-driven gearbox with a torque curve gives gear-by-gear falloff, wheelspin, downshifts and a real powerband — a mechanical layer almost no generic vehicle has — but the floor is simply that throttle BUILDS speed through a torque/acceleration curve rather than teleporting to a constant top speed.",
+      "grading": {
+        "pass": "Gear/RPM are computed FROM measured wheel angular velocity, RPM indexes a torque curve so torque varies through the rev range, and a gear-ratio/final-drive chain is the top-speed-vs-accel lever with sane power. Acceleration shows per-gear falloff and a believable powerband.",
+        "partial": "Throttle BUILDS speed through a real acceleration/torque curve feeding powered wheels (the floor is cleared) but a full simulated drivetrain is not present — gear/RPM come from a timer or fixed speed-to-gear table rather than measured wheel rotation, or there is a torque curve without a gear-ratio/final-drive chain, or only the build-speed curve itself is named. A build-speed powertrain short of a gearbox is always at least PARTIAL.",
+        "fail": "Instant constant top speed set via velocity/CFrame, or a flat forward force with a linear cutoff and no build-up — no powered wheels, no torque/acceleration curve, nothing accelerating over time to index or measure."
+      },
+      "evidence_required": "First confirm whether acceleration BUILDS over time through a torque/acceleration curve feeding the wheels. If it does, the floor is cleared and the criterion is a PARTIAL minimum — it MUST NOT be scored FAIL even if no gearbox is present. FAIL is reserved strictly for an instant/constant top speed set via velocity or CFrame (no powered wheels, no RPM, nothing accelerating). Then, for PASS, confirm gear/RPM are computed FROM measured wheel angular velocity (not a timer or fixed speed thresholds), RPM indexes a torque curve, and a gear-ratio/final-drive chain is the top-speed-vs-accel tuning lever. An acceleration/torque curve without gears/RPM-from-wheel-rotation earns PARTIAL, not FAIL.",
+      "concrete_fix": "Compute wheelRPM from wheel AngularVelocity, map road speed through gear+final-drive ratios to engine RPM, index a tuned torque curve at that RPM, and apply wheelTorque = engineTorque(RPM) * gearRatio * finalDrive * wheelRadius * 0.9. Shift on RPM thresholds; tune top speed via final drive, keeping peak power in the low thousands.",
+      "exemplar_refs": [
+        "wheelTorque = engineTorque(RPM) * gearRatio * finalDrive * wheelRadius * 0.9, RPM derived from wheel AngularVelocity",
+        "Shift on RPM thresholds; tune top-speed-vs-accel via final-drive ratio, peak power kept in the low thousands"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628",
+          "https://www.youtube.com/watch?v=FoLLZDg36Hg",
+          "https://www.youtube.com/watch?v=Xb7XXfdhCgQ"
+        ]
+      },
+      "change_reason": "The prior version already defined a partial rung ('throttle BUILDS speed through a real acceleration/torque curve ... the floor is met'), but its grading allowed a strict grader to apply the PASS gearbox bar and route the GREAT artifact — which names an 'acceleration/torque curve' but no gears/RPM-from-wheel-rotation — to FAIL, tying it with the MEAN's instant-constant-top-speed velocity/CFrame set. The rewrite makes the floor FORCED and unmissable: a build-speed acceleration/torque curve feeding powered wheels is, by itself, a PARTIAL minimum that CANNOT be scored FAIL, and FAIL is reserved strictly for instant-constant-top-speed/velocity/CFrame with nothing accelerating. The wheel-speed-derived RPM + indexed torque curve + gear-ratio chain remains the PASS ceiling. Now GREAT (acceleration/torque curve) = partial separates from MEAN (instant constant top speed) = fail."
+    },
+    {
+      "id": "veh-braking-drivetrain-character",
+      "order_index": 14,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Braking and drivetrain layout are an exceptional elaboration that PRESUPPOSES a real powertrain AND a real braking model both exist — and the presence of BOTH is the FLOOR. A build that commits to a torque/acceleration powertrain AND a braking model tuned to the vehicle (a deliberate deceleration force, not merely 'stop applying throttle') has cleared the floor (PARTIAL minimum) and CANNOT be scored FAIL on this criterion; only a car with instant constant top speed, no drivetrain, and no braking model (braking is just releasing throttle, or absent) FAILS. The PASS ceiling is the authored character bundle: braking with scaled force AND front/rear brake bias to control over/understeer under braking AND ABS with a slip-speed threshold; a deliberate FWD/RWD/AWD drivetrain layout with per-axle friction/camber/toe; and engine response shaped with a power curve plus a nonzero throttle ramp. The discriminator is authored brakes-and-powertrain-that-build-speed versus instant-speed-with-no-braking-model.",
+      "above_generic_rationale": "Generic vehicles have no braking model at all (you just stop throttling), spin two motors with no layout intent, use default identical-friction wheels, and apply max torque instantly. Authored brake force + bias + ABS, a deliberate FWD/RWD/AWD personality with per-axle friction/camber/toe, and a shaped power curve with throttle ramp are whole feedback systems that give the car character — but the floor is that real brakes and a real powertrain exist to author at all.",
+      "grading": {
+        "pass": "A real braking model (scaled force AND front/rear bias AND slip-threshold ABS), a deliberate FWD/RWD/AWD layout with per-axle friction/camber/toe, AND a power curve + throttle ramp are all present; the car settles into corners predictably and shows its drivetrain character.",
+        "partial": "A real build-speed powertrain AND a braking model tuned to the vehicle both exist (the floor is cleared) but the full character bundle is incomplete — e.g. brake force without explicit bias/ABS, a chosen layout without per-axle tuning, or a power curve while ABS/bias are unstated. A real powertrain-plus-tuned-braking build short of the bias/ABS/layout bundle is always at least PARTIAL.",
+        "fail": "Instant constant top speed with no drivetrain AND no braking model — braking is merely 'stop throttling' (or absent) and none of the character-shaping subsystems exist."
+      },
+      "evidence_required": "First confirm whether BOTH a real build-speed powertrain (acceleration/torque curve, not instant constant top speed) AND a real braking model (a deliberate deceleration force tuned to the vehicle, not merely 'stop applying throttle') exist. If both do, the floor is cleared and the criterion is a PARTIAL minimum — it MUST NOT be scored FAIL even if the full character bundle is absent. FAIL is reserved strictly for instant speed with no drivetrain and no braking model. Then, for PASS, confirm a braking model with scaled force AND front/rear bias AND slip-threshold ABS; a deliberate FWD/RWD/AWD layout with per-axle friction/camber/toe; and a power curve plus throttle ramp rather than instant max torque. A build-speed powertrain plus a tuned braking force, short of the bias/ABS/layout bundle, earns PARTIAL, not FAIL.",
+      "concrete_fix": "Add brake force with a front/rear bias parameter and an ABS check that releases a wheel when its slip exceeds a threshold. Choose the driven axle(s) deliberately; lower rear Friction and set camber/toe for a drift bias. Replace instant torque with an RPM-indexed power curve and a throttle accel/decel ramp.",
+      "exemplar_refs": [
+        "Brake force with front/rear bias (~0.6/0.4) + ABS releasing a wheel when its slip exceeds a threshold",
+        "RWD + lowered rear Friction + camber/toe for a drift personality; RPM-indexed power curve with a throttle ramp"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://www.youtube.com/watch?v=FoLLZDg36Hg",
+          "https://www.youtube.com/watch?v=DnOYqtZY6u4",
+          "https://www.youtube.com/watch?v=Xb7XXfdhCgQ"
+        ]
+      },
+      "change_reason": "The prior version already defined a partial rung ('a real powertrain AND a braking model tuned to the vehicle exist ... the floor is met'), but its grading let a strict grader apply the PASS character bundle (bias + ABS + FWD/RWD/AWD layout + per-axle tuning + power curve + ramp) and route the GREAT artifact — which names an 'acceleration/torque curve' plus 'braking tuned to the vehicle class' but no bias/ABS/layout detail — to FAIL, tying it with the MEAN's instant-speed/no-brakes. The rewrite makes the floor FORCED and unmissable: a build-speed powertrain AND a tuned braking force (not 'just stop throttling') together are a PARTIAL minimum that CANNOT be scored FAIL, with FAIL reserved strictly for instant-speed-and-no-braking-model. The brake-bias + ABS + drivetrain-layout + power-curve bundle remains the PASS ceiling. Now GREAT (accel/torque curve + braking tuned to class) = partial separates from MEAN (instant speed, no braking) = fail."
+    },
+    {
+      "id": "veh-ownership-validation-multiseat",
+      "order_index": 15,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Driver-owned physics is guarded server-side and the multi-occupant ownership tradeoff is handled deliberately — an exceptional elaboration that PRESUPPOSES explicit driver network ownership with a server-side validation intent exists. A build that commits to SetNetworkOwner(driver) WITH server-side validation (the server checks/guards the driver-owned car rather than trusting it blindly) has cleared this criterion's floor; a car left at default/server ownership with documented rubber-banding, and no validation intent at all, has not. The PASS ceiling: server validation samples the car's position each interval and rejects/snaps back implausible movement (anti-teleport/speed-hack), the car is in its own collision group so it can't fling players, driver ownership is re-asserted on driver entry to beat the passenger-steals-ownership case, and multi-occupant vehicles make a deliberate driver-priority choice with interpolated views for non-owner occupants.",
+      "above_generic_rationale": "Naive SetNetworkOwner hands exploiters teleport/fling power, and generic multi-seat vehicles fight over ownership and feel janky. Distance-validation plus a collision group closes the exploit while keeping lag-free feel, and explicitly choosing driver-priority + interpolation for other occupants is production-grade handling of a single-owner tradeoff — but a build that even commits to driver ownership WITH a server-validation intent is already past the naive default-ownership floor that generic kits never leave.",
+      "grading": {
+        "pass": "A server-side check samples car position over time and snaps back / rejects implausible movement AND the car sits in a dedicated collision group that can't fling players AND driver ownership is re-asserted on driver entry AND (for multi-seat) a deliberate driver-priority choice with interpolation for non-owner occupants.",
+        "partial": "Explicit driver ownership WITH a server-validation intent is committed to (the floor is met), but the concrete guards are not all spelled out — e.g. 'server validation' is asserted without an itemized position-sampling/snap-back mechanism, OR a collision group OR validation is present but not both, OR the passenger-steals-ownership re-assert / multi-seat interpolation is missing.",
+        "fail": "Default/server network ownership left in place (documented rubber-banding), or SetNetworkOwner with no server-side validation intent at all — no guarding of the driver-owned car."
+      },
+      "evidence_required": "First confirm explicit driver network ownership AND a stated server-side validation intent both exist — SetNetworkOwner(driver) plus the server guarding/validating the driver-owned car (not blind trust). Default/server ownership with rubber-banding and no validation intent FAILS at the floor. Then, for PASS, confirm the concrete mechanisms: a server-side check sampling car position over time to snap back/reject implausible movement, a dedicated collision group that can't fling players, driver-ownership re-assertion on driver entry, and a deliberate driver-priority multi-seat choice with interpolation for others.",
+      "concrete_fix": "On the server, every ~0.5s compare the car's new position to its last; if the delta exceeds maxSpeed*dt*margin, snap it back and log. Put the vehicle in a 'Vehicle' collision group that doesn't collide with character bodies for flinging. On driver seat entry, call SetNetworkOwner(driver) again to override any passenger owner. For passengers, interpolate their view of the car between replicated states.",
+      "exemplar_refs": [
+        "Server samples car position every ~0.5s; delta > maxSpeed*dt*margin -> snap back and log (anti-teleport)",
+        "'Vehicle' collision group that doesn't collide with character bodies; SetNetworkOwner(driver) re-asserted on driver entry; passengers interpolated"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/reducing-vehicle-lag-with-setnetworkownerplayer-but-worried-about-exploits/1388561",
+          "https://devforum.roblox.com/t/two-players-sharing-one-vehicle-network-ownership-and-reducing-lag/306253",
+          "https://create.roblox.com/docs/physics/network-ownership",
+          "https://www.youtube.com/watch?v=FVOowr2DXbM"
+        ]
+      },
+      "change_reason": "The prior version offered PASS (position-sampling snap-back + collision group + re-assert + multi-seat interpolation) or FAIL, and explicitly routed 'SetNetworkOwner with no real validation' to FAIL — so the GREAT artifact's 'SetNetworkOwner to the driver with server validation' collapsed to the same 'fail' as the MEAN's default ownership + rubber-banding. The rewrite establishes a prerequisite floor — explicit driver ownership PLUS a stated server-validation intent — that the GREAT artifact clears and the MEAN explicitly lacks (it leaves default ownership entirely), routing the bare-but-present 'server validation' commitment to PARTIAL while reserving PASS for the concrete position-sampling/collision-group/re-assert/multi-seat mechanisms. Now GREAT=partial separates from MEAN=fail."
+    },
+    {
+      "id": "veh-framerate-independence",
+      "order_index": 16,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "The vehicle physics are frame-rate independent across 30-240 FPS — an exceptional property that PRESUPPOSES there IS a force/integration loop to make frame-independent. A build whose motion comes from applied forces (a suspension/grip force loop driving the body) has a loop that can be dt-scaled and clears this criterion's floor; a vehicle moved by a constant velocity or CFrame set has no force loop, no integration, and nothing to scale, and fails the floor. The PASS ceiling: all applied forces/integration are scaled by delta-time, ideally a fixed-timestep accumulator drives the spring/grip sub-step rather than running straight in RenderStepped, force application is on Heartbeat (post-physics), and VectorForce.RelativeTo=World — so capped 30 FPS and uncapped feel identical. The discriminator is a force-driven physics loop (which suspension/grip forces require) versus a kinematic velocity/CFrame mover with nothing to integrate.",
+      "above_generic_rationale": "Frame-rate dependence is the explicit reason sophisticated chassis get abandoned — they feel different at different framerates and break on other hardware. It's invisible when present but is exactly what separates a shippable vehicle from one that only works on the author's 60 FPS machine — and the prerequisite is that a real applied-force loop (which suspension and grip forces require) exists to be made dt-aware at all.",
+      "grading": {
+        "pass": "A real force/integration loop exists with forces multiplied by dt, ideally a fixed-timestep accumulator driving the sub-step, force application on Heartbeat, and VectorForce.RelativeTo=World; capped 30 FPS vs uncapped feel identical.",
+        "partial": "A real force/integration loop exists (suspension/grip forces drive the body — the floor is met), but its frame-handling is unstated or only partly correct — e.g. dt-scaling is not confirmed, integration runs straight in RenderStepped with no fixed sub-step accumulator, or force phase/RelativeTo is unaddressed.",
+        "fail": "No physics force loop at all — the body is moved by a constant velocity or CFrame set, so there is no integration or sub-step to scale and nothing to make frame-independent."
+      },
+      "evidence_required": "First confirm a physics force/integration loop EXISTS — motion comes from applied forces (suspension/grip forces driving the body), which a named raycast/constraint suspension plus a grip model imply. A constant-velocity/CFrame mover has no force loop and FAILS at the floor. Then, for PASS, read the loop: forces/integration multiplied by dt, ideally a fixed-timestep accumulator driving the sub-step rather than running straight in RenderStepped, force application on Heartbeat (post-physics), and VectorForce.RelativeTo=World; capped 30 FPS vs uncapped should feel identical.",
+      "concrete_fix": "Ensure a real force loop exists. Accumulate dt and run the suspension/grip integration in fixed sub-steps (e.g. 1/120s) inside Heartbeat, interpolating the remainder. Scale every force by the sub-step dt. Set VectorForce.RelativeTo=Enum.ActuatorRelativeTo.World. Test capped vs uncapped.",
+      "exemplar_refs": [
+        "dt accumulator running suspension/grip integration in fixed 1/120s sub-steps inside Heartbeat, remainder interpolated",
+        "VectorForce.RelativeTo = Enum.ActuatorRelativeTo.World; validated identical feel at capped 30 FPS vs uncapped"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/a-vehicle-chassis-with-the-pacejka-friction-circle-raycast-suspension-gearbox/2400821",
+          "https://devforum.roblox.com/t/in-depth-scripted-car-physics/3915628",
+          "https://devforum.roblox.com/t/realistic-vehicle-simulation-system/2894431"
+        ]
+      },
+      "change_reason": "The prior version offered PASS (dt-scaled forces + fixed-timestep accumulator + Heartbeat + RelativeTo=World) or FAIL, so the GREAT artifact — which has a force-driven suspension/grip loop but says nothing about dt-scaling internals — collapsed to the same 'fail' as the MEAN, which has no force loop at all. Both failed for opposite reasons. The rewrite makes the prerequisite floor explicit: a force/integration loop must EXIST. The GREAT artifact's named suspension + grip forces imply such a loop (clearing the floor at PARTIAL), while the MEAN's constant-velocity/CFrame mover explicitly has none (failing the floor). The dt-scaling/fixed-timestep/Heartbeat/RelativeTo bundle remains the PASS ceiling. Now GREAT=partial separates from MEAN=fail."
+    },
+    {
+      "id": "veh-nonwheeled-aero",
+      "order_index": 17,
+      "tier": "exceptional",
+      "system_module": "vehicles",
+      "statement": "Vehicle motion is produced by physics-native force/velocity controllers, NOT by per-frame teleporting the body — and that force-driven-mover commitment is the FLOOR that ANY vehicle class (wheeled or not) answers. A build whose body moves as an OUTPUT of applied forces/physics controllers — a raycast/constraint suspension plus a grip/traction force model for a wheeled car, or LinearVelocity (thrust) + AngularVelocity (turn) + AlignOrientation (self-right) for a non-wheeled craft — has cleared the floor (PARTIAL minimum) and CANNOT be scored FAIL here; only a body whose position/velocity is set directly (moved by a constant velocity set or a per-frame CFrame-teleport) is the teleport anti-pattern that FAILS. The PASS ceiling is the non-wheeled aerodynamic elaboration, applicable when a boat/aircraft/hovercraft/high-downforce racer is present: flight/handling EMERGES from geometry+velocity via FluidForces aerodynamics with real control-surface parts (ailerons/rudder/elevator) generating moments and/or velocity-scaled downforce, with GlobalWind/AirDensity set. A purely wheeled, force-driven physics car clears the floor (PARTIAL) but cannot reach the non-wheeled-aero PASS ceiling for lack of a non-wheeled class — that is a ceiling-not-reached PARTIAL, NOT a quality FAIL; a constant-velocity/CFrame-teleported body of any class FAILS.",
+      "above_generic_rationale": "The single most common generic failure across every vehicle class is moving the body kinematically — a constant velocity set or a per-frame CFrame-teleport — so it ignores collisions and feels weightless. Requiring motion to be an OUTPUT of physics force/velocity controllers (suspension+grip forces for wheeled, LinearVelocity/AngularVelocity/AlignOrientation for non-wheeled) is the universal baseline that separates a real physics vehicle from a teleported prop; FluidForces lift/drag on real control surfaces — giving stalls, banking turns and load-sensitive downforce no hand-scripted force approximates — is the non-wheeled ceiling on top of that baseline.",
+      "grading": {
+        "pass": "An in-scope non-wheeled craft (boat/aircraft/hover/high-downforce racer) whose flight/handling EMERGES from geometry+velocity: FluidForces aerodynamics with control-surface moments and/or velocity-scaled downforce, GlobalWind/AirDensity set, motion via LinearVelocity/AngularVelocity + AlignOrientation, colliding physically.",
+        "partial": "Motion is force/velocity-controller driven (the floor is cleared) but the non-wheeled-aero ceiling is not reached: a purely wheeled force-driven physics car (raycast/constraint suspension + grip force model, no non-wheeled class to judge aero on), OR an in-scope non-wheeled craft using physics-native movers (LinearVelocity + AngularVelocity + AlignOrientation) whose flight is a hand-scripted force approximation with no FluidForces / control-surface moments / velocity-scaled load. Force-driven but short of emergent aero is always at least PARTIAL.",
+        "fail": "The body is moved by a constant velocity set or a per-frame CFrame-teleport (the teleport anti-pattern) — any class — so motion is not an output of physics controllers; or a non-wheeled body that fakes lift with a constant upward VectorForce + weightless AngularVelocity turn with no stall or geometry-driven moment."
+      },
+      "evidence_required": "First confirm motion is an OUTPUT of physics force/velocity controllers, NOT set directly. For a wheeled car this is a raycast/constraint suspension plus a grip/traction force model; for a non-wheeled craft it is LinearVelocity (thrust) + AngularVelocity (turn) + AlignOrientation (self-right). A force-driven mover of EITHER class clears the floor (PARTIAL minimum) and MUST NOT be scored FAIL. A body moved by a constant velocity set or per-frame CFrame-teleport is the teleport anti-pattern and FAILS regardless of class. Then, for PASS, a non-wheeled class (boat/plane/hover/high-downforce racer) must be present AND its flight/handling must EMERGE from geometry+velocity: FluidForces aerodynamics with control-surface geometry generating moments and/or velocity-scaled downforce, GlobalWind/AirDensity set. A force-driven wheeled car with no non-wheeled class clears the floor at PARTIAL (ceiling not reached for lack of scope) and is NOT failed for that; it is failed only if its body is teleported.",
+      "concrete_fix": "Build boats/planes from LinearVelocity (thrust) + AngularVelocity (turn) + AlignOrientation (self-right); never CFrame-teleport the body. For planes, enable FluidForces and build ailerons/rudder/elevator as oriented parts so lift/drag/moments emerge from geometry; add velocity-scaled downforce on racers and set GlobalWind/AirDensity.",
+      "exemplar_refs": [
+        "Aircraft: Workspace.FluidForces='Experimental' with ailerons/rudder/elevator as oriented parts; banking/stall/self-right emerge from geometry",
+        "High-downforce racer: velocity-scaled downforce loading the tires at speed; boat via LinearVelocity thrust + AngularVelocity turn + AlignOrientation"
+      ],
+      "provenance": {
+        "confidence": "high",
+        "sources": [
+          "https://devforum.roblox.com/t/struggling-to-implement-an-intense-vehicle-camera-fov-camera-shake-motion-blur/2508964",
+          "https://devforum.roblox.com/t/introducing-aerodynamic-forces-studio-beta/2569269"
+        ]
+      },
+      "change_reason": "The prior version gated the entire criterion on a non-wheeled class being present and scored a purely wheeled car as out-of-scope not-applicable = lowest-available = 'fail'. Because the GREAT artifact is a wheeled car (no boat/plane/hover) it was scored 'fail' as a scope exclusion, while the MEAN was also 'fail' (its constant-velocity body being the teleport anti-pattern) — so a non-quality scope-exclusion and a genuine anti-pattern collapsed to the same 'fail' and the criterion could not discriminate for a wheeled-only artifact pair. The rewrite reframes the FLOOR to a class-agnostic force-driven-mover-vs-teleport check that any vehicle answers: GREAT's named force-based suspension+grip model clears it (PARTIAL), while the MEAN's explicit 'moved by constant velocity or CFrame' is exactly the teleport anti-pattern that FAILS. The non-wheeled FluidForces/control-surface aerodynamics is preserved as the PASS ceiling (reachable only by an in-scope non-wheeled craft), so the criterion now discriminates GREAT=partial from MEAN=fail while still rewarding genuine non-wheeled aero work."
+    }
+  ]
+}
