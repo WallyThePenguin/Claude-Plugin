@@ -104,13 +104,23 @@ function gradePrompt(buildText, label) {
   )
 }
 
+// retry an agent that returns null/undefined (transient server rate-limit) before giving up — a single
+// rate-limited grader must not silently zero the great-side score (which reads as a rubric failure)
+async function agentTry(prompt, opts, tries = 5) {
+  for (let i = 0; i < tries; i++) {
+    const r = await agent(prompt, opts)
+    if (r !== null && r !== undefined) return r
+  }
+  return null
+}
+
 // ---- Phase 1: rubric-blind expert build + adversarial skeptics, concurrently ----
 phase('Independent')
 log(`Verifying ${cat}: ${crit.length} criteria — rubric-blind expert build + ${crit.length} skeptics`)
 const [artifact, skeptics] = await parallel([
-  () => agent(EXPERT_PROMPT, { label: 'expert:rubric-blind-build', phase: 'Independent', effort: 'xhigh' }),
+  () => agentTry(EXPERT_PROMPT, { label: 'expert:rubric-blind-build', phase: 'Independent', effort: 'xhigh' }),
   () => parallel(crit.map((c) => () =>
-    agent(skepticPrompt(c), { label: `skeptic:${c.id}`, phase: 'Independent', schema: SKEPTIC_SCHEMA }))),
+    agentTry(skepticPrompt(c), { label: `skeptic:${c.id}`, phase: 'Independent', schema: SKEPTIC_SCHEMA }))),
 ])
 const killed = (skeptics || []).filter(Boolean).filter((s) => s.verdict === 'kill')
 log(`Skeptics: ${(skeptics || []).filter(Boolean).length - killed.length} keep / ${killed.length} kill`)
@@ -119,14 +129,17 @@ log(`Skeptics: ${(skeptics || []).filter(Boolean).length - killed.length} keep /
 phase('Grade')
 const [greatGrades, meanGrade] = await parallel([
   () => parallel([0, 1, 2].map((i) => () =>
-    agent(gradePrompt(artifact, 'A'), { label: `grade-build:${i}`, phase: 'Grade', schema: GRADE_SCHEMA }))),
-  () => agent(gradePrompt(MEAN, 'A'), { label: 'grade-floor', phase: 'Grade', schema: GRADE_SCHEMA }),
+    agentTry(gradePrompt(artifact, 'A'), { label: `grade-build:${i}`, phase: 'Grade', schema: GRADE_SCHEMA }))),
+  () => agentTry(gradePrompt(MEAN, 'A'), { label: 'grade-floor', phase: 'Grade', schema: GRADE_SCHEMA }),
 ])
 const greatScores = (greatGrades || []).filter(Boolean).map((g) => aggregate(g.rows))
 const great = greatScores.length ? median(greatScores) : 0
 const mean = meanGrade ? aggregate(meanGrade.rows) : 0
 const gap = great - mean
-const pass = great >= 0.7 && mean <= 0.5 && gap >= 0.35 && killed.length === 0
+// INCONCLUSIVE (not a rubric verdict): the expert build or ALL graders were lost to rate-limiting, so the
+// great-side score is meaningless — re-run rather than treat as a fail.
+const inconclusive = !artifact || greatScores.length === 0
+const pass = !inconclusive && great >= 0.7 && mean <= 0.5 && gap >= 0.35 && killed.length === 0
 
 // per-criterion great consensus (worst score across graders = conservative)
 const order = { fail: 0, partial: 1, pass: 2 }
@@ -139,11 +152,12 @@ const greatPerCrit = crit.map((c) => {
   return { id: c.id, tier: c.tier, worstScore: worst, graderScores: scores }
 })
 
-log(`RESULT ${cat}: mean=${mean.toFixed(3)} great=${great.toFixed(3)} gap=${gap.toFixed(3)} killed=${killed.length} -> ${pass ? 'PASS' : 'FAIL'}`)
+log(`RESULT ${cat}: mean=${mean.toFixed(3)} great=${great.toFixed(3)} gap=${gap.toFixed(3)} killed=${killed.length} graders=${greatScores.length}/3 -> ${inconclusive ? 'INCONCLUSIVE (rate-limited — re-run)' : (pass ? 'PASS' : 'FAIL')}`)
 
 return {
   category: cat,
   pass,
+  inconclusive,
   mean, great, gap,
   greatScores,
   killedCriteria: killed.map((s) => ({ id: s.id, reason: s.reason })),
