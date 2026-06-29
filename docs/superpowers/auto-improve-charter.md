@@ -61,15 +61,21 @@ not in that it ever fakes completion.
    connects as a CLIENT with a collaborator LocalPlayer in genuine edit). Corrected to key on
    `IsRunning`; verified live silent in this Team Create session. `DevBridgeSpec` 8/8; selene 0/0; rojo
    green. **Lesson: a worker confabulates plausible run-context stories; only the human can see it's
-   Team Create vs play.** *Follow-up stones:* (1b) extend the banner to the PlayBridge `/play` path;
-   (1c) the original 2026-06-27 capture failure was partly a **stale `capture` fetch** — the `capture`
-   verb returns the last buffered image; it should trigger a fresh shot or flag staleness.
+   Team Create vs play.** *Follow-up stones:* **(1b) DECLINED (worker, director-accepted)** — extending
+   the banner to the PlayBridge `/play` path is low-value/high-cost: that path runs inside an INJECTED
+   in-test script (`PlayBridge.luau` ~550-568) where `DevBridge.contextBanner` is out of scope (would
+   need duplicate inlined logic), and `/play` is the DELIBERATE playtest channel (context already known;
+   the stray-playtest blindness was the `/agent` path, already covered). Do not re-propose. (1c) the
+   original 2026-06-27 capture failure was partly a **stale `capture` fetch** — the `capture` verb returns
+   the last buffered image; it should trigger a fresh shot or flag staleness.
 2. **GUI image/icon authoring tool** — the one tool gap blocking the last 2 gui criteria
    (`gui-custom-asset-shapes`, `gui-unified-icon-set`): author a transparent-PNG icon via EditableImage →
    persist → apply to an ImageLabel. *Oracle:* `evaluate gui` moves those 2 to pass + a capture I look at.
 3. **Above-generic JUDGE tightening** — `train-category`/`train-recipe` judge under-rejects (100%
    survival recurred). *Oracle:* re-run one category's judge; survival drops while the back-test still
-   passes (mean low / great high / gap ≥ 0.35).
+   passes (mean low / great high / gap ≥ 0.35). **NOTE (director-flagged 2026-06-28):** the worker's
+   claim that "the back-test already gates quality, so this is low-value" is UNVERIFIED against the actual
+   100%-survival recurrence in stone 3's vfx run — do NOT treat as settled-low-value; measure first.
 4. **More guide+rubric categories** (e.g. audio/SFX, UI-motion, terrain, mounts/vehicles). *Oracle:* the
    factory's discrimination back-test passes + full criterion coverage in the generated guide.
 5. **`save_build_guide` / user guides** (v1 is built-ins only; mirror the skills store). *Oracle:* a Spec

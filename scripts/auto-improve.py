@@ -240,11 +240,24 @@ def main():
     ap.add_argument("--director", choices=["proxy", "claude"], default="proxy")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the assembled director+worker prompts for iter 1 and exit (no claude calls)")
+    ap.add_argument("--ask", action="store_true",
+                    help="ME-AS-WORKER mode: print the director's next {critique,directive,halt} (JSON) "
+                         "given the charter + log (+ --evidence of my last turn). The interactive agent IS "
+                         "the worker; this just consults the director. Use with --director proxy.")
+    ap.add_argument("--evidence", default="",
+                    help="my last turn's evidence; appended to the log and sent to the director")
     args = ap.parse_args()
 
     charter = read_text(CHARTER)
     if not charter:
         sys.exit("charter not found at %s - run from the repo root." % CHARTER)
+
+    if args.ask:
+        if args.evidence:
+            append_log("## worker evidence\n" + args.evidence)
+        d = get_directive(charter, log_tail(), args.evidence or None, args.director)
+        print(json.dumps(d))
+        return
 
     if args.dry_run:
         d = director_prompt(charter, log_tail(), "(none)")
