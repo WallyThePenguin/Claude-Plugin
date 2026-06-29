@@ -47,30 +47,28 @@ local function buildCases(): { Case }
 		return r.done and r.error == "agent already running"
 	end)
 
-	add("contextBanner: clean edit (no LocalPlayer) -> empty (no noise)", function()
-		return DevBridge.contextBanner(true, false, true, true, false) == ""
+	add("contextBanner: clean edit -> empty (no noise)", function()
+		return DevBridge.contextBanner(true, false, true, true) == ""
+	end)
+
+	-- Team Create connects as a CLIENT (IsServer=false/IsClient=true) with a collaborator LocalPlayer,
+	-- but it is GENUINE edit (IsEdit=true, not running) — the guard MUST stay silent (no false positive).
+	add("contextBanner: Team Create edit (client + IsEdit, not running) -> empty", function()
+		return DevBridge.contextBanner(true, false, false, true) == ""
 	end)
 
 	add("contextBanner: a running playtest warns + names the server role + the verify nudge", function()
-		local s = DevBridge.contextBanner(false, true, true, false, false)
+		local s = DevBridge.contextBanner(false, true, true, false)
 		return string.find(s, "WARN run-context", 1, true) ~= nil
 			and string.find(s, "PLAYTEST", 1, true) ~= nil
 			and string.find(s, "role=server", 1, true) ~= nil
 			and string.find(s, "VERIFY with a capture", 1, true) ~= nil
 	end)
 
-	add("contextBanner: a non-edit client warns NOT-edit + client", function()
-		local s = DevBridge.contextBanner(false, false, false, true, true)
+	add("contextBanner: a play CLIENT (running, not edit) warns NOT-edit + client", function()
+		local s = DevBridge.contextBanner(false, true, false, true)
 		return string.find(s, "NOT the edit DataModel", 1, true) ~= nil
 			and string.find(s, "role=client", 1, true) ~= nil
-	end)
-
-	-- The load-bearing case: edit-ish flags but a LocalPlayer present = the exact 2026-06-27 blind
-	-- context; the guard MUST fire here (IsEdit/IsRunning alone would not).
-	add("contextBanner: edit flags but a LocalPlayer present -> still warns", function()
-		local s = DevBridge.contextBanner(true, false, true, true, true)
-		return string.find(s, "WARN run-context", 1, true) ~= nil
-			and string.find(s, "LocalPlayer is present", 1, true) ~= nil
 	end)
 
 	return cases

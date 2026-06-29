@@ -28,32 +28,25 @@ function DevBridge.serializeContent(content: any): string
 	return tostring(content)
 end
 
--- Run-context banner prepended to a tool/luau/prompt result when the bridge is NOT executing in clean
--- edit. A playtest DataModel — SERVER (a GUI built there never renders) or CLIENT (the Studio window
--- shows the play view, so edit builds aren't on screen and captures show the play client) — silently
--- swallows edit-style work, and the plugin keeps LoadStringEnabled=true so loadstring "works" and hides
--- it (this bit a 2026-06-27 dogfood: both a server-CoreGui build that didn't render AND a later
--- client-context diagnostic). Guards the /agent channel only; the deliberate /play (PlayBridge) flow is
--- a known playtest and is a separate stone. Pure (flags in -> string out), unit-tested; "" = clean edit.
+-- Run-context banner prepended to a tool/luau/prompt result when a REAL PLAYTEST is active (IsRunning)
+-- or this isn't the edit DataModel — the contexts where edit-style bridge builds/captures misbehave.
+-- IMPORTANT: Team Create edit is GENUINE edit (it connects as a CLIENT, so IsServer=false/IsClient=true
+-- with a collaborator LocalPlayer present, but IsEdit=true/IsRunning=false) and must NOT warn — an
+-- earlier LocalPlayer-based signal false-positived on exactly that. The real "beware" signal is
+-- IsRunning. Guards the /agent channel only; the deliberate /play (PlayBridge) flow is a separate stone.
+-- Pure (flags in -> string out), unit-tested; "" = clean/edit (incl. Team Create).
 function DevBridge.contextBanner(
 	isEdit: boolean,
 	isRunning: boolean,
 	isServer: boolean,
-	isClient: boolean,
-	hasLocalPlayer: boolean
+	isClient: boolean
 ): string
-	-- Clean edit has NO LocalPlayer; the 2026-06-27 failure ran with IsEdit=true/IsRunning=false yet a
-	-- LocalPlayer present (a play-client context), so LocalPlayer presence is the load-bearing signal —
-	-- IsEdit/IsRunning alone would have stayed silent in exactly the context that burned us.
-	if isEdit and not isRunning and not hasLocalPlayer then
+	if isEdit and not isRunning then
 		return ""
 	end
 	local why: { string } = {}
 	if isRunning then
 		table.insert(why, "a PLAYTEST is active")
-	end
-	if hasLocalPlayer then
-		table.insert(why, "a LocalPlayer is present (a client/play context, not clean edit)")
 	end
 	if not isEdit then
 		table.insert(why, "this is NOT the edit DataModel")
@@ -67,9 +60,9 @@ function DevBridge.contextBanner(
 		.. (if #why > 0 then table.concat(why, " + ") else "non-edit")
 		.. " (role="
 		.. role
-		.. "). The Studio window may be showing the PLAY view, so edit-DataModel builds aren't on screen "
-		.. "and captures show the play client; a GUI built in a server DataModel does NOT render. VERIFY "
-		.. "with a capture you actually look at before trusting structure.]\n"
+		.. "). A playtest is live, so edit-style bridge builds aren't in the rendered view and captures "
+		.. "show the play client; a GUI built in a server DataModel does NOT render. VERIFY with a capture "
+		.. "you actually look at before trusting structure.]\n"
 end
 
 function DevBridge.newResult(): Result
@@ -156,13 +149,11 @@ end
 
 -- Read the live run context and render the warning banner (impure wrapper over the pure contextBanner).
 local function runContextBanner(): string
-	local Players = game:GetService("Players")
 	return DevBridge.contextBanner(
 		RunService:IsEdit(),
 		RunService:IsRunning(),
 		RunService:IsServer(),
-		RunService:IsClient(),
-		Players.LocalPlayer ~= nil
+		RunService:IsClient()
 	)
 end
 
