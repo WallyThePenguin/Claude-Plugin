@@ -1,0 +1,18 @@
+{
+  "category": "camera",
+  "description": "Roblox player camera systems and camera game-feel — scripting workspace.CurrentCamera (CameraType.Scriptable) on RunService:BindToRenderStep(RenderPriority.Camera) to drive CFrame, FieldOfView, distance and offset for third- and first-person play: context-driven camera modes, smooth spring follow, reactive FOV and screen shake, collision/occlusion-aware framing, and lock-on / cutscene composition — NOT relying on the stock default follow camera as-is",
+  "killerSystems": [
+    "context-driven-camera-state-machine (distinct tuned modes — explore / combat / aim-ADS / sprint / mounted / menu / cutscene — each with its own FOV, distance, shoulder offset and sensitivity, with smoothed transitions between modes; one fixed default camera FAILS)",
+    "spring-damped-follow-with-look-ahead (the camera target/position is driven by critically-damped springs — not rigid lock or raw Lerp — with framerate-independent smoothing (dt-corrected) and velocity-based look-ahead/lead so fast movement reveals what is ahead, plus a settle on stop)",
+    "reactive-fov-and-trauma-shake (dynamic FOV kicks on sprint/dash/speed/ADS, and a layered ADDITIVE trauma/impulse shake system — perlin or random offset scaled by a decaying trauma value, composed additively over the follow — fired by gameplay events (impacts, landings, explosions, recoil); NOT a constant jitter and NOT shake that fights the follow)",
+    "collision-and-occlusion-aware-framing (raycast from target to camera to pull in on geometry and smoothly return (Popper-style), handle TARGET occlusion (dolly/peek/fade when the player is blocked), and a smooth over-the-shoulder offset for aim with side-swap near walls — the player is never clipped through or hidden)",
+    "lock-on-and-cinematic-composition (a lock-on / two-target framing that keeps subject AND target both in frame with deliberate composition — rule-of-thirds offset, headroom, screen-space target placement — plus a cutscene/sequence system (CFrame keyframe paths + eased FOV moves) distinct from the gameplay camera)"
+  ],
+  "meanArtifact": {
+    "name": "stock default follow camera",
+    "description": "Relying entirely on Roblox's stock default follow camera with no custom scripting: a fixed FieldOfView (70) that never changes, default fixed zoom/distance, rigid follow with no spring damping or look-ahead, no screen shake or FOV kicks of any kind, no per-context camera modes (the same camera in menu, exploration, combat and aim), no lock-on or target framing, and no cinematic/cutscene system — the generic default a beginner ships by leaving the camera untouched."
+  },
+  "greatArtifactHint": "A pro game-feel camera: a context state machine (explore / combat / aim / sprint / cutscene) each with tuned FOV, distance and shoulder offset and smoothed transitions; a critically-damped spring follow with framerate-independent smoothing and velocity-based look-ahead plus a settle-on-stop; reactive FOV kicks (sprint/dash/ADS) and a trauma-based additive screen-shake/impulse system fired by gameplay events; collision raycast pull-in + target occlusion handling + smooth over-the-shoulder aim offset with side-swap; and a lock-on / two-target framing with rule-of-thirds composition plus a CFrame-keyframe cutscene system with eased FOV moves — all driven on BindToRenderStep at RenderPriority.Camera.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}
