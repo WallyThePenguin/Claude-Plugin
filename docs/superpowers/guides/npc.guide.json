@@ -1,0 +1,431 @@
+{
+  "module": "npc",
+  "system_module": "npc",
+  "version": "1.0",
+  "rubric_version": "1.0",
+  "overview": "Great Roblox NPC AI is a LAYERED CONTROL STACK, not a clip of \"walk at the nearest player.\" Everything hangs off one one-way data flow re-run every tick: SENSE (earned perception) -> DECIDE (an explicit prioritized brain) -> NAVIGATE (a real PathfindingService compute-and-follow loop) -> ACT (MoveTo / attack). Build it bottom-up in dependency order: (1) a reliable path-follow loop that reaches a fixed goal around obstacles; (2) a perception module that earns awareness through range->FOV-cone->line-of-sight raycasts (never an omniscient distance check or a per-frame read of the target's live Position); (3) a decision FSM whose states command navigation with goals chosen by perception; (4) ambient zone-leashed wander so unengaged NPCs are alive; then the depth/exceptional layers — a graded awareness meter, last-known-position memory + investigate, event-gated repath, stuck recovery, anti-clump separation, squad coordination with shared alert propagation, tactical flanking, and a central throttled/LOD scheduler so it scales. CRITICAL TOOLING NOTE: the agent's stock make_npc is the rubric's MEAN ARTIFACT, not the solution — it ships exactly the straight-line zombie the rubric fails (Humanoid:MoveTo(nearestPlayer) every 0.2s, an omniscient (thrp.Position - hrp.Position).Magnitude distance check, one chase-if-close branch, no pathfinding, no coordination, no idle life). You clear this rubric by REPLACING that generated NpcAI Script's body via run_luau: keep make_npc only as a convenient scaffold (it spawns the NpcState attribute, sets WalkSpeed, unanchors the HumanoidRootPart, and registers a server Script you overwrite), and author the real perception/navigation/decision/coordination stack yourself in run_luau on top of a spawn_rig body. spawn_rig builds the rig; run_luau is where ~90% of the AI lives.",
+  "tiers": [
+    {
+      "tier": "baseline",
+      "goal": "Stand up the four floor killer-systems on a real rig: a PathfindingService compute-and-follow loop that routes AROUND obstacles and survives a moving/blocked world, an EARNED perception module (range -> FOV cone -> LOS raycast, never an omniscient distance check), an EXPLICIT prioritized decision FSM (not one chase-if-close branch), and autonomous zone-leashed ambient wander so unengaged NPCs are not frozen statues. All server-authoritative.",
+      "steps": [
+        {
+          "id": "b1",
+          "order_index": 1,
+          "instruction": "Make the body-setup step carry deliberate, verified-above-floor depth that is actually a PRECONDITION for the pathfinding criterion it claims, instead of generic rig hygiene. Specifically: (1) spawn_rig (type 'block') and run make_npc ONLY to seed attributes + unanchor the root, then immediately delete make_npc's stock NpcAI Script in the same step — do not leave the mean-artifact loop in the tree even transiently as the deliverable. (2) With run_luau, do not merely confirm a Humanoid exists; assert the rig is PathfindingService-ready: HumanoidRootPart.Anchored == false, every body part has CanCollide set correctly (root non-colliding vs. a colliding hull as your design requires), the rig's bounding box is measured and recorded so AgentRadius/AgentHeight can be derived from it (dump the Model:GetExtentsSize()), and Motor6D joints are present (not an Avatar-Joint-Upgrade constraint rig) so later animation channels bind. (3) Output the concrete AgentRadius/AgentHeight/CanJump agent-param values you will feed CreatePath, derived from the measured rig — so this step demonstrably feeds the pathfinding layer rather than just proving a Humanoid exists. Re-map the step's addresses_criteria away from npc-pathfinding-waypoint-follow-loop unless the step actually stands up a validated CreatePath→ComputeAsync→Status-guard→waypoint-follow loop; a bare rig + unanchor does not satisfy that criterion's pass gate.",
+          "addresses_criteria": [
+            "npc-pathfinding-waypoint-follow-loop"
+          ],
+          "tools": [
+            "spawn_rig",
+            "make_npc",
+            "run_luau"
+          ],
+          "pitfalls": "make_npc's stock NpcAI Script IS the rubric's mean artifact (straight-line MoveTo + omniscient distance check + single chase branch) — treat it as a scaffold to overwrite, never the deliverable. A still-anchored HumanoidRootPart makes the NPC unable to move; an Avatar-Joint-Upgrade rig with no Motor6Ds breaks later animation — verify both with run_luau."
+        },
+        {
+          "id": "b2",
+          "order_index": 2,
+          "instruction": "Author the PathfindingService compute-and-follow loop as a reusable module via run_luau — the canonical move primitive every higher layer commands. Call PathfindingService:CreatePath ONCE per NPC (reuse the Path object) with agent params sized to the rig: AgentRadius (~2, wall clearance), AgentHeight (~5), AgentCanJump=true, WaypointSpacing (~4), and a Costs table (e.g. {Water=20}) so it routes around hazards. To move: wrap path:ComputeAsync(hrp.Position, dest) in pcall, then ALWAYS guard path.Status == Enum.PathStatus.Success before using results, path:GetWaypoints(), iterate from waypoint[2], and for each call humanoid:MoveTo(wp.Position); when wp.Action == Enum.PathWaypointAction.Jump set humanoid.Jump = true. Prove it reaches a FIXED goal placed behind a wall — routing around it, not into it.",
+          "addresses_criteria": [
+            "npc-pathfinding-waypoint-follow-loop"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance"
+          ],
+          "pitfalls": "Plain Humanoid:MoveTo(targetPos) ignores all geometry and walks into walls — that is the mean artifact make_npc ships. Skipping the pcall lets a transient ComputeAsync failure kill the whole AI thread; skipping the Status==Success check walks a stale/empty path to (0,0,0). AgentRadius/Height mismatched to the rig makes it refuse valid paths or clip corners. Creating a new Path every recompute wastes allocations — reuse one."
+        },
+        {
+          "id": "b3",
+          "order_index": 3,
+          "instruction": "Build EARNED perception as a module that outputs a clean canSee(target) boolean — three sequential cheap-to-expensive gates, ALL must pass, run on a throttled loop via run_luau. (1) RANGE: reject if (targetPos - eyePos).Magnitude > viewRange. (2) FOV CONE via dot product: dot = npcHRP.CFrame.LookVector:Dot((targetPos-eyePos).Unit); angle = math.deg(math.acos(math.clamp(dot,-1,1))); reject if angle > fov/2. (3) LINE OF SIGHT: RaycastParams with FilterType=Exclude and FilterDescendantsInstances={npcModel, otherNpcs}; workspace:Raycast(eyePos, toTarget, params) — visible only if the hit is nil OR a descendant of the target. Raycast to head AND torso so partial cover reads right. Only a target passing all three is seen; store lastKnownPosition = targetPos whenever it does.",
+          "addresses_criteria": [
+            "npc-perception-los-fov-range-occlusion"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "An omniscient (thrp.Position - hrp.Position).Magnitude distance check — exactly what make_npc ships — is the floor FAILURE: it sees through walls and behind its own back. A single forward ray with no cone only triggers dead-center. Forgetting to add the NPC's own model to the Exclude filter makes every ray hit its own body and report 'blocked' forever. acos without math.clamp to [-1,1] can NaN from float error. Reading the target's live Position every frame instead of through the sensing primitive is the omniscience tell the rubric rejects."
+        },
+        {
+          "id": "b4",
+          "order_index": 4,
+          "instruction": "Wrap navigation + perception in an EXPLICIT FSM with multiple prioritized states — Idle/Patrol, Investigate, Chase, Attack, Return — authored via run_luau as one module per state with Enter(agent)/Update(dt,agent)->nextStateName?/Exit(agent). A manager holds currentState and each tick calls Update; a returned name runs Exit then Enter of the new state. Transitions live in Update conditions (Patrol.Update returns 'Chase' when perception.canSee; Chase.Update returns 'Investigate' when sight is lost). STATES COMMAND the perception/navigation modules — they never reimplement them, and no state reaches into another's internals. Wire the one-way flow each tick: sense -> decide next state -> command the b2 move loop.",
+          "addresses_criteria": [
+            "npc-decision-architecture-fsm-sized"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "make_npc's single decide(dist) chase-if-close branch is the mean artifact — it cannot express patrol/investigate/return and has no clean priority. Building the FSM BEFORE movement is solid makes every bug look like an AI bug when it is a navigation bug — lock down b2/b3 as independently testable modules first. Too many tangled cross-transitions becomes spaghetti; keep to 4-6 clear modes and nest a sub-machine inside a state rather than adding top-level states."
+        },
+        {
+          "id": "b5",
+          "order_index": 5,
+          "instruction": "Give unengaged NPCs autonomous AMBIENT LIFE — a zone-leashed wander as the Idle/Patrol state, via run_luau. Each loop: pick a random reachable goal inside a bounded zone — clamp goal X/Z to a zone part's Position ± Size/2 (or sample a random navmesh point) — raycast straight DOWN to find true ground height so the point sits on terrain, route it through the b2 path-follow loop, then idle a RANDOMIZED beat (task.wait(Random.new():NextNumber(2,6))) so a crowd doesn't move in lockstep. LEASH: if (hrp.Position - home).Magnitude > leashDist, set the next goal back toward home so the NPC never strays its zone. On flat ground a direct MoveTo suffices; on complex terrain route through PathfindingService.",
+          "addresses_criteria": [
+            "npc-ambient-wander-zone-leashed"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance"
+          ],
+          "pitfalls": "make_npc idles by standing still — a frozen statue waiting for a player, the exact mean artifact this criterion rejects. Picking a wander point without the downward raycast targets floating/underground positions and the NPC stalls or moonwalks. No leash lets wanderers drift across the whole map. A fixed (non-random) pause makes the crowd march in lockstep."
+        }
+      ]
+    },
+    {
+      "tier": "good",
+      "goal": "Add DEPTH that makes the AI read as deliberate and alive: a graded suspicion meter feeding unaware/suspicious/alert states, last-known-position memory + an investigate/search, de-jittered movement + smooth turning, event/threshold-gated repath (never per-frame ComputeAsync), stuck detection + recovery, off-mesh traversal via links, a coordination layer with lead/intercept targeting + anti-clump separation, utility scoring and (for many sub-behaviors) a behavior tree, deliberate combat spacing + death cleanup, believability barks/routines, and an event-gated AI budget.",
+      "steps": [
+        {
+          "id": "g1",
+          "order_index": 1,
+          "instruction": "Replace the boolean spotted-flag with a GRADED awareness meter feeding discrete states, via run_luau. Keep a per-target awareness float 0..1: while the target passes the b3 three-gate perception, awareness += fillRate*dt where fillRate scales UP with proximity (closer fills faster, e.g. base*(1 + (1 - dist/viewRange))) and by how centered it is in the FOV cone; when not seen, awareness = max(0, awareness - decayRate*dt). Map by thresholds to states: <0.25 Unaware (patrol/wander), 0.25..1.0 Suspicious (turn to face / move toward last-seen, do NOT yet attack), >=1.0 Alert (full chase). Use HYSTERESIS (drop back to Suspicious only below ~0.8) so it doesn't ping-pong on the boundary.",
+          "addresses_criteria": [
+            "npc-graded-detection-meter-states"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "A single boolean see=instant-alert flip removes all counterplay and feels cheap. Filling and decaying at the same flat rate regardless of distance ignores the 'closer fills faster' feel. Without hysteresis the state ping-pongs Suspicious/Alert every frame at the threshold."
+        },
+        {
+          "id": "g2",
+          "order_index": 2,
+          "instruction": "Add MEMORY so breaking line of sight is a real mechanic, via run_luau. While Chase sees the target, continuously write lastKnownPosition = target.Position and lastSeenTime = os.clock(). When canSee flips false, do NOT teleport-track the live hidden position (omniscient) and do NOT snap to idle in one frame (goldfish) — transition to an Investigate/Search state: pathfind (b2 loop) to lastKnownPosition, then on arrival run a radial scan — sample several ground-validated points in a ring around it and walk/look at each — for a giveUpTimer (~5-8s). If perception re-acquires during the search, return to Chase; if the timer expires, return to Patrol. Optimization: when the target IS in direct LOS, skip pathfinding and MoveTo the raw position; only invoke PathfindingService when LOS is blocked.",
+          "addresses_criteria": [
+            "npc-last-known-position-memory-search"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Snapping back to idle the frame LOS breaks lets a player juke the NPC behind one pillar (the dumb-zombie tell). Re-using the live target position instead of the frozen snapshot is still effectively omniscient. The radial scan must use walkable points (raycast down to ground) or the NPC investigates unreachable spots and looks broken."
+        },
+        {
+          "id": "g3",
+          "order_index": 3,
+          "instruction": "DE-JITTER movement and transitions so the NPC reads as deliberate, via run_luau. (1) MOVEMENT: do NOT block on humanoid.MoveToFinished:Wait() at every waypoint — that stop-go pause is the #1 stutter; instead run a per-frame follow that points the NPC at the current waypoint and advances when horizontal distance < ~2 studs, using humanoid:Move(dir) (smoother) and humanoid:Move(Vector3.zero) to stop. (2) TURNING: slerp HumanoidRootPart facing toward the move direction rather than snapping. (3) ANIMATION: debounce walk/idle with an isWalkPlaying flag so Humanoid.Running can't retrigger the same track every waypoint, with ~0.2s fades. (4) STATE: commit to a state for a minimum dwell so it can't thrash. This criterion checks the build has a real spine that CAN be de-jittered — re-issuing a fresh MoveTo to a stale position every frame cannot.",
+          "addresses_criteria": [
+            "npc-state-hysteresis-smooth-turning"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "MoveToFinished:Wait() per waypoint produces stop-go stutter-stepping; on a path of many short segments it freezes the NPC. SetNetworkOwner(nil) does NOT fix walk jitter — the cause is the un-debounced Humanoid.Running retriggering the track, not physics. Snapping facing instead of slerping reads robotic."
+        },
+        {
+          "id": "g4",
+          "order_index": 4,
+          "instruction": "Recompute the path on EVENT, never per frame, via run_luau. Never call ComputeAsync every Heartbeat. Recompute only when one of: (a) path.Blocked fires for a waypoint AHEAD of progress — path.Blocked:Connect(function(idx) if idx >= currentIndex then recompute() end end); (b) the chase target has moved more than ~3-5 studs from the lastTargetPos the current path was built for; (c) a minimum interval has elapsed (gate with os.clock() - lastCompute >= 0.3..0.5 so back-to-back triggers can't spam). On NoPath/NoConnectivity treat it as a state signal (investigate / give up / bark), not a tight retry loop.",
+          "addresses_criteria": [
+            "npc-repath-on-event-not-per-frame"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "ComputeAsync every frame (60Hz) tanks performance and rebuilds the path into visible jitter. Recomputing on a Blocked event for a waypoint already PASSED (behind the agent) wastes a compute and thrashes back-and-forth. Spamming ComputeAsync when Status==NoPath (unreachable target) is a classic perf killer — gate it."
+        },
+        {
+          "id": "g5",
+          "order_index": 5,
+          "instruction": "Add STUCK detection + recovery so the NPC survives a blocking world, via run_luau. Sample HumanoidRootPart.Position every ~2-3s; if displacement < ~1 stud while the NPC believes it is moving (state is chase/patrol and Humanoid.MoveDirection ~= zero), it's stuck: trigger recovery — set Humanoid.Jump = true and/or snap toward the nearest waypoint, then force a fresh ComputeAsync. Count consecutive stuck events and past a cap abandon the target / return home so a wedged NPC doesn't grind forever. Pair with a per-waypoint timeout: race MoveToFinished:Wait() against task.delay so one unreachable waypoint can't hang the loop.",
+          "addresses_criteria": [
+            "npc-stuck-detection-recovery-timeout"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Humanoid.MoveToFinished only fires within ~8 studs of the goal or after an internal ~8s timeout that fires EVEN IF the NPC is stuck — relying on :Wait() with no timeout race hangs the loop on an unreachable waypoint and silently skips it. No stuck check means a corner-wedged NPC walks into the wall forever — the #1 'AI looks dumb' tell."
+        },
+        {
+          "id": "g6",
+          "order_index": 6,
+          "instruction": "Cross geometry a flat walk cannot — gaps, drops, ledges, ladders — via run_luau + create_instance. For jumpable gaps, ensure AgentCanJump=true and ACT on the waypoint: when wp.Action == Enum.PathWaypointAction.Jump set Humanoid.Jump = true. For traversals the navmesh can't express (a gap wider than jump height, a ladder, a teleport), place a PathfindingLink (create_instance) with Attachment0/Attachment1 on valid navmesh, IsBidirectional, and a Label; when the computed path crosses it the waypoint carries that Label — in the follow loop check wp.Label and branch to a custom action (climb anim + tween up, or jump/teleport) before resuming MoveTo. The NPC must act on the waypoint, not stall at the first non-walkable edge.",
+          "addresses_criteria": [
+            "npc-offmesh-traversal-links-arrival"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance"
+          ],
+          "pitfalls": "Setting AgentCanJump but never reading wp.Action and setting Humanoid.Jump means the path includes a jump the NPC never performs — it walks into the gap and falls. A PathfindingLink whose attachments aren't on valid navmesh is ignored. Forgetting to read wp.Label routes over the link but the NPC tries to walk the gap."
+        },
+        {
+          "id": "g7",
+          "order_index": 7,
+          "instruction": "Drive engagement through a real COORDINATION LAYER that ALLOCATES how the group fights, not every NPC independently hard-locking 'the nearest player' at its live position, via run_luau. The load-bearing requirement is a lightweight squad coordinator (a shared blackboard or coordinator loop) that (1) ASSIGNS ROLES and FLANK approaches so members engage from diversified angles/positions instead of all collapsing onto one identical point-lock, (2) PROPAGATES alerts/targets across the group so one NPC's sighting informs the others rather than N isolated re-acquisitions, and (3) RE-EVALUATES and re-assigns as the situation changes rather than locking once. The discriminator to satisfy: engagement is governed by group/role coordination (role assignment + flanking + alert/target propagation), NOT every NPC re-reading the single nearest player's live position in isolation (make_npc's nearest()). Show a dump proving the coordinator governs who-engages-whom and how. OPTIONAL refinement on top (not required to pass): for a fast-moving target, lead the assigned engage point by velocity (goalPos = targetPos + targetVelocity * eta, eta ~ distance/npcSpeed) so a sprinting target is intercepted rather than tail-chased — but a velocity-lead formula WITHOUT the coordination/role/alert layer does NOT clear this step. Pitfall: N identical isolated nearest-player chasers that stack on one spot FAIL even if each one leads the target; the coordination layer that allocates and diversifies engagement is what passes.",
+          "addresses_criteria": [
+            "npc-target-selection-interception-lead"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Every NPC independently hard-locking the nearest player's CURRENT position (make_npc's nearest()) means a fast target is never caught and all NPCs funnel to one spot. Lead by velocity and assign through a coordinator, not in isolation."
+        },
+        {
+          "id": "g8",
+          "order_index": 8,
+          "instruction": "Make multiple pursuers OCCUPY SPACE and surround instead of stacking on one point, via run_luau. Two combined techniques: (1) SEPARATION STEERING — each tick gather nearby allies (OverlapParams / workspace:GetPartBoundsInRadius within ~8-15 studs), sum inverse-distance away-vectors (sep += (myPos-n.Position).Unit / max(dist,0.1) so closer neighbors push harder), and blend with the pursuit direction before issuing Move/MoveTo. (2) SURROUND SLOTS — instead of every NPC pathing to the player's exact position, assign each an offset around the target (ring of angle-slots, left/right/behind), shrinking the offset as they close. Reduce/disable separation strength in tight chokes (doorways) so it doesn't fight the path.",
+          "addresses_criteria": [
+            "npc-anti-clump-separation-spacing"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Without separation, N chasers MoveTo the identical player position and stack inside one another — only one can attack and it looks awful. Normalizing the separation sum without inverse-distance weighting means a far neighbor pushes as hard as a touching one. Aggressive separation traps NPCs in doorways — modulate it contextually."
+        },
+        {
+          "id": "g9",
+          "order_index": 9,
+          "instruction": "Make the decision layer express CONTEXT-SENSITIVE choice via utility scoring, via run_luau. When the best action depends on competing factors (health, distance, cover, ally proximity, ammo), SCORE instead of branch: each candidate action (attack, retreat, reload, flank, take-cover) gets a utility function returning a number from current world state, built as normalized considerations multiplied together (attackScore = inRange * hasAmmo * (1-healthLow)); each tick evaluate all and execute the highest. Gate utility evaluation behind the FSM (only score inside the Combat state) or throttle to a few times/sec so the same NPC makes different sensible decisions in different situations rather than following a fixed transition path.",
+          "addresses_criteria": [
+            "npc-utility-ai-context-scoring"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Evaluating many scored actions every frame for every NPC is real overhead — gate it behind the FSM state that needs it. Poorly tuned/linear curves cause indecisive flip-flopping between two near-equal actions — add hysteresis or a small commitment timer."
+        },
+        {
+          "id": "g10",
+          "order_index": 10,
+          "instruction": "For an NPC with many interruptible sub-behaviors, make the decision layer a BEHAVIOR TREE with a blackboard and event-driven ticking, via run_luau. Compose Sequence (run children until one Fails) and Selector (run until one Succeeds) over leaf Condition/Action nodes; each tick() returns Success/Failure/Running; share state via a Blackboard table (target, lastSeenPos, threat) passed to every node; re-tick from root each tick so higher-priority branches (flee when low HP) naturally pre-empt lower ones — free interruption/prioritization a flat FSM makes expensive. Critically, an Action node must stop its own pathfinding in its finish/cleanup or paths stack and loop.",
+          "addresses_criteria": [
+            "npc-behavior-tree-blackboard-event-driven"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "BT nodes that don't return a tri-state (Running) can't represent in-progress actions and restart them every tick. A fixed tick interval (e.g. 0.2s) bounds reaction time — tune it. A chase node that doesn't Stop() its pathfinding in finish() stacks overlapping path loops and the NPC stutters/teleports."
+        },
+        {
+          "id": "g11",
+          "order_index": 11,
+          "instruction": "Give the NPC a deliberate POSITIONING behavior with combat spacing and kiting, plus a clean death, via run_luau — going beyond make_npc's stock loop (chase = bee-line Humanoid:MoveTo to the target; attack = stop dead at attackRange). Implement a real engagement BAND with hysteresis, not a single threshold: define an inner radius and an outer radius around an ideal range so the NPC RETREATS (moves directly away from the target) when the target is inside the inner radius, ADVANCES when beyond the outer radius, and HOLDS / strafes when inside the band — the inner/outer gap prevents the jitter you'd get from a single attack-range check. Make the policy explicit per archetype: a RANGED NPC kites (keeps the player at the outer band and backpedals while still firing on cooldown), a MELEE NPC closes to the inner band and presses. On death (Humanoid.Died and/or Health hitting 0) disconnect every connection the AI created, stop the loop, and GUARD the attack path so a dead NPC can never apply damage. Gate all damage on the attackCooldown (a naive per-frame Touched/TakeDamage melts the player). Pitfalls: do NOT just lift make_npc's attack branch (stopping at attackRange is not spacing — the NPC must actively reposition within a band); a single threshold with no inner/outer hysteresis ping-pongs; leaking the AI's own connections or omitting the post-death damage guard lets a corpse keep dealing damage.",
+          "addresses_criteria": [
+            "npc-combat-spacing-kiting-cleanup"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Bee-lining into the target and standing inside it (make_npc's attack state) reads as cheap. Without a death guard the NPC keeps attacking after dying and its loops/connections leak. A naive per-frame Touched/TakeDamage with no cooldown melts the player instantly — gate damage on the attackCooldown."
+        },
+        {
+          "id": "g12",
+          "order_index": 12,
+          "instruction": "Make expensive AI work EVENT-GATED, not flat-out every frame for every NPC, via run_luau. Run ALL NPCs from ONE central server RunService.Heartbeat loop iterating an NPC registry table — never a per-NPC while-true loop. Decouple update rates: movement can tick at frame rate, but perception raycasts and ComputeAsync recomputes run on cooldowns (every ~0.3-0.5s) and STAGGERED (round-robin a slice each frame) so not all NPCs do heavy work the same frame. This is the affordable-intelligence floor the later scale architecture (e8) builds on.",
+          "addresses_criteria": [
+            "npc-throttled-staggered-ai-budget"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Per-NPC while-task.wait loops desync and multiply overhead — 80 NPCs all doing perception + ComputeAsync the same frame spikes the frame. Synchronized (non-staggered) cooldowns create periodic hitches even when average cost is fine. Doing the raycast LOS for every NPC every frame is the documented scaling killer."
+        },
+        {
+          "id": "g13",
+          "order_index": 13,
+          "instruction": "Build the full BELIEVABILITY layer on top of bare wander, via run_luau — all four pillars, not just telegraphs. (1) VARIED IDLE: unengaged NPCs cycle a walk -> stand -> wait(10-15s) loop driving DIFFERENT idle animations and look-around/head-turns per NPC (and per cycle), not one looped idle — so a crowd does not read as clones. (2) AUTHORED ROUTINES: give NPCs authored patrol routes (a list of waypoints they tour) or a time-of-day schedule (home->work->shop->sleep), not just random wander. (3) STATE TELEGRAPHS: on each perception/FSM transition (Unaware->Suspicious, Suspicious->Alert, idle->chase) fire a bark/callout (ChatBubble / TextChatService / a sound) AND a micro-reaction — turn the head toward the stimulus, a '?' billboard on Suspicious / '!' on Alert — so detection is legible rather than a silent boolean flip. (4) SOCIAL-AWARE MOVEMENT: a wanderer raycasts ahead along its move direction and, when another character blocks it, stop-waits or re-paths AROUND them instead of clipping straight through — the rubric explicitly FAILS NPCs that path through each other. Dump evidence for all four. PITFALLS: identical idle behavior across a crowd reads as clones (vary anims/routines/look-around per NPC); a silent awareness flip leaves the player unable to read what an NPC notices (the transition must be visible — bark + head-turn + '?'/'!'); and NPCs that walk through one another break the populated-world illusion (raycast-ahead + wait/re-path is required).",
+          "addresses_criteria": [
+            "npc-ambient-believability-barks-routines"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Bare wander with no telegraph leaves the player unable to read what an NPC notices — the awareness change must be visible (bark + head-turn). Identical idle behavior across a crowd reads as clones; vary anims and routines per NPC."
+        }
+      ]
+    },
+    {
+      "tier": "exceptional",
+      "goal": "Cross from 'smart NPC' to a coordinated, observable, scalable system: perception that is a per-state design lever, squad coordination through SHARED state with role slots + alert propagation, tactical flanking/cover via rated positions, flocking with spatial partitioning, a scale architecture that breaks the uniform-per-frame-per-NPC cost, individuated non-lockstep behavior, and an inspectable debug-visualization layer so the AI can be tuned.",
+      "steps": [
+        {
+          "id": "e1",
+          "order_index": 1,
+          "instruction": "Make perception a PER-STATE DESIGN LEVER, not one fixed radius, via run_luau. The b3/g1 perception parameters expand and contract with behavioral state: an Unaware patroller has a narrow FOV + short range; once Alert, range and FOV widen and the meter fills faster; a Suspicious NPC turns to sweep its cone over the last-seen point. Drive viewRange / fovDegrees / fillRate from the current FSM state so the same numbers carry MEANING (an alerted guard is harder to sneak past than a bored one).",
+          "addresses_criteria": [
+            "npc-per-archetype-perception-tuning"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "A single fixed radius/FOV regardless of state is the floor — exceptional perception MEANS something changes with alertness. Don't widen perception so far when Alert that the NPC becomes omniscient; it should still respect LOS."
+        },
+        {
+          "id": "e2",
+          "order_index": 2,
+          "instruction": "Make a group act as a COORDINATED UNIT through SHARED state, via run_luau. A squad coordinator (a shared ModuleScript table, or CollectionService-tagged members + a BindableEvent bus) holds the squad's knowledge. ALERT PROPAGATION: when one NPC reaches Alert, broadcast lastKnownPosition to allies within a propagationRadius; recipients jump from Unaware to Investigate toward that point — so spotting one guard alerts the room instead of each NPC independently rediscovering the player. ROLE/SLOT ASSIGNMENT: the coordinator hands out distinct slots around the target (attacker / flanker / holder) and caps simultaneous attackers (others hold at range = kiting) so they don't all swing at once.",
+          "addresses_criteria": [
+            "npc-coordination-roles-slots-alert-propagation"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Each NPC running its brain in total isolation means alerting one does nothing to the others and they each rediscover the player — the criterion explicitly rejects independent agents. No attacker cap = everyone crowds and swings simultaneously (trivial to AoE, no tactical feel)."
+        },
+        {
+          "id": "e3",
+          "order_index": 3,
+          "instruction": "Make NPCs choose WHERE to be for advantage — flank and use cover — via run_luau. Instead of always taking the shortest path straight at the target, generate candidate positions (a ring around the target, points behind cover relative to the target's facing) and RATE each by tactical value: line of sight to the target, distance, exposure (raycast from candidate to target), and flank angle relative to allies' positions. Path (b2 loop) to the highest-rated position rather than the target's feet, so the squad flanks and takes cover rather than bee-lining.",
+          "addresses_criteria": [
+            "npc-tactical-flanking-rated-positions"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Always pathing straight at the target is the mean behavior this rejects — generate and rate candidate positions. Rating cover by distance alone ignores whether the spot actually has LOS/exposure to the target; raycast to score exposure."
+        },
+        {
+          "id": "e4",
+          "order_index": 4,
+          "instruction": "Make many NPCs spread as a flock with a SPATIAL PARTITION, via run_luau. Apply Boids — each agent sums Separation (steer from close neighbors), optional Alignment (match neighbor heading) and Cohesion (toward neighbor centroid) — and adds the steering to its pathfinding destination so the group occupies space instead of every agent converging on one identical point and overlapping. For many agents, query neighbors through a SPATIAL PARTITION (a grid/hash bucketed by position, or OverlapParams region queries) instead of O(n^2) all-pairs each frame.",
+          "addresses_criteria": [
+            "npc-boids-flocking-spatial-partition"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "All-pairs neighbor checks every frame are O(n^2) and don't scale — bucket positions in a spatial hash/grid. Flocking without the surround-slot offset (g8) still converges if everyone targets the identical point; combine separation with offset targets."
+        },
+        {
+          "id": "e5",
+          "order_index": 5,
+          "instruction": "Architect the system so it does NOT pay full per-frame cost for every NPC uniformly, via run_luau. Build on the g12 central scheduler and add work-saving that breaks the uniform-full-rate model: event-gated recompute (recompute-on-block, not on a timer), and distance-based LEVEL OF DETAIL — NPCs far from any player (e.g. >150 studs) SLEEP (skip perception + pathfinding) or run a coarse cheap update (distance-only, no raycast), resuming full logic on player approach; throttle ComputeAsync against a shared global rate budget rather than per-NPC timers all firing at once. Keep AI server-authoritative throughout.",
+          "addresses_criteria": [
+            "npc-server-authoritative-scale-architecture"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Letting the Heartbeat connection do heavy work every frame for every NPC is the documented scaling killer (the Astro Force failure). No distance LOD wastes full pathfinding on NPCs nowhere near a player. A per-NPC ComputeAsync timer farm all firing together spikes — gate against a shared budget."
+        },
+        {
+          "id": "e6",
+          "order_index": 6,
+          "instruction": "Make NPCs INDIVIDUATED and non-lockstep, via run_luau. Add small per-NPC variance so they don't read as identical clones reacting in perfect sync: jitter each NPC's perception/decision cooldown phase (a random offset so they don't all re-evaluate the same frame), vary reaction delay slightly, and add a brief 'react-before-think' beat — a startle/turn-toward telegraph the instant a stimulus lands, before the considered decision resolves. Vary WalkSpeed, idle anim selection, and bark lines per NPC so a crowd reads as individuals.",
+          "addresses_criteria": [
+            "npc-desync-timing-variance-react-before-think"
+          ],
+          "tools": [
+            "run_luau"
+          ],
+          "pitfalls": "Identical timers + identical reactions make a squad read as cloned bots flipping state in perfect lockstep — phase-offset their cooldowns and vary reaction delay. An instant fully-resolved reaction with no startle telegraph reads as robotic; add the react-before-think beat."
+        },
+        {
+          "id": "e7",
+          "order_index": 7,
+          "instruction": "Make the AI OBSERVABLE — expose its internal reasoning so it can be tuned, via run_luau + create_instance + capture. Render a debug-visualization layer: named discrete states shown as a label/billboard over each NPC (unaware/suspicious/alert), the awareness meter as a bar, the FOV cone and current LOS ray drawn as gizmo parts/beams, the active path waypoints as markers, and the current target/last-known-position as a marker. Gate it behind a debug flag. Use capture / capture_angles to screenshot the running scene and confirm the internal state is legible, so perception ranges, meter rates, and path cadence can be tuned from what you SEE.",
+          "addresses_criteria": [
+            "npc-debug-visualization-layer"
+          ],
+          "tools": [
+            "run_luau",
+            "create_instance",
+            "capture",
+            "capture_angles"
+          ],
+          "pitfalls": "An opaque black-box AI can't be tuned — the criterion wants internal state made EXPLICIT and inspectable (named states, drawn cones/rays/paths, meters). Leaving the debug layer always-on ships gizmos to players; gate it behind a flag. Not capturing the running scene means you tune blind."
+        }
+      ]
+    }
+  ],
+  "killer_systems": [
+    {
+      "name": "Earned perception (range -> FOV cone -> LOS raycast + memory)",
+      "what": "The NPC becomes aware of a target ONLY through a real sensing primitive — three sequential gates (range, a dot-product FOV cone, an occlusion raycast), all must pass — never an omniscient distance check or a per-frame read of the target's live Position. While seen it stores lastKnownPosition; when sight breaks it acts on that stale info.",
+      "how": "In run_luau: gate (1) (targetPos-eyePos).Magnitude > viewRange; (2) angle = deg(acos(clamp(LookVector:Dot(toTarget.Unit),-1,1))) > fov/2; (3) workspace:Raycast(eyePos,toTarget, RaycastParams Exclude={npc,otherNpcs}) visible only if hit is nil or a descendant of the target — raycast to head AND torso. Store lastKnownPosition on every successful sense. This REPLACES make_npc's omniscient .Magnitude nearest() check."
+    },
+    {
+      "name": "PathfindingService compute-and-follow loop with event-gated repath + stuck recovery",
+      "what": "Movement routes along a navmesh path AROUND obstacles and survives a moving/blocked world: a validated compute-and-follow loop that recomputes only on event (Blocked ahead / target moved past a threshold / min interval), detects being stuck, and recovers — not a one-shot path or a straight-line MoveTo into walls.",
+      "how": "CreatePath once (reuse it) with rig-sized agent params + Costs; pcall ComputeAsync, guard Status==Success, follow waypoints with a per-frame arrival-threshold advance (not MoveToFinished:Wait per point), Jump on wp.Action; connect path.Blocked (repath only if blockedIdx>=currentIdx), repath when the target moves >3-5 studs gated by os.clock interval; sample HRP displacement over a window and on <1 stud while 'moving' jump+recompute, abandon after a stuck cap. PathfindingLinks for off-mesh (ladders/gaps)."
+    },
+    {
+      "name": "Explicit prioritized decision brain (FSM -> behavior tree -> utility AI)",
+      "what": "A traceable decision structure with multiple prioritized behaviors (Patrol/Investigate/Chase/Attack/Return) and clean transitions — not a single chase-if-close branch or a nested-if pile. Scales to a behavior tree (free interruption via re-tick) and utility scoring (context-sensitive choice) when sub-behaviors multiply.",
+      "how": "In run_luau: one module per state with Enter/Update->nextName/Exit; a manager swaps on the returned name; states COMMAND the perception + navigation modules, never reimplement them, one-way sense->decide->act per tick. For many interruptible sub-behaviors compose Sequence/Selector nodes over a shared Blackboard returning Success/Failure/Running; for competing factors score normalized considerations and pick the max, gated behind the relevant state."
+    },
+    {
+      "name": "Squad coordination — shared alert propagation + role slots + separation/flocking",
+      "what": "A group acts as a coordinated unit through SHARED state, not independent agents that each rediscover the player and stack on one point. Spotting one alerts the room; the coordinator assigns surround slots / flank roles and caps attackers; pursuers occupy space and surround instead of collapsing into one body.",
+      "how": "A shared squad table / CollectionService-tagged members + BindableEvent bus: on Alert, broadcast lastKnownPosition to allies in radius (they go Investigate). Assign angle-slot ring positions around a lead/intercept point (targetPos + targetVel*eta) and cap simultaneous attackers. Each NPC blends a separation steering vector (inverse-distance away from neighbors) + an assigned offset slot; for many agents, Boids with a spatial-hash neighbor query."
+    },
+    {
+      "name": "Ambient life + believability + observable internal state",
+      "what": "Unengaged NPCs move on their own (zone-leashed autonomous wander), have varied idle routines, TELEGRAPH state so the player can read what they notice, and expose their reasoning so the AI can be tuned — not frozen statues or an opaque black box.",
+      "how": "In run_luau: wander to random ground-validated points clamped to a zone part's Position ± Size/2, randomized idle pauses, leash back home; on state change fire a bark + head-turn micro-reaction; render a debug layer (named state labels, awareness bars, drawn FOV cones/LOS rays/path waypoints) behind a flag and screenshot it with capture/capture_angles to tune perception and cadence from what you see."
+    }
+  ],
+  "common_pitfalls": [
+    "Shipping make_npc's stock NpcAI Script as the answer — it IS the rubric's mean artifact: Humanoid:MoveTo(nearestPlayer) every 0.2s (no pathfinding, walks through walls), an omniscient (thrp.Position - hrp.Position).Magnitude distance check (sees through walls and behind its own back), one chase-if-close decide() branch, no coordination, and idle = stand still (frozen statue). Use make_npc only as a scaffold and REPLACE the loop body via run_luau.",
+    "Omniscient perception: any pure distance/magnitude check, or reading the target's live Position every frame, instead of an earned range->FOV->LOS primitive. The NPC must EARN awareness and act on lastKnownPosition once sight breaks — not teleport-track the hidden live position (aimbot) and not snap to idle in one frame (goldfish).",
+    "Straight-line Humanoid:MoveTo(targetPos) instead of a PathfindingService path — the canonical wall-clipping tell. Always CreatePath (reused) + pcall ComputeAsync + guard Status==Success + follow waypoints; recompute on EVENT (Blocked-ahead / target-moved-threshold / min interval), never every frame.",
+    "MoveToFinished:Wait() at every waypoint — the #1 jitter cause (stop-go stutter-stepping, freezes on many short segments). Follow per-frame with an arrival threshold and humanoid:Move(dir). Note SetNetworkOwner(nil) does NOT fix walk jitter — the cause is the un-debounced Humanoid.Running retriggering the walk track; debounce with an isWalkPlaying flag + 0.2s fades.",
+    "No stuck detection: Humanoid.MoveToFinished's internal ~8s timeout fires even when the NPC is wedged, silently skipping the waypoint, so a corner-stuck NPC grinds into the wall forever. Sample HRP displacement over a window; jump + recompute + abandon after a cap; race MoveToFinished:Wait against task.delay.",
+    "ComputeAsync every frame (60Hz) — tanks performance and rebuilds the path into visible jitter; spamming it when Status==NoPath (unreachable) is a documented perf killer. Gate on interval + threshold + Blocked-ahead, and treat NoPath as a state signal.",
+    "A single chase-if-close branch (or a nested-if pile where every script reaches into every other) instead of an explicit prioritized FSM. Keep states modular, command (don't reimplement) the perception/navigation modules, and nest a sub-machine inside a state rather than exploding top-level states.",
+    "Building the FSM before movement is solid — then every bug looks like an AI bug when it is a navigation bug. Lock down the path-follow loop and the perception module as independently testable units FIRST, then compose them.",
+    "Every NPC hard-locking the nearest player's CURRENT position and pathing to it in isolation: fast targets are never caught (no lead/intercept) and all NPCs stack on one point (no separation/slots). Lead by velocity, assign surround slots, blend a separation steering vector, and reduce separation in doorways so it doesn't trap them.",
+    "Frozen statues + opaque reasoning: NPCs that stand still until a player triggers them read as props, and an un-telegraphed boolean awareness flip leaves the player unable to read what an NPC notices. Add zone-leashed autonomous wander, barks + head-turns on state change, and a gated debug-visualization layer (named states, awareness bars, drawn cones/rays/paths) so the AI is alive AND tunable.",
+    "Per-NPC while-true loops + no LOD: 80 NPCs each running perception + ComputeAsync the same frame spikes the frame (the Astro Force failure). Run ONE central Heartbeat scheduler over an NPC registry, stagger expensive work round-robin, and sleep/coarse-update NPCs far from any player.",
+    "math.acos without math.clamp to [-1,1] NaNs the FOV cone from float error; forgetting to add the NPC's own model (and ideally all NPCs) to the raycast Exclude filter makes the LOS ray hit its own body and report 'blocked' forever; the radial investigate scan must use ground-validated walkable points or the NPC investigates unreachable spots and looks broken."
+  ],
+  "provenance": {
+    "sources": [
+      "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+      "https://create.roblox.com/docs/en-us/characters/pathfinding.md",
+      "https://create.roblox.com/docs/en-us/characters/pathfinding.md",
+      "https://devforum.roblox.com/t/simplepath-pathfinding-module/1196762",
+      "https://devforum.roblox.com/t/how-to-create-a-realistic-npc-eyesight-system/2456522",
+      "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+      "https://github.com/dogo8me/advanced_pathfinding",
+      "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+      "https://devforum.roblox.com/t/preventing-ai-from-crowdingclustering-when-chasing-a-target/3180105",
+      "https://devforum.roblox.com/t/what-is-the-optimal-way-to-handle-the-ai-of-enemies/2643025",
+      "https://devforum.roblox.com/t/npc-pathfinding-jitterystuttering-walk-animation-solution/2693793",
+      "https://devforum.roblox.com/t/randomly-wandering-npc/2791874",
+      "https://devforum.roblox.com/t/creating-a-realistic-npc-fov-using-raycasts-and-dot-product/2456522",
+      "https://devforum.roblox.com/t/struggling-with-making-a-detection-system-for-a-stealth-game/2481235",
+      "https://devforum.roblox.com/t/npc-that-will-investigate/2076227",
+      "https://github.com/Roblox/creator-docs/blob/main/content/en-us/characters/pathfinding.md",
+      "https://simplified.media/guides/roblox-npc-pathfinding",
+      "https://simplified.media/guides/roblox-npc-pathfinding",
+      "https://devforum.roblox.com/t/full-release-introducing-the-pathfinding-links-for-npcs/1771534",
+      "https://devforum.roblox.com/t/using-ai-behavior-frameworks-for-npcs/3482097",
+      "https://devforum.roblox.com/t/preventing-ai-from-crowdingclustering-when-chasing-a-target/3180105",
+      "https://simplified.media/guides/roblox-npc-pathfinding",
+      "https://devforum.roblox.com/t/how-can-i-make-npc-wander-for-a-certain-amount-of-time/1880995",
+      "https://simplified.media/guides/roblox-npc-pathfinding",
+      "https://devforum.roblox.com/t/how-to-avoid-npc-stuttering/1600305 ; https://devforum.roblox.com/t/npc-movement-being-jitterychoppy/3601527 ; https://devforum.roblox.com/t/make-npc-pathfinding-more-smooth/2129908",
+      "https://devforum.roblox.com/t/npc-pathfinding-jitterystuttering-walk-animation-solution/2693793",
+      "https://devforum.roblox.com/t/make-npc-pathfinding-more-smooth/2129908 ; https://devforum.roblox.com/t/npcs-movement-is-very-laggy-and-jittery/2472001",
+      "https://devforum.roblox.com/t/npcs-movement-is-very-laggy-and-jittery/2472001",
+      "https://devforum.roblox.com/t/how-to-make-an-npc-see-a-player-within-their-fov-instead-of-a-single-raycast/2910681 ; https://devforum.roblox.com/t/how-would-i-make-advanced-npc-ai/2890159",
+      "https://devforum.roblox.com/t/preventing-my-npc-from-shooting-raycasts-through-walls/1864711",
+      "https://devforum.roblox.com/t/npc-head-rotations-get-messed-up-with-animations/2310831",
+      "https://devforum.roblox.com/t/how-would-i-make-advanced-npc-ai/2890159",
+      "https://devforum.roblox.com/t/how-does-this-npc-look/1338517 ; https://devforum.roblox.com/t/why-are-my-models-so-bad/2516105",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, sort variant, ~26:00-31:00); https://www.youtube.com/watch?v=S73ssg7PwHQ (DevMelon, inline closest, ~02:30-04:40)",
+      "https://www.youtube.com/watch?v=BUwAcW_18Ws (okeanskiy, full 0:00-6:27)",
+      "https://www.youtube.com/watch?v=WIhm49putiA (Built2Last, LOS + last-seen, ~00:30-01:30); https://www.youtube.com/watch?v=uF-BGGv6otQ (GnomeCode, 'need a lookout for the player', ~15:50-16:30)",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, ~03:30-11:00); https://www.youtube.com/watch?v=uF-BGGv6otQ (GnomeCode, ~05:20-09:10)",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, jump/climb, ~11:20-15:10); https://www.youtube.com/watch?v=uF-BGGv6otQ (GnomeCode, measuring radius/height, ~09:56-11:28)",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, costs/modifiers/doors, ~16:40-25:04)",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, pcall+status, ~06:51-07:36 and ~15:30-16:40; 'treat it like fragile', ~32:41-33:26)",
+      "https://www.youtube.com/watch?v=ckA4fVkAjIA (BrawlDev, 'detect blocked paths and reroute', ~31:56-32:41); https://www.youtube.com/watch?v=TxdnHeH1iYc (pluggnsb, SimplePath, ~05:17-06:02); https://www.youtube.com/watch?v=UM7UtF4e0-0 (BubuTheDev, Forbidden module, ~00:30-01:00)",
+      "https://www.youtube.com/watch?v=bFt5N1vpa6I (qweekertom, full FSM build 0:00-12:06)",
+      "https://www.youtube.com/watch?v=TxdnHeH1iYc (pluggnsb, BTrees V5 + idle/chase/attack nodes, full 0:00-8:34); https://www.youtube.com/watch?v=WIhm49putiA (Built2Last, hand-rolled selector/sequence/nodes + 0.2s tick + reusable trees, ~01:30-05:18)",
+      "https://www.youtube.com/watch?v=uF-BGGv6otQ (GnomeCode, patrol folder + random waypoint, ~11:28-16:02); https://www.youtube.com/watch?v=ewBqcrgGKss (MonkeyDev, LoopPoints folder pattern, ~01:32-02:19)",
+      "https://www.youtube.com/watch?v=S73ssg7PwHQ (DevMelon, while loop + Animate transplant + Touched debounce, ~01:00-06:09); https://www.youtube.com/watch?v=WIhm49putiA (Built2Last, death guard + cleanup, ~00:46-01:31); https://www.youtube.com/watch?v=uF-BGGv6otQ (GnomeCode, Animate LocalScript→Script, ~02:19-03:50)"
+    ],
+    "confidence": "high",
+    "coverage": {
+      "criteria_total": 24,
+      "criteria_addressed": 24,
+      "uncovered": []
+    }
+  }
+}
