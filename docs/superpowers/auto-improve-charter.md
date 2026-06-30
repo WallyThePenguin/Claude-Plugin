@@ -109,6 +109,17 @@ not in that it ever fakes completion.
 6. **Netcode foundation** (the lightsaber vision: server-authoritative validation / lag-comp scaffolding
    on #4's client-request→server-execute seam). *Oracle:* a server-sim Spec asserting authority/rejection;
    this is large and partly a taste/design call → expect human checkpoints.
+   - ✅ **FIRST PIECE DONE (iter, 2026-06-29)** — **server-authoritative request validation (anti-spam
+     cooldown).** The `bind_hitbox` server (`ItemHitServer`) trusted every client `FireServer`, so a client
+     could deal damage at an arbitrary rate (even without swinging). Added a pure `HitValidator.check`
+     (per-(player,tool) cooldown; a rejected spam request does NOT advance the window) unit-tested in
+     `HitValidatorSpec` (8/8), and inlined the SAME algorithm into the generated server source (per-player
+     `lastHit` table + `HitCooldown` attribute, default 0.4s, + `PlayerRemoving` cleanup). *Oracles:*
+     HitValidatorSpec pass; selene 0/0; rojo green; LIVE bind verified (`HitCooldown` set, server source
+     carries the cooldown gate + per-player table + cleanup). **STILL DEFERRED (need human checkpoints):**
+     lag-compensation rewind, per-limb hit resolution, reconciliation, and server-side ACTIVE-WINDOW
+     authority (the swing FSM is still client-driven — the cooldown caps the rate but full authority over
+     "is the swing legitimately active" needs the behavior state mirrored server-side; a design call).
 7. **Housekeeping** discovered along the way (more `paint_texture` kinds, the pre-`/exemplars` sidecar exe
    rebuild, etc.). *Oracle:* per-item.
    - ✅ **DONE (iter, 2026-06-29)** — rubric schema/validator parity: `validate_rubric.py` + `rubric.schema.json`
