@@ -148,6 +148,73 @@ function BuildGuideCatalog.validateGuide(raw: any): (Guide?, string?)
 		nil
 end
 
+-- User-guide cap (newest kept), mirroring SkillCatalog.MAX_USER_SKILLS.
+local MAX_USER_GUIDES = 20
+BuildGuideCatalog.MAX_USER_GUIDES = MAX_USER_GUIDES
+
+-- Insert-or-update a VALIDATED user guide into the user list. Rejects a reserved (built-in) module;
+-- replaces a same-module user guide in place; FIFO-drops the oldest past MAX_USER_GUIDES. PURE (no
+-- DataModel) so it is unit-testable; the store wires plugin:GetSetting/SetSetting around it. Returns
+-- (newList, note, ok). Mirrors SkillStore.save's logic.
+function BuildGuideCatalog.saveInto(
+	userGuides: { Guide },
+	guide: Guide,
+	reserved: { [string]: boolean }
+): ({ Guide }, string, boolean)
+	if reserved[guide.module] then
+		return userGuides,
+			"save_build_guide failed: '" .. guide.module .. "' is a built-in guide category (pick another).",
+			false
+	end
+	local out: { Guide } = {}
+	local replaced = false
+	for _, g in ipairs(userGuides) do
+		if g.module == guide.module then
+			table.insert(out, guide)
+			replaced = true
+		else
+			table.insert(out, g)
+		end
+	end
+	if not replaced then
+		table.insert(out, guide)
+	end
+	local dropped = 0
+	while #out > MAX_USER_GUIDES do
+		table.remove(out, 1)
+		dropped += 1
+	end
+	local note = if replaced
+		then "updated build guide '" .. guide.module .. "'"
+		else "saved build guide '" .. guide.module .. "'"
+	note ..= " (" .. tostring(#out) .. " of your guides stored)"
+	if dropped > 0 then
+		note ..= "; dropped " .. tostring(dropped) .. " oldest (cap " .. tostring(MAX_USER_GUIDES) .. ")"
+	end
+	return out, note, true
+end
+
+-- Remove a USER guide by module/category. PURE. Returns (newList, note, ok).
+function BuildGuideCatalog.deleteFrom(userGuides: { Guide }, module: any): ({ Guide }, string, boolean)
+	local target = BuildGuideCatalog.normalizeCategory(module)
+	if target == nil then
+		return userGuides, "delete_build_guide: invalid category", false
+	end
+	local out: { Guide } = {}
+	local removed = false
+	for _, g in ipairs(userGuides) do
+		if g.module == target then
+			removed = true
+		else
+			table.insert(out, g)
+		end
+	end
+	if not removed then
+		return userGuides, "delete_build_guide: no user guide for '" .. target .. "'", false
+	end
+	return out, "deleted build guide '" .. target .. "'", true
+end
+
 -- Exact (normalized) category lookup against guide.module.
 function BuildGuideCatalog.findByCategory(guides: { Guide }, category: any): Guide?
 	local target = BuildGuideCatalog.normalizeCategory(category)

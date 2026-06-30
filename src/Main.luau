@@ -60,7 +60,7 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 		learnings = Learnings.new(plugin),
 		skills = SkillStore.new(plugin),
 		rubrics = RubricStore.new(),
-		buildGuides = BuildGuideStore.new(),
+		buildGuides = BuildGuideStore.new(plugin),
 		cameraRig = CameraRig.new(config),
 	}
 

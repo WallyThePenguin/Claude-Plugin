@@ -97,16 +97,15 @@ not in that it ever fakes completion.
    env's rate limit cannot take 2 concurrent (hardened grade() + verify-rubric against it). Further
    categories remain open-ended but lower-priority; UI-motion (in gui), lighting+terrain (in environment)
    are already covered — check overlap before adding. (More-category work is API-rate/session-limited.)
-5. **`save_build_guide` / user guides** (v1 is built-ins only; mirror the skills store). *Oracle:* a Spec
-   + a live round-trip via the bridge.
-   - 🔶 **DESIGN FORK found (iter, 2026-06-29), needs human input.** `save_skill` persists a SIMPLE shape
-     (name/description/body) via `plugin:SetSetting` — a clean mirror would be mechanical. But a build guide
-     is a DEEP structured object (module → tiers → steps → killer_systems), so the user-facing save shape is
-     a real choice: (A) accept the full guide JSON (faithful but heavy to hand-author), or (B) a simplified
-     user-guide form (name/category/overview/step-strings, looser than built-ins). The persistence mechanism
-     is settled (mirror SkillStore: `_plugin:GetSetting/SetSetting`, builtin-name reservation, FIFO cap,
-     `loadUser/all/save/delete/resolve/catalogBlock`); only the input SHAPE needs a decision. Recommend (B)
-     for ergonomics. Not started — flagged for the user rather than unilaterally picking a shape.
+5. ✅ **DONE (iter, 2026-06-29)** — **`save_build_guide` / user guides.** Mirrors SkillStore: pure
+   `BuildGuideCatalog.saveInto/deleteFrom` (unit-tested in BuildGuideCatalogSpec, 6 new cases) + a
+   plugin-backed `BuildGuideStore` (`loadUser/persistUser/save/delete`, `new(plugin)`, built-in modules
+   RESERVED, FIFO cap 20, key `StudioAgent_buildguides_user`) + `save_build_guide`/`delete_build_guide`
+   tools. The design fork resolved to the ergonomic shape (B): `save_build_guide({ category, overview?,
+   steps=[string] })` wraps a flat step list into a baseline tier, OR a full `tiers=[...]`. *Oracles all
+   green:* BuildGuideCatalogSpec pass; RelaySpec 15/15 no-drift (both tools in LOCAL_TOOLS); selene 0/0;
+   rojo green; LIVE round-trip via the bridge — save → use_build_guide renders it → delete → confirms gone;
+   built-in collision rejected + built-in delete refused.
 6. **Netcode foundation** (the lightsaber vision: server-authoritative validation / lag-comp scaffolding
    on #4's client-request→server-execute seam). *Oracle:* a server-sim Spec asserting authority/rejection;
    this is large and partly a taste/design call → expect human checkpoints.

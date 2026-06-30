@@ -105,6 +105,61 @@ local function buildCases(): { Case }
 			and BuildGuideCatalog.findByCategory(list, 5) == nil
 	end)
 
+	-- ---- user-save pure helpers (saveInto / deleteFrom) ----
+	local function guideWithModule(mod: string): any
+		local raw = goodRaw()
+		raw.module = mod
+		local g = BuildGuideCatalog.validateGuide(raw)
+		assert(g ~= nil, "validateGuide nil for " .. mod)
+		return g
+	end
+
+	add("saveInto inserts a new user guide", function()
+		local g = guideWithModule("myguide")
+		local out, note, ok = BuildGuideCatalog.saveInto({}, g, {})
+		return ok and #out == 1 and out[1].module == "myguide" and string.find(note, "saved", 1, true) ~= nil
+	end)
+
+	add("saveInto rejects a reserved (built-in) module", function()
+		local g = guideWithModule("locomotion")
+		local out, note, ok = BuildGuideCatalog.saveInto({}, g, { locomotion = true })
+		return not ok and #out == 0 and string.find(note, "built-in", 1, true) ~= nil
+	end)
+
+	add("saveInto replaces a same-module user guide in place (no duplicate)", function()
+		local first = guideWithModule("dup")
+		local list = (BuildGuideCatalog.saveInto({}, first, {}))
+		local second = guideWithModule("dup")
+		second.overview = "v2"
+		local out, note, ok = BuildGuideCatalog.saveInto(list, second, {})
+		return ok and #out == 1 and out[1].overview == "v2" and string.find(note, "updated", 1, true) ~= nil
+	end)
+
+	add("saveInto FIFO-drops oldest past MAX_USER_GUIDES", function()
+		local list: { any } = {}
+		for i = 1, BuildGuideCatalog.MAX_USER_GUIDES do
+			list = (BuildGuideCatalog.saveInto(list, guideWithModule("g" .. i), {}))
+		end
+		local out, note, ok = BuildGuideCatalog.saveInto(list, guideWithModule("overflow"), {})
+		return ok
+			and #out == BuildGuideCatalog.MAX_USER_GUIDES
+			and out[1].module == "g2" -- g1 dropped
+			and out[#out].module == "overflow"
+			and string.find(note, "dropped", 1, true) ~= nil
+	end)
+
+	add("deleteFrom removes an existing user guide", function()
+		local list = (BuildGuideCatalog.saveInto({}, guideWithModule("gone"), {}))
+		local out, note, ok = BuildGuideCatalog.deleteFrom(list, "GONE")
+		return ok and #out == 0 and string.find(note, "deleted", 1, true) ~= nil
+	end)
+
+	add("deleteFrom on a missing module -> ok=false, list unchanged", function()
+		local list = (BuildGuideCatalog.saveInto({}, guideWithModule("keep"), {}))
+		local out, _, ok = BuildGuideCatalog.deleteFrom(list, "nope")
+		return (not ok) and #out == 1 and out[1].module == "keep"
+	end)
+
 	return cases
 end
 

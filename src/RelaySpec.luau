@@ -21,6 +21,8 @@ local EXPECTED_LOCAL = {
 	"delete_skill",
 	"use_rubric",
 	"use_build_guide",
+	"save_build_guide",
+	"delete_build_guide",
 	"evaluate",
 	"learn",
 	"unlearn",
