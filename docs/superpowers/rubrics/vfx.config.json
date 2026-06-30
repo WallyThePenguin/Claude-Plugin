@@ -1,0 +1,18 @@
+{
+  "category": "vfx",
+  "description": "Roblox stylized visual effects / particle FX (impacts, magic, energy, environmental ambience) built with ParticleEmitter / Beam / Trail / Light — layered emitters, shaped lifetime curves, additive emissive blending, timed burst phases, and impact coupling (light + camera shake + debris)",
+  "killerSystems": [
+    "layered emitters per effect (core + glow + sparks + smoke), not a single ParticleEmitter",
+    "shaped lifetime curves via NumberSequence/ColorSequence (size, transparency, color over life)",
+    "timed phases burst -> sustain -> dissipate (Rate/Enabled scripting or sub-emitters), not a constant stream",
+    "additive / world-space blending + emissive material so energy reads as light",
+    "coupling to a PointLight + a brief camera shake + secondary debris for impact weight"
+  ],
+  "meanArtifact": {
+    "name": "single default ParticleEmitter",
+    "description": "A single ParticleEmitter parented to a part: the default white-square texture, CONSTANT Size/Transparency/Color (no NumberSequence/ColorSequence curves), Enabled and always-on (no lifecycle/cleanup), one omnidirectional spray, no layering, no light, no per-particle variation - the generic default a beginner ships."
+  },
+  "greatArtifactHint": "A layered impact: a coordinated SET of role-separated emitters (a bright core flash + a soft glow + fast sparks/debris + slow rising smoke + a synced PointLight + a directed shockwave), each driven by authored NumberSequence/ColorSequence lifetime curves (size/transparency/color over life), additive self-lit authored sprites, distinct per-layer motion (drag/acceleration), choreographed timed phases (burst -> sustain -> dissipate via task.delay/sub-emitters), and a triggered one-shot Emit() lifecycle with Debris cleanup + a one-frame light flash + camera shake.",
+  "maxOptRounds": 3,
+  "separationMin": 0.35
+}

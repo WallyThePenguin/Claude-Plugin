@@ -22,21 +22,6 @@ TOOLS = [
     "capture", "capture_angles", "capture_animation",
 ]
 
-# vfx was onboarded without a committed .config.json; supply its description + killer systems
-# (particle / visual-effects authoring) so the factory has the same inputs the others get.
-VFX_FALLBACK = {
-    "description": "Roblox stylized visual effects / particle FX (impacts, magic, energy, "
-    "environmental ambience) built with ParticleEmitter / Beam / Trail / Light",
-    "killerSystems": [
-        "layered emitters per effect (core + glow + sparks + smoke), not a single ParticleEmitter",
-        "shaped lifetime curves via NumberSequence/ColorSequence (size, transparency, color over life)",
-        "timed phases burst -> sustain -> dissipate (Rate/Enabled scripting or sub-emitters), not a constant stream",
-        "additive / world-space blending + emissive material so energy reads as light",
-        "coupling to a PointLight + a brief camera shake + secondary debris for impact weight",
-    ],
-}
-
-
 def gist(statement, limit=320):
     """The criterion's gist for STEP GENERATION — the rubric statement is written for grading
     (hundreds of words); the factory only needs what to build, which the discriminator states up
@@ -67,14 +52,12 @@ def main():
         ],
     }
     cfg_path = os.path.join(RUBRICS, cat + ".config.json")
-    if os.path.exists(cfg_path):
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = json.load(f)
-        desc = cfg.get("description", "")
-        killer = cfg.get("killerSystems", [])
-    else:
-        desc = VFX_FALLBACK["description"]
-        killer = VFX_FALLBACK["killerSystems"]
+    if not os.path.exists(cfg_path):
+        sys.exit("no %s.config.json — every category needs a config (description + killerSystems)" % cat)
+    with open(cfg_path, encoding="utf-8") as f:
+        cfg = json.load(f)
+    desc = cfg.get("description", "")
+    killer = cfg.get("killerSystems", [])
     args = {
         "category": cat,
         "description": desc,
