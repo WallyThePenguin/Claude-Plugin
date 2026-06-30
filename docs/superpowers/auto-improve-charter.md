@@ -84,17 +84,19 @@ not in that it ever fakes completion.
    above-generic. The back-test is the real gate (it passes); the survival-rate heuristic was overcautious.
    *Caveat:* measured vfx only (the flagged case); other categories could be spot-checked the same way but
    are lower-priority now. Outcome: stop treating high survival as a defect; trust the back-test.
-4. **More guide+rubric categories** (e.g. audio/SFX, UI-motion, terrain, mounts/vehicles). *Oracle:* the
-   factory's discrimination back-test passes + full criterion coverage in the generated guide.
-   - 🔶 **AUDIO IN PROGRESS (iter, 2026-06-29)** — first category beyond the original 5. Rubric DONE +
-     committed (12 criteria): factory back-test great=0.64 (under bar) was diagnosed as great-artifact
-     under-description, then **independently confirmed sound** by a new reusable `verify-rubric.workflow.js`
-     (rubric-BLIND expert build + 12 adversarial skeptics + median-of-3 graders) → **mean 0.00 / great 0.82
-     / gap 0.82 PASS, 0/12 killed**. Baked into `BuiltinRubrics.luau` (6 rubrics). Scope correction baked
-     in per owner: grades CURATING+WIRING Roblox's audio library, NOT authoring raw audio. **Audio BUILD
-     GUIDE generating now** (`train-recipe`); when it lands → `BuiltinBuildGuides.luau` regen closes audio.
-   - *Lesson banked:* the factory's own back-test under-counts the great side when its great-artifact text
-     under-enumerates; the rubric-blind verify is the honest gate. Run `verify-rubric` on every new category.
+4. ✅ **MOSTLY DRAINED — corpus DOUBLED 5→10 categories (iter, 2026-06-29).** Onboarded **audio**
+   (great 0.82), **camera** (0.82), **characters** (1.00), **vehicles** (0.692 near-pass), **npc AI**
+   (0.902) — each = a discrimination-verified rubric + a full-coverage build guide + live-verified in-plugin
+   (use_rubric/use_build_guide ok=True). **10 live categories: locomotion, vfx, environment, combat, gui,
+   audio, camera, characters, vehicles, npc.** Built the reusable `verify-rubric.workflow.js` (rubric-BLIND
+   expert + adversarial skeptics + median graders) as the honest discrimination gate; run it on EVERY new
+   category. *Lessons banked:* (a) the factory's own back-test under-counts the great side — trust the
+   rubric-blind verify; (b) the verify is sensitive to expert-build COMPLETENESS (characters 0.632→1.00 once
+   the hint covered art direction, not just APIs); (c) GEPA self-optimization can DEGRADE a criterion into
+   redundancy — the skeptic pass caught + trimmed 2/26 npc criteria; (d) **SERIALIZE workflows** — this
+   env's rate limit cannot take 2 concurrent (hardened grade() + verify-rubric against it). Further
+   categories remain open-ended but lower-priority; UI-motion (in gui), lighting+terrain (in environment)
+   are already covered — check overlap before adding. (More-category work is API-rate/session-limited.)
 5. **`save_build_guide` / user guides** (v1 is built-ins only; mirror the skills store). *Oracle:* a Spec
    + a live round-trip via the bridge.
 6. **Netcode foundation** (the lightsaber vision: server-authoritative validation / lag-comp scaffolding
