@@ -87,18 +87,27 @@ remote.OnServerEvent:Connect(function(player, tool)
 	local damage = tonumber(Tool:GetAttribute("HitDamage")) or 25
 	local reach = tonumber(Tool:GetAttribute("HitReach")) or 6
 	local hitEvent = Tool:FindFirstChild("Hit")
-	local hit = {}
+	-- Find the CLOSEST struck part per victim Humanoid. On an R15 rig each limb is a separate part, so the
+	-- closest part's name is the struck LIMB -- reported to the Hit event so VFX/knockback can be
+	-- limb-aware (and as the data foundation for later per-limb damage/dismemberment, a design call).
+	local struck = {}
 	for _, p in workspace:GetPartBoundsInRadius(handle.Position, reach) do
 		local model = p:FindFirstAncestorOfClass("Model")
 		local hum = model and model:FindFirstChildOfClass("Humanoid")
-		if hum and model ~= char and not hit[hum] then
-			hit[hum] = true
-			hum:TakeDamage(damage)
-			if hitEvent then
-				pcall(function()
-					hitEvent:Fire(model, damage)
-				end)
+		if hum and model ~= char then
+			local d = (p.Position - handle.Position).Magnitude
+			local cur = struck[hum]
+			if cur == nil or d < cur.dist then
+				struck[hum] = { model = model, part = p, dist = d }
 			end
+		end
+	end
+	for hum, info in struck do
+		hum:TakeDamage(damage)
+		if hitEvent then
+			pcall(function()
+				hitEvent:Fire(info.model, damage, info.part.Name)
+			end)
 		end
 	end
 end)
@@ -199,8 +208,8 @@ local function runBind(input: any, _context: any): (any, boolean)
 			.. "(ItemHitClient) fires the %s RemoteEvent when #3's StateChanged hits 'active'; the server "
 			.. "(ItemHitServer) FIRST validates a server-authoritative %.2fs cooldown (rejects FireServer spam), "
 			.. "then sweeps a %.1f-stud radius around the Handle and TakeDamage's every non-wielder Humanoid "
-			.. "once per swing (server-AUTHORITATIVE). A `Hit` BindableEvent fires per target (model, damage) "
-			.. "for VFX/knockback.",
+			.. "once per swing (server-AUTHORITATIVE). A `Hit` BindableEvent fires per target (model, damage, "
+			.. "limb) -- limb = the closest struck part's name (R15 per-limb) -- for VFX/knockback.",
 		theTool.Name,
 		damage,
 		reach,

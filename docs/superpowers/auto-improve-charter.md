@@ -116,7 +116,13 @@ not in that it ever fakes completion.
      `HitValidatorSpec` (8/8), and inlined the SAME algorithm into the generated server source (per-player
      `lastHit` table + `HitCooldown` attribute, default 0.4s, + `PlayerRemoving` cleanup). *Oracles:*
      HitValidatorSpec pass; selene 0/0; rojo green; LIVE bind verified (`HitCooldown` set, server source
-     carries the cooldown gate + per-player table + cleanup). **STILL DEFERRED (need human checkpoints):**
+     carries the cooldown gate + per-player table + cleanup).
+   - ✅ **SECOND PIECE DONE (iter, 2026-06-29)** — **per-limb hit REPORTING** (the per-limb-vision data
+     foundation, no design call). The `Hit` BindableEvent now fires `(model, damage, limb)` where `limb` =
+     the CLOSEST struck part's name (R15 limbs are separate parts), so the existing VFX/knockback consumer
+     can be limb-aware. Reporting which limb is mechanical; per-limb damage SCALING / dismemberment (what to
+     DO with the limb) stays the design call. LIVE-verified the server source reports the closest part +
+     fires the limb name. **STILL DEFERRED (need human checkpoints):**
      lag-compensation rewind, per-limb hit resolution, reconciliation, and server-side ACTIVE-WINDOW
      authority (the swing FSM is still client-driven — the cooldown caps the rate but full authority over
      "is the swing legitimately active" needs the behavior state mirrored server-side; a design call).
