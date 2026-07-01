@@ -70,11 +70,171 @@ M.byClass = {
 		Color = "Color3",
 		Range = "number",
 	} :: ClassProps,
+
+	-- Script family. Source is deliberately NOT here: script IO goes through the script tools
+	-- (get_script/edit_script), which use ScriptEditorService and compile-check writes.
+	BaseScript = {
+		Enabled = "boolean",
+	} :: ClassProps,
+
+	Script = {
+		RunContext = "EnumItem", -- Enum.RunContext
+	} :: ClassProps,
+
+	Humanoid = {
+		Health = "number",
+		MaxHealth = "number",
+		WalkSpeed = "number",
+		JumpPower = "number",
+		JumpHeight = "number",
+		UseJumpPower = "boolean",
+		HipHeight = "number",
+		DisplayName = "string",
+		AutoRotate = "boolean",
+	} :: ClassProps,
+
+	ScreenGui = {
+		Enabled = "boolean",
+		DisplayOrder = "number",
+		IgnoreGuiInset = "boolean",
+		ResetOnSpawn = "boolean",
+	} :: ClassProps,
+
+	GuiObject = {
+		Size = "UDim2",
+		Position = "UDim2",
+		AnchorPoint = "Vector2",
+		BackgroundColor3 = "Color3",
+		BackgroundTransparency = "number",
+		Visible = "boolean",
+		ZIndex = "number",
+		LayoutOrder = "number",
+		Rotation = "number",
+	} :: ClassProps,
+
+	TextLabel = {
+		Text = "string",
+		TextColor3 = "Color3",
+		TextSize = "number",
+		TextWrapped = "boolean",
+		TextScaled = "boolean",
+		TextXAlignment = "EnumItem",
+		TextYAlignment = "EnumItem",
+		RichText = "boolean",
+	} :: ClassProps,
+
+	TextButton = {
+		Text = "string",
+		TextColor3 = "Color3",
+		TextSize = "number",
+		TextWrapped = "boolean",
+		TextScaled = "boolean",
+		TextXAlignment = "EnumItem",
+		TextYAlignment = "EnumItem",
+		AutoButtonColor = "boolean",
+	} :: ClassProps,
+
+	TextBox = {
+		Text = "string",
+		PlaceholderText = "string",
+		TextColor3 = "Color3",
+		TextSize = "number",
+		ClearTextOnFocus = "boolean",
+		TextEditable = "boolean",
+	} :: ClassProps,
+
+	ImageLabel = {
+		Image = "string",
+		ImageColor3 = "Color3",
+		ImageTransparency = "number",
+		ScaleType = "EnumItem",
+	} :: ClassProps,
+
+	ImageButton = {
+		Image = "string",
+		ImageColor3 = "Color3",
+		ImageTransparency = "number",
+		ScaleType = "EnumItem",
+	} :: ClassProps,
+
+	ScrollingFrame = {
+		CanvasSize = "UDim2",
+		AutomaticCanvasSize = "EnumItem",
+		ScrollBarThickness = "number",
+		ScrollingDirection = "EnumItem",
+	} :: ClassProps,
+
+	UIListLayout = {
+		Padding = "UDim",
+		FillDirection = "EnumItem",
+		HorizontalAlignment = "EnumItem",
+		VerticalAlignment = "EnumItem",
+		SortOrder = "EnumItem",
+	} :: ClassProps,
+
+	UICorner = {
+		CornerRadius = "UDim",
+	} :: ClassProps,
+
+	UIPadding = {
+		PaddingTop = "UDim",
+		PaddingBottom = "UDim",
+		PaddingLeft = "UDim",
+		PaddingRight = "UDim",
+	} :: ClassProps,
+
+	Lighting = {
+		Ambient = "Color3",
+		OutdoorAmbient = "Color3",
+		Brightness = "number",
+		ClockTime = "number",
+		FogColor = "Color3",
+		FogStart = "number",
+		FogEnd = "number",
+		EnvironmentDiffuseScale = "number",
+		EnvironmentSpecularScale = "number",
+	} :: ClassProps,
+
+	Workspace = {
+		Gravity = "number",
+		StreamingEnabled = "boolean",
+	} :: ClassProps,
+
+	Sound = {
+		SoundId = "string",
+		Volume = "number",
+		PlaybackSpeed = "number",
+		Looped = "boolean",
+		Playing = "boolean",
+		TimeLength = "number", -- read-only
+		RollOffMaxDistance = "number",
+		RollOffMinDistance = "number",
+	} :: ClassProps,
+
+	SpawnLocation = {
+		Neutral = "boolean",
+		Duration = "number",
+	} :: ClassProps,
+
+	Tool = {
+		Grip = "CFrame",
+		RequiresHandle = "boolean",
+		CanBeDropped = "boolean",
+		Enabled = "boolean",
+		ToolTip = "string",
+	} :: ClassProps,
+
+	Attachment = {
+		CFrame = "CFrame",
+		Position = "Vector3",
+		Visible = "boolean",
+	} :: ClassProps,
 }
 
 -- Names that are never settable, regardless of class. set_property refuses these up front.
 M.readOnly = {
 	ClassName = true,
+	TimeLength = true, -- Sound
 } :: { [string]: boolean }
 
 -- Union the catalog entries for every catalogued class the instance IsA, leaf values winning on

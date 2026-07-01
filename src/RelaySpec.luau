@@ -68,6 +68,10 @@ local EXPECTED_RELAY = {
 	"bind_behavior",
 	"bind_hitbox",
 	"make_npc",
+	"list_scripts",
+	"get_script",
+	"grep_source",
+	"edit_script",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
