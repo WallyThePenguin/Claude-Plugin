@@ -14,7 +14,7 @@ export type ConfigValue = string | number | boolean
 -- plugin delivers its SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which
 -- passes through any such proxy. The proxy choice therefore no longer affects prompt delivery.
 local DEFAULTS = {
-	baseUrl = "http://127.0.0.1:8318",
+	baseUrl = "http://127.0.0.1:8319",
 	proxyKey = "",
 	model = "claude-opus-4-8",
 	maxTokens = 8192,
