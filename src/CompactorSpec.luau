@@ -126,6 +126,24 @@ local function buildCases(): { Case }
 			and countImages(m1) == 1
 	end)
 
+	add("pruneImagesKeepingLast honors keep=K (before/after comparison)", function()
+		local m = buildHistory(6, { 1, 2, 4, 6 })
+		local dropped = Compactor.pruneImagesKeepingLast(m, 3)
+		if dropped ~= 1 or countImages(m) ~= 3 then
+			return false, "dropped " .. tostring(dropped) .. " left " .. tostring(countImages(m))
+		end
+		-- Idempotent at K, and a bad keep clamps to >= 1.
+		if Compactor.pruneImagesKeepingLast(m, 3) ~= 0 then
+			return false, "not idempotent at K"
+		end
+		local m2 = buildHistory(6, { 1, 2, 4 })
+		if Compactor.pruneImagesKeepingLast(m2, 0) ~= 2 or countImages(m2) ~= 1 then
+			return false, "keep=0 should clamp to 1"
+		end
+		local ok, reason = MessageUtil.isValidHistory(m)
+		return ok, reason
+	end)
+
 	add("chooseBoundary lands on an assistant turn", function()
 		local m = buildHistory(10) -- length 21, ends on user
 		local j = Compactor.chooseBoundary(m, 6)

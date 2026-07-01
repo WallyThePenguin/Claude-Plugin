@@ -8,8 +8,10 @@
 --   * Assistant content is echoed back VERBATIM; tool_use PRESENCE (not stop_reason) decides whether
 --     the turn continues; every tool_use gets exactly one tool_result in ONE following user message.
 --   * The conversation must always END ON AN ASSISTANT TURN after a Send (alternating roles, no
---     dangling tool_use). So every NON-clean exit (request error / cancel / iteration cap / protocol)
---     rolls the conversation back to the pre-Send snapshot; only a clean terminal stop keeps it.
+--     dangling tool_use). NON-clean exits (request error / cancel / internal throw) PRESERVE the
+--     turn and close it with a "(turn interrupted…)" assistant note — the DataModel edits already
+--     happened, so truncating the record only gave the agent amnesia about work the world kept.
+--     The ONE remaining rollback is the pre-send protocol guard (there the history itself is broken).
 --   * Transient failures (Overloaded / rate-limit / 5xx / transport / the cold-proxy routing race)
 --     auto-retry with backoff. The subscription usage-window ("out of extra usage") is NOT retried.
 --   * emit() (UI callback) is pcall-guarded so a throwing handler can't corrupt loop control.
@@ -52,35 +54,51 @@ local function runLoop(
 		return cb.shouldCancel ~= nil and cb.shouldCancel()
 	end
 	-- True once a compaction has rebuilt the history this Send. After that the absolute pre-Send
-	-- snapshot index is meaningless (the array is far shorter), so rollback must NOT count-truncate.
+	-- snapshot index is meaningless (the array is far shorter), so the protocol-guard recovery must
+	-- NOT count-truncate.
 	local compacted = false
-	-- Pre-Send checklist state, restored in lockstep with the conversation on a non-clean exit. The
-	-- update_tasks tool mutates taskList IN PLACE and the panel re-renders mid-turn, but if a later
-	-- iteration fails/cancels we roll the whole turn back — so the checklist must revert too, else the
-	-- panel (and a cancel-path save) would diverge from the rolled-back conversation + persisted blob.
-	local taskSnapshot = if taskList ~= nil then taskList:snapshot() else nil
-	-- Restore a valid resting state on a non-clean exit. Normally truncate back to the pre-Send
-	-- snapshot (which ends on the prior assistant turn). But after a compaction, instead ensure the
-	-- history ends on an assistant turn so the next user message still alternates (a stale snapshot
-	-- index would make truncate a silent no-op and leave the history ending on a user turn).
-	local function rollback()
+	-- PRESERVE the turn on a non-clean exit (error / cancel / internal throw): the DataModel edits
+	-- already happened, so truncating the conversational record gave the agent amnesia about work
+	-- the world kept — one hiccup at step 25 of a 40-step build erased the record of all 25 steps.
+	-- Instead, close the history on an assistant "(turn interrupted…)" note: API-valid, and
+	-- "continue" resumes with full context — exactly the iteration-cap path's proven pattern. The
+	-- TaskList likewise stays as-is (it describes work that really happened).
+	-- The loop never leaves a DANGLING tool_use here: assistant tool_use turns and their tool_result
+	-- user turn are appended together after dispatch, so a non-clean exit ends on a USER turn (or,
+	-- for pause_turn, a plain assistant turn) — appending a text note keeps the history API-valid.
+	local function preserveTurn(why: string)
+		local msgs = conversation.messages
+		local last = msgs[#msgs]
+		if last ~= nil and last.role ~= "assistant" then
+			conversation:appendAssistant({
+				{
+					type = "text",
+					text = "(turn interrupted: "
+						.. why
+						.. ' — everything done so far is already applied; say "continue" to resume)',
+				},
+			})
+		end
+	end
+	-- The ONE remaining rollback: the pre-send protocol guard, where the HISTORY ITSELF is invalid
+	-- and appending a note can't fix it. Truncate to the pre-Send snapshot (or, after a compaction
+	-- made that index meaningless, just ensure an assistant tail).
+	local function rollbackProtocol()
 		if compacted then
-			local msgs = conversation.messages
-			local last = msgs[#msgs]
-			if last ~= nil and last.role ~= "assistant" then
-				conversation:appendAssistant({ { type = "text", text = "(turn interrupted)" } })
-			end
+			preserveTurn("history rebuilt mid-turn")
 		else
 			conversation:truncate(snapshot)
 		end
-		if taskList ~= nil and taskSnapshot ~= nil then
-			taskList:load(taskSnapshot)
-			emit("tasks", taskList:snapshot())
-		end
 	end
-	-- Roll the conversation back and surface why. Keeps history API-valid.
+	-- Preserve the turn and surface why. Keeps history API-valid.
 	local function abort(kind: string, message: any)
-		rollback()
+		local short = tostring(message)
+		if #short > 200 then
+			short = string.sub(short, 1, 200) .. "…"
+		end
+		preserveTurn(
+			tostring(kind) .. (if short ~= "" and short ~= "nil" then " — " .. short else "")
+		)
 		emit("error", { kind = kind, message = message })
 	end
 	-- Compact, mark the flag, and notify. Returns whether it actually compacted.
@@ -151,14 +169,15 @@ local function runLoop(
 
 	for i = 1, maxIter do
 		if cancelled() then
-			rollback()
+			preserveTurn("cancelled by user")
 			emit("done", { stop = "cancelled" })
 			return
 		end
 		emit("iteration", { n = i, max = maxIter })
 
-		-- Always-on: keep only the most recent screenshot in live context.
-		Compactor.pruneImagesKeepingLast(messages)
+		-- Always-on: keep only the most recent K screenshots in live context (K >= 2 lets the
+		-- model compare before/after captures while iterating visually).
+		Compactor.pruneImagesKeepingLast(messages, config:getImagesKept())
 		-- Proactive: if the last prompt crossed the threshold, compact before sending.
 		if Compactor.shouldCompact(conversation.lastPromptTokens, config) then
 			emit("status", "compacting context…")
@@ -173,9 +192,14 @@ local function runLoop(
 			-- Deliver instructions+memory via the leading preamble (the proxy strips `system`).
 			local sent = MessageUtil.withSystemPreamble(instructions, messages)
 			-- Defence-in-depth: never POST an API-invalid history (e.g. a stray pause_turn double-
-			-- assistant turn). Abort cleanly (rollback) rather than ship a guaranteed 400.
+			-- assistant turn). This is the one case where the history ITSELF is broken, so recover
+			-- by rollback (not by appending a note to a broken tail).
 			if not MessageUtil.isValidHistory(sent) then
-				abort("protocol", "history would be API-invalid before send")
+				rollbackProtocol()
+				emit("error", {
+					kind = "protocol",
+					message = "history would be API-invalid before send",
+				})
 				return
 			end
 			res = Retry.sendWithRetry(
@@ -230,17 +254,26 @@ local function runLoop(
 		end
 
 		if #toolUses == 0 then
-			-- Terminal (or a paused turn to resume). Echo the assistant turn either way.
+			-- Terminal (or a paused/output-capped turn to resume). Echo the assistant turn either way.
 			table.insert(messages, { role = "assistant", content = data.content })
 			if data.stop_reason == "pause_turn" then
 				emit("status", "pause_turn - resuming")
+			elseif data.stop_reason == "max_tokens" then
+				-- The output hit the token cap mid-generation (routine when writing a long script
+				-- Source). Nudge and CONTINUE the loop (bounded by the iteration cap) instead of
+				-- ending the turn with silently-truncated text.
+				table.insert(messages, {
+					role = "user",
+					content = "(your last message hit the output-token cap mid-stream — continue exactly where it cut off)",
+				})
+				emit("status", "output token cap — continuing")
 			else
 				emit("done", { stop = data.stop_reason }) -- clean exit: ends on an assistant turn
 				return
 			end
 		else
 			if cancelled() then
-				rollback()
+				preserveTurn("cancelled by user")
 				emit("done", { stop = "cancelled" })
 				return
 			end
@@ -327,7 +360,6 @@ function AgentLoop.send(
 	running = true
 	task.spawn(function()
 		local snapshot = conversation:count()
-		local taskSnapshot = if taskList ~= nil then taskList:snapshot() else nil
 		conversation:appendUserText(userText)
 		local ok, err = pcall(
 			runLoop,
@@ -348,22 +380,18 @@ function AgentLoop.send(
 		)
 		running = false
 		if not ok then
-			conversation:truncate(snapshot)
-			-- A compaction inside runLoop can shrink the history below `snapshot`, making the
-			-- truncate above a silent no-op; this outer failsafe has no access to runLoop's
-			-- `compacted` flag, so unconditionally ensure we still end on an assistant turn (a no-op
-			-- when truncate already restored the pre-Send, assistant-ending state).
+			-- runLoop threw. PRESERVE whatever the turn accomplished (the DataModel edits already
+			-- happened — same rationale as preserveTurn inside the loop); just guarantee the
+			-- history still ends on an assistant turn so the next Send alternates.
 			local msgs = conversation.messages
 			local last = msgs[#msgs]
 			if last ~= nil and last.role ~= "assistant" then
-				conversation:appendAssistant({ { type = "text", text = "(turn interrupted)" } })
-			end
-			-- Mirror the checklist back to its pre-Send state (the turn that changed it was discarded).
-			if taskList ~= nil and taskSnapshot ~= nil then
-				taskList:load(taskSnapshot)
-				if cb.onEvent then
-					pcall(cb.onEvent, "tasks", taskList:snapshot())
-				end
+				conversation:appendAssistant({
+					{
+						type = "text",
+						text = '(turn interrupted: internal error — everything done so far is already applied; say "continue" to resume)',
+					},
+				})
 			end
 			if cb.onEvent then
 				pcall(cb.onEvent, "error", { kind = "internal", message = tostring(err) })

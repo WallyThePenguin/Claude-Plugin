@@ -1,6 +1,6 @@
 --!strict
 -- Compactor: keeps a long chat under the model's context window. Two mechanisms:
---   1) pruneImagesKeepingLast — drop every screenshot except the most recent from live context.
+--   1) pruneImagesKeepingLast — drop all but the most recent K screenshots from live context.
 --   2) compact — when the last prompt crossed the threshold, replace older turns with one
 --      model-generated summary, keeping a recent verbatim tail and the history API-valid.
 -- The live DataModel is the source of truth, so a lossy summary is safe (the agent re-queries).
@@ -52,18 +52,21 @@ function Compactor.collectImageSlots(messages: { any }): { { parent: any, key: a
 	return slots
 end
 
--- Replace every image block EXCEPT the most recent with a text note (in place). Returns how many
--- were dropped. Re-running is cheap and idempotent once only one image remains.
-function Compactor.pruneImagesKeepingLast(messages: { any }): number
+-- Replace every image block EXCEPT the most recent `keep` (default 1) with a text note (in
+-- place). Returns how many were dropped. keep >= 2 lets the model compare before/after captures —
+-- the visual-iteration loop needs at least the prior frame. Re-running is cheap and idempotent
+-- once only `keep` images remain.
+function Compactor.pruneImagesKeepingLast(messages: { any }, keep: number?): number
+	local keepCount = math.max(1, math.floor(keep or 1))
 	local slots = Compactor.collectImageSlots(messages)
-	if #slots <= 1 then
+	if #slots <= keepCount then
 		return 0
 	end
-	for i = 1, #slots - 1 do
+	for i = 1, #slots - keepCount do
 		local slot = slots[i]
 		slot.parent[slot.key] = { type = "text", text = PRUNE_NOTE }
 	end
-	return #slots - 1
+	return #slots - keepCount
 end
 
 -- True when the last request's prompt size crossed window * threshold.

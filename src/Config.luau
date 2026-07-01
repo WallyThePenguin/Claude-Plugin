@@ -28,10 +28,14 @@ local DEFAULTS = {
 	retryMaxDelay = 30.0,
 	-- Vision sidecar (the `capture` tool): localhost screenshot server (no auth — 127.0.0.1-only).
 	sidecarUrl = "http://127.0.0.1:8389",
-	-- Context-window auto-compaction.
-	contextWindow = 1000000, -- model window, tokens (claude-opus-4-8)
+	-- Context auto-compaction. contextWindow is a WORKING-SET BUDGET, not the model's true window
+	-- (which is far larger): the loop is non-streaming and uncached, so every step re-pays the whole
+	-- resident prompt — a smaller working set is strictly faster/cheaper, and the model window above
+	-- it leaves the summarization call head-room. Compact triggers at window * threshold (~160k).
+	contextWindow = 200000,
 	compactThreshold = 0.8, -- compact when last prompt >= window * this (0 < x < 1)
 	keepRecentMessages = 6, -- verbatim tail length kept when compacting
+	imagesKept = 3, -- recent screenshots kept in live context (older ones pruned) — >=2 enables before/after comparison
 	-- Subagents (dispatch_subagents).
 	subagentModel = "claude-sonnet-4-6", -- children run on the cheaper/faster model
 	subagentMaxParallel = 4, -- max children per dispatch (excess truncated + reported)
@@ -206,6 +210,11 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 			return false, "keepRecentMessages must be a number >= 2"
 		end
 		value = math.floor(value)
+	elseif key == "imagesKept" then
+		if type(value) ~= "number" or value ~= value or value < 1 then
+			return false, "imagesKept must be a number >= 1"
+		end
+		value = math.floor(value)
 	elseif key == "subagentModel" then
 		if type(value) ~= "string" or not isAllowedModel(value) then
 			return false, "subagentModel must be one of the allowed MODELS"
@@ -316,6 +325,10 @@ end
 
 function Config.getKeepRecentMessages(self: Config): number
 	return self:get("keepRecentMessages") :: number
+end
+
+function Config.getImagesKept(self: Config): number
+	return self:get("imagesKept") :: number
 end
 
 function Config.getSubagentModel(self: Config): string
