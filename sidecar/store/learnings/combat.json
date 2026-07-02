@@ -13,8 +13,22 @@
    "text": "Primitive-part weapons read below the average-game bar - build weapon visuals with generate_mesh (Cube) + save_mesh, keep prompts SLENDER-specific for blades (broad leaf blades come back as shovels), and verify the silhouette by capture before toolifying.",
    "localId": 2,
    "createdAt": 1782988456
+  },
+  {
+   "bucket": "combat",
+   "id": 3,
+   "text": "Held-item grips MUST be fitted in a guard-pose lab (posed rig + live Tool.Grip edits + captures from side AND front AND the player's behind-camera) - a numerically-set grip is wrong until seen; long weapons need the cross-carry (pre-yaw -35, pitch -50, rz-90, hilt offset) and short blades the horizontal stab carry (rz90 at the hilt).",
+   "localId": 3,
+   "createdAt": 1782990960
+  },
+  {
+   "bucket": "combat",
+   "id": 4,
+   "text": "A weapon angled straight FORWARD is foreshortened to invisibility from the player's default behind-camera - verify item readability from the behind view specifically, not just side views.",
+   "localId": 4,
+   "createdAt": 1782990962
   }
  ],
- "seq": 2,
+ "seq": 4,
  "category": "combat"
 }

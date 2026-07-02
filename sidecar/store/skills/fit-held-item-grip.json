@@ -1,0 +1,5 @@
+{
+ "description": "Fit a Tool grip so the item reads correctly in a player's hands, by looping visually until it passes",
+ "name": "fit-held-item-grip",
+ "body": "1. Spawn a rig (spawn_rig) and pose the GUARD stance: pose_joint RightShoulder {x:-25}, RightElbow {x:-100} (matches the idle clip).\n2. Clone the Tool onto the rig; Tool.Grip is LIVE - each edit re-seats instantly.\n3. Loop: set a candidate Grip -> capture from THREE angles (side, front, and the player's behind-above camera) -> judge: fully visible? held at the natural point (mid-shaft for polearms, hilt for blades)? pointing correctly? NOT foreshortened from behind?\n4. Known-good starting recipes: LONG weapon cross-carry = CFrame.new(0.25,-0.4,0)*Angles(0,rad(-35),0)*Angles(rad(-50),0,0)*Angles(0,0,rad(-90)); SHORT blade stab carry = CFrame.new(0.1,-hiltOffset,0)*Angles(0,0,rad(90)).\n5. Lock the winner on the real Tool, destroy the rig, CONFIRM once in a live playtest capture.\n6. Bounded rounds (max ~7); every round must be judged from an actual capture, never from numbers."
+}
