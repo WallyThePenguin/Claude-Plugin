@@ -52,8 +52,9 @@ local function playtestActive(): boolean
 	return sss:FindFirstChild("StudioAgentPlayServer") ~= nil
 end
 
--- Walk ancestors: excluded when any ancestor (or self) is a denylisted subtree root, the name
--- itself is denylisted, or the StudioAgentGenerated attribute is set. Returns (true, reason).
+-- Walk ancestors: excluded when a denylisted subtree root sits AT ITS KNOWN top-level service
+-- (identity = name + place: a user script merely NAMED "PlayerModule" elsewhere still banks),
+-- the name itself is a generated-runtime name, or the StudioAgentGenerated attribute is set.
 local function excluded(inst: Instance): (boolean, string?)
 	if GameSync.NAME_DENYLIST[inst.Name] then
 		return true, "generated runtime/launcher name"
@@ -61,10 +62,20 @@ local function excluded(inst: Instance): (boolean, string?)
 	if inst:GetAttribute("StudioAgentGenerated") == true then
 		return true, "StudioAgentGenerated attribute"
 	end
+	-- Find the top-level service this instance lives under, then re-walk for denylisted roots.
+	local top: Instance? = inst
+	while top ~= nil and top.Parent ~= game do
+		top = top.Parent
+	end
+	local topName = if top ~= nil then top.Name else ""
 	local node: Instance? = inst
 	while node ~= nil and node ~= game do
-		if GameSync.SUBTREE_DENYLIST[node.Name] then
-			return true, "inside the " .. node.Name .. " subtree"
+		local requiredService = GameSync.SUBTREE_DENYLIST[node.Name]
+		if requiredService ~= nil then
+			-- StarterPlayerScripts subtrees report their service as StarterPlayer.
+			if topName == requiredService then
+				return true, "inside the " .. node.Name .. " subtree"
+			end
 		end
 		node = node.Parent
 	end
@@ -99,14 +110,17 @@ local function runPull(input: any, context: any): (string, boolean)
 			.. "DataModel state. Stop the test first.", true
 	end
 
-	-- Roots: an explicit path or the standard containers.
+	-- Roots: an explicit path (a SCOPED pull — the sidecar merges the manifest outside the
+	-- scope and prunes orphans only inside it) or the standard containers (a FULL pull).
 	local roots: { Instance } = {}
+	local scope: string? = nil
 	if type(args.root) == "string" and args.root ~= "" then
 		local inst, err = Path.resolve(args.root)
 		if inst == nil then
 			return "game_pull: " .. tostring(err), true
 		end
 		roots = { inst }
+		scope = GameSync.scopePrefix(segmentsFor(inst))
 	else
 		for _, name in CONTAINERS do
 			local ok, service = pcall(function(): Instance
@@ -192,7 +206,10 @@ local function runPull(input: any, context: any): (string, boolean)
 	local message = if type(args.message) == "string" and args.message ~= ""
 		then args.message
 		else "chore(game): pull " .. tostring(pulled) .. " script(s) from the place"
-	local body = { files = files, manifest = manifest, message = message }
+	local body: { [string]: any } = { files = files, manifest = manifest, message = message }
+	if scope ~= nil then
+		body.scope = scope
+	end
 	local okReq, res = pcall(function()
 		return HttpService:RequestAsync({
 			Url = context.config:getSidecarUrl() .. "/game/write",
@@ -214,10 +231,17 @@ local function runPull(input: any, context: any): (string, boolean)
 	end
 
 	local commit = if okDec and type(payload) == "table" then (payload :: any).commit else nil
+	local removedList = if okDec and type(payload) == "table" then (payload :: any).removed else nil
 	local out = "game_pull OK: banked "
 		.. tostring(pulled)
 		.. " script(s) into game/ "
 		.. (if commit ~= nil then "(git commit " .. tostring(commit) .. ")" else "(no changes vs the last pull)")
+	if type(removedList) == "table" and #removedList > 0 then
+		out ..= "\npruned "
+			.. tostring(#removedList)
+			.. " orphaned file(s) (renamed/deleted in Studio): "
+			.. table.concat(removedList, ", ")
+	end
 	if #excludedNames > 0 then
 		out ..= "\nexcluded infrastructure/defaults ("
 			.. tostring(#excludedNames)

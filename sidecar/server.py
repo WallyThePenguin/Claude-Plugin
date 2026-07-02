@@ -234,7 +234,10 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/game/write":
             try:
                 result = gamesync.write_game(
-                    body.get("files", {}), body.get("manifest", {}), body.get("message", "")
+                    body.get("files", {}),
+                    body.get("manifest", {}),
+                    body.get("message", ""),
+                    body.get("scope"),
                 )
             except gamesync.GameError as exc:
                 return self._json(400, {"error": str(exc)})

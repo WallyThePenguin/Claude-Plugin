@@ -21,11 +21,13 @@ GameSync.NAME_DENYLIST = {
 	StudioAgentPlayServer = true,
 	StudioAgentPlayClient = true,
 }
+-- Subtree roots excluded only at their KNOWN location (value = the required top-level service):
+-- a game-authored module the user happens to name "PlayerModule" elsewhere must still bank.
 GameSync.SUBTREE_DENYLIST = {
-	StudioAgentRuntime = true,
-	PlayerModule = true,
-	PlayerScriptsLoader = true,
-	RbxCharacterSounds = true,
+	StudioAgentRuntime = "ReplicatedStorage",
+	PlayerModule = "StarterPlayer",
+	PlayerScriptsLoader = "StarterPlayer",
+	RbxCharacterSounds = "StarterPlayer",
 }
 
 -- Reserved test namespace + legacy test symbols: flagged in the manifest (the factory gate is
@@ -82,6 +84,16 @@ function GameSync.relpathFor(segments: { string }, className: string): (string, 
 		end
 	end
 	return table.concat(parts, "/"), anyChanged
+end
+
+-- The relpath PREFIX a scoped pull covers: "src/<sanitized segments>/". The sidecar merges the
+-- manifest outside this prefix and prunes orphans only inside it.
+function GameSync.scopePrefix(segments: { string }): string
+	local parts: { string } = { "src" }
+	for _, seg in segments do
+		table.insert(parts, (GameSync.sanitizeSegment(seg)))
+	end
+	return table.concat(parts, "/") .. "/"
 end
 
 -- Deterministic content hash (djb2, hex) — the manifest baseHash game_push will guard on.
