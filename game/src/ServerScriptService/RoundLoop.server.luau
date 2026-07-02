@@ -113,7 +113,7 @@ local function runRound()
 		print(string.format("[RoundLoop] Wave %d cleared.", waveIndex))
 	end
 
-	print("[RoundLoop] VICTORY - all waves survived!")
+	print("[RoundLoop] VICTORY - all waves survived! (source of truth: game/ in git)")
 end
 
 runRound()
