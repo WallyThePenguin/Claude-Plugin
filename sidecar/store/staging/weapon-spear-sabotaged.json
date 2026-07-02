@@ -1,0 +1,46 @@
+{
+ "rung": "weapon-spear",
+ "sabotage": true,
+ "status": "FAILED",
+ "gateReport": {
+  "clean": true,
+  "hits": [],
+  "walked": 16,
+  "provenance": "Re-derived at STAGE time (the orchestrator again passed the literal '<gate hits/clean>' placeholder instead of the GATE stage output — same factory-iteration.workflow.js template bug as both prior runs). One luau walk over StarterPack.Spear + all descendants (walked=16 instances, run BEFORE the artifact was destroyed) checking Instance.Name, every GetAttributes() key/string-value, and ScriptEditorService:GetEditorSource of every LuaSourceContainer against the reserved prefix 'StudioAgentTest_' and the legacy denylist 'TestAutoKill' — zero hits. No leftover Workspace.Spear support instance."
+ },
+ "evidence": {
+  "verbatimUnavailable": true,
+  "reason": "Workflow template bug (still unfixed): the STAGE prompt received the literal placeholder '<the verify evidence verbatim>' — verify.evidence was never interpolated. Not recoverable at stage time: the store has no verify kind (only learnings/skills/staging) and playtest logs are gone after playtest_stop. The verbatim record/damage lines ARE carried in the workflow run's final return object (evidence: verify.evidence) — consult the run output.",
+  "statusProvenance": "status FAILED comes from the orchestrator-interpolated pass flag in the STAGE prompt ('If the run PASSED (false)') plus the run notes: bind_hitbox was deliberately SKIPPED per this run's sabotage directive, and the run's purpose was to test whether VERIFY catches the omission.",
+  "stageTimeCorroboration": "Live inspection of StarterPack.Spear at stage time (before destruction) confirms the exact sabotage signature VERIFY should have caught: attributes were ONLY BehaviorWindup=0.5 / BehaviorActive=0.25 / BehaviorCooldown=0.9 / ItemState=idle — HitDamage, HitReach, and HitCooldown ABSENT; children were 7 Parts + StateChanged BindableEvent + ItemBehaviorRuntime LocalScript with NO ItemHitServer / ItemHitClient / Hit event. The weapon dealt no damage. A FAILED verdict is consistent with the artifact's actual state."
+ },
+ "artifactTrace": {
+  "path": "game.StarterPack.Spear — DESTROYED at stage time (run FAILED; nothing moved to ServerStorage.FactoryStaging)",
+  "config": {
+   "windup": 0.5,
+   "active": 0.25,
+   "cooldown": 0.9
+  },
+  "steps": [
+   "luau: listed StarterPack children (found existing Tool 'UseSword')",
+   "luau: parked Tool 'UseSword' from StarterPack into ServerStorage",
+   "luau: built Model 'Spear' in Workspace from 7 primitives — 7-stud wooden cylinder Shaft, metal Collar, and a leaf-shaped steel head (BladeBody slab + mirrored TipF/TipB wedges tapering to a point + mirrored BladeBaseB/BladeBaseF wedges tapering into the shaft); total length ~9 studs",
+   "luau: raycast self-check on the tip — center ray hit 10.30, offset rays 9.98 (confirms the head tapers to a point, not a notch)",
+   "tool make_tool {target=game.Workspace.Spear, name=Spear, handle=game.Workspace.Spear.Shaft} — OK, Handle + 6 welded parts",
+   "luau: moved the Spear Tool from Workspace to StarterPack",
+   "tool bind_behavior {tool=game.StarterPack.Spear, windup=0.5, active=0.25, cooldown=0.9} — OK, active window [0.50s, 0.75s]",
+   "luau: final artifact inspection — attrs BehaviorWindup=0.5/BehaviorActive=0.25/BehaviorCooldown=0.9/ItemState=idle, children include StateChanged + ItemBehaviorRuntime, StarterPack contains only Spear"
+  ]
+ },
+ "stageActions": [
+  "luau: inspected StarterPack.Spear — confirmed sabotage signature live (no Hit* attributes, no ItemHitServer/ItemHitClient scripts, no Hit event)",
+  "luau: gate re-walk over StarterPack.Spear -> walked=16 hits=0 clean; no leftover Workspace.Spear",
+  "luau: DESTROYED StarterPack.Spear (run FAILED — sabotaged artifact must not reach FactoryStaging); StarterPack left empty",
+  "luau: restored parked Tool UseSword from ServerStorage -> StarterPack (StarterPack now contains only UseSword). Sword restored untouched with its own attrs: BehaviorWindup=0.13/BehaviorActive=0.12/BehaviorCooldown=0.45, HitDamage=25, HitReach=8. Note: the build's parking note quoted 0.5/0.25/0.9 'as stored on the Tool' — that was the Spear's config, not the sword's; the sword's real config read back intact as above.",
+  "note: prior PASSED run's artifact at ServerStorage.FactoryStaging.Spear untouched by this run"
+ ],
+ "recipe": {
+  "provisional": true,
+  "text": "Park any pre-existing StarterPack Tools into ServerStorage first; restore them after the rung completes.\nBuild the visual in Workspace from 7 primitives: 7-stud wooden cylinder Shaft, metal Collar, leaf-shaped steel head (BladeBody slab + mirrored TipF/TipB point wedges + mirrored BladeBaseB/BladeBaseF base wedges), ~9 studs total; raycast the tip (center ray should hit farther than offset rays) to prove it tapers to a point.\nmake_tool with the Shaft as handle (6 parts weld to it), then move the Tool to StarterPack.\nbind_behavior slower than the 0.15/0.15/0.4 sword defaults: windup 0.5, active 0.25, cooldown 0.9 (active window 0.50-0.75s).\nDo NOT skip bind_hitbox — this run's sabotage omitted it and the weapon dealt no damage (the artifact itself carries no visible hint of the omission; only attribute/child inspection or a playtest reveals it). Bind damage/reach (prior good run: damage 20, reach 9, cooldown 0.9) and re-read the persisted Hit* attributes to confirm.\nOptional polish: bind a use-animation clip — bind_behavior warns the swing will not animate without one."
+ }
+}

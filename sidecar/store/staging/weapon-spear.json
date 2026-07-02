@@ -1,0 +1,54 @@
+{
+ "rung": "weapon-spear",
+ "sabotage": false,
+ "status": "PASSED",
+ "gateReport": {
+  "clean": true,
+  "hits": [],
+  "walked": 13,
+  "provenance": "Re-derived at STAGE time (the orchestrator again passed the literal '<gate hits/clean>' placeholder instead of the GATE stage output — same factory-iteration.workflow.js template bug as the previous run). One luau walk over StarterPack.Spear + all descendants (walked=13 instances) checking Instance.Name, every GetAttributes() key/string-value, and ScriptEditorService:GetEditorSource of every LuaSourceContainer against the reserved prefix 'StudioAgentTest_' and the legacy denylist 'TestAutoKill' — zero hits. No leftover Workspace.Spear support instance."
+ },
+ "evidence": {
+  "verbatimUnavailable": true,
+  "reason": "Workflow template bug (still unfixed): the STAGE prompt received the literal placeholder '<the verify evidence verbatim>' — verify.evidence was never interpolated. Not recoverable at stage time: the store has no verify kind (only learnings/skills/staging) and playtest_logs returns 'no active test' after playtest_stop. The verbatim record/damage lines ARE carried in the workflow run's final return object (evidence: verify.evidence) — consult the run output.",
+  "statusProvenance": "status PASSED comes from the orchestrator-interpolated verify status in the STAGE prompt ('If the run PASSED (true)').",
+  "stageTimeCorroboration": "Persisted attributes on the artifact verified live at stage time: BehaviorWindup=0.5, BehaviorActive=0.25, BehaviorCooldown=0.9, HitDamage=20, HitReach=9, HitCooldown=0.9, ItemState=idle; children Collar/Tip/ButtCap/Handle Parts + StateChanged/Hit BindableEvents + ItemBehaviorRuntime/ItemHitClient LocalScripts + ItemHitServer Script — matches the rung brief exactly."
+ },
+ "artifactTrace": {
+  "path": "game.ServerStorage.FactoryStaging.Spear",
+  "builtAs": "game.StarterPack.Spear",
+  "config": {
+   "behavior": {
+    "windup": 0.5,
+    "active": 0.25,
+    "cooldown": 0.9
+   },
+   "hitbox": {
+    "damage": 20,
+    "reach": 9,
+    "cooldown": 0.9
+   }
+  },
+  "steps": [
+   "luau: listed StarterPack -> found 1 existing Tool (UseSword)",
+   "luau: parked UseSword from StarterPack to ServerStorage",
+   "luau: built Workspace.Spear model from 4 primitives -- Shaft (6.5-stud wooden cylinder, vertical), Collar (dark metal socket), Tip (leaf-shaped flattened metal ellipsoid, 1.8 studs long), ButtCap (metal pommel)",
+   "tool make_tool {target: game.Workspace.Spear, name: Spear, handle: game.Workspace.Spear.Shaft} -> OK, Shaft became Handle, 3 parts welded + unanchored",
+   "luau: moved the Spear Tool from Workspace to StarterPack",
+   "tool bind_behavior {tool: game.StarterPack.Spear, windup: 0.5, active: 0.25, cooldown: 0.9} -> OK, active window [0.50s, 0.75s]",
+   "tool bind_hitbox {tool: game.StarterPack.Spear, damage: 20, reach: 9, cooldown: 0.9} -> OK, server-authoritative 0.90s hit cooldown",
+   "luau: verified attributes on StarterPack.Spear -- BehaviorWindup=0.5 BehaviorActive=0.25 BehaviorCooldown=0.9 HitDamage=20 HitReach=9 HitCooldown=0.9"
+  ],
+  "buildNotes": "Spear matches the rung brief: reach 9 (> 6, longer than sword), windup 0.5 + cooldown 0.9 (slower than the 0.15/0.15/0.4 sword defaults), damage 20. Visual is distinctly spear-shaped: long thin shaft + leaf-shaped ellipsoid tip (not a sword blade). bind_behavior warned the Tool has no use-animation clip bound (swing will not animate) -- cosmetic only, does not affect the rung oracle (state-machine record + damage). No playtest was run by BUILD (VERIFY stage's job) and nothing named/attributed StudioAgentTest_* was created. grip_tool fitting was intentionally skipped (visual-iteration concern, not in the BUILD checklist)."
+ },
+ "stageActions": [
+  "luau: gate re-walk over StarterPack.Spear -> walked=13 hits=0; no leftover Workspace.Spear",
+  "luau: found pre-existing ServerStorage.FactoryStaging.Spear from the prior (superseded) run of this rung -> renamed to Spear_superseded_prev-run so the new artifact is unambiguous; this POST overwrites that run's store entry at the same key",
+  "luau: moved StarterPack.Spear -> ServerStorage.FactoryStaging.Spear",
+  "luau: restored parked Tool UseSword from ServerStorage -> StarterPack (StarterPack now contains only UseSword)"
+ ],
+ "recipe": {
+  "provisional": true,
+  "text": "Park any pre-existing StarterPack Tools into ServerStorage first; restore them after staging.\nBuild the visual in Workspace from 4 primitives with a distinct spear silhouette: 6.5-stud vertical wooden cylinder Shaft, dark-metal Collar socket, leaf-shaped flattened metal ellipsoid Tip (~1.8 studs), metal ButtCap pommel.\nmake_tool with the Shaft as handle (it becomes Handle; the other 3 parts weld + unanchor), then move the Tool to StarterPack.\nbind_behavior slower than the 0.15/0.15/0.4 sword defaults: windup 0.5, active 0.25, cooldown 0.9 (active window 0.50-0.75s).\nbind_hitbox longer than a sword: reach 9 (> 6 oracle threshold), damage 20, cooldown 0.9 matching the swing; re-read the six persisted attributes to confirm.\nOptional polish: bind a use-animation clip -- without one the swing does not animate (state machine + damage still work)."
+ }
+}
