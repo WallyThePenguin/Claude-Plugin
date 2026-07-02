@@ -16,6 +16,10 @@ POST /play {"cmd":...}                                    -> {"id":N}  (a playte
 GET  /play/pending                                        -> the queued play command (and clears it) or {}
 POST /play/result {"id":N, ...}                           -> {"ok":true}
 GET  /play/result?id=N                                    -> the play command result, or {"status":"pending"}
+GET  /store/<kind>                                        -> {"items":[{"id","size","mtime"}]}
+GET  /store/<kind>/<id>                                   -> the stored JSON body, or 404
+POST /store/<kind>/<id>  <json body>                      -> {"ok":true}   (atomic write; git-tracked)
+DELETE /store/<kind>/<id>                                 -> {"ok":true,"existed":bool}
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -28,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 import capture
 import exemplars
+import store as filestore
 from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
@@ -114,7 +119,49 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "bad id"})
             res = STORE.play_get_result(cid)
             return self._json(200, res if res is not None else {"status": "pending"})
+        if parsed.path.startswith("/store/"):
+            return self._store_get(parsed.path)
         return self._json(404, {"error": "not found"})
+
+    def _store_parts(self, path: str):
+        """Split /store/<kind>[/<id>] -> (kind, id|None)."""
+        parts = [p for p in path.split("/") if p][1:]  # drop the leading 'store'
+        if len(parts) == 1:
+            return parts[0], None
+        if len(parts) == 2:
+            return parts[0], parts[1]
+        return None, None
+
+    def _store_get(self, path: str):
+        kind, item_id = self._store_parts(path)
+        if kind is None:
+            return self._json(400, {"error": "use /store/<kind>[/<id>]"})
+        try:
+            if item_id is None:
+                return self._json(200, {"items": filestore.list_items(kind)})
+            body = filestore.read_item(kind, item_id)
+        except filestore.StoreError as exc:
+            return self._json(400, {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            return self._json(500, {"error": str(exc)})
+        if body is None:
+            return self._json(404, {"error": "no such item"})
+        return self._json(200, body)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/store/"):
+            return self._json(404, {"error": "not found"})
+        kind, item_id = self._store_parts(parsed.path)
+        if kind is None or item_id is None:
+            return self._json(400, {"error": "use DELETE /store/<kind>/<id>"})
+        try:
+            existed = filestore.delete_item(kind, item_id)
+        except filestore.StoreError as exc:
+            return self._json(400, {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            return self._json(500, {"error": str(exc)})
+        return self._json(200, {"ok": True, "existed": existed})
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -151,6 +198,17 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(cid, int):
                 return self._json(400, {"error": "play result needs an integer id"})
             STORE.play_put_result(cid, body)
+            return self._json(200, {"ok": True})
+        if parsed.path.startswith("/store/"):
+            kind, item_id = self._store_parts(parsed.path)
+            if kind is None or item_id is None:
+                return self._json(400, {"error": "use POST /store/<kind>/<id>"})
+            try:
+                filestore.write_item(kind, item_id, body)
+            except filestore.StoreError as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
             return self._json(200, {"ok": True})
         return self._json(404, {"error": "not found"})
 
