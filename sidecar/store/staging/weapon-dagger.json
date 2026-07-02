@@ -1,0 +1,50 @@
+{
+ "rung": "weapon-dagger",
+ "sabotage": false,
+ "status": "PASSED",
+ "gateReport": {
+  "clean": true,
+  "hits": [],
+  "walked": 17,
+  "provenance": "Re-derived at STAGE time (the orchestrator again passed the literal '<gate hits/clean>' placeholder instead of the GATE stage output — same factory-iteration workflow template bug as the three previous runs; see scratchpad factory-iteration-dagger.workflow.js lines 135-136). One luau walk over StarterPack.Dagger + all descendants (walked=17 instances) checking Instance.Name, every GetAttributes() key AND string value, and ScriptEditorService:GetEditorSource of every LuaSourceContainer against the reserved prefix 'StudioAgentTest_' and the legacy denylist 'TestAutoKill' — zero hits. No leftover Workspace.Dagger build visual."
+ },
+ "evidence": {
+  "verbatimUnavailable": true,
+  "reason": "Workflow template bug (still unfixed): the STAGE prompt received the literal placeholder '<the verify evidence verbatim>' — verify.evidence was never interpolated. Not recoverable at stage time: the store has no verify kind (only learnings/skills/staging) and playtest logs are gone after playtest_stop. The verbatim record/damage lines ARE carried in the workflow run's final return object (evidence: verify.evidence) — consult the run output.",
+  "statusProvenance": "status PASSED comes from the orchestrator-interpolated verify status in the STAGE prompt ('If the run PASSED (true)').",
+  "stageTimeCorroboration": "Persisted attributes on the artifact verified live at stage time: BehaviorWindup=0.08, BehaviorActive=0.1, BehaviorCooldown=0.22, HitReach=4.5, HitDamage=8, HitCooldown=0.35, ItemState=idle; children = Handle/Pommel/Guard/Blade Parts + TipL/TipR WedgeParts + 5 WeldConstraints under Handle + StateChanged/Hit BindableEvents + ItemBehaviorRuntime/ItemHitClient LocalScripts + ItemHitServer Script — matches the rung brief and build notes exactly.",
+  "oracleHintFromBuild": "record echo must name Dagger with w=0.08 a=0.1 c=0.22; expect TargetDummy to lose exactly 8 HP once per swing, hits accepted no more than once per 0.35s server cooldown (0.35 < 0.40s swing period, so the cooldown never blocks a legitimate swing)."
+ },
+ "artifactTrace": {
+  "path": "game.ServerStorage.FactoryStaging.Dagger",
+  "builtAs": "game.StarterPack.Dagger",
+  "config": {
+   "windup": 0.08,
+   "active": 0.1,
+   "cooldown": 0.22,
+   "hitCooldown": 0.35,
+   "damage": 8,
+   "reach": 4.5
+  },
+  "steps": [
+   "luau: listed StarterPack — found existing Tool 'UseSword'",
+   "luau: parked 'UseSword' from StarterPack to ServerStorage",
+   "luau: built 6-part Dagger model in Workspace (Grip cylinder + brass Pommel ball + short brass Guard bar + short steel Blade 0.42x1.5x0.14 + two mirrored WedgePart tips forming a centered point)",
+   "tool make_tool {target: game.Workspace.Dagger, name: Dagger, handle: game.Workspace.Dagger.Grip} — OK, Handle + 5 welded, all unanchored",
+   "luau: moved the Dagger Tool from Workspace to StarterPack",
+   "tool bind_behavior {tool: game.StarterPack.Dagger, windup: 0.08, active: 0.1, cooldown: 0.22} — OK, active window [0.08s, 0.18s]",
+   "tool bind_hitbox {tool: game.StarterPack.Dagger, reach: 4.5, damage: 8, cooldown: 0.35} — OK, server-authoritative cooldown",
+   "luau: verified attributes on StarterPack.Dagger — BehaviorWindup=0.08 BehaviorActive=0.1 BehaviorCooldown=0.22 HitReach=4.5 HitDamage=8 HitCooldown=0.35 ItemState=idle"
+  ],
+  "buildNotes": "Rung weapon-dagger built per its curriculum brief (C:\\Users\\manso\\Desktop\\Claude-Plugin\\factory\\curriculum.json): short reach 4.5 (<6), very fast swing 0.08/0.10/0.22 (vs 0.15/0.15/0.4 defaults), low damage 8, server hit cooldown 0.35 (<0.4 oracle bound) — slightly under the 0.40s swing period so it never blocks a legitimate swing. The stage template's spear-style example numbers (windup 0.5, reach 9) were intentionally NOT used since this rung is the dagger. PARKED TOOLS: one existing Tool 'UseSword' moved StarterPack -> ServerStorage (restore after VERIFY if desired). Dagger visual is distinct from a sword: stubby 1.5-stud blade with a wedge point, small brass crossguard, ball pommel. bind_behavior warned the Tool has no use-animation clip bound (swing won't animate until bind_animation) — cosmetic only; state machine + hitbox are live. No playtest was run; nothing named/attributed StudioAgentTest_* was created."
+ },
+ "stageActions": [
+  "luau: gate re-walk over StarterPack.Dagger -> walked=17 hits=0 clean; no leftover Workspace.Dagger; attributes re-read live and match the config",
+  "luau: moved StarterPack.Dagger -> ServerStorage.FactoryStaging.Dagger (folder already existed; prior staged Tools Spear + UseSpear left in place — different names, no collision)",
+  "luau: restored parked Tool UseSword from ServerStorage -> StarterPack (StarterPack now contains exactly UseSword)"
+ ],
+ "recipe": {
+  "provisional": true,
+  "text": "Park any pre-existing StarterPack Tools into ServerStorage first; restore them after staging.\nBuild a 6-part dagger in Workspace: Grip cylinder + brass ball Pommel + small brass Guard bar + stubby steel Blade (0.42 x 1.5 x 0.14) + two mirrored WedgeParts forming a centered tip — the silhouette must read stubby-and-pointed, distinct from a sword or spear.\nmake_tool with the Grip as handle (welds + unanchors the other 5 parts), then move the Tool to StarterPack.\nbind_behavior windup 0.08 / active 0.1 / cooldown 0.22 — a dagger is FASTER than the 0.15/0.15/0.4 defaults; bind_hitbox reach 4.5 / damage 8 / server cooldown 0.35, keeping the hit cooldown just under the 0.40s swing period so it never blocks a legitimate swing.\nRe-read the Behavior*/Hit* attributes off the Tool to confirm the binds persisted before handing off to VERIFY.\nKnown gap: no use-animation clip is bound (bind_behavior warns) — run bind_animation later for a visible swing; state machine + hitbox work regardless."
+ }
+}
