@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "policy": {
+  "editing": "PROPOSE-ONLY for the loop: an iteration may append to `proposals` with its failure evidence; only a human moves a proposal into `rungs` or flips `proven`.",
+  "firstAscents": "No unmanned first ascents: a rung with proven=false needs one supervised session that builds its probe/oracle and lands a clean scripted pass before autonomous iteration may run it.",
+  "verification": "Runtime evidence is mandatory; an unavailable oracle means UNVERIFIED, never PASSED. Any StudioAgentTest_* / TestAutoKill symbol in the artifact BLOCKS extraction."
+ },
+ "rungs": [
+  {
+   "id": "weapon-sword",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": true,
+   "brief": "One-handed sword: primitive/mesh visual, make_tool (Handle at the hilt), bind_behavior (fast swing), bind_hitbox (short reach, moderate damage).",
+   "oracle": "playtest act record shows idle->windup->active->cooldown->idle at the CONFIGURED timings (the record echo names the tool + config); shit verb shows the TargetDummy losing exactly the configured damage once per swing."
+  },
+  {
+   "id": "weapon-spear",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": true,
+   "brief": "Spear: longer visual + LONGER REACH, slower swing (bigger windup/cooldown) than the sword — a variation of the proven melee family.",
+   "oracle": "same as weapon-sword, with reach > 6 and windup+cooldown slower than sword defaults; the record echo must name the spear tool."
+  },
+  {
+   "id": "weapon-dagger",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": true,
+   "brief": "Dagger: short reach, very fast swing, low damage, fast server cooldown.",
+   "oracle": "same family oracle; reach < 6, cooldown < 0.4."
+  },
+  {
+   "id": "enemy-melee-brute",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": true,
+   "brief": "A slow high-damage melee enemy: rig + make_npc with high damage, low speed, short detect range.",
+   "oracle": "playtest snpc shows state=attack in range and the player losing the configured damage per cooldown."
+  },
+  {
+   "id": "weapon-bow",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "Bow with projectile arrows — NEW MECHANICS (projectile spawn/flight/hit); needs a supervised first ascent to build its probe (projectile telemetry) before autonomous runs.",
+   "oracle": "TBD in the supervised first ascent: projectile spawns on active window, travels, damages on contact at range."
+  },
+  {
+   "id": "enemy-ranged",
+   "category": "npc",
+   "family": "ranged-enemy",
+   "proven": false,
+   "brief": "Ranged enemy that keeps distance and fires projectiles — depends on weapon-bow's projectile mechanics.",
+   "oracle": "TBD in the supervised first ascent."
+  },
+  {
+   "id": "system-wave-rounds",
+   "category": "combat",
+   "family": "game-system",
+   "proven": true,
+   "brief": "Round/wave lifecycle (the RoundLoop family): config-driven waves, spawn ring, wave-cleared detection, victory.",
+   "oracle": "unmanned playtest log shows every wave starting and clearing to VICTORY with player-level combat (NOT an auto-kill hook — that symbol is gate-blocked)."
+  },
+  {
+   "id": "system-shop",
+   "category": "gui",
+   "family": "game-system",
+   "proven": false,
+   "brief": "A working shop: GUI + RemoteEvent purchase flow + leaderstats currency — needs a supervised first ascent (purchase-flow probe).",
+   "oracle": "TBD in the supervised first ascent."
+  }
+ ],
+ "proposals": []
+}
