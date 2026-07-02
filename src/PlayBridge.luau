@@ -719,11 +719,13 @@ local function injectTestScripts(base: string)
 	local server = Instance.new("Script")
 	server.Name = SERVER_NAME
 	server.Source = string.gsub(SERVER_SRC, "__BASE__", base)
+	server:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	server.Parent = ServerScriptService
 	if starterScripts ~= nil then
 		local client = Instance.new("LocalScript")
 		client.Name = CLIENT_NAME
 		client.Source = CLIENT_SRC
+		client:SetAttribute("StudioAgentGenerated", true)
 		client.Parent = starterScripts
 	end
 end

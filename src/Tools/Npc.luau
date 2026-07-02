@@ -169,6 +169,7 @@ local function runMake(input: any, context: any): (any, boolean)
 		local s = Instance.new("Script")
 		s.Name = "NpcAI"
 		s.Source = if libOk then RuntimeInstaller.launcherSource("NpcAI") else AI_SOURCE
+		s:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 		s.Parent = m
 	end
 	if RunService:IsEdit() then

@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlparse
 
 import capture
 import exemplars
+import game as gamesync
 import store as filestore
 from bridge import Store
 
@@ -230,6 +231,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
             return self._json(200, {"ok": True})
+        if parsed.path == "/game/write":
+            try:
+                result = gamesync.write_game(
+                    body.get("files", {}), body.get("manifest", {}), body.get("message", "")
+                )
+            except gamesync.GameError as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
+            result["ok"] = True
+            return self._json(200, result)
         return self._json(404, {"error": "not found"})
 
     def _exemplars(self, qs):

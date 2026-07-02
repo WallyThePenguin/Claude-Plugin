@@ -150,6 +150,7 @@ function RuntimeInstaller.ensureInstalled(config: any, requiredModules: { string
 			local m = Instance.new("ModuleScript")
 			m.Name = name
 			m.Source = source
+			m:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 			m.Parent = theFolder
 			written += 1
 		end

@@ -157,6 +157,7 @@ local function ensureChild(tool: Tool, name: string, className: string, src: str
 	local s = Instance.new(className)
 	s.Name = name
 	;(s :: any).Source = src
+	s:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	s.Parent = tool
 end
 

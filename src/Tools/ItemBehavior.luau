@@ -186,6 +186,7 @@ local function writeRuntime(tool: Tool, useLibrary: boolean)
 	ls.Source = if useLibrary
 		then RuntimeInstaller.launcherSource("BehaviorRuntime")
 		else RUNTIME_SOURCE
+	ls:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	ls.Parent = tool
 end
 
