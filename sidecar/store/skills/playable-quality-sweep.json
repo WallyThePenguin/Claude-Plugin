@@ -1,0 +1,5 @@
+{
+ "description": "Self-audit a playable build for missing motion/feedback BEFORE calling it done - the user should never have to point these out",
+ "name": "playable-quality-sweep",
+ "body": "After any gameplay build, capture from the PLAYER camera during a live playtest and interrogate the frame: 1. Does everything that MOVES animate (enemies per AI state: idle/chase/attack/death; weapons on use with torso lead)? 2. Does everything that HAPPENS have feedback (sounds for swing/hit/wave-start/death; visual death sequence, not removal)? 3. Is every item READABLE (grip, scale, silhouette from the behind-camera)? 4. Does the HUD reflect every state change? List every static/silent/instant thing found, fix each, re-capture to confirm, and bank new lessons with learn(). Only then report done."
+}

@@ -13,8 +13,22 @@
    "text": "A legless Humanoid enemy needs a COLLIDABLE HumanoidRootPart (CanCollide=true) + HipHeight tuned to the body height - an all-non-collide assembly sinks through the floor leaving floating nametags and out-of-range attacks.",
    "localId": 2,
    "createdAt": 1782988453
+  },
+  {
+   "bucket": "npc",
+   "id": 3,
+   "text": "Enemies must ANIMATE per AI state or they read as sliding blobs: give custom models Motor6D joints (not WeldConstraints), author idle/chase/attack/death clips on the template with the animation tools, and have the server AI play them per state - the attack clip's HitFrame marker times the damage so the coil-back telegraph is real and dodgeable.",
+   "localId": 3,
+   "createdAt": 1783024186
+  },
+  {
+   "bucket": "npc",
+   "id": 4,
+   "text": "Enemy death needs a sequence, not removal: play a collapse clip, anchor the root, tween part transparency, THEN Destroy - and count the kill on Humanoid.Died BEFORE any of it so wave/score accounting never races the cleanup.",
+   "localId": 4,
+   "createdAt": 1783024188
   }
  ],
- "seq": 2,
+ "seq": 4,
  "category": "npc"
 }

@@ -1,4 +1,6 @@
 {
+ "category": "combat",
+ "seq": 7,
  "entries": [
   {
    "bucket": "combat",
@@ -41,8 +43,13 @@
    "text": "Explicit AnimationPriority ladder is required, not implied: armed idle=Idle, locomotion=Movement, dodge=Action2, hit-react=Action3, attack=Action4 - the react must layer UNDER the attack without canceling it.",
    "localId": 6,
    "createdAt": 1783023342
+  },
+  {
+   "bucket": "combat",
+   "id": 7,
+   "text": "Weapon use clips need torso lead and follow-through (key the Waist into the swing, over-rotate past contact, then recover) - an arm-only 3-keyframe thrust reads as basic; 5-6 keyframes with upperBody scope reads as a real attack.",
+   "localId": 7,
+   "createdAt": 1783024189
   }
- ],
- "seq": 6,
- "category": "combat"
+ ]
 }
