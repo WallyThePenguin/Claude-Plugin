@@ -47,20 +47,39 @@ function HitServer.attach(Tool)
 			local damage = tonumber(Tool:GetAttribute("HitDamage")) or 25
 			local reach = tonumber(Tool:GetAttribute("HitReach")) or 6
 			local hitEvent = Tool:FindFirstChild("Hit")
+			-- SWEPT-PATH sampling: a fast swing can tunnel past a single-instant radius query, so
+			-- sample the handle's recent travel (a short velocity back-step) at three points along
+			-- the segment. Per-swing dedup via the `struck` map keeps one hit per target.
+			local nowPos = handle.Position
+			local vel = handle.AssemblyLinearVelocity
+			local prevPos = nowPos - vel * 0.06
+			local samples = { prevPos, (prevPos + nowPos) / 2, nowPos }
 			local struck = {}
-			for _, p in workspace:GetPartBoundsInRadius(handle.Position, reach) do
-				local model = p:FindFirstAncestorOfClass("Model")
-				local hum = model and model:FindFirstChildOfClass("Humanoid")
-				if hum and model ~= char then
-					local d = (p.Position - handle.Position).Magnitude
-					local cur = struck[hum]
-					if cur == nil or d < cur.dist then
-						struck[hum] = { model = model, part = p, dist = d }
+			for _, origin in samples do
+				for _, p in workspace:GetPartBoundsInRadius(origin, reach) do
+					local model = p:FindFirstAncestorOfClass("Model")
+					local hum = model and model:FindFirstChildOfClass("Humanoid")
+					if hum and model ~= char then
+						local d = (p.Position - nowPos).Magnitude
+						local cur = struck[hum]
+						if cur == nil or d < cur.dist then
+							struck[hum] = { model = model, part = p, dist = d }
+						end
 					end
 				end
 			end
 			for hum, info in struck do
 				hum:TakeDamage(damage)
+				-- CONNECT thud from the struck part, server-side so every client hears confirmed
+				-- contact (distinct from the client-side swing whoosh).
+				pcall(function()
+					local thud = Instance.new("Sound")
+					thud.SoundId = "rbxasset://sounds/swordlunge.wav"
+					thud.Volume = 0.8
+					thud.Parent = info.part
+					thud:Play()
+					game:GetService("Debris"):AddItem(thud, 2)
+				end)
 				if hitEvent then
 					pcall(function()
 						hitEvent:Fire(info.model, damage, info.part.Name)

@@ -27,8 +27,22 @@
    "text": "A weapon angled straight FORWARD is foreshortened to invisibility from the player's default behind-camera - verify item readability from the behind view specifically, not just side views.",
    "localId": 4,
    "createdAt": 1782990962
+  },
+  {
+   "bucket": "combat",
+   "id": 5,
+   "text": "The rubric baseline is MARKER-driven: put a HitFrame KeyframeMarker at the contact keyframe and drive the hit request from track:GetMarkerReachedSignal, sweep the handle travel path (velocity back-step, 3 samples) on the server, and fire the connect Sound from the STRUCK part - this alone moved 3 criteria to PASS including the netcode split.",
+   "localId": 5,
+   "createdAt": 1783023340
+  },
+  {
+   "bucket": "combat",
+   "id": 6,
+   "text": "Explicit AnimationPriority ladder is required, not implied: armed idle=Idle, locomotion=Movement, dodge=Action2, hit-react=Action3, attack=Action4 - the react must layer UNDER the attack without canceling it.",
+   "localId": 6,
+   "createdAt": 1783023342
   }
  ],
- "seq": 4,
+ "seq": 6,
  "category": "combat"
 }
