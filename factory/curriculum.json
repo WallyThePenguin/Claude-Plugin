@@ -11,7 +11,7 @@
    "category": "combat",
    "family": "melee-weapon",
    "proven": true,
-   "brief": "One-handed sword: primitive/mesh visual, make_tool (Handle at the hilt), bind_behavior (fast swing), bind_hitbox (short reach, moderate damage).",
+   "brief": "One-handed sword: primitive/mesh visual, make_tool (Handle at the hilt), bind_behavior (fast swing), bind_hitbox (short reach, moderate damage). VISUAL BAR: generate_mesh (Cube) + save_mesh — primitive-part weapons are below the bar; verify the silhouette by capture before toolifying.",
    "oracle": "playtest act record shows idle->windup->active->cooldown->idle at the CONFIGURED timings (the record echo names the tool + config); shit verb shows the TargetDummy losing exactly the configured damage once per swing."
   },
   {
@@ -19,7 +19,7 @@
    "category": "combat",
    "family": "melee-weapon",
    "proven": true,
-   "brief": "Spear: longer visual + LONGER REACH, slower swing (bigger windup/cooldown) than the sword — a variation of the proven melee family.",
+   "brief": "Spear: longer visual + LONGER REACH, slower swing (bigger windup/cooldown) than the sword — a variation of the proven melee family. VISUAL BAR: generate_mesh (Cube) + save_mesh — primitive-part weapons are below the bar; verify the silhouette by capture before toolifying.",
    "oracle": "same as weapon-sword, with reach > 6 and windup+cooldown slower than sword defaults; the record echo must name the spear tool."
   },
   {
@@ -27,7 +27,7 @@
    "category": "combat",
    "family": "melee-weapon",
    "proven": true,
-   "brief": "Dagger: short reach, very fast swing, low damage, fast server cooldown.",
+   "brief": "Dagger: short reach, very fast swing, low damage, fast server cooldown. VISUAL BAR: generate_mesh (Cube) + save_mesh — primitive-part weapons are below the bar; verify the silhouette by capture before toolifying.",
    "oracle": "same family oracle; reach < 6, cooldown < 0.4."
   },
   {

@@ -1,6 +1,4 @@
 {
- "category": "combat",
- "seq": 1,
  "entries": [
   {
    "bucket": "combat",
@@ -8,6 +6,15 @@
    "text": "A weapon with working damage but no bound use-animation FEELS broken to the player - author idle+use clips at bind time and match the thrust keyframes to the behavior windup/active window.",
    "localId": 1,
    "createdAt": 1782985392
+  },
+  {
+   "bucket": "combat",
+   "id": 2,
+   "text": "Primitive-part weapons read below the average-game bar - build weapon visuals with generate_mesh (Cube) + save_mesh, keep prompts SLENDER-specific for blades (broad leaf blades come back as shovels), and verify the silhouette by capture before toolifying.",
+   "localId": 2,
+   "createdAt": 1782988456
   }
- ]
+ ],
+ "seq": 2,
+ "category": "combat"
 }

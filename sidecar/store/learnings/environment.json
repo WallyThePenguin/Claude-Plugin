@@ -1,4 +1,6 @@
 {
+ "category": "environment",
+ "seq": 3,
  "entries": [
   {
    "bucket": "environment",
@@ -13,8 +15,13 @@
    "text": "Walled interiors go pitch-black under evening ClockTime + dense Atmosphere: keep interiors readable with ClockTime 14-15, Ambient >= 100, and point lights as accents only - never primary illumination.",
    "localId": 2,
    "createdAt": 1782985388
+  },
+  {
+   "bucket": "environment",
+   "id": 3,
+   "text": "paint_texture custom primary/secondary colors can silently produce a BLACK texture (draw-ops fail) - use the curated default palettes, and if a painted surface renders black with a specular glint suspect the texture not the lighting.",
+   "localId": 3,
+   "createdAt": 1782988455
   }
- ],
- "seq": 2,
- "category": "environment"
+ ]
 }
