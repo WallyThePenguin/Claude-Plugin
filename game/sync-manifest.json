@@ -25,6 +25,7 @@
   "baseHash": "3fd0201a",
   "className": "LocalScript",
   "enabled": true,
-  "instancePath": "game.StarterPlayer.StarterPlayerScripts.FlinchReact"
+  "instancePath": "game.StarterPlayer.StarterPlayerScripts.FlinchReact",
+  "runContext": "Legacy"
  }
 }
