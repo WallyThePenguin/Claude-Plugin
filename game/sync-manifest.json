@@ -5,7 +5,7 @@
   "instancePath": "game.ReplicatedStorage.WaveConfig"
  },
  "src/ServerScriptService/RoundLoop.server.luau": {
-  "baseHash": "58e1c525",
+  "baseHash": "b3bb0b51",
   "className": "Script",
   "enabled": true,
   "instancePath": "game.ServerScriptService.RoundLoop",
