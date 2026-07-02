@@ -1,0 +1,13 @@
+{
+ "category": "npc",
+ "seq": 1,
+ "entries": [
+  {
+   "bucket": "npc",
+   "id": 1,
+   "text": "An enemy must read at gameplay distance: light body silhouette against the arena palette, oversized emissive eyes, contrasting accent limbs - dark-on-dark palettes are invisible in play.",
+   "localId": 1,
+   "createdAt": 1782985390
+  }
+ ]
+}

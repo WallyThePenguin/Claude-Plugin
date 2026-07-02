@@ -1,0 +1,13 @@
+{
+ "category": "gui",
+ "seq": 1,
+ "entries": [
+  {
+   "bucket": "gui",
+   "id": 1,
+   "text": "Drive HUDs from server-set Workspace attributes read via GetAttributeChangedSignal on the client - one-way state display needs no remotes and survives respawn.",
+   "localId": 1,
+   "createdAt": 1782985393
+  }
+ ]
+}

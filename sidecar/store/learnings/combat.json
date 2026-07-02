@@ -1,0 +1,13 @@
+{
+ "category": "combat",
+ "seq": 1,
+ "entries": [
+  {
+   "bucket": "combat",
+   "id": 1,
+   "text": "A weapon with working damage but no bound use-animation FEELS broken to the player - author idle+use clips at bind time and match the thrust keyframes to the behavior windup/active window.",
+   "localId": 1,
+   "createdAt": 1782985392
+  }
+ ]
+}

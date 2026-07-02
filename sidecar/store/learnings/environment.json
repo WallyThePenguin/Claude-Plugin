@@ -1,0 +1,20 @@
+{
+ "entries": [
+  {
+   "bucket": "environment",
+   "id": 1,
+   "text": "A tiling texture's grout shows the Part's BASE Color underneath - set the part to the palette's light tone BEFORE painting or the surface reads dark regardless of texture colors.",
+   "localId": 1,
+   "createdAt": 1782985387
+  },
+  {
+   "bucket": "environment",
+   "id": 2,
+   "text": "Walled interiors go pitch-black under evening ClockTime + dense Atmosphere: keep interiors readable with ClockTime 14-15, Ambient >= 100, and point lights as accents only - never primary illumination.",
+   "localId": 2,
+   "createdAt": 1782985388
+  }
+ ],
+ "seq": 2,
+ "category": "environment"
+}
