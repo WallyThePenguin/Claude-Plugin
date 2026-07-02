@@ -20,6 +20,7 @@ local RubricStore = require(script.Parent.RubricStore)
 local BuildGuideStore = require(script.Parent.BuildGuideStore)
 local CameraRig = require(script.Parent.CameraRig)
 local Relay = require(script.Parent.Relay)
+local StoreClient = require(script.Parent.StoreClient)
 local DevBridge = require(script.Parent.DevBridge)
 local PlayBridge = require(script.Parent.PlayBridge)
 local HotReload = require(script.Parent.HotReload)
@@ -78,6 +79,38 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 
 	DevBridge.start(deps, lifecycle)
 	PlayBridge.start(deps, lifecycle)
+
+	-- Hydrate USER skills from the sidecar's durable, git-versioned store into the plugin-settings
+	-- working cache. The store is a superset (every save/delete mirrors there), so sidecar wins.
+	-- OLDEST-first: SkillStore.save appends at the tail and FIFO-drops the head, so feeding oldest
+	-- first leaves the NEWEST skills resident when the cache cap bites. Async + fail-open. Edit-only.
+	if relayMode == "edit" then
+		task.spawn(function()
+			local items = StoreClient.list(config, "skills")
+			if type(items) ~= "table" then
+				return
+			end
+			local hydrated = 0
+			for i = #items, 1, -1 do -- list is newest-first; iterate reversed
+				local item = items[i]
+				local body = StoreClient.get(config, "skills", tostring((item :: any).id))
+				if type(body) == "table" and type((body :: any).name) == "string" then
+					local b = body :: any
+					local _, ok = deps.skills:save(b.name, b.description, b.body, b.parameters)
+					if ok then
+						hydrated += 1
+					end
+				end
+			end
+			if hydrated > 0 then
+				print(
+					"[StudioAgent] hydrated "
+						.. tostring(hydrated)
+						.. " user skill(s) from the durable store"
+				)
+			end
+		end)
+	end
 
 	-- Mount the panel fresh this generation (clear any stale content first), and re-mount if Studio
 	-- clears the widget on an edit<->play transition.

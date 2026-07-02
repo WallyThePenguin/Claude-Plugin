@@ -78,11 +78,11 @@ function Learnings.normalizeCategory(name: any): string?
 end
 
 -- Append a normalized entry (id = max existing + 1, createdAt = now). FIFO-drop oldest over MAX_PER_CATEGORY.
--- Returns (newEntries, note). Invalid text -> unchanged entries + an error note.
-function Learnings.addTo(entries: { Entry }, text: any, now: number): ({ Entry }, string)
+-- Returns (newEntries, note, newId?). Invalid text -> unchanged entries + an error note + nil id.
+function Learnings.addTo(entries: { Entry }, text: any, now: number): ({ Entry }, string, number?)
 	local normalized = Learnings.normalizeText(text)
 	if normalized == nil then
-		return entries, "learn failed: text must be a non-empty string"
+		return entries, "learn failed: text must be a non-empty string", nil
 	end
 	local maxId = 0
 	for _, e in ipairs(entries) do
@@ -103,9 +103,13 @@ function Learnings.addTo(entries: { Entry }, text: any, now: number): ({ Entry }
 	end
 	local note = "learned (#" .. tostring(newId) .. "); " .. tostring(#out) .. " stored"
 	if dropped > 0 then
-		note ..= "; dropped " .. tostring(dropped) .. " oldest (cap " .. tostring(MAX_PER_CATEGORY) .. ")"
+		note ..= "; rotated "
+			.. tostring(dropped)
+			.. " oldest out of the always-on window (cap "
+			.. tostring(MAX_PER_CATEGORY)
+			.. "; still in the archive — recall_learnings)"
 	end
-	return out, note
+	return out, note, newId
 end
 
 -- Remove the entry with the given id (coerced to a number). Returns (newEntries, removed).
@@ -216,20 +220,22 @@ function Learnings.loadBucket(self: Learnings, category: string): { Entry }
 	return out
 end
 
--- Add a learning under a category. Persists the bucket + ensures the category is in the index. Returns a note.
-function Learnings.add(self: Learnings, category: any, text: any): string
+-- Add a learning under a category. Persists the bucket + ensures the category is in the index.
+-- Returns (note, newLocalId?) — the id is nil when nothing was added (invalid text), so callers
+-- (Tools/Learnings) can mirror the entry into the sidecar archive without parsing the note.
+function Learnings.add(self: Learnings, category: any, text: any): (string, number?)
 	local c = Learnings.normalizeCategory(category)
 	if c == nil then
-		return "learn failed: category must be a non-empty string"
+		return "learn failed: category must be a non-empty string", nil
 	end
 	local entries = self:loadBucket(c)
-	local updated, note = Learnings.addTo(entries, text, os.time())
+	local updated, note, newId = Learnings.addTo(entries, text, os.time())
 	-- Identity, NOT count: addTo returns the SAME table on invalid text (nothing added) and a NEW table
 	-- on success. A count check (#updated == #entries) wrongly matches a VALID add into a full bucket
 	-- (append then FIFO-drop nets the same length) and would silently skip the SetSetting -> lost learning.
 	if updated == entries then
 		-- nothing added (invalid text) -> don't touch storage/index
-		return note .. " [" .. c .. "]"
+		return note .. " [" .. c .. "]", nil
 	end
 	self._plugin:SetSetting(catKey(c), updated)
 	local index = self:loadIndex()
@@ -253,7 +259,7 @@ function Learnings.add(self: Learnings, category: any, text: any): string
 		table.insert(live, c)
 		saveIndex(self, live)
 	end
-	return note .. " [" .. c .. "]"
+	return note .. " [" .. c .. "]", newId
 end
 
 -- Forget a learning by id under a category. Persists. Returns a confirmation.

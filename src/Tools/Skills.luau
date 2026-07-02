@@ -2,6 +2,11 @@
 -- Skill tools: use_skill + save_skill + delete_skill. Thin wrappers over context.skills (the SkillStore).
 -- Parent-only: NOT in the subagent/writer allowlists, and a child's context carries no skills, so they
 -- no-op gracefully for a child (defence in depth). All non-destructive (they don't touch the DataModel).
+-- save/delete MIRROR the user skill into the sidecar's git-versioned store (skills/<slug>.json) so
+-- authored skills are unbounded + durable; the plugin-settings copy stays the offline working cache
+-- (Main hydrates it from the sidecar at boot). Mirroring is fail-open with an honest note.
+
+local StoreClient = require(script.Parent.Parent.StoreClient)
 
 local Skills = {}
 
@@ -45,6 +50,20 @@ local function saveSkill(input: any, context: any): (string, boolean)
 			true
 	end
 	local note, ok = s:save(args.name, args.description, args.body, args.parameters)
+	if ok then
+		local slug = StoreClient.slug(args.name)
+		if slug ~= nil then
+			local put, err = StoreClient.put(context.config, "skills", slug, {
+				name = args.name,
+				description = args.description,
+				body = args.body,
+				parameters = args.parameters,
+			})
+			note ..= if put
+				then "; stored durably (git-versioned)"
+				else "; durable store unavailable (" .. tostring(err) .. ") — saved locally only"
+		end
+	end
 	return note, not ok
 end
 
@@ -58,6 +77,15 @@ local function deleteSkill(input: any, context: any): (string, boolean)
 		return "delete_skill requires { name = <string> }", true
 	end
 	local note, ok = s:delete(args.name)
+	if ok then
+		local slug = StoreClient.slug(args.name)
+		if slug ~= nil then
+			local removed, err = StoreClient.remove(context.config, "skills", slug)
+			if not removed then
+				note ..= "; durable store unavailable (" .. tostring(err) .. ") — it may reappear at next boot"
+			end
+		end
+	end
 	return note, not ok
 end
 

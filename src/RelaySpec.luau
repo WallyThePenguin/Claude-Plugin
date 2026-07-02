@@ -79,6 +79,7 @@ local EXPECTED_RELAY = {
 	"get_script",
 	"grep_source",
 	"edit_script",
+	"recall_learnings",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }
