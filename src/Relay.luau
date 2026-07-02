@@ -41,6 +41,15 @@ local LOCAL_TOOLS: { [string]: boolean } = {
 	camera_focus = true,
 	camera_orbit = true,
 	camera_release = true,
+	-- Playtest tools are edit-plugin machinery driving the sidecar /play channel; they must never
+	-- relay into a play DM (the edit plugin keeps running during a test and owns the channel).
+	playtest_start = true,
+	playtest_stop = true,
+	playtest_act = true,
+	playtest_eval = true,
+	playtest_logs = true,
+	playtest_capture = true,
+	playtest_status = true,
 }
 
 -- "edit" | "serverplay" | "clientplay" | "other". IsEdit() FIRST: edit reports IsServer=true AND

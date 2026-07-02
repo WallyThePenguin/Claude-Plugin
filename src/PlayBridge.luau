@@ -78,6 +78,95 @@ local function post(id, ok, result)
 	end)
 end
 
+-- ---- cursored log buffer (playtest_logs): every LogService line + ScriptContext stack traces ----
+-- Absolute indices survive ring eviction, so `slog2 since=N` tails incrementally without loss.
+local logBuf = {}
+local logCount = 0
+local logFirst = 1
+local LOG_CAP = 400
+local function pushLog(kind, text)
+	logCount = logCount + 1
+	logBuf[logCount] = "[" .. kind .. "] " .. text
+	if logCount - logFirst + 1 > LOG_CAP then
+		logBuf[logFirst] = nil
+		logFirst = logFirst + 1
+	end
+end
+pcall(function()
+	game:GetService("LogService").MessageOut:Connect(function(msg, mtype)
+		local kind = string.lower((string.gsub(tostring(mtype.Name), "^Message", "")))
+		pushLog(kind, tostring(msg))
+	end)
+end)
+pcall(function()
+	-- Richer than MessageOut's error line: includes the script path and the full stack.
+	game:GetService("ScriptContext").Error:Connect(function(message, stack, scriptInstance)
+		local src = "?"
+		pcall(function()
+			src = scriptInstance:GetFullName()
+		end)
+		pushLog(
+			"error+stack",
+			tostring(message)
+				.. " | script="
+				.. tostring(src)
+				.. " | stack: "
+				.. string.gsub(tostring(stack), "\n", " <- ")
+		)
+	end)
+end)
+local function serverLogs(sinceArg)
+	local since = tonumber(sinceArg) or 0
+	local from = math.max(logFirst, math.floor(since) + 1)
+	local lines = {}
+	for i = from, logCount do
+		if logBuf[i] ~= nil then
+			table.insert(lines, "#" .. tostring(i) .. " " .. logBuf[i])
+			if #lines >= 60 then
+				break
+			end
+		end
+	end
+	if #lines == 0 then
+		return "no new log lines (cursor=" .. tostring(logCount) .. ")"
+	end
+	local last = from + #lines - 1
+	local more = if last < logCount
+		then " — MORE available, call again with since=" .. tostring(last)
+		else ""
+	return table.concat(lines, "\n") .. "\n(cursor=" .. tostring(last) .. more .. ")"
+end
+
+-- ---- server-side eval (playtest_eval): loadstring in the play-server DM ----
+-- The agent's generic probe: read/assert ANY server game state mid-playtest. Return values are
+-- tostring'd; prints land in the log buffer (readable via playtest_logs).
+local function serverEval(code)
+	-- loadstring THROWS at call time when LoadStringEnabled is off (it is not nil) — guard the call.
+	local okCompile, fn, cerr = pcall(loadstring, tostring(code), "=playtest_eval")
+	if not okCompile then
+		return "seval: loadstring unavailable ("
+			.. tostring(fn)
+			.. ") — playtest_eval needs the user to tick ServerScriptService.LoadStringEnabled in the "
+			.. "Properties panel ONCE for this place (not scriptable; a manual toggle like 'Allow HTTP "
+			.. "Requests'). Use playtest_logs / playtest_act / the predefined probes meanwhile."
+	end
+	if fn == nil then
+		return "seval compile error: " .. tostring(cerr)
+	end
+	local results = { pcall(fn) }
+	if not results[1] then
+		return "seval runtime error: " .. tostring(results[2])
+	end
+	local parts = {}
+	for i = 2, #results do
+		table.insert(parts, tostring(results[i]))
+	end
+	if #parts == 0 then
+		return "seval ok (no return values; prints land in playtest_logs)"
+	end
+	return "seval ok: " .. table.concat(parts, ", ")
+end
+
 -- ---- server-side rig helpers (the server DM sees the replicated joints) ----
 local function firstPlayer()
 	return Players:GetPlayers()[1]
@@ -408,26 +497,38 @@ while true do
 					StudioTestService:EndTest("stopped")
 				end)
 				return
-			elseif cmd.cmd == "capture" then
-				post(cmd.id, true, client("capture", nil))
-			elseif cmd.cmd == "act" then
-				post(cmd.id, true, client("act", cmd.arg))
-			elseif cmd.cmd == "eval" then
-				post(cmd.id, true, client("eval", cmd.arg))
-			elseif cmd.cmd == "sdiag" then
-				post(cmd.id, true, serverDiag())
-			elseif cmd.cmd == "slog" then
-				post(cmd.id, true, serverLog())
-			elseif cmd.cmd == "sanim" then
-				post(cmd.id, true, serverAnim())
-			elseif cmd.cmd == "sfix" then
-				post(cmd.id, true, serverFix())
-			elseif cmd.cmd == "shit" then
-				post(cmd.id, true, serverHitTest())
-			elseif cmd.cmd == "snpc" then
-				post(cmd.id, true, serverNpc())
-			else
-				post(cmd.id, false, "unknown play cmd: " .. tostring(cmd.cmd))
+			end
+			-- pcall-wrap EVERY other verb: a throwing handler must post an error, never kill the
+			-- poller (a dead poller strands the whole test — even `stop` stops working).
+			local okDispatch, dispatchErr = pcall(function()
+				if cmd.cmd == "capture" then
+					post(cmd.id, true, client("capture", nil))
+				elseif cmd.cmd == "act" then
+					post(cmd.id, true, client("act", cmd.arg))
+				elseif cmd.cmd == "eval" then
+					post(cmd.id, true, client("eval", cmd.arg))
+				elseif cmd.cmd == "sdiag" then
+					post(cmd.id, true, serverDiag())
+				elseif cmd.cmd == "slog" then
+					post(cmd.id, true, serverLog())
+				elseif cmd.cmd == "sanim" then
+					post(cmd.id, true, serverAnim())
+				elseif cmd.cmd == "sfix" then
+					post(cmd.id, true, serverFix())
+				elseif cmd.cmd == "seval" then
+					post(cmd.id, true, serverEval(cmd.arg))
+				elseif cmd.cmd == "slog2" then
+					post(cmd.id, true, serverLogs(cmd.arg))
+				elseif cmd.cmd == "shit" then
+					post(cmd.id, true, serverHitTest())
+				elseif cmd.cmd == "snpc" then
+					post(cmd.id, true, serverNpc())
+				else
+					post(cmd.id, false, "unknown play cmd: " .. tostring(cmd.cmd))
+				end
+			end)
+			if not okDispatch then
+				post(cmd.id, false, "play cmd '" .. tostring(cmd.cmd) .. "' threw: " .. tostring(dispatchErr))
 			end
 		end
 	end
@@ -577,6 +678,10 @@ end
 local savedAppearance: boolean? = nil
 
 -- Restore the StarterPlayer property we changed for the test (so the user's place config is unchanged).
+-- NOTE (live-verified 2026-07-01): ServerScriptService.LoadStringEnabled is NOT SCRIPTABLE (reading it
+-- throws even at PluginSecurity), so the plugin CANNOT gate it on for `seval` — playtest_eval needs the
+-- user to tick it once in ServerScriptService's Properties (a manual per-place toggle, same class as
+-- "Allow HTTP Requests"); serverEval returns a clear guarded message when it is off.
 function PlayBridge.restoreStarterPlayer()
 	if savedAppearance ~= nil then
 		pcall(function()

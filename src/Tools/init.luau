@@ -49,6 +49,7 @@ local ItemBehaviorTool = require(script.ItemBehavior)
 local ItemHitTool = require(script.ItemHit)
 local NpcTool = require(script.Npc)
 local ScriptsTool = require(script.Scripts)
+local PlaytestTool = require(script.Playtest)
 
 local Tools = {}
 
@@ -181,6 +182,9 @@ for _, descriptor in NpcTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ScriptsTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in PlaytestTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 

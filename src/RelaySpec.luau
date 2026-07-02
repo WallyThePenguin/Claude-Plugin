@@ -29,6 +29,13 @@ local EXPECTED_LOCAL = {
 	"camera_focus",
 	"camera_orbit",
 	"camera_release",
+	"playtest_start",
+	"playtest_stop",
+	"playtest_act",
+	"playtest_eval",
+	"playtest_logs",
+	"playtest_capture",
+	"playtest_status",
 }
 local EXPECTED_RELAY = {
 	"run_luau",
