@@ -20,5 +20,11 @@
   "enabled": true,
   "instancePath": "game.StarterGui.WaveHud.Controller",
   "runContext": "Legacy"
+ },
+ "src/StarterPlayer/StarterPlayerScripts/FlinchReact.client.luau": {
+  "baseHash": "3fd0201a",
+  "className": "LocalScript",
+  "enabled": true,
+  "instancePath": "game.StarterPlayer.StarterPlayerScripts.FlinchReact"
  }
 }
