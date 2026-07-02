@@ -1,0 +1,17 @@
+{
+ "src/ReplicatedStorage/WaveConfig.luau": {
+  "baseHash": "3346b3f1",
+  "className": "ModuleScript",
+  "instancePath": "game.ReplicatedStorage.WaveConfig"
+ },
+ "src/ServerScriptService/RoundLoop.server.luau": {
+  "baseHash": "58e1c525",
+  "className": "Script",
+  "enabled": true,
+  "instancePath": "game.ServerScriptService.RoundLoop",
+  "runContext": "Legacy",
+  "testSymbols": [
+   "TestAutoKill"
+  ]
+ }
+}
