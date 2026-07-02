@@ -254,6 +254,14 @@ local function runLoop(
 		end
 
 		if #toolUses == 0 then
+			-- Empty content array (0 output blocks — e.g. the cap was hit before any block emitted):
+			-- the API forbids an empty-content assistant turn, and isValidHistory doesn't catch it,
+			-- so echoing + resending it would 400 the next Send. It can't be usefully continued —
+			-- treat it as terminal (do NOT append the empty turn). Covers max_tokens AND pause_turn.
+			if #data.content == 0 then
+				emit("done", { stop = data.stop_reason })
+				return
+			end
 			-- Terminal (or a paused/output-capped turn to resume). Echo the assistant turn either way.
 			table.insert(messages, { role = "assistant", content = data.content })
 			if data.stop_reason == "pause_turn" then

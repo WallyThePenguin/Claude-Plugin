@@ -162,7 +162,14 @@ function ScriptEdit.applyRange(
 	for i = e + 1, total do
 		table.insert(out, lines[i])
 	end
-	return table.concat(out, "\n"), nil
+	local result = table.concat(out, "\n")
+	-- splitLines drops the terminating newline, so re-append it if the source had one — else a
+	-- range/insert/delete edit would silently strip the file's trailing newline (an unrequested
+	-- change reported as success). applyFind operates on the raw string and needs no such fixup.
+	if string.sub(source, -1) == "\n" then
+		result = result .. "\n"
+	end
+	return result, nil
 end
 
 -- Per-source grep. plain=true (the default posture) treats `pattern` literally; plain=false

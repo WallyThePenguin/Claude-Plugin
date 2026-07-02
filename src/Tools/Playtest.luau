@@ -195,10 +195,12 @@ local function runEval(input: any, context: any): (Content, boolean)
 		return "playtest_eval requires { code = <string> }", true
 	end
 	local out, isErr = playCommand(context, "seval", args.code, 30)
-	-- The in-test poller posts ok=true even for eval failures; surface those as tool errors.
+	-- The in-test poller posts ok=true even for eval failures; surface those as tool errors so the
+	-- agent never mistakes an error/guidance string for the probe's return value.
 	if not isErr
 		and (string.find(out, "seval compile error", 1, true) ~= nil
-			or string.find(out, "seval runtime error", 1, true) ~= nil)
+			or string.find(out, "seval runtime error", 1, true) ~= nil
+			or string.find(out, "seval: loadstring unavailable", 1, true) ~= nil)
 	then
 		return out, true
 	end

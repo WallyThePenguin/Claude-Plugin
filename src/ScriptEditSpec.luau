@@ -109,6 +109,18 @@ local function buildCases(): { Case }
 		return errLo ~= nil and errHi ~= nil
 	end)
 
+	add("applyRange preserves (and does not invent) a trailing newline", function()
+		-- A source that ends in "\n" (the normal Studio case) must keep it after a range edit.
+		local withNl = "local a = 1\nlocal b = 2\n"
+		local edited = ScriptEdit.applyRange(withNl, 1, 1, "local a = 9")
+		if edited ~= "local a = 9\nlocal b = 2\n" then
+			return false, "trailing newline lost: " .. tostring(edited)
+		end
+		-- A source with NO trailing newline must not gain one.
+		local noNl = ScriptEdit.applyRange(SRC, 1, 1, "local a = 9")
+		return string.sub(noNl :: string, -1) ~= "\n"
+	end)
+
 	add("grep: plain default posture and pattern mode", function()
 		local hits = ScriptEdit.grep(SRC, "local", true)
 		if hits == nil or #hits ~= 2 or hits[1].line ~= 1 or hits[2].line ~= 2 then
