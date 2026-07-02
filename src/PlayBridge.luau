@@ -643,7 +643,17 @@ local function doAct(verb)
 			end
 			task.wait(0.05)
 		end
-		return "ItemState " .. table.concat(samples, " -> ")
+		-- Identity + config echo: WHICH tool ran, with WHAT timing attributes (diagnoses a clone
+		-- that lost/never had its Behavior* attributes vs a runtime ignoring them). NOTE: no .Source
+		-- reads here — runtime Source access needs PluginSecurity and would kill this handler.
+		local cfg = string.format(
+			" [tool=%s w=%s a=%s c=%s]",
+			tool.Name,
+			tostring(tool:GetAttribute("BehaviorWindup")),
+			tostring(tool:GetAttribute("BehaviorActive")),
+			tostring(tool:GetAttribute("BehaviorCooldown"))
+		)
+		return "ItemState " .. table.concat(samples, " -> ") .. cfg
 	end
 	return "unknown act: " .. tostring(verb)
 end

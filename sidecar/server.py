@@ -20,6 +20,7 @@ GET  /store/<kind>                                        -> {"items":[{"id","si
 GET  /store/<kind>/<id>                                   -> the stored JSON body, or 404
 POST /store/<kind>/<id>  <json body>                      -> {"ok":true}   (atomic write; git-tracked)
 DELETE /store/<kind>/<id>                                 -> {"ok":true,"existed":bool}
+GET  /runtime                                             -> {"version":N,"modules":{name:source}}  (runtime/ library)
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -38,6 +39,20 @@ from bridge import Store
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
 SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+RUNTIME_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runtime")
+
+
+def read_runtime() -> dict:
+    """The git-versioned in-game runtime library: runtime/*.luau + VERSION. The plugin's
+    RuntimeInstaller writes these as ReplicatedStorage.StudioAgentRuntime ModuleScripts."""
+    with open(os.path.join(RUNTIME_DIR, "VERSION"), "r", encoding="utf-8") as fh:
+        version = int(fh.read().strip())
+    modules = {}
+    for name in os.listdir(RUNTIME_DIR):
+        if name.endswith(".luau"):
+            with open(os.path.join(RUNTIME_DIR, name), "r", encoding="utf-8") as fh:
+                modules[name[: -len(".luau")]] = fh.read()
+    return {"version": version, "modules": modules}
 
 
 def read_src_sources() -> dict:
@@ -121,6 +136,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, res if res is not None else {"status": "pending"})
         if parsed.path.startswith("/store/"):
             return self._store_get(parsed.path)
+        if parsed.path == "/runtime":
+            try:
+                return self._json(200, read_runtime())
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
         return self._json(404, {"error": "not found"})
 
     def _store_parts(self, path: str):
