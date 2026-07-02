@@ -81,6 +81,7 @@ local EXPECTED_RELAY = {
 	"edit_script",
 	"recall_learnings",
 	"game_pull",
+	"game_push",
 }
 
 type Case = { name: string, fn: () -> (boolean, string?) }

@@ -143,4 +143,32 @@ function GameSync.findCollisions(relpaths: { string }): { { string } }
 	return out
 end
 
+-- game_push's per-script decision, given the banked file source, the live instance source (nil
+-- when the instance is missing), the manifest's baseHash (the live hash at the LAST pull), and
+-- whether the caller force-listed this relpath:
+--   "create"   — no live instance (push-create, caller checks the parent exists);
+--   "current"  — live already equals the file (nothing to do);
+--   "update"   — live is unchanged since the pull (hash == baseHash): safe to overwrite;
+--   "diverged" — live changed since the pull AND differs from the file: REFUSE (someone edited
+--                in Studio; force-listing turns this into "forced");
+--   "forced"   — diverged but explicitly force-listed (caller stages the displaced live source
+--                to the store BEFORE overwriting — nothing destroyed without a recoverable copy).
+function GameSync.pushDecision(
+	fileSource: string,
+	liveSource: string?,
+	baseHash: string?,
+	forced: boolean
+): string
+	if liveSource == nil then
+		return "create"
+	end
+	if liveSource == fileSource then
+		return "current"
+	end
+	if baseHash ~= nil and GameSync.hashSource(liveSource) == baseHash then
+		return "update"
+	end
+	return if forced then "forced" else "diverged"
+end
+
 return GameSync

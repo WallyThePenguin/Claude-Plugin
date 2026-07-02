@@ -142,6 +142,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_runtime())
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
+        if parsed.path == "/game/read":
+            try:
+                return self._json(200, gamesync.read_game())
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
         return self._json(404, {"error": "not found"})
 
     def _store_parts(self, path: str):

@@ -86,6 +86,29 @@ local function buildCases(): { Case }
 		return #GameSync.findCollisions({ "src/A/x.luau", "src/B/x.luau" }) == 0
 	end)
 
+	add("pushDecision: create/current/update/diverged/forced", function()
+		local file = "new source"
+		local pulled = "pulled source"
+		local base = GameSync.hashSource(pulled)
+		if GameSync.pushDecision(file, nil, base, false) ~= "create" then
+			return false, "create"
+		end
+		if GameSync.pushDecision(file, file, base, false) ~= "current" then
+			return false, "current"
+		end
+		if GameSync.pushDecision(file, pulled, base, false) ~= "update" then
+			return false, "update"
+		end
+		if GameSync.pushDecision(file, "studio edit", base, false) ~= "diverged" then
+			return false, "diverged"
+		end
+		if GameSync.pushDecision(file, "studio edit", base, true) ~= "forced" then
+			return false, "forced"
+		end
+		-- A missing baseHash (pre-manifest entry) can never claim "update": diverge, don't clobber.
+		return GameSync.pushDecision(file, pulled, nil, false) == "diverged"
+	end)
+
 	return cases
 end
 

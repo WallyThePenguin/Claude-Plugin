@@ -1,0 +1,5 @@
+{
+ "description": "Build a playtest-verified melee spear (proven factory rung: exact-timing behavior + reach-9 hitbox)",
+ "name": "spear-weapon",
+ "body": "Park any pre-existing StarterPack Tools into ServerStorage first; restore them after staging.\nBuild the visual in Workspace from 4 primitives with a distinct spear silhouette: 6.5-stud vertical wooden cylinder Shaft, dark-metal Collar socket, leaf-shaped flattened metal ellipsoid Tip (~1.8 studs), metal ButtCap pommel.\nmake_tool with the Shaft as handle (it becomes Handle; the other 3 parts weld + unanchor), then move the Tool to StarterPack.\nbind_behavior slower than the 0.15/0.15/0.4 sword defaults: windup 0.5, active 0.25, cooldown 0.9 (active window 0.50-0.75s).\nbind_hitbox longer than a sword: reach 9 (> 6 oracle threshold), damage 20, cooldown 0.9 matching the swing; re-read the six persisted attributes to confirm.\nOptional polish: bind a use-animation clip -- without one the swing does not animate (state machine + damage still work)."
+}

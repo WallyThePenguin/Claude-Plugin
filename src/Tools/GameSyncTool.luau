@@ -11,12 +11,14 @@
 -- attribute) and REPORTS every exclusion; refuses on case-insensitive relpath collisions
 -- (listing the twins) rather than silent last-wins; flags test symbols into the manifest.
 
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 
 local GameSync = require(script.Parent.Parent.GameSync)
 local Path = require(script.Parent.Path)
+local StoreClient = require(script.Parent.Parent.StoreClient)
 
 local GameSyncTool = {}
 
@@ -258,6 +260,223 @@ local function runPull(input: any, context: any): (string, boolean)
 	return out, false
 end
 
+-- Compile-check a source with loadstring WITHOUT executing it (edit_script's gate, local copy).
+local function compileCheck(source: string): (boolean, string?)
+	if loadstring == nil then
+		return true, nil -- unavailable (playtest) — push already refuses during playtests
+	end
+	local okCall, chunk, compileErr = pcall(function()
+		return loadstring(source, "=game_push")
+	end)
+	if not okCall then
+		return true, nil
+	end
+	if chunk == nil then
+		return false, tostring(compileErr)
+	end
+	return true, nil
+end
+
+-- game_push: banked files -> live place, guarded by the manifest baseHash (see GameSync.pushDecision).
+local function runPush(input: any, context: any): (string, boolean)
+	local args = if type(input) == "table" then input else {}
+	if playtestActive() then
+		return "game_push: refused — a playtest is active. Stop the test first.", true
+	end
+	local forceSet: { [string]: boolean } = {}
+	if type(args.force) == "table" then
+		for _, rel in ipairs(args.force :: { any }) do
+			if type(rel) == "string" then
+				forceSet[rel] = true
+			end
+		end
+	end
+	local prefix = if type(args.path) == "string" and args.path ~= "" then args.path else nil
+
+	-- Fetch the banked files + manifest from the sidecar.
+	local okReq, res = pcall(function()
+		return HttpService:RequestAsync({
+			Url = context.config:getSidecarUrl() .. "/game/read",
+			Method = "GET",
+		})
+	end)
+	if not okReq then
+		return "game_push: sidecar unreachable (" .. tostring(res) .. ")", true
+	end
+	local r = res :: any
+	if not r.Success then
+		return "game_push: sidecar HTTP " .. tostring(r.StatusCode), true
+	end
+	local okDec, payload = pcall(function()
+		return HttpService:JSONDecode(r.Body)
+	end)
+	if not okDec or type(payload) ~= "table" then
+		return "game_push: bad /game/read response", true
+	end
+	local files = (payload :: any).files
+	local manifest = (payload :: any).manifest
+	if type(files) ~= "table" or type(manifest) ~= "table" then
+		return "game_push: bad /game/read response (no files/manifest)", true
+	end
+
+	-- Deterministic order.
+	local relpaths: { string } = {}
+	for rel in pairs(manifest :: { [string]: any }) do
+		if type(rel) == "string" and files[rel] ~= nil and (prefix == nil or string.sub(rel, 1, #prefix) == prefix) then
+			table.insert(relpaths, rel)
+		end
+	end
+	table.sort(relpaths)
+	if #relpaths == 0 then
+		return "game_push: nothing to push"
+			.. (if prefix ~= nil then " under '" .. prefix .. "'" else " (run game_pull first)"), false
+	end
+
+	local lines: { string } = {}
+	local counts = { current = 0, update = 0, create = 0, diverged = 0, forced = 0, blocked = 0 }
+	local rid = ChangeHistoryService:TryBeginRecording("game_push")
+	if rid == nil and RunService:IsEdit() then
+		return "game_push: could not begin a change recording", true
+	end
+	local anyWrite = false
+	for _, rel in relpaths do
+		local entry = (manifest :: any)[rel]
+		local fileSource = files[rel] :: string
+		local instPath = tostring(entry.instancePath)
+		local inst = Path.resolve(instPath)
+		local liveSource: string? = nil
+		if inst ~= nil and inst:IsA("LuaSourceContainer") then
+			local okRead, src = pcall(function(): string
+				return ScriptEditorService:GetEditorSource(inst :: LuaSourceContainer)
+			end)
+			liveSource = if okRead then src else nil
+		end
+		local decision = GameSync.pushDecision(
+			fileSource,
+			liveSource,
+			if type(entry.baseHash) == "string" then entry.baseHash else nil,
+			forceSet[rel] == true
+		)
+		if decision == "current" then
+			counts.current += 1
+		elseif decision == "diverged" then
+			counts.diverged += 1
+			table.insert(
+				lines,
+				"DIVERGED (Studio edited since the pull; not overwritten): "
+					.. rel
+					.. " — pass force=[\"" .. rel .. "\"] to overwrite (the displaced live source gets staged first), or game_pull to re-bank"
+			)
+		else
+			local okCompile, cerr = compileCheck(fileSource)
+			if not okCompile then
+				counts.blocked += 1
+				table.insert(lines, "SYNTAX (not applied): " .. rel .. " — " .. tostring(cerr))
+				continue
+			end
+			if decision == "create" then
+				-- Push-create only when the PARENT exists (the world is DataModel-owned).
+				local lastDot = string.find(string.reverse(instPath), ".", 1, true)
+				local parentPath = if lastDot ~= nil then string.sub(instPath, 1, #instPath - lastDot) else nil
+				local childName = if lastDot ~= nil then string.sub(instPath, #instPath - lastDot + 2) else instPath
+				local parent = if parentPath ~= nil then Path.resolve(parentPath) else nil
+				if parent == nil then
+					counts.blocked += 1
+					table.insert(
+						lines,
+						"PARENT MISSING (world instances are not pushed — build it first): " .. rel
+					)
+					continue
+				end
+				local className = tostring(entry.className)
+				local okNew, newInst = pcall(function(): Instance
+					return Instance.new(className)
+				end)
+				if not okNew then
+					counts.blocked += 1
+					table.insert(lines, "BAD CLASS " .. className .. ": " .. rel)
+					continue
+				end
+				local created = newInst :: Instance
+				created.Name = childName;
+				(created :: any).Source = fileSource
+				if created:IsA("BaseScript") and entry.enabled ~= nil then
+					created.Enabled = entry.enabled == true
+				end
+				created.Parent = parent
+				counts.create += 1
+				anyWrite = true
+				table.insert(lines, "created: " .. rel .. " -> " .. instPath)
+			else
+				if decision == "forced" then
+					-- Stage the displaced live source FIRST: nothing destroyed without a copy.
+					local slug = StoreClient.slug("displaced-" .. rel) or "displaced"
+					local okStage = StoreClient.put(context.config, "staging", slug, {
+						displacedFrom = instPath,
+						relpath = rel,
+						source = liveSource,
+						at = os.time(),
+					})
+					if not okStage then
+						counts.blocked += 1
+						table.insert(
+							lines,
+							"FORCE BLOCKED (could not stage the displaced live source): " .. rel
+						)
+						continue
+					end
+					counts.forced += 1
+					table.insert(lines, "FORCED (displaced source staged as staging/" .. slug .. "): " .. rel)
+				else
+					counts.update += 1
+				end
+				local okWrite, werr = pcall(function()
+					ScriptEditorService:UpdateSourceAsync(
+						inst :: LuaSourceContainer,
+						function(_old: string): string
+							return fileSource
+						end
+					)
+				end)
+				if not okWrite then
+					counts.blocked += 1
+					table.insert(lines, "WRITE FAILED: " .. rel .. " — " .. tostring(werr))
+				else
+					anyWrite = true
+					if decision == "update" then
+						table.insert(lines, "updated: " .. rel)
+					end
+				end
+			end
+		end
+	end
+	if rid ~= nil then
+		ChangeHistoryService:FinishRecording(
+			rid,
+			if anyWrite
+				then Enum.FinishRecordingOperation.Commit
+				else Enum.FinishRecordingOperation.Cancel
+		)
+	end
+
+	local out = string.format(
+		"game_push: %d updated, %d created, %d current, %d DIVERGED (skipped), %d forced, %d blocked",
+		counts.update,
+		counts.create,
+		counts.current,
+		counts.diverged,
+		counts.forced,
+		counts.blocked
+	)
+	if #lines > 0 then
+		out ..= "\n" .. table.concat(lines, "\n")
+	end
+	if counts.update + counts.create + counts.forced > 0 then
+		out ..= "\nNOTE: run game_pull after verifying, so the manifest baseHash re-banks this state."
+	end
+	return out, counts.blocked > 0
+end
+
 GameSyncTool.descriptors = {
 	{
 		name = "game_pull",
@@ -279,6 +498,31 @@ GameSyncTool.descriptors = {
 		},
 		destructive = false,
 		run = runPull,
+	},
+	{
+		name = "game_push",
+		description = "PUSH the banked game/ files back into the live place. Per-script guard: a "
+			.. "script Studio has edited since the last pull is DIVERGED and refused (pass its relpath "
+			.. "in force=[…] to overwrite — the displaced live source is staged first, nothing is "
+			.. "destroyed without a copy). Creates missing scripts only when their PARENT exists (the "
+			.. "world stays DataModel-owned). Every write is compile-checked and undoable. Run "
+			.. "game_pull afterward to re-bank the manifest.",
+		inputSchema = {
+			type = "object",
+			properties = {
+				path = {
+					type = "string",
+					description = "Only push relpaths under this prefix (e.g. src/ServerScriptService).",
+				},
+				force = {
+					type = "array",
+					items = { type = "string" },
+					description = "Exact relpaths allowed to overwrite DIVERGED live scripts.",
+				},
+			},
+		},
+		destructive = true,
+		run = runPush,
 	},
 } :: { Descriptor }
 

@@ -84,6 +84,20 @@ def _load_manifest() -> dict:
         return {}
 
 
+def read_game() -> dict:
+    """The banked game files + manifest, for game_push: {files: {relpath: source}, manifest}."""
+    src_dir = os.path.join(GAME_DIR, "src")
+    files = {}
+    if os.path.isdir(src_dir):
+        for dirpath, _dirs, names in os.walk(src_dir):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                rel = os.path.relpath(full, GAME_DIR).replace(os.sep, "/")
+                with open(full, "r", encoding="utf-8") as fh:
+                    files[rel] = fh.read()
+    return {"files": files, "manifest": _load_manifest()}
+
+
 def write_game(files: dict, manifest: dict, message: str, scope: str = None) -> dict:
     """Write the pulled files + manifest under game/ and commit.
 
