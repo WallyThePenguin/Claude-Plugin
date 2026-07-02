@@ -5,7 +5,7 @@
   "instancePath": "game.ReplicatedStorage.WaveConfig"
  },
  "src/ServerScriptService/RoundLoop.server.luau": {
-  "baseHash": "b3bb0b51",
+  "baseHash": "6c8ead79",
   "className": "Script",
   "enabled": true,
   "instancePath": "game.ServerScriptService.RoundLoop",
@@ -13,5 +13,12 @@
   "testSymbols": [
    "TestAutoKill"
   ]
+ },
+ "src/StarterGui/WaveHud/Controller.client.luau": {
+  "baseHash": "113b5059",
+  "className": "LocalScript",
+  "enabled": true,
+  "instancePath": "game.StarterGui.WaveHud.Controller",
+  "runContext": "Legacy"
  }
 }
