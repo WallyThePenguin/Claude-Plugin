@@ -13,13 +13,16 @@ local ARENA_CENTER = Vector3.new(0, 0, 0)
 local SPAWN_RADIUS = 35 -- studs from center to ring enemies around
 local SPAWN_HEIGHT = 3 -- lift so the enemy drops onto the floor cleanly
 
--- Reset the tracked wave counter for observers/GUIs.
+-- Round state for observers/GUIs (the WaveHud client reads these):
+--   CurrentWave (number) · EnemiesRemaining (number) · RoundState ("intermission"|"wave"|"victory")
 Workspace:SetAttribute("CurrentWave", 0)
+Workspace:SetAttribute("EnemiesRemaining", 0)
+Workspace:SetAttribute("RoundState", "intermission")
 
 -- Spawn a single enemy from the template, configured for `wave`, at `position`.
 local function spawnEnemy(wave: { [string]: number }, position: Vector3): Model
 	local enemy = EnemyTemplate:Clone()
-	enemy.Name = "Enemy"
+	enemy.Name = "Husk"
 
 	local humanoid = enemy:FindFirstChildOfClass("Humanoid")
 	if humanoid then
@@ -63,6 +66,7 @@ local function waitForWaveCleared(enemies: { Model })
 
 	local function onOneDown()
 		remaining -= 1
+		Workspace:SetAttribute("EnemiesRemaining", math.max(0, remaining))
 		if remaining <= 0 then
 			finishedEvent:Fire()
 		end
@@ -101,9 +105,12 @@ end
 local function runRound()
 	for waveIndex, wave in ipairs(WaveConfig.Waves) do
 		-- Intermission breather before this wave.
+		Workspace:SetAttribute("RoundState", "intermission")
 		task.wait(wave.intermission)
 
 		Workspace:SetAttribute("CurrentWave", waveIndex)
+		Workspace:SetAttribute("EnemiesRemaining", wave.enemyCount)
+		Workspace:SetAttribute("RoundState", "wave")
 		print(string.format("[RoundLoop] Wave %d starting: %d enemies (hp %d, ws %d)",
 			waveIndex, wave.enemyCount, wave.health, wave.walkSpeed))
 
@@ -113,6 +120,7 @@ local function runRound()
 		print(string.format("[RoundLoop] Wave %d cleared.", waveIndex))
 	end
 
+	Workspace:SetAttribute("RoundState", "victory")
 	print("[RoundLoop] VICTORY - all waves survived! (source of truth: game/ in git)")
 end
 
