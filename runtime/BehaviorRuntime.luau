@@ -118,6 +118,12 @@ function BehaviorRuntime.attach(Tool)
 		tracks = {}
 		Tool:SetAttribute("ItemState", "idle")
 	end)
+
+	-- Heal a missed first equip: if the Tool is ALREADY in a character when attach runs (the
+	-- launcher's WaitForChild can land after Tool.Equipped fired), enter idle now.
+	if Tool.Parent ~= nil and Tool.Parent:FindFirstChildOfClass("Humanoid") ~= nil then
+		enterIdle()
+	end
 end
 
 return BehaviorRuntime

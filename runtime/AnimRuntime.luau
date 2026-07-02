@@ -75,6 +75,12 @@ function AnimRuntime.attach(Tool)
 		end
 		tracks = {}
 	end)
+
+	-- Heal a missed first equip: if the Tool is ALREADY in a character when attach runs (the
+	-- launcher's WaitForChild can land after Tool.Equipped fired), start the idle loop now.
+	if Tool.Parent ~= nil and Tool.Parent:FindFirstChildOfClass("Humanoid") ~= nil then
+		play("idle", true, Enum.AnimationPriority.Idle)
+	end
 end
 
 return AnimRuntime

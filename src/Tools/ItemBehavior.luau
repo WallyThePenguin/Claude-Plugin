@@ -140,6 +140,11 @@ Tool.Unequipped:Connect(function()
 	tracks = {}
 	Tool:SetAttribute("ItemState", "idle")
 end)
+
+-- Heal a missed first equip (script started while the tool is already in a character).
+if Tool.Parent ~= nil and Tool.Parent:FindFirstChildOfClass("Humanoid") ~= nil then
+	enterIdle()
+end
 ]==]
 
 local function findTool(args: any): (Tool?, string?)
@@ -207,7 +212,8 @@ local function runBind(input: any, context: any): (any, boolean)
 	-- Install/refresh the shared library OUTSIDE the bind's undo recording: Ctrl+Z of one bind
 	-- must not strip the library other tools' launchers require. Fail-open -> legacy stamped source.
 	local libOk, libNote = RuntimeInstaller.ensureInstalled(
-		if type(context) == "table" then context.config else nil
+		if type(context) == "table" then context.config else nil,
+		{ "BehaviorRuntime" }
 	)
 	local function doBind()
 		theTool:SetAttribute("BehaviorWindup", cfg.windup)

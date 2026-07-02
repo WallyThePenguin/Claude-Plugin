@@ -144,7 +144,8 @@ local function runMake(input: any, context: any): (any, boolean)
 
 	-- Library install stays OUTSIDE the make's undo recording (shared infrastructure).
 	local libOk, libNote = RuntimeInstaller.ensureInstalled(
-		if type(context) == "table" then context.config else nil
+		if type(context) == "table" then context.config else nil,
+		{ "NpcAI" }
 	)
 	local function doMake()
 		m:SetAttribute("NpcDamage", damage)

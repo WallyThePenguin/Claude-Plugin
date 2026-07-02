@@ -29,9 +29,9 @@ local function buildCases(): { Case }
 			and RuntimeInstaller.needsInstall(("x" :: any) :: number?, 1) == true
 	end)
 
-	add("launcherSource: requires the named module and attaches script.Parent", function()
+	add("launcherSource: waits for the named module and attaches script.Parent", function()
 		local src = RuntimeInstaller.launcherSource("BehaviorRuntime")
-		return string.find(src, 'FindFirstChild("BehaviorRuntime")', 1, true) ~= nil
+		return string.find(src, 'WaitForChild("BehaviorRuntime", 10)', 1, true) ~= nil
 			and string.find(src, "require(mod).attach(script.Parent)", 1, true) ~= nil
 			and string.find(src, "StudioAgentRuntime", 1, true) ~= nil
 	end)

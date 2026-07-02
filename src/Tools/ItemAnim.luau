@@ -107,6 +107,11 @@ Tool.Unequipped:Connect(function()
 	end
 	tracks = {}
 end)
+
+-- Heal a missed first equip (script started while the tool is already in a character).
+if Tool.Parent ~= nil and Tool.Parent:FindFirstChildOfClass("Humanoid") ~= nil then
+	play("idle", true, Enum.AnimationPriority.Idle)
+end
 ]==]
 
 local function findTool(args: any): (Tool?, string?)
@@ -223,8 +228,9 @@ local function runBind(input: any, context: any): (any, boolean)
 	local theTool = tool :: Tool
 	local theSource = source :: KeyframeSequence
 	-- Library install stays OUTSIDE the bind's undo recording (shared infrastructure).
-	local libOk = RuntimeInstaller.ensureInstalled(
-		if type(context) == "table" then context.config else nil
+	local libOk, libNote = RuntimeInstaller.ensureInstalled(
+		if type(context) == "table" then context.config else nil,
+		{ "AnimRuntime" }
 	)
 	local function doBind()
 		storeClip(theTool, event, theSource)
@@ -256,6 +262,9 @@ local function runBind(input: any, context: any): (any, boolean)
 	end
 	msg = msg
 		.. " NOTE: dev-loop playback is Studio-solo only (RegisterKeyframeSequence); shipping/multiplayer needs a published AnimationId (Open Cloud follow-up)."
+	msg ..= " ["
+		.. (if libOk then libNote else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")")
+		.. "]"
 	return msg, false
 end
 

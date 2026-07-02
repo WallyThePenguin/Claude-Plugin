@@ -71,10 +71,18 @@ local function request(config: any, method: string, path: string, body: any?): (
 	return payload, nil
 end
 
--- Read an item; (body, nil) / (nil, "not found") / (nil, err).
+-- Read an item; (body, nil) / (nil, "not found") / (nil, err). "not found" is mapped ONLY from the
+-- store's genuine item-miss (status 404 AND the "no such item" marker the /store route emits) — a
+-- generic 404 (e.g. a stale sidecar without /store routes) or a 500 whose body merely contains
+-- "404" must surface as a REAL error, not read as an empty archive.
 function StoreClient.get(config: any, kind: string, id: string): (any?, string?)
 	local payload, err = request(config, "GET", "/store/" .. kind .. "/" .. id)
-	if payload == nil and err ~= nil and string.find(err, "404", 1, true) ~= nil then
+	if
+		payload == nil
+		and err ~= nil
+		and string.find(err, "sidecar HTTP 404:", 1, true) == 1
+		and string.find(err, "no such item", 1, true) ~= nil
+	then
 		return nil, "not found"
 	end
 	return payload, err

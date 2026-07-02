@@ -189,7 +189,8 @@ local function runBind(input: any, context: any): (any, boolean)
 
 	-- Library install stays OUTSIDE the bind's undo recording (shared infrastructure).
 	local libOk, libNote = RuntimeInstaller.ensureInstalled(
-		if type(context) == "table" then context.config else nil
+		if type(context) == "table" then context.config else nil,
+		{ "HitClient", "HitServer" }
 	)
 	local function doBind()
 		theTool:SetAttribute("HitDamage", damage)

@@ -20,6 +20,7 @@ local RubricStore = require(script.Parent.RubricStore)
 local BuildGuideStore = require(script.Parent.BuildGuideStore)
 local CameraRig = require(script.Parent.CameraRig)
 local Relay = require(script.Parent.Relay)
+local SkillCatalog = require(script.Parent.SkillCatalog)
 local StoreClient = require(script.Parent.StoreClient)
 local DevBridge = require(script.Parent.DevBridge)
 local PlayBridge = require(script.Parent.PlayBridge)
@@ -81,32 +82,57 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 	PlayBridge.start(deps, lifecycle)
 
 	-- Hydrate USER skills from the sidecar's durable, git-versioned store into the plugin-settings
-	-- working cache. The store is a superset (every save/delete mirrors there), so sidecar wins.
-	-- OLDEST-first: SkillStore.save appends at the tail and FIFO-drops the head, so feeding oldest
-	-- first leaves the NEWEST skills resident when the cache cap bites. Async + fail-open. Edit-only.
+	-- working cache. NOT a blind overwrite: a skill saved while the sidecar was down exists ONLY
+	-- locally (its mirror failed with an honest note), so the store is NOT always the superset —
+	-- an existing local skill that DIFFERS from the store copy is KEPT (re-save it to re-mirror),
+	-- and hydration never evicts (a cache at cap skips additions; the store keeps them safe).
+	-- OLDEST-first so the newest durable skills win the remaining cache room. Async + fail-open.
 	if relayMode == "edit" then
 		task.spawn(function()
 			local items = StoreClient.list(config, "skills")
 			if type(items) ~= "table" then
 				return
 			end
+			local localByName: { [string]: any } = {}
+			local localCount = 0
+			for _, s in ipairs(deps.skills:listUser()) do
+				localByName[s.name] = s
+				localCount += 1
+			end
 			local hydrated = 0
-			for i = #items, 1, -1 do -- list is newest-first; iterate reversed
-				local item = items[i]
-				local body = StoreClient.get(config, "skills", tostring((item :: any).id))
+			local keptLocal = 0
+			for i = #items, 1, -1 do -- list is newest-first; iterate reversed (oldest first)
+				local body = StoreClient.get(config, "skills", tostring((items[i] :: any).id))
 				if type(body) == "table" and type((body :: any).name) == "string" then
 					local b = body :: any
-					local _, ok = deps.skills:save(b.name, b.description, b.body, b.parameters)
-					if ok then
-						hydrated += 1
+					local name = SkillCatalog.normalizeName(b.name)
+					local existing = if name ~= nil then localByName[name] else nil
+					if existing == nil then
+						-- New to the cache: add only when there is room (never FIFO-evict a local
+						-- skill to make space — it might be the sole copy of a failed mirror).
+						if localCount < SkillCatalog.MAX_USER_SKILLS then
+							local _, ok = deps.skills:save(b.name, b.description, b.body, b.parameters)
+							if ok and name ~= nil then
+								localByName[name] = b
+								localCount += 1
+								hydrated += 1
+							end
+						end
+					elseif existing.body ~= b.body or existing.description ~= b.description then
+						-- The local copy differs — possibly a NEWER local edit whose mirror failed.
+						-- Keep local; the user/agent re-saving it re-mirrors the durable copy.
+						keptLocal += 1
 					end
 				end
 			end
-			if hydrated > 0 then
+			if hydrated > 0 or keptLocal > 0 then
 				print(
-					"[StudioAgent] hydrated "
+					"[StudioAgent] skills hydration: "
 						.. tostring(hydrated)
-						.. " user skill(s) from the durable store"
+						.. " added from the durable store"
+						.. (if keptLocal > 0
+							then "; kept " .. tostring(keptLocal) .. " differing local copy(ies) (re-save to re-mirror)"
+							else "")
 				)
 			end
 		end)

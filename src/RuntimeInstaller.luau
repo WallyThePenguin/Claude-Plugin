@@ -35,9 +35,9 @@ function RuntimeInstaller.launcherSource(moduleName: string): string
 		.. moduleName
 		.. " (git-versioned library).\n"
 		.. 'local rt = game:GetService("ReplicatedStorage"):WaitForChild("StudioAgentRuntime", 10)\n'
-		.. 'local mod = rt and rt:FindFirstChild("'
+		.. 'local mod = rt and rt:WaitForChild("'
 		.. moduleName
-		.. '")\n'
+		.. '", 10)\n'
 		.. "if mod then\n"
 		.. "\trequire(mod).attach(script.Parent)\n"
 		.. "else\n"
@@ -89,16 +89,32 @@ local function installedFolder(): Folder?
 	return nil
 end
 
--- Ensure the library is present + current. Returns (ok, note). ok=true means launchers can
--- rely on the library (present, even if a fetch failed); ok=false means callers should fall
--- back to stamping the legacy full source.
-function RuntimeInstaller.ensureInstalled(config: any): (boolean, string)
+-- True when `folder` holds every module in `required` (nil/empty required -> true).
+local function hasModules(folder: Folder, required: { string }?): boolean
+	if required == nil then
+		return true
+	end
+	for _, name in required do
+		if folder:FindFirstChild(name) == nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- Ensure the library is present + current, and (when `requiredModules` is given) that the SPECIFIC
+-- modules the caller's launcher will require() actually exist. Returns (ok, note). ok=true means
+-- launchers can rely on the library; ok=false means callers must fall back to stamping the legacy
+-- full source (better a fat working script than a launcher that dead-ends on a missing module).
+-- The Version attribute is the install's COMMIT MARKER (set last): a folder without it is a
+-- partial/interrupted install and is never trusted while the sidecar is unreachable.
+function RuntimeInstaller.ensureInstalled(config: any, requiredModules: { string }?): (boolean, string)
 	local existing = installedFolder()
 	local current = if existing ~= nil then existing:GetAttribute("Version") else nil
 
 	local payload, err = fetchRuntime(config)
 	if payload == nil then
-		if existing ~= nil then
+		if existing ~= nil and current ~= nil and hasModules(existing, requiredModules) then
 			return true,
 				"runtime v" .. tostring(current) .. " already installed (sidecar unavailable: " .. tostring(
 					err
@@ -108,7 +124,11 @@ function RuntimeInstaller.ensureInstalled(config: any): (boolean, string)
 	end
 
 	local incoming = (payload :: any).version :: number
-	if existing ~= nil and not RuntimeInstaller.needsInstall(tonumber(current), incoming) then
+	if
+		existing ~= nil
+		and not RuntimeInstaller.needsInstall(tonumber(current), incoming)
+		and hasModules(existing, requiredModules)
+	then
 		return true, "runtime v" .. tostring(current) .. " current"
 	end
 

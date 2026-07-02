@@ -8,6 +8,7 @@
 -- learn/unlearn are parent-only + LOCAL (plugin state); recall_learnings RELAYS (it is sidecar
 -- HTTP, which is server-only during a client-view playtest).
 
+local LearningsStore = require(script.Parent.Parent.Learnings)
 local StoreClient = require(script.Parent.Parent.StoreClient)
 
 local Learnings = {}
@@ -65,6 +66,10 @@ local function archiveAppend(
 	table.insert(doc.entries, {
 		id = doc.seq,
 		localId = localId,
+		-- The exact LOCAL bucket key. Distinct local categories ('npc ai' vs 'npc_ai') SLUG to the
+		-- same archive doc, and each bucket's localId sequence restarts at 1 — so retire must match
+		-- on (bucket, localId), not localId alone, or it tombstones another bucket's entry.
+		bucket = LearningsStore.normalizeCategory(category),
 		text = text,
 		createdAt = os.time(),
 	})
@@ -85,9 +90,16 @@ local function archiveRetire(config: any, category: string, localId: number): st
 	if doc == nil then
 		return "; archive unavailable (" .. tostring(err) .. ")"
 	end
+	local bucket = LearningsStore.normalizeCategory(category)
 	local target: any = nil
 	for _, e in ipairs(doc.entries) do
-		if type(e) == "table" and e.localId == localId and e.retired ~= true then
+		if
+			type(e) == "table"
+			and e.localId == localId
+			and e.retired ~= true
+			-- Match the exact local bucket; a legacy entry with no bucket stamp still matches.
+			and (e.bucket == nil or e.bucket == bucket)
+		then
 			target = e -- keep scanning: the NEWEST match wins (local ids recycle as the window rotates)
 		end
 	end

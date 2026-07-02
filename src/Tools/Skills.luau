@@ -6,6 +6,7 @@
 -- authored skills are unbounded + durable; the plugin-settings copy stays the offline working cache
 -- (Main hydrates it from the sidecar at boot). Mirroring is fail-open with an honest note.
 
+local SkillCatalog = require(script.Parent.Parent.SkillCatalog)
 local StoreClient = require(script.Parent.Parent.StoreClient)
 
 local Skills = {}
@@ -51,7 +52,11 @@ local function saveSkill(input: any, context: any): (string, boolean)
 	end
 	local note, ok = s:save(args.name, args.description, args.body, args.parameters)
 	if ok then
-		local slug = StoreClient.slug(args.name)
+		-- The store id MUST be the same normalization the local catalog uses (normalizeName, 48-char
+		-- cap) — StoreClient.slug of the raw name diverges for long names, orphaning the store doc so
+		-- delete misses it and boot hydration resurrects the skill forever. normalizeName output is a
+		-- strict subset of valid store ids.
+		local slug = SkillCatalog.normalizeName(args.name)
 		if slug ~= nil then
 			local put, err = StoreClient.put(context.config, "skills", slug, {
 				name = args.name,
@@ -78,7 +83,8 @@ local function deleteSkill(input: any, context: any): (string, boolean)
 	end
 	local note, ok = s:delete(args.name)
 	if ok then
-		local slug = StoreClient.slug(args.name)
+		-- Same normalization as save's mirror (see above) so delete targets the doc save wrote.
+		local slug = SkillCatalog.normalizeName(args.name)
 		if slug ~= nil then
 			local removed, err = StoreClient.remove(context.config, "skills", slug)
 			if not removed then
