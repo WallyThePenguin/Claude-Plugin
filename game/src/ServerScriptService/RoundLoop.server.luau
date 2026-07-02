@@ -111,6 +111,14 @@ local function runRound()
 		Workspace:SetAttribute("CurrentWave", waveIndex)
 		Workspace:SetAttribute("EnemiesRemaining", wave.enemyCount)
 		Workspace:SetAttribute("RoundState", "wave")
+		-- Wave-start telegraph: a low horn so the wave arriving is HEARD, not just read off the HUD.
+		local horn = Instance.new("Sound")
+		horn.SoundId = "rbxasset://sounds/uuhhh.mp3"
+		horn.PlaybackSpeed = 0.55
+		horn.Volume = 0.8
+		horn.Parent = Workspace
+		horn:Play()
+		game:GetService("Debris"):AddItem(horn, 4)
 		print(string.format("[RoundLoop] Wave %d starting: %d enemies (hp %d, ws %d)",
 			waveIndex, wave.enemyCount, wave.health, wave.walkSpeed))
 
