@@ -35,7 +35,7 @@ local DEFAULTS = {
 	contextWindow = 200000,
 	compactThreshold = 0.8, -- compact when last prompt >= window * this (0 < x < 1)
 	keepRecentMessages = 6, -- verbatim tail length kept when compacting
-	imagesKept = 3, -- recent screenshots kept in live context (older ones pruned) — >=2 enables before/after comparison
+	imagesKept = 6, -- recent images kept in live context (older ones pruned) — must hold reference photos (get_references, up to 4) PLUS captures, or the mandated photos-vs-capture comparison dies on the next capture
 	-- Subagents (dispatch_subagents).
 	subagentModel = "claude-sonnet-4-6", -- children run on the cheaper/faster model
 	subagentMaxParallel = 4, -- max children per dispatch (excess truncated + reported)

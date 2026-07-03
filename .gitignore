@@ -31,3 +31,6 @@ __pycache__/
 Thumbs.db
 .vscode/
 assets/reference/*.glb
+
+# Reference-image cache (downloaded study material, licenses vary - never ship)
+sidecar/refcache/

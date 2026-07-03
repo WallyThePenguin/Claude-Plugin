@@ -22,6 +22,7 @@ local PropertiesTool = require(script.Properties)
 local OutputTool = require(script.Output)
 local CreateTool = require(script.Create)
 local CaptureTool = require(script.Capture)
+local ReferencesTool = require(script.References)
 local SubagentsTool = require(script.Subagents)
 local TasksTool = require(script.Tasks)
 local MemoryTool = require(script.Memory)
@@ -108,6 +109,9 @@ for _, descriptor in CreateTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in CaptureTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in ReferencesTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in SubagentsTool.descriptors :: { Descriptor } do

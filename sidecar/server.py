@@ -21,6 +21,7 @@ GET  /store/<kind>/<id>                                   -> the stored JSON bod
 POST /store/<kind>/<id>  <json body>                      -> {"ok":true}   (atomic write; git-tracked)
 DELETE /store/<kind>/<id>                                 -> {"ok":true,"existed":bool}
 GET  /runtime                                             -> {"version":N,"modules":{name:source}}  (runtime/ library)
+GET  /references?query=<q>&count=N                        -> {"references":[{title,license,author,source,media_type,image(b64)}...]}
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -152,6 +153,16 @@ class Handler(BaseHTTPRequestHandler):
                 import meshio
 
                 return self._json(200, meshio.read_reference_mesh(qs.get("file", [""])[0]))
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
+        if parsed.path == "/references":
+            try:
+                import references
+
+                query = qs.get("query", [""])[0]
+                count = int(qs.get("count", ["4"])[0])
+                return self._json(200, references.get_references(query, count))
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
