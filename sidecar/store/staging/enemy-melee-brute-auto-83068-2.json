@@ -1,0 +1,34 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 45,
+   "walkSpeed": 5,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block -> renamed StoneGolemBrute",
+   "Recolored R15: pale granite Slate body, dark Slate accent arms/feet",
+   "Added oversized molten-neon eyes (with PointLights) + 3 neon torso cracks for enemy readability",
+   "Framed one capture to confirm shaped, above-blob silhouette",
+   "make_npc damage=45 speed=5 detect=24 attackRange=7 cooldown=2.5",
+   "Verified attributes, collidable HRP, AI script, state=idle"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a Stone Golem brute distinct from prior husk/skeleton enemies. Standard R15 rig recolored to pale granite (Slate) with dark stone limbs, oversized molten-orange neon eyes + torso cracks so it reads as a heavy stone enemy at gameplay distance. make_npc configures a slow (WalkSpeed 5), high-damage (45), short-detect (24) brute that attacks every 2.5s within 7 studs. Collidable HRP + standard leg HipHeight so it walks the floor cleanly."
+ },
+ "stagedAt": 1783083561.3931625,
+ "headless": true
+}

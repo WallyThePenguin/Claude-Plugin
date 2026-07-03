@@ -1,0 +1,33 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.MoltenGolem",
+  "config": {
+   "damage": 45,
+   "walkSpeed": 6,
+   "detectRange": 22,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block -> renamed MoltenGolem",
+   "Shaped visual via run_luau: slate basalt body, bulked torso/arms, oversized fists, hunched head, neon magma eyes + crack strips + warm PointLight",
+   "Moved to clear ground and captured front to confirm above-blob brute silhouette",
+   "make_npc(damage=45, detectRange=22, attackRange=7, attackCooldown=2.2, speed=6)",
+   "Verified NpcDamage/DetectRange/AttackRange/Cooldown attributes + WalkSpeed + NpcAI script + HRP"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh Molten Golem concept (distinct from prior husks/brutes): dark slate stone body, glowing magma-neon eyes and torso cracks, bulked torso, huge fists, hunched head. make_npc gives server AI idle->chase->attack->dead. Slow (WalkSpeed 6) high-damage (45/2.2s) with short 22-stud detect and 7-stud attack range, matching the slow high-damage brute brief."
+ },
+ "stagedAt": 1783095926.3137338,
+ "headless": true
+}

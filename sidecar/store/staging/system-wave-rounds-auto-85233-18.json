@@ -1,0 +1,35 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.PurgeProtocol",
+  "config": {
+   "systemName": "Purge Protocol",
+   "params": {
+    "configModule": "game.ReplicatedStorage.PurgeConfig",
+    "waves": 3,
+    "mechanic": "timed sub-batch drops per wave",
+    "spawnRadius": 34
+   }
+  },
+  "steps": [
+   "Read existing RoundLoop/configs to make a DISTINCT concept",
+   "Authored ReplicatedStorage.PurgeConfig (config-driven waves with drops/perDrop/dropInterval/health/walkSpeed)",
+   "Authored ServerScriptService.PurgeProtocol server script: spawn ring, staggered drops, wave-clear via Humanoid.Died, victory",
+   "Disabled the old RoundLoop so only PurgeProtocol drives the playtest log",
+   "Verified compile OK and no TestAutoKill/auto-kill symbol present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Purge Protocol is a fresh RoundLoop-family lifecycle: each wave releases enemies in timed SUB-BATCHES ('drops') around a spawn ring rather than all at once. Config-driven via ReplicatedStorage.PurgeConfig (waves list + tuning). Enemies clone from ServerStorage.EnemyTemplate; a wave clears only when every spawned enemy dies via real Humanoid.Died (player-level combat), then the loop advances; after the final wave it sets PurgeState='victory'. All lifecycle events print with the [Purge] tag; NO auto-kill/test hook is wired. Disabled the pre-existing RoundLoop so logs are unambiguous."
+ },
+ "stagedAt": 1783090688.8734362,
+ "headless": true
+}

@@ -1,0 +1,34 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.MoltenGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 22,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "bulked torso/arms/legs into a hulking silhouette; light stone Slate body, Neon lava hands, dark Slate head",
+   "added oversized emissive eyes + molten lava crack chunks on chest for above-blob read",
+   "capture_angles (front+iso) to confirm silhouette",
+   "make_npc damage=40 speed=6 detect=22 attackRange=7 cooldown=2.2",
+   "verified attributes, collidable unanchored HRP, NpcAI script"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "MoltenGolemBrute: a slow, high-damage stone golem melee enemy. Spawned an R15 block rig, scaled torso/limbs up for a hulking brute mass, painted a light stone Slate body (reads against the arena) with Neon molten-orange hands + chest cracks and oversized glowing eyes so it's not a dark blob. make_npc wires server AI idle->chase(22 studs)->attack(40 dmg / 2.2s within 7 studs) at WalkSpeed 6. Distinct concept from prior husks/brutes. Config attributes and collidable root verified."
+ },
+ "stagedAt": 1783093083.9967854,
+ "headless": true
+}

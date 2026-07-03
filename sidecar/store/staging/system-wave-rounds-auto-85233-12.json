@@ -1,0 +1,38 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.GauntletRounds",
+  "config": {
+   "systemName": "The Gauntlet",
+   "params": {
+    "configModule": "game.ReplicatedStorage.GauntletConfig",
+    "waves": 3,
+    "lanes": 4,
+    "laneLength": 44,
+    "intermission": 3,
+    "logTag": "[Gauntlet]"
+   }
+  },
+  "steps": [
+   "Inspected existing RoundLoop/EnemyTemplate to build a DISTINCT lane-based concept",
+   "Authored ReplicatedStorage.GauntletConfig: escalating waves defined by perLane/activeLanes/health/speed/damage across 4 lane directions",
+   "Authored ServerScriptService.GauntletRounds: spawns EnemyTemplate clones down active lanes as advancing columns",
+   "Wave-cleared detection via a live alive-counter decremented on Humanoid.Died; VICTORY printed after final wave",
+   "Disabled the pre-existing RoundLoop so only the Gauntlet lifecycle runs",
+   "Verified both scripts compile, config loads, template has PrimaryPart+Humanoid"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Config-driven Gauntlet round system in the RoundLoop family. GauntletConfig lists ordered escalating waves; each spawns wave.perLane enemies in wave.activeLanes lane directions, stacked back along each lane so waves read as columns. GauntletRounds clones the shared EnemyTemplate, sets per-wave hp/speed/damage, and resolves each wave only when all spawned Humanoids fire Died (real combat, no auto-kill). After the last wave it declares VICTORY. All lifecycle events (SYSTEM START, wave START/SPAWN/CLEARED, VICTORY) print with the [Gauntlet] tag and mirror to Workspace attributes; it waits for a player before starting."
+ },
+ "stagedAt": 1783088663.682916,
+ "headless": true
+}

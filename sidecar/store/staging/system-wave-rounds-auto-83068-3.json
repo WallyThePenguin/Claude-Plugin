@@ -1,0 +1,50 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Playtest started (char=lsoggymuhaha, R15). Logs after start: '[Escalation] Intermission before wave 1 (4s)' then '[Escalation] Wave 1 START (budget 4)'; NO further log lines through end of test (no 'Wave 1 CLEARED', no wave 2/3, no VICTORY). HUD showed 'WAVE 1 / 3 Husks remaining' and the counter never decremented from 3 across all combat attempts. Spear equipped and behavior machine fired correctly (record: 'ItemState 0.00:idle -> 0.05:windup -> 0.53:active -> 0.80:cooldown -> 1.69:idle [tool=Spear w=0.5 a=0.25 c=0.9]'). Player health dropped to near-zero within ~3s and character repeatedly died to enemy contact damage ('no equipped tool' after each death). playtest_eval blocked: 'loadstring unavailable ... needs ServerScriptService.LoadStringEnabled ticked'. Config verified intact: TotalWaves=3, SpawnRadius=34, 3 waves (budgets 4/8/14), archetypes Creeper(cost1,hp35)/Stalker(cost2,hp24)/Ogre(cost5,hp130); EnemyTemplate has Humanoid+HumanoidRootPart; StarterPack Spear(HitDamage20,reach9) & Dagger(HitDamage8,reach4.5) with full ItemHitServer stacks."
+ },
+ "reasons": [
+  "Oracle outcome (all 3 waves cleared to VICTORY via player-level combat) was never observed: no 'Wave 1 CLEARED'/VICTORY log ever printed and EnemiesRemaining stayed at 3.",
+  "playtest_eval is unavailable (LoadStringEnabled off), so enemy state / kill attribution could not be inspected and the character could not be reliably positioned or driven to clear a wave.",
+  "Coarse playtest_act verbs were insufficient: the character died to enemy contact damage before landing kills (enemies on the radius-34 ring, off-camera/un-aimable), producing zero verified player kills.",
+  "Refused to force the outcome via a gate-blocked auto-kill hook; PASSED cannot be claimed on this partial evidence."
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.EscalationDirector",
+  "config": {
+   "systemName": "EscalationDirector",
+   "params": {
+    "configPath": "game.ReplicatedStorage.EscalationConfig",
+    "totalWaves": 3,
+    "model": "threat-budget",
+    "archetypes": [
+     "Creeper",
+     "Stalker",
+     "Ogre"
+    ],
+    "spawn": "golden-angle ring, radius 34",
+    "stateAttributes": [
+     "CurrentWave",
+     "EnemiesRemaining",
+     "RoundState"
+    ]
+   }
+  },
+  "steps": [
+   "Read existing RoundLoop + SiegeConfig to pick a distinct concept",
+   "Authored ReplicatedStorage.EscalationConfig (per-wave threat BUDGET + weighted archetypes, distinct from fixed ring/squad configs)",
+   "Authored ServerScriptService.EscalationDirector lifecycle (intermission -> spend budget spawning -> all-dead clear -> VICTORY)",
+   "Disabled prior RoundLoop script so its ring spawns don't compete with this system",
+   "Simulated the budget-spend loop to confirm every wave terminates; compile-checked both scripts"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh RoundLoop-family variant: each wave defines a THREAT BUDGET the director spends on a weighted-random archetype mix (Creeper/Stalker/Ogre) until drained, paced by maxAlive + spawnInterval. Enemies clone from ServerStorage.EnemyTemplate onto a golden-angle spawn ring; alive/dead tracked via Humanoid.Died. A wave CLEARS when every spawned enemy is dead (deadTotal==spawnedTotal); after the final wave RoundState=victory and it prints VICTORY. Enemies die only by player combat (Humanoid health->0); NO auto-kill/test hook. State exposed via Workspace attributes CurrentWave/EnemiesRemaining/RoundState. Disabled the old RoundLoop to avoid competing spawns."
+ },
+ "stagedAt": 1783084011.8603246,
+ "headless": true
+}

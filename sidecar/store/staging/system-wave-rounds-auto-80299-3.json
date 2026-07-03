@@ -1,0 +1,43 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.SiegeDirector",
+  "config": {
+   "systemName": "SiegeDirector",
+   "params": {
+    "configModule": "game.ReplicatedStorage.SiegeConfig",
+    "waves": 3,
+    "archetypes": [
+     "Grunt",
+     "Runner",
+     "Brute"
+    ],
+    "gateCount": 4,
+    "stateAttributes": [
+     "SiegeWave",
+     "SiegeEnemiesLeft",
+     "SiegeState"
+    ]
+   }
+  },
+  "steps": [
+   "Mapped existing RoundLoop/WaveConfig to ensure the new system is distinct",
+   "Created SiegeConfig ModuleScript in ReplicatedStorage: archetype stat presets + wave compositions + squad/stagger/gate params",
+   "Created SiegeDirector Script in ServerScriptService: waits for a player, runs intermission -> staggered squad spawns from ring gates -> wave-cleared detection (Died OR AncestryChanged) -> next wave -> VICTORY",
+   "Disabled the old RoundLoop script to prevent double-spawning (it also held the gate-blocked TestAutoKill hook)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Config-driven siege lifecycle distinct from the prior RoundLoop: waves are COMPOSITIONS of named archetypes (Grunt/Runner/Brute stat presets) rather than flat count/hp tuples. Enemies clone ServerStorage.EnemyTemplate, get archetype stats + NpcDamage attribute, and spawn in staggered squads cycling 4 compass gates on a 32-stud ring. Cleared detection counts each enemy down on Humanoid.Died or model removal; state exposed via SiegeWave/SiegeEnemiesLeft/SiegeState Workspace attributes; prints '[SiegeDirector] Wave N starting/cleared' and a final VICTORY line. No auto-kill/test hooks anywhere."
+ },
+ "stagedAt": 1783081677.4125266,
+ "headless": true
+}

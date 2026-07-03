@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.26:cooldown -> 0.57:idle [tool=Falchion w=0.1 a=0.12 c=0.3] (name+config match: w0.1 a0.12 c0.3). Damage logs across 3 swings: '[VerifyTarget] HIT damage=28.000 hitcount=1', '=28.000 hitcount=2', '=28.000 hitcount=3' — exactly 28 damage once per swing, no artifact errors."
+ },
+ "reasons": [
+  "Record echo names tool=Falchion with configured timings w=0.1 a=0.12 c=0.3 and full idle->windup->active->cooldown->idle cycle",
+  "God-mode probe logged exactly configured damage=28.000 once per swing across 3 swings (hitcount 1->2->3), no multi-hit or errors"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 28,
+   "reach": 6
+  },
+  "steps": [
+   "Parked existing StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh falchion (single-edged curved cleaver blade, 3.4 studs)",
+   "capture_angles front+iso to confirm slender sword silhouette",
+   "save_mesh to persist durable asset (survives Play)",
+   "make_tool -> Handle at hilt, moved to StarterPack",
+   "bind_behavior 0.1/0.12/0.3 fast swing",
+   "bind_hitbox 28 dmg / 6 reach / 0.3 cooldown"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a FALCHION (single-edged curved cleaver-blade one-handed sword) distinct from prior daggers/spears/scimitars. Cube-generated mesh at 3.4 studs, saved durable (asset 78314330474027) so it survives Play. Toolified with the hilt as Handle, placed in StarterPack. Fast-swing state machine (windup 0.1 / active 0.12 / cooldown 0.3) and a short-reach (6) moderate-damage (28) server-authoritative hitbox on the active window."
+ },
+ "stagedAt": 1783090055.600236,
+ "headless": true
+}

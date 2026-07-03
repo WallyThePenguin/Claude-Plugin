@@ -1,0 +1,35 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.BreachDefense",
+  "config": {
+   "systemName": "BreachDefense",
+   "params": {
+    "numGates": 4,
+    "gateRadius": 40,
+    "intermission": 3,
+    "waves": 3
+   }
+  },
+  "steps": [
+   "Inspected existing RoundLoop/configs to pick a distinct concept (multi-gate breach vs linear ring spawn)",
+   "Authored ReplicatedStorage.BreachConfig (config-driven: gates, perGate, health, speed per wave)",
+   "Authored ServerScriptService.BreachDefense server script driving the lifecycle",
+   "Disabled the pre-existing RoundLoop script so only BreachDefense drives the round",
+   "Compile-checked both scripts"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "BreachDefense is a config-driven wave system where enemies breach from multiple gates ringed around a central core. main() waits for a player, then per wave: intermission -> open the wave's configured gates -> spawn perGate enemies at each -> wait until every enemy's Humanoid.Died fires (player-level combat, no auto-kill) -> print CLEARED. After the final wave it sets RoundState=victory and prints VICTORY. All lifecycle events print with the [System] tag for VERIFY. RoundLoop was disabled to avoid two systems fighting the arena."
+ },
+ "stagedAt": 1783086050.239039,
+ "headless": true
+}

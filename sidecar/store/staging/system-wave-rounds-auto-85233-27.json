@@ -1,0 +1,38 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "[Siege] System START: BreachSiege lifecycle online; Config: 4 waves, ring radius 45; Wave 1 START: 'Probe' (3 enemies); Spawn 1..3/3; [after player engaged w/ equipped Spear] Enemy down (wave 1): 2 remaining; Enemy down: 1 remaining; Enemy down: 0 remaining; Wave 1 CLEARED: 'Probe'; Intermission (3 s) before wave 2; Wave 2 START: 'Assault' (5 enemies); Spawn 1..5/5. playtest_eval/loadstring unavailable (as expected) so verified from log only. Enemies only died AFTER player spear combat (record probe: idle->windup->active->cooldown), confirming player-level kills not an auto-kill hook."
+ },
+ "reasons": [
+  "System starts and logs lifecycle: System START + Wave 1 START + per-enemy spawns",
+  "Progression observed at PLAYER level: enemies died only after real spear engagement (2->1->0 remaining), not via any gate-blocked auto-kill hook",
+  "State transition fired: Wave 1 CLEARED -> Intermission -> Wave 2 START with escalated count (5)",
+  "No runtime error mentioning BreachSiege in the logs"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.BreachSiege",
+  "config": {
+   "systemName": "BreachSiege",
+   "params": {
+    "waves": 4,
+    "spawnRingRadius": 45,
+    "interWaveDelay": 3,
+    "enemyHealthBase": 60
+   }
+  },
+  "steps": [
+   "Created Script game.ServerScriptService.BreachSiege",
+   "Authored config-driven wave lifecycle: waves table (name/count/healthMul/speedMul), spawn ring, chase AI, Died-based wave-clear, victory",
+   "Logged every lifecycle event with [Siege] tag for unmanned playtest observation"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh Core-defense 'BreachSiege' concept distinct from prior artifacts. CONFIG.waves drives escalating waves; enemies spawn on a ring (ringPosition) around an arena Core, get a real Humanoid + collidable HumanoidRootPart + emissive eyes, and chase the nearest player (driveEnemy). A wave clears when every spawned enemy's Humanoid.Died fires (with a reconcile safety pass); VICTORY prints when the final wave clears and the Core turns green. Combat is player-level only (real TakeDamage) with no auto-kill/test hook. All events print with [Siege] for playtest_logs."
+ },
+ "stagedAt": 1783093365.6337373,
+ "headless": true
+}

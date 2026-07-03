@@ -1,0 +1,36 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 22,
+   "reach": 6
+  },
+  "steps": [
+   "Parked Spear+Dagger from StarterPack into ServerStorage",
+   "generate_mesh a falchion (forward-curving single-edged clipped-tip blade, 3.4 studs)",
+   "captured front+iso to confirm silhouette",
+   "save_mesh to make it durable (survives Play)",
+   "make_tool with the mesh as Handle at the hilt",
+   "moved Tool into StarterPack",
+   "bind_behavior windup0.10/active0.12/cooldown0.30 (fast swing)",
+   "bind_hitbox damage22/reach6/cooldown0.30"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept: a medieval FALCHION — broad forward-curving single-edged chopping blade with a clipped angular tip, cross guard, wrapped grip, round pommel — distinct from prior daggers/spears/scimitars. Cube-generated mesh (~3.4 studs, hand scale) saved durable via save_mesh (asset 75364272787286). make_tool used the single mesh as Handle. Fast-swing behavior (0.10/0.12/0.30) and a short-reach moderate-damage hitbox (22 dmg, 6 studs, 0.30s server cooldown) bound on the active window."
+ },
+ "stagedAt": 1783089129.162366,
+ "headless": true
+}

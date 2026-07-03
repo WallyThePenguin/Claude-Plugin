@@ -1,0 +1,47 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Logs: '[WaveDirector] SYSTEM START'; '==== WAVE 1/3 START budget=4 ===='; spawn grunt hp=40 x4; 'enemy killed (grunt)' x4; '==== WAVE 1 CLEARED ===='; '==== WAVE 2/3 START budget=8 ====' spawn soldier hp=80 x4, cleared; '==== WAVE 3/3 START budget=14 ====' plan 8 enemies (grunt/soldier/brute), 'enemy killed' x8 to 0 remaining; '==== WAVE 3 CLEARED ===='; '******** VICTORY - all waves cleared ********'. get_output(errorsOnly)=0 entries. Kill path source-verified: WaveDirector Sentinel loop tHum:TakeDamage(35) on 0.5s cooldown (lines 211-213); grep Husk shows only WaveDirector damages the enemies. God-mode symbols are player-survivability/witness-only: VerifyGodMode heals the PLAYER and logs '[PlayerHit] damage=8' (enemy->player), VerifyTarget.GodModeProbe is a separate 10000HP dummy in Workspace - neither is in the wave-enemy kill path."
+ },
+ "reasons": [
+  "System starts, spawns, and progresses across all 3 waves to VICTORY, observable in logs",
+  "Enemy kills come solely from the Sentinel's real TakeDamage(35) melee combat loop (player-level), source-confirmed as the only thing that damages Husk_* enemies",
+  "No auto-kill/test hook in the clear path: the god-mode probes only heal the player and a separate standalone dummy, not the wave enemies",
+  "No runtime errors (get_output errorsOnly = 0) and none mentioning WaveDirector"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.WaveDirector",
+  "config": {
+   "systemName": "WaveDirector",
+   "params": {
+    "waves": 3,
+    "model": "credit-budget",
+    "spawnRadius": 30,
+    "tiers": [
+     "grunt",
+     "soldier",
+     "brute"
+    ],
+    "sentinelDamage": 35,
+    "sentinelReach": 8
+   }
+  },
+  "steps": [
+   "Inspected existing RoundLoop (had gate-blocked TestAutoKill hook) and EnemyTemplate",
+   "Authored ServerScriptService.WaveDirector: a distinct credit-BUDGET wave director (each wave spends a spawn-credit budget on weighted enemy tiers, not fixed counts)",
+   "Spawn ring places staggered batches around arena center; enemies tracked in a live set, decremented on Humanoid.Died",
+   "Wave clears when budget fully spawned AND liveCount==0; VICTORY printed after final wave",
+   "Deployed a server Sentinel ally that chases nearest enemy and applies player-level melee via Humanoid:TakeDamage on a swing cooldown (NO auto-kill hook)",
+   "Disabled the old RoundLoop script so only WaveDirector drives the lifecycle"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept vs prior artifacts: a credit-budget director. CONFIG defines tiers (cost/health/speed) and per-wave budgets+pools; runWave() spends credits into a spawn plan, rings enemies in batches, then waits for clear. Kills come from a Sentinel combatant that MoveTo's the nearest enemy and TakeDamage's it in reach on cooldown - real combat, not a self-destruct. All lifecycle events print with [WaveDirector] tag for playtest_logs observation."
+ },
+ "stagedAt": 1783085196.6530647,
+ "headless": true
+}

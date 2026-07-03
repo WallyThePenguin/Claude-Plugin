@@ -1,0 +1,51 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.BreachSiege",
+  "config": {
+   "systemName": "BreachSiege",
+   "params": {
+    "gateCount": 4,
+    "gateRadius": 40,
+    "fortifySeconds": 3,
+    "waves": [
+     {
+      "count": 2,
+      "health": 40,
+      "damage": 8
+     },
+     {
+      "count": 4,
+      "health": 60,
+      "damage": 10
+     },
+     {
+      "count": 6,
+      "health": 90,
+      "damage": 14
+     }
+    ]
+   }
+  },
+  "steps": [
+   "Created Script game.ServerScriptService.BreachSiege",
+   "Authored a config-driven 'defend the Core' siege: builds its own Core objective + ring of breach gates, no external template",
+   "Per wave: FORTIFY intermission -> BREACH (spawn escalating raiders from gate ring) -> wait until all cleared",
+   "Each raider is a self-contained Humanoid rig with march-to-core AI + touch damage; clearance driven by Humanoid.Died",
+   "VICTORY printed once the final wave clears; all phases tagged [Siege]"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept in the RoundLoop family: a Breach Siege defending a central Core, with a fortify intermission and enemies pouring from a ring of breach gates rather than a plain survival ring. Fully data-driven from a CONFIG table (gate count/radius, fortify time, per-wave count/health/damage). Self-contained: constructs Core, gates, and raider enemies with no external EnemyTemplate. Wave clearance is player-level combat via Humanoid.Died decrementing a live counter — no auto-kill/test hook. Every lifecycle event prints with a [Siege] tag for VERIFY."
+ },
+ "stagedAt": 1783087886.3360763,
+ "headless": true
+}

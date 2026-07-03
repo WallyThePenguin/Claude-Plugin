@@ -1,0 +1,34 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 45,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolored to light Slate stone body + darker accent forearms/hands for readable brute silhouette",
+   "welded two Neon molten-orange eyes + a chest Core with PointLights (oversized emissive read at distance)",
+   "confirmed collidable HumanoidRootPart + intact Humanoid",
+   "make_npc: damage 45, speed 6, detect 24, attackRange 7, cooldown 2.2",
+   "verified Npc* attributes + NpcAI script present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a StoneGolemBrute distinct from prior brutes - light Slate-stone body with contrasting dark forearms, glowing molten-orange eyes and a chest core (light silhouette + oversized emissive per npc learnings). make_npc gives it slow WalkSpeed 6, high 45 damage, short 24-stud detect, 7-stud attack range, 2.2s cooldown. Collidable HRP so it does not sink. Capture sidecar was unavailable so visual confirmed structurally instead of via screenshot."
+ },
+ "stagedAt": 1783089461.5630019,
+ "headless": true
+}

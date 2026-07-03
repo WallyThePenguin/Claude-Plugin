@@ -1,0 +1,34 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.MoltenBruteTemplate",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "shaped a Molten Golem Brute: dark charcoal Slate stone torso/legs, molten Neon emissive forearms+hands as contrasting accents, bulked torso/arms/hands",
+   "added oversized emissive Neon eyes with PointLights",
+   "one capture confirmed above-blob light-on-dark silhouette",
+   "make_npc damage40 speed6 detect24 attackRange7 cooldown2.5",
+   "verified attributes + collidable HRP + NpcAI present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-enemy concept: 'Molten Brute' stone golem, distinct from prior husks. Slate charcoal body with Neon molten forearms/hands + glowing eyes for gameplay-distance readability (npc learning #1). Slow (WalkSpeed 6), high damage (40), short detect (24) per brute brief. make_npc wired server AI idle->chase->attack->dead; NpcState attribute tracks state, HRP CanCollide true so it doesn't sink (learning #2)."
+ },
+ "stagedAt": 1783086779.0882194,
+ "headless": true
+}

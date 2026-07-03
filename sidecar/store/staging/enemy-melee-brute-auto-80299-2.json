@@ -1,0 +1,40 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "[VPROBE] t=1.0 state=idle dist=40.0 lastDmg=0 hits=0 | t=1.5 state=chase dist=11.6 | t=3.6 state=chase dist=7.1 | t=4.1 state=attack dist=3.6 lastDmg=40 hits=1 | t=6.1 state=attack dist=3.1 lastDmg=40 hits=2 | t=6.6 state=chase dist=7.9 — hits 2.0s apart matching cooldown=2, damage=40 matching config; zero log errors"
+ },
+ "reasons": [
+  "idle->chase transition at dist 11.6 (within detectRange 25)",
+  "chase->attack at dist 3.6 (within attackRange 6)",
+  "PlayerLastDamage=40 equals configured damage",
+  "two hits exactly 2.0s apart matching cooldown=2",
+  "attack->chase reverts when player leaves range",
+  "no runtime errors in playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.BruteEnemy",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 7,
+   "detectRange": 25,
+   "attackRange": 6,
+   "cooldown": 2
+  },
+  "steps": [
+   "spawn_rig block R15, renamed BruteEnemy",
+   "shaped above-blob visual: bone body, crimson arms, dark slate pauldrons + chest slab (welded massless), neon orange eyes on head front",
+   "capture_angles confirmed brute silhouette + eye fix",
+   "make_npc damage=40 speed=7 detect=25 attackRange=6 cooldown=2",
+   "verified NpcDamage/NpcDetectRange/NpcAttackRange/NpcAttackCooldown attributes, WalkSpeed=7, HRP unanchored, NpcAI script present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Slow high-damage brute: block R15 rig bulked with welded massless armor slabs (slate pauldrons + crimson chest) over a bone/crimson palette with neon orange eyes for gameplay-distance readability. make_npc wired the idle->chase->attack->dead server AI with brief-shaped config (40 dmg / 2s cooldown / speed 7 / detect 25 / range 6). Attributes and unanchored HRP verified in edit; no playtest per stage scope."
+ },
+ "stagedAt": 1783081109.1595597,
+ "headless": true
+}

@@ -1,0 +1,39 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.26:cooldown -> 0.57:idle [tool=Cutlass w=0.1 a=0.12 c=0.3]; [VerifyTarget] HIT damage=20 hitcount=1; HIT damage=20 hitcount=2; HIT damage=20 hitcount=3; HIT damage=20 hitcount=4"
+ },
+ "reasons": [
+  "record echo names Cutlass with exact configured timings w=0.1 a=0.12 c=0.3",
+  "4 swings produced exactly 4 hits at exactly the configured damage=20 each (once per swing, no spam/double-hit)",
+  "no runtime errors mentioning the artifact in playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Cutlass",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 6
+  },
+  "steps": [
+   "Parked StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh Cube cutlass (slender curved blade, brass knuckle-bow guard, leather grip) at height 3.5",
+   "Confirmed silhouette via capture_angles (front + iso)",
+   "save_mesh to persist the mesh+texture (asset 126846621095406)",
+   "make_tool -> Tool 'Cutlass' (single MeshPart Handle), moved to StarterPack",
+   "bind_behavior 0.1/0.12/0.3 (fast swing) + bind_hitbox damage 20, reach 6, cooldown 0.3",
+   "Verified attributes: BehaviorWindup/Active/Cooldown + HitDamage/HitReach on the Tool"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Cutlass: a fresh melee concept distinct from staged spear/dagger/sword variants. Cube prompt kept blade slender+curved with a signature brass knuckle-bow guard so the silhouette reads above-primitive; save_mesh made it Play-durable before toolifying. make_tool used the single MeshPart as Handle; fast-swing timings (0.1/0.12/0.3) and short reach 6 / damage 20 / server cooldown 0.3 match the one-handed sword brief."
+ },
+ "stagedAt": 1783080603.916645,
+ "headless": true
+}

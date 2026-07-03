@@ -1,0 +1,46 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.SiegeDirector",
+  "config": {
+   "systemName": "SiegeDirector",
+   "params": {
+    "sieges": 3,
+    "budgets": [
+     4,
+     8,
+     16
+    ],
+    "archetypes": [
+     "Grunt",
+     "Runner",
+     "Ogre"
+    ],
+    "spawnRadius": 35,
+    "spawnInterval": 0.4,
+    "intermission": 3
+   }
+  },
+  "steps": [
+   "Inspected existing RoundLoop + EnemyTemplate to make a distinct concept",
+   "Authored ServerScriptService.SiegeDirector: a credit-budget wave director (not fixed counts)",
+   "Embedded config (archetypes w/ cost, sieges w/ threat budget) self-contained in the script",
+   "Reused ServerStorage.EnemyTemplate (with NpcAI) for real player-fought combat",
+   "Added [Siege]-tagged lifecycle prints: online, siege start, each spawn, siege cleared, VICTORY",
+   "Disabled the pre-existing RoundLoop so this director's progression is observable"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "SiegeDirector is a credit-budget wave director in the RoundLoop family, distinct from the linear count-based RoundLoop. Each siege has a threat BUDGET the director spends drawing weighted archetypes (Grunt/Runner/Ogre by cost) from a pool, spawning them one-per-interval around a spawn ring. Siege-cleared is detected via Humanoid.Died/AncestryChanged on every spawned enemy; after 3 escalating sieges it prints VICTORY. No auto-kill/TestAutoKill hook — clears require real combat. Config is embedded, no external module."
+ },
+ "stagedAt": 1783097398.2439835,
+ "headless": true
+}

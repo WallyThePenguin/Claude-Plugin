@@ -1,0 +1,38 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Config confirmed on artifact: NpcDamage=40, NpcAttackRange=7, NpcDetectRange=22, NpcAttackCooldown=2.2, WalkSpeed=6. Staged StoneGolemBrute at (0,3.69,-36), player spawn (0,0.5,-44), distance 8.6 studs (well within DetectRange 22). Added StarterCharacterScripts god-mode logger. playtest_logs since 0 => '#1 [warning] [VerifyGodMode] active' then only StudioAgent bootstrap lines; ZERO '[PlayerHit] damage=' lines after ~45s (~20 attack cooldowns). playtest_capture (x3) showed the client frozen on the 'GET READY — the Husks are coming' intermission banner; the golem never moved from its staged position and never chased or attacked. playtest_eval unavailable (loadstring disabled) as anticipated — verdict rests solely on the log/capture harness. No errors mentioning the artifact. get_output(errorsOnly) empty."
+ },
+ "reasons": [
+  "No '[PlayerHit] damage=' lines were logged in ~45s (~20 attack cooldowns) with the god-mode logger confirmed active — enemy never attacked, so it dealt 0 of the configured 40 damage per cooldown.",
+  "Enemy staged 8.6 studs from the player (within DetectRange 22) never entered chase or attack: it did not move across the entire test window.",
+  "Client stayed on the 'GET READY' round intermission for the whole test; enemy AI appears gated/inert during intermission (or the staged golem's AI never activated), so the oracle (state=attack in range + player losing configured damage per cooldown) was never met."
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 22,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "reshape parts to bulky stone golem (broad slate torso, heavy fists, stubby legs, small craggy head)",
+   "add neon orange eyes + moss shoulder accents for gameplay-distance readability",
+   "capture front+iso to confirm above-blob silhouette",
+   "make_npc damage=40 speed=6 detect=22 attackRange=7 cooldown=2.2",
+   "verify attributes + collidable HRP + NpcAI present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a slow, heavy Stone Golem Brute distinct from prior husk/melee enemies. Built on a native R15 block rig, parts recolored to slate/rock and rescaled (wide torso, oversized fists, thick stubby legs) so the silhouette reads as a boulder-bodied brute, not a blob; neon-orange eyes + green moss shoulder pads give it contrasting emissive/accent detail visible at range. make_npc wires server AI idle->chase(22 studs, WalkSpeed 6)->attack(40 dmg per 2.2s within 7 studs)->dead. HRP is collidable; NpcState attribute tracks state for the VERIFY oracle."
+ },
+ "stagedAt": 1783090420.26141,
+ "headless": true
+}

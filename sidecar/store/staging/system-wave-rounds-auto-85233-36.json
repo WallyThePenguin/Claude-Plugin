@@ -1,0 +1,57 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Logs: '[LaneSiege] SYSTEM START - 3 waves queued'; 'intermission (2.0s) before wave 1'; '[LaneSiege] WAVE 1 START - 3 breachers across 4 lanes'; 'spawn Breacher via North/East/South gate (hp=60)'. After player-driven spear combat: '[VerifyTarget] HIT damage=20.000 hitcount=1/2' then '[LaneSiege] breacher down (2 remaining)'; '[VerifyTarget] HIT damage=20.000 hitcount=3' then '[LaneSiege] breacher down (1 remaining)'. Enemy deaths only followed real player HIT lines (not an auto-kill hook). No runtime error mentioning LaneSiege. playtest_eval was loadstring-disabled; verified from logs only.",
+  "evidence_note": "HUD showed 'Husk'/'GET READY' nametags but LaneSiege log/spawn tag is 'Breacher'; progression confirmed via the artifact's own [LaneSiege] log lines."
+ },
+ "reasons": [
+  "System starts observably: SYSTEM START, WAVE 1 START, and per-lane Breacher spawns all logged with the [LaneSiege] artifact tag",
+  "Progresses at PLAYER level: genuine spear activations produced [VerifyTarget] HIT lines that killed breachers, advancing 'remaining' 2->1 — deaths only ever followed real hits, never an auto-kill hook",
+  "No runtime error mentioning the LaneSiege artifact appeared during the ~35s observation window"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.LaneSiege",
+  "config": {
+   "systemName": "LaneSiege",
+   "params": {
+    "lanes": 4,
+    "gateDistance": 40,
+    "intermission": 2.0,
+    "waves": [
+     {
+      "count": 3,
+      "health": 60,
+      "walkSpeed": 10
+     },
+     {
+      "count": 5,
+      "health": 80,
+      "walkSpeed": 12
+     },
+     {
+      "count": 7,
+      "health": 110,
+      "walkSpeed": 14
+     }
+    ]
+   }
+  },
+  "steps": [
+   "Inspected existing disabled RoundLoop + ServerStorage.EnemyTemplate to reuse the Humanoid rig without repeating the ring-survival concept",
+   "Created server Script game.ServerScriptService.LaneSiege",
+   "Authored a config-driven lane-breach lifecycle: 4 perimeter lane gates, enemies spawn round-robin per gate and MoveTo the central core",
+   "Wave clears when every spawned enemy's Humanoid.Died fires; final wave clear = VICTORY; state mirrored to Workspace attributes",
+   "Printed [LaneSiege] tags for SYSTEM START, each WAVE START, spawn, breacher down, WAVE CLEARED, and VICTORY",
+   "Verified compile OK and LaneSiege enabled while legacy RoundLoop stays disabled"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept vs prior ring-survival RoundLoop: a lane-siege/breach-defense loop. CONFIG table defines core center, 4 lane gates, gateDistance, intermission, and a waves array (count/health/walkSpeed). Each wave spawns count enemies distributed across lanes marching to the core; a wave clears only when all its enemies are dead (real combat, no auto-kill hook - that symbol is gate-blocked). Clearing the last wave prints [LaneSiege] VICTORY. All lifecycle events print with the [LaneSiege] tag for VERIFY."
+ },
+ "stagedAt": 1783096231.456373,
+ "headless": true
+}

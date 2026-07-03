@@ -1,0 +1,33 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.SiegeDirector",
+  "config": {
+   "systemName": "Escalating Siege",
+   "params": {
+    "waves": 3,
+    "spawnRingRadius": 45,
+    "baseHealth": 60,
+    "scalesPerWave": "count+health+speed"
+   }
+  },
+  "steps": [
+   "Created Workspace.SiegeArena model (floor + neon DefensePoint) as the spawn ring center",
+   "Created Script game.ServerScriptService.SiegeDirector",
+   "Authored config-driven wave lifecycle with [Siege]-tagged prints"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Concept 'Escalating Siege': a CONFIG.Waves table drives count + health/speed scaling per wave. runSiege() iterates waves; spawnWave() builds self-contained brute enemies (Humanoid+HRP+Head) on a spawn ring around DefensePoint, gives each a chase AI, and counts Humanoid.Died to detect wave-clear. After the final wave clears it logs VICTORY. Enemies die only from real player combat (TakeDamage) — no auto-kill hook. All lifecycle events print with the [Siege] tag for VERIFY."
+ },
+ "stagedAt": 1783099412.1845925,
+ "headless": true
+}

@@ -1,0 +1,52 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "#1 [Siege] System START -- Breach Siege online, 3 waves configured; #6 [Siege] Wave 1 START -- breaches active: North (health 40, speed 10); #7 [Siege] Spawn attacker from North breach at (3, 3, -40); #8 [Siege] Wave 1 deployed 1 attackers -- awaiting clear; (player-level combat) #9 [VerifyTarget] HIT damage=20 hitcount=1; #10 [VerifyTarget] HIT damage=20 hitcount=2; #11 [Siege] Wave 1 CLEARED; #12 [Siege] Intermission before wave 2 (2.0s); #13 [Siege] Wave 2 START -- breaches active: North, South (health 55, speed 12); #14-15 Spawn attackers from North & South breaches; #16 [Siege] Wave 2 deployed 2 attackers -- awaiting clear. No runtime error mentioning SiegeDirector.",
+  "findings": "System starts, spawns enemies, and progresses: Wave 1 cleared by player spear damage (2x20=40 = attacker health) then Wave 2 began with scaled stats and an extra breach. Kills came from [VerifyTarget] HIT (player-level Humanoid combat via equipped Spear), NOT an auto-kill/test hook."
+ },
+ "reasons": [
+  "Lifecycle observable in logs: System START + Wave 1 START + attacker spawn + Wave 1 CLEARED + Intermission + Wave 2 START (state transitions and wave advance).",
+  "Progression achieved via PLAYER-level combat ([VerifyTarget] HIT damage=20 x2 from the equipped Spear = 40 dmg matching attacker health), not an auto-kill hook.",
+  "No runtime error mentioning the artifact SiegeDirector; playtest ran and was stopped cleanly. Note: playtest_eval/loadstring was unavailable so verification was log-only per approach."
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.SiegeDirector",
+  "config": {
+   "systemName": "BreachSiege",
+   "params": {
+    "configModule": "game.ReplicatedStorage.SiegeConfig",
+    "waves": 3,
+    "breaches": [
+     "North",
+     "East",
+     "South",
+     "West"
+    ],
+    "intermission": 2.0,
+    "logTag": "[Siege]",
+    "stateAttributes": [
+     "SiegeWave",
+     "SiegeState",
+     "SiegeEnemiesRemaining"
+    ]
+   }
+  },
+  "steps": [
+   "Created ReplicatedStorage.SiegeConfig ModuleScript: ObjectiveCenter, 4 named Breach portals, Intermission, and an ordered Waves table (breaches/perBreach/health/speed escalating).",
+   "Created ServerScriptService.SiegeDirector Script with a runtime enemy factory (self-contained Humanoid attacker, no external template) + simple converge AI.",
+   "Per wave: spawn attackers from the wave's active breach portals, wire Humanoid.Died to a countdown, and Wait a BindableEvent for wave-clear.",
+   "Drive lifecycle: system START -> per-wave intermission -> wave START -> spawns -> CLEARED -> final VICTORY, each printed with [Siege] tag.",
+   "Enemies die ONLY from ordinary Humanoid damage (player-level combat) - no auto-kill hook.",
+   "Verified both scripts compile, config loads (3 waves/4 breaches), SiegeDirector enabled, old RoundLoop stays disabled."
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh 'Breach Siege' concept distinct from prior flat ring-survival loops: attackers surge from NAMED breach portals that activate progressively per wave, converging on a central objective. Config-driven via ReplicatedStorage.SiegeConfig (waves reference breaches by name). SiegeDirector builds attackers at runtime, detects wave-clear via Humanoid.Died countdown, and prints [Siege]-tagged lifecycle events (System START, Intermission, Wave START, Spawn, Wave CLEARED, VICTORY) for observation. State mirrored on Workspace attributes. Enemies are killable by normal player combat; no gate-blocked auto-kill symbols."
+ },
+ "stagedAt": 1783089802.9778118,
+ "headless": true
+}

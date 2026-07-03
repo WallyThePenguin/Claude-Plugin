@@ -1,0 +1,32 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.MoltenGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "style into Molten Golem Brute: light Slate stone body, bulked BodyScale (1.6w/1.5d/1.25h), neon molten eyes with PointLights, emissive crack bands on torso/limbs, dark hands/feet",
+   "make_npc damage=40 speed=6 detect=24 attackRange=7 cooldown=2.2",
+   "set HRP CanCollide=true + HipHeight=2.0 and pivot rig onto floor so bulked body doesn't sink"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-enemy concept: a Molten Golem Brute distinct from prior sword/spear artifacts. Started from a native R15 block rig, scaled it top-heavy and bulky, gave it a light Slate stone silhouette with oversized emissive molten eyes (+PointLights) and glowing crack bands so it reads at gameplay distance against the arena. make_npc wired server AI (idle->chase->attack->dead) with brute stats: 40 dmg, WalkSpeed 6, 24 detect, 7 attack range, 2.2s cooldown. Ensured collidable HumanoidRootPart and HipHeight 2.0 so the heavy body stands on the floor rather than sinking. Vision sidecar failed to screenshot this session, so the shaped-visual confirm was done structurally."
+ },
+ "stagedAt": 1783094947.109928,
+ "headless": true
+}

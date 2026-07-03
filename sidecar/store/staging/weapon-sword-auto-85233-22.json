@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.11:active -> 0.26:cooldown -> 0.53:idle [tool=Falchion w=0.1 a=0.12 c=0.3]' (tool name + config match). Damage logs: '[VerifyTarget] HIT damage=28.000 hitcount=1', '[VerifyTarget] HIT damage=28.000 hitcount=2', '[VerifyTarget] HIT damage=28.000 hitcount=3' across 3 swings — exactly 28 damage once per swing, no artifact errors. Tool attrs confirmed BehaviorWindup=0.1/Active=0.12/Cooldown=0.3, HitDamage=28, HitReach=6."
+ },
+ "reasons": [
+  "Record echo names tool=Falchion with configured timings w=0.1 a=0.12 c=0.3 and shows full idle->windup->active->cooldown->idle sequence",
+  "Self-measuring god-mode target logged damage=28.000 exactly, incrementing hitcount 1->2->3 (once per swing)",
+  "No errors mentioning the artifact; cleanup done (playtest stopped, VerifyTarget destroyed)"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 28,
+   "reach": 6
+  },
+  "steps": [
+   "Parked existing StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a falchion (broad curved single-edged blade, cruciform guard, wrapped grip, round pommel) at 3.6 studs",
+   "Captured front+right to confirm distinct silhouette; save_mesh to persist durable asset",
+   "make_tool with the mesh as Handle; moved Tool into StarterPack",
+   "bind_behavior fast swing windup 0.1 / active 0.12 / cooldown 0.3",
+   "bind_hitbox damage 28 / reach 6 / cooldown 0.3"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a falchion (broad, forward-widening single-edged cleaver blade) — distinct from prior dagger/spear/scimitar artifacts. Cube-generated mesh saved durable (asset 73373810193027) so it survives Play. Handle at the hilt; behavior state machine windup->active->cooldown->idle at configured timings; server-authoritative hitbox sweeps 6-stud reach for 28 damage once per swing on the active window with a 0.3s anti-spam cooldown."
+ },
+ "stagedAt": 1783092027.7431345,
+ "headless": true
+}

@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Config attrs: BehaviorWindup=0.1 BehaviorActive=0.12 BehaviorCooldown=0.3 HitDamage=22 HitReach=6. Record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.26:cooldown -> 0.58:idle [tool=Falchion w=0.1 a=0.12 c=0.3]'. Damage logs: '[VerifyTarget] HIT damage=22 hitcount=1', '[VerifyTarget] HIT damage=22 hitcount=2', '[VerifyTarget] HIT damage=22 hitcount=3' - exactly configured 22 damage once per swing, no artifact errors."
+ },
+ "reasons": [
+  "Record echo names tool=Falchion with config w=0.1 a=0.12 c=0.3 and shows idle->windup->active->cooldown->idle at configured timings",
+  "Damage exactly equals configured 22, once per swing (hitcount 1->2->3 across three swings)",
+  "No errors referencing the artifact; playtest ran cleanly"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 22,
+   "reach": 6
+  },
+  "steps": [
+   "Parked StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a falchion (single-edged cleaver blade widening toward tip, brass guard, wrapped grip) at 3.4 studs",
+   "save_mesh to durable owned asset (survives Play)",
+   "make_tool 'Falchion' with the mesh as Handle, moved into StarterPack",
+   "bind_behavior windup 0.10 / active 0.12 / cooldown 0.30 (fast swing)",
+   "bind_hitbox damage 22 / reach 6 / cooldown 0.30 (short reach, moderate damage)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion sword: distinct single-edged cleaver profile via Cube generate_mesh, persisted with save_mesh. Toolified with Handle at the hilt and placed in StarterPack. Fast-swing behavior state machine (0.10/0.12/0.30) drives the active window; server-authoritative hitbox deals 22 dmg within 6 studs once per swing on a 0.30s cooldown. Vision sidecar was down so the silhouette capture was skipped; mesh dims (1.0x3.4x0.3, thin cross-section) confirm blade-like proportions."
+ },
+ "stagedAt": 1783097671.119862,
+ "headless": true
+}

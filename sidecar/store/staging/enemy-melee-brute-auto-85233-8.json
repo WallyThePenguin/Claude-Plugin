@@ -1,0 +1,37 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Config confirmed: NpcDamage=40, NpcDetectRange=24, NpcAttackRange=7, NpcAttackCooldown=2.5, WalkSpeed=6. Golem repositioned to z=-36 (~8.2 studs from SpawnLocation @ z=-44), within detectRange. Playtest logs since 0: '[GodMode] active hp=100' then 16+ lines of '[PlayerHit] damage=40' (verbatim, all reporting exactly 40 = configured damage). No errors mentioning StoneGolemBrute. Enemy detected+chased+attacked the stationary god-mode player immediately."
+ },
+ "reasons": [
+  "Enemy dealt the configured damage (40) per hit as logged by the invincible self-reporting player Humanoid.HealthChanged handler",
+  "Enemy detected, chased, and repeatedly struck the stationary player from ~8 studs (within detectRange 24) with no reliance on playtest_eval",
+  "No script errors mentioning the artifact appeared in the playtest log"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "Built shaped Stone Golem model: collidable invisible HumanoidRootPart, chunky stone torso, sunken dark head, oversized emissive orange eyes, moss-green accent fists, thick short legs; welded all to HRP as massless",
+   "Set Humanoid HipHeight 3.2 and MoveTo baseplate so feet rest on floor",
+   "Captured front+iso to confirm above-blob silhouette",
+   "make_npc with damage 40, speed 6, detectRange 24, attackRange 7, cooldown 2.5",
+   "Verified NpcDamage/DetectRange/AttackRange/AttackCooldown attributes, WalkSpeed, collidable HRP, and NpcAI script"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-brute concept (Stone Golem) distinct from prior husks/enemies: light stone body with emissive eyes and moss accent limbs for readability. Slow (speed 6), high damage (40), short detect (24) per brief. Standard R15-style assembly welded to a collidable HRP; make_npc supplies server-authoritative idle->chase->attack->dead AI. State attribute reads idle at rest, will flip to attack when a player is within range 7."
+ },
+ "stagedAt": 1783087633.7238235,
+ "headless": true
+}

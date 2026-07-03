@@ -1,0 +1,34 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemSentinel",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolored to slate stone, darker head",
+   "bulked torso/arms/legs to hulking brute proportions",
+   "added welded amber neon eyes + glowing chest core with PointLight",
+   "set PrimaryPart=HumanoidRootPart",
+   "make_npc dmg40 speed6 detect24 attackRange7 cooldown2.2"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: Stone Golem Sentinel - a slow, heavy melee brute distinct from prior artifacts. Native R15 block rig recolored to Slate stone with a darker head, then bulked (torso ~1.45x, arms ~1.6x, legs ~1.35x) so it reads as a hulking golem, not a blob. Added two amber neon eyes and a glowing cracked chest core (Neon + PointLight) welded to the body. make_npc configured for the brute profile: 40 damage, WalkSpeed 6, detect 24, attack range 7, cooldown 2.2s. Vision sidecar was unavailable so the confirm-capture was skipped; structure verified via get_tree and attributes read back."
+ },
+ "stagedAt": 1783097037.5632994,
+ "headless": true
+}

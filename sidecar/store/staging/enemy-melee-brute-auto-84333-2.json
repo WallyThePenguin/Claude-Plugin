@@ -1,0 +1,33 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 5,
+   "detectRange": 20,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolor to slate golem palette, molten neon hands, dark accent lower arms",
+   "add oversized emissive eyes + chest plate + shoulder pauldrons for hulking readable silhouette",
+   "make_npc damage40 detect20 attackRange7 cooldown2.5 speed5",
+   "ensure HumanoidRootPart CanCollide, verify NpcAI + attributes"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct 'StoneBrute' stone golem melee-enemy. Block R15 rig bulked with slate chest plate + pauldrons, molten neon hands, and oversized neon eyes so it reads at range (npc learning #1). HRP forced collidable to avoid sinking (learning #2). make_npc gives server AI idle->chase(20)->attack(40 dmg/2.5s within 7)->dead. Slow (WalkSpeed 5), high damage per brief. Capture unavailable (sidecar not producing screenshots) so shape confirmed structurally."
+ },
+ "stagedAt": 1783084929.021296,
+ "headless": true
+}

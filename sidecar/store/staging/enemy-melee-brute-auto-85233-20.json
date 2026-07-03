@@ -1,0 +1,38 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Baked StarterCharacterScripts.GodModeHitLogger (warns '[PlayerHit] damage=<lost>' then heals) produced ZERO [PlayerHit] lines across ~28s of playtest with player at SpawnLocation (0,0.5,-44) and golem placed 8 studs away at (0,6,-52), within DetectRange 24. playtest_logs since 0: only '#1 [VerifyTarget] god-mode probe armed', '#4 [warning] [VerifyTarget] HIT damage=20.000 hitcount=1' — that HIT line is from the pre-existing Workspace.VerifyTarget dummy (Humanoid at (0,3,-50), 3.6 studs from golem), NOT the player and NOT the configured 40 damage. NpcState read idle in edit; play-server state unverifiable (playtest_eval loadstring unavailable). No [PlayerHit] hit lines = enemy never attacked the player. Config confirmed on artifact: NpcDamage=40, NpcDetectRange=24, NpcAttackRange=7, NpcAttackCooldown=2.5, WalkSpeed=6.",
+  "capture": "Play client showed 'GET READY — the Husks are coming' round-intro banner; player standing on spawn pad, no golem attacking."
+ },
+ "reasons": [
+  "Oracle unmet: the player's god-mode logger recorded no [PlayerHit] damage lines, so the StoneGolemBrute never dealt damage to the player despite the player being 8 studs away (inside DetectRange 24) for ~28s.",
+  "The only observed hit (20.000) came from the pre-existing VerifyTarget dummy, not the player and not the golem's configured 40 damage — it does not satisfy the melee-enemy oracle.",
+  "No evidence the enemy entered chase/attack against the player; NpcState observable only in edit (idle) and playtest_eval was unavailable to confirm play-server state."
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolor to slate stone body with neon molten arms + dark head, scale up bulky via Humanoid scales",
+   "add two oversized neon emissive eyes welded to head for gameplay-distance readability",
+   "make_npc damage=40 speed=6 detect=24 attackRange=7 cooldown=2.5",
+   "verified NpcState/NpcDamage/NpcDetectRange/NpcAttackRange/NpcAttackCooldown attributes + NpcAI script present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: slow high-damage 'Stone Golem Brute'. Native R15 rig recolored slate with glowing molten neon arms and a dark slate head, body scaled ~1.4x bulky, plus oversized emissive eyes for a light silhouette that reads at distance (npc learning #1). make_npc applied brute config: 40 dmg, WalkSpeed 6, 24 detect, 7 attackRange, 2.5s cooldown. Server AI idles/chases/attacks; config attributes verified. Vision sidecar failed to screenshot so visual confirmed structurally, not captured."
+ },
+ "stagedAt": 1783091553.2733822,
+ "headless": true
+}

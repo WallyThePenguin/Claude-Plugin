@@ -1,0 +1,35 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.ArmingSword",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh Cube prompt for a slender one-handed arming sword (straight double-edged blade, cross guard, round pommel) at 3.2 studs",
+   "One capture confirmed the silhouette: tapered straight blade, cross quillons, wrapped grip, round pommel — distinct from dagger/spear",
+   "save_mesh persisted the mesh+texture to a durable asset",
+   "make_tool wrapped it (single MeshPart Handle) and moved it to StarterPack",
+   "bind_behavior windup 0.10 / active 0.12 / cooldown 0.30 (fast swing)",
+   "bind_hitbox damage 20 / reach 7 / server cooldown 0.30"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Straight one-handed arming sword — distinct profile vs the existing dagger (short) and spears (polearms). Visual via generate_mesh with a SLENDER-specific prompt (per combat learnings), verified with a single capture (clean taper to a point, cross guard, pommel), then save_mesh for Play durability. make_tool used the single mesh as Handle; bind_behavior gives the fast swing timings and bind_hitbox the short-reach moderate-damage hit with server-authoritative cooldown."
+ },
+ "stagedAt": 1783077875.0426955,
+ "headless": true
+}

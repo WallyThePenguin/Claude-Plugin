@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "ItemState 0.00:idle -> 0.05:windup -> 0.11:active -> 0.26:cooldown -> 0.58:idle [tool=Cutlass w=0.1 a=0.12 c=0.3]; [VerifyTarget] HIT damage=20.000 hitcount=1; HIT damage=20.000 hitcount=2; HIT damage=20.000 hitcount=3"
+ },
+ "reasons": [
+  "record echo names Cutlass with exact configured timings w=0.1 a=0.12 c=0.3",
+  "3 swings produced exactly 3 hits at exactly the configured damage=20 each (once per swing)",
+  "tool attributes match config (damage 20, reach 7)",
+  "no runtime errors referencing the artifact in playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Cutlass",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "Parked Spear and Dagger Tools from StarterPack into ServerStorage",
+   "generate_mesh Cube cutlass (slender curved single-edged blade, basket guard, leather hilt) at 3.2 studs",
+   "save_mesh to persist the mesh as a durable owned asset (id 80345964157975)",
+   "make_tool wrapped the mesh into Tool 'Cutlass' with the mesh as Handle",
+   "Moved Tool into game.StarterPack",
+   "bind_behavior fast swing windup 0.1 / active 0.12 / cooldown 0.3",
+   "bind_hitbox damage 20, reach 7, server cooldown 0.3"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Cutlass — a NEW melee concept distinct from prior sword/dagger/spear rungs (curved single-edged naval blade w/ basket guard). Visual via generate_mesh at hand-weapon scale (3.2 studs, per weapons learning #1) then save_mesh for Play durability. Capture sidecar was down (CaptureService produced no screenshots), so silhouette verified structurally (single MeshPart 0.8x3.2x0.96, slender profile) instead of visually. make_tool -> StarterPack -> bind_behavior (fast: 0.1/0.12/0.3) -> bind_hitbox (20 dmg, 7 reach, 0.3 server cooldown). No animations or extras — scoped to brief."
+ },
+ "stagedAt": 1783082412.4139323,
+ "headless": true
+}

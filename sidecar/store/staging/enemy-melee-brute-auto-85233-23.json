@@ -1,0 +1,37 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Config attrs match brief (NpcDamage=40, NpcDetectRange=24, NpcAttackRange=7, NpcAttackCooldown=2.5, WalkSpeed=6). God-mode logger armed maxhp=100. Probe log: t=1 state=chase dist=8.4 -> ... t=10 state=chase dist=10.1 -> '[PlayerHit] damage=40.0' -> t=11 state=attack dist=5.7 -> t=12 state=attack dist=9.4. Enemy detected+chased+entered attack state in range and dealt exactly the configured 40 damage. No errors mentioning MoltenGolem. Player was knocked far after contact (dist spiked 27->97) so only one clean strike landed, but damage value and attack-state-in-range oracle both confirmed."
+ },
+ "reasons": [
+  "Enemy reached state=attack while within attackRange (probe dist=5.7 <= 7)",
+  "God-mode logger recorded '[PlayerHit] damage=40.0' == configured damage 40",
+  "No runtime errors referencing the artifact; config attributes match the brief"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.MoltenGolem",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "shape into Molten Golem: dark Slate stone body, oversized neon lava eyes, welded neon torso cracks, glowing lava hands as accent limbs",
+   "capture front+iso to confirm above-blob readable silhouette",
+   "make_npc damage40 detect24 attackRange7 cooldown2.5 speed6",
+   "verify attributes + collidable HRP via run_luau"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-brute concept: a slow, heavy Molten Golem distinct from prior husks. Spawned a native R15 block rig, recolored to warm Slate stone with dark head, added oversized neon-orange eyes, three welded neon lava-crack strips on the torso, and neon lava hands for a light-on-dark accent silhouette that reads against the arena floor. make_npc gives it server AI idle->chase->attack->dead with brute stats (40 dmg / 2.5s, WalkSpeed 6, detect 24, attackRange 7). Verified all Npc* attributes, collidable HumanoidRootPart, and NpcAI script present."
+ },
+ "stagedAt": 1783092323.6420183,
+ "headless": true
+}

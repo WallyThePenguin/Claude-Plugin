@@ -1,0 +1,40 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.SiegeDirector",
+  "config": {
+   "systemName": "SiegeDirector",
+   "params": {
+    "waves": 3,
+    "spawnRadius": 40,
+    "sentryRange": 60,
+    "sentryDamage": 40,
+    "sentryFireInterval": 0.35,
+    "budgetPerWave": [
+     2,
+     4,
+     6
+    ]
+   }
+  },
+  "steps": [
+   "Read existing RoundLoop to ensure a distinct concept",
+   "Authored SiegeDirector server script in ServerScriptService via create_instance + edit_script",
+   "Disabled the old RoundLoop so only the new system runs during VERIFY",
+   "Verified compile + enabled/disabled state via run_luau"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a credit-BUDGET wave director (spend-down budget drip-feeds enemies) defended by an automated combat SENTRY. The sentry acquires the nearest live enemy each fireInterval and deals real TakeDamage projectile combat — genuine damage-dealing gameplay, NOT a self-kill/TestAutoKill hook (gate-safe). Enemies spawn on a ring from ServerStorage.EnemyTemplate; each wave clears when all enemies are down (Died/removed), then VICTORY. All lifecycle events (online, prep, assault start, spawn, sentry hits, enemy down, wave cleared, victory) print with a [Siege] tag for VERIFY to observe via playtest_logs. State exposed on Workspace attributes SiegeWave/SiegeEnemiesLeft/SiegeState."
+ },
+ "stagedAt": 1783092521.2273242,
+ "headless": true
+}

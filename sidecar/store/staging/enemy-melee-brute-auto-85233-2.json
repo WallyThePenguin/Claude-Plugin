@@ -1,0 +1,39 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Logger armed: '#1 [warning] [PlayerHit] godmode-armed', '#2 [output] [GodMode] logger armed'. After playtest_start, golem placed at (0,3.7,-36) — 8 studs from SpawnLocation (0,0.5,-44), within DetectRange 25. Waited ~23s (>=9 attack cooldowns of 2.5s). playtest_logs since 0 then since 4 returned NO '[PlayerHit] damage=' lines ('no new log lines cursor=4'). Edit-context probe of play state: 'state=idle golemPos=(0.0,3.7,-36.0) health=100 ws=6' — never left idle. playtest_capture showed player alone on spawn pad with a persistent 'GET READY / the Husks are coming' round-intro UI; no enemy near the player. Config confirmed: NpcDamage=45, NpcDetectRange=25, NpcAttackRange=7, NpcAttackCooldown=2.5. No errors mentioning the artifact.",
+  "capture": "player stationary at SpawnLocation, round intro stuck on 'GET READY the Husks are coming', golem not engaging"
+ },
+ "reasons": [
+  "Zero '[PlayerHit] damage=' log lines across ~23s (>=9 attack cooldowns) with the god-mode logger confirmed armed — per brief, no hit lines = enemy never attacked = FAIL.",
+  "Golem stayed in NpcState=idle despite being 8 studs from spawn (well inside DetectRange 25); it never detected, chased, or struck the player.",
+  "Play client shows a stuck 'GET READY — the Husks are coming' round intro; the enemy AI appears gated behind a round/wave system that never activated, so the configured 45 damage per cooldown was never dealt."
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 45,
+   "walkSpeed": 6,
+   "detectRange": 25,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolor to light stone body + dark slab arms, bulk torso/arms, Slate material",
+   "add oversized emissive amber eyes, ensure HRP CanCollide",
+   "capture front+iso to confirm above-blob brute silhouette",
+   "make_npc damage=45 speed=6 detect=25 attackRange=7 cooldown=2.5",
+   "verify attributes + NpcAI script present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Stone Golem Brute: standard R15 block rig recolored into a light-stone body with contrasting dark heavy slab arms and a bulked torso for a brute silhouette (Slate material). Oversized amber Neon eyes give it readable menace at distance. HumanoidRootPart forced CanCollide so it stays grounded. make_npc wired the server AI: idle->chase within 25 studs at WalkSpeed 6->attack 45 dmg every 2.5s within 7 studs. Config stored as Npc* attributes; NpcState starts 'idle'."
+ },
+ "stagedAt": 1783085802.103681,
+ "headless": true
+}

@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.27:cooldown -> 0.53:idle [tool=Falchion w=0.1 a=0.12 c=0.3]'. Damage logs: '[VerifyTarget] HIT damage=22 hitcount=1', '[VerifyTarget] HIT damage=22 hitcount=2', '[VerifyTarget] HIT damage=22 hitcount=3'. Tool attributes read in edit: BehaviorWindup=0.1 BehaviorActive=0.12 BehaviorCooldown=0.3 HitDamage=22 HitReach=6. No errors mentioning the artifact.",
+  "reasons": [
+   "Tool name 'Falchion' and echoed config (w=0.1 a=0.12 c=0.3) match the build config exactly",
+   "State machine progressed idle->windup->active->cooldown->idle at configured timings",
+   "VerifyTarget recorded exactly 22 damage (configured value) per swing, once per swing across 3 swings (hitcount 1->2->3)",
+   "No runtime errors mentioning the artifact"
+  ]
+ },
+ "reasons": [],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 22,
+   "reach": 6
+  },
+  "steps": [
+   "Parked existing StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a falchion sword (single-edged cleaver-profile blade, crossguard, wrapped grip, round pommel); captured to confirm slender sword silhouette",
+   "save_mesh to make the Handle mesh durable (survives Play)",
+   "make_tool with the mesh as Handle; moved Tool into StarterPack",
+   "Authored arm-only SwordIdle (held-ready) + SwordUse (windup/slash/recover) clips on a temp rig; bound both via bind_animation",
+   "bind_behavior windup0.1/active0.12/cooldown0.3 (fast swing); bind_hitbox damage22/reach6/cooldown0.3; destroyed temp rig"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "One-handed falchion sword distinct from prior dagger/spear artifacts. Cube-generated cleaver-profile blade mesh, saved durable, wrapped into a Tool with the hilt as Handle in StarterPack. Fast swing behavior (windup0.1s, active0.12s, cooldown0.3s) with arm-only idle+use swing anims, and a short-reach (6 studs) moderate-damage (22) server-authoritative hitbox gated on the active window with a 0.3s cooldown."
+ },
+ "stagedAt": 1783086502.4674437,
+ "headless": true
+}

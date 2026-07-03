@@ -1,0 +1,50 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.BastionSiegeLoop",
+  "config": {
+   "systemName": "BastionSiege",
+   "params": {
+    "waves": [
+     {
+      "count": 2,
+      "health": 60
+     },
+     {
+      "count": 3,
+      "health": 80
+     },
+     {
+      "count": 4,
+      "health": 100
+     }
+    ],
+    "spawnInterval": 0.6,
+    "interWaveDelay": 2.0,
+    "startDelay": 3.0,
+    "spawnRingPads": 8,
+    "enemyTemplate": "EnemyTemplate"
+   }
+  },
+  "steps": [
+   "Built Workspace.BastionSiege folder: neon BastionCore objective + SpawnRing of 8 concrete spawn pads in a 40-stud circle",
+   "Authored ServerScriptService.BastionSiegeLoop server script (config-driven wave table)",
+   "Each wave clones ServerStorage.EnemyTemplate onto ring pads facing the core, escalating count/health per wave",
+   "Wave clears when every spawned enemy's Humanoid.Died fires (player-dealt damage; NO auto-kill hook)",
+   "After the final wave clears it logs ALL WAVES CLEARED then VICTORY, all tagged [System]"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh 'BastionSiege' concept: enemies spawn from a ring and besiege a central Bastion Core. Config CONFIG.waves drives count+health per wave; spawnInterval/interWaveDelay/startDelay tune pacing. runWave counts alive enemies and only clears on real Humanoid.Died events, so progression to VICTORY requires actual player combat. All lifecycle events (ONLINE, SIEGE BEGIN, WAVE n START, SPAWN, WAVE n CLEARED, ALL WAVES CLEARED, VICTORY) print with the [System] tag for VERIFY to observe via playtest_logs."
+ },
+ "stagedAt": 1783095205.2298532,
+ "headless": true
+}

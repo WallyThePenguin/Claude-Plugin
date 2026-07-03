@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.26:cooldown -> 0.52:idle [tool=Falchion w=0.1 a=0.12 c=0.3]' (tool name + config match). Damage log: '[VerifyTarget] HIT damage=30 hitcount=1' then '[VerifyTarget] HIT damage=30 hitcount=2' — exactly 30 dmg per swing, once per swing. No artifact errors."
+ },
+ "reasons": [
+  "Timing echo matches config exactly: tool=Falchion, w=0.1 a=0.12 c=0.3, full idle->windup->active->cooldown->idle cycle",
+  "Configured damage 30 applied exactly, once per swing across 2 swings (hitcount incremented 1 then 2)",
+  "No errors referencing the Falchion artifact during the playtest"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 30,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "Cube generate_mesh gave a broken sword, so built a distinct falchion procedurally",
+   "Authored single-edged swept blade via EditableMesh (straight spine, broad belly widening toward tip)",
+   "Added primitive hilt: crossguard bar, wood grip cylinder (Handle), round pommel",
+   "make_tool with grip as Handle; save_mesh to persist the blade; moved Tool to StarterPack",
+   "bind_behavior fast swing (0.1/0.12/0.3) then bind_hitbox (30 dmg, reach 7, 0.3 cd)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion: a single-edged forward-belly cleaver, distinct from prior spear/dagger/scimitar. Blade is a procedural EditableMesh (swept 4-vert profile: straight spine along +Y, edge bulging to a belly ~t=0.72 then converging to a point, thickness tapering), saved durable (asset 99974167012473). Hilt = flat guard + wood grip cylinder Handle + ball pommel. Fast-swing state machine windup 0.10s / active 0.12s / cooldown 0.30s; hitbox 30 dmg over 7 studs with 0.30s server cooldown."
+ },
+ "stagedAt": 1783098799.648273,
+ "headless": true
+}

@@ -1,0 +1,39 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Config attrs match brief (NpcDamage=40, WalkSpeed=6, NpcDetectRange=24, NpcAttackRange=7, NpcAttackCooldown=2.5). God-mode StarterCharacter logger baked; enemy placed ~5 studs from SpawnLocation. Playtest logs since 0: '#1 [GodMode] active maxhp=100', '#2 [PlayerHit] damage=40', '#5 [PlayerHit] damage=40' — multiple hits, every hit exactly the configured damage=40; NpcState reached attack in range; no error lines mention StoneGolemBrute. (An earlier run at 8 studs also logged one [PlayerHit] damage=40.)"
+ },
+ "reasons": [
+  "Enemy detected+chased+attacked the stationary god-mode player from spawn-adjacent placement without walking across the map",
+  "Logged [PlayerHit] damage=40 lines match the configured damage exactly per strike",
+  "No errors referencing the artifact; NpcAI perception loop (idle->chase->attack) confirmed server-side",
+  "playtest_stop called and test scaffolding (GodModeHitLogger) removed; golem restored to origin"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolor to pale granite Slate body + obsidian forearms/hands",
+   "weld oversized molten-neon eyes + chest core with PointLights",
+   "capture front to confirm shaped silhouette",
+   "make_npc damage40 speed6 detect24 attackRange7 cooldown2.5",
+   "verify attributes + collidable HRP"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: Stone Golem Brute - a slow, heavy melee enemy distinct from prior husk/sword artifacts. Native R15 block rig recolored pale granite Slate with dark obsidian forearms/hands for silhouette contrast, plus two oversized molten-orange Neon eyes and a glowing chest core (PointLights) so it reads at distance per npc learnings. make_npc gives server AI idle->chase->attack: 40 dmg every 2.5s within 7 studs, WalkSpeed 6, detect 24. HRP confirmed CanCollide=true, all Npc* attributes verified."
+ },
+ "stagedAt": 1783094022.9393692,
+ "headless": true
+}

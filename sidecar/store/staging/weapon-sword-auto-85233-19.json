@@ -1,0 +1,34 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.28,
+   "damage": 28,
+   "reach": 7
+  },
+  "steps": [
+   "Parked Spear+Dagger from StarterPack into ServerStorage",
+   "generate_mesh a falchion sword (tapered single-edged blade, crossguard, wrapped grip, round pommel) at 3.6 studs",
+   "capture_angles confirmed clean sword silhouette",
+   "save_mesh persisted the mesh (durable asset 137106165181737 + texture)",
+   "make_tool -> Falchion Tool (single MeshPart Handle), moved into StarterPack",
+   "bind_behavior windup0.1/active0.12/cooldown0.28 (fast swing); bind_hitbox damage28/reach7/cooldown0.28"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh falchion concept (distinct from prior daggers/spears/scimitars): a Cube-generated one-handed sword with a slender tapered blade converging to a point, straight crossguard, wrapped grip and round pommel. Mesh saved durable so the Handle survives Play. Tool lives in StarterPack; behavior runs idle->windup(0.1)->active(0.12)->cooldown(0.28)->idle, and the hitbox sweeps 7 studs for 28 damage once per swing on the active window with a 0.28s server cooldown."
+ },
+ "stagedAt": 1783091171.1211646,
+ "headless": true
+}

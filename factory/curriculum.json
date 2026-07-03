@@ -103,5 +103,406 @@
    "oracle": "TBD supervised first ascent: playtest_capture shows it render cleanly on the player's screen; buttons are present, laid out, and readable; clears the GUI rubric."
   }
  ],
- "proposals": []
+ "proposals": [
+  {
+   "id": "weapon-warhammer",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": false,
+   "brief": "Two-handed warhammer: Cube-generated head + shaft (save_mesh), slender-proportioned vs 5-stud rig, fitted two-hand-style grip verified from side/front/behind camera; heavy timing via bind_behavior (windup ~0.5s, active 0.2s, cooldown 1.2s), damage ~45, bind_hitbox reach 7, plus knockback impulse on the Hit event; upperBody-scoped idle + overhead-smash use clips with torso lead and HitFrame marker at contact.",
+   "oracle": "VERIFY playtests: equip, activate, confirm ItemState traverses windup->active->cooldown with the configured durations (playtest_eval attribute sampling), a target dummy Humanoid takes ~45 damage exactly once per swing and its HRP is displaced by knockback; capture from behind-camera confirms the hammer silhouette reads (head visible, not foreshortened).",
+   "rationale": "Proven family, but all staged weapons are light/medium — a heavy-timing weapon exercises the behavior state machine's opposite extreme and the knockback seam, widening the factory's proven mechanical range instead of duplicating another slasher.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-skirmisher",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Fast fragile flanker NPC: R15 rig with light-toned body + emissive eyes + accent limbs (readable at distance), make_npc tuned to speed 20, HP ~40, damage 8, attackCooldown 0.8, detectRange 60; Motor6D-jointed with authored idle/chase/attack/death clips played per AI state; collidable HRP + tuned HipHeight; death = collapse clip -> anchor -> fade -> Destroy, kill counted on Humanoid.Died first.",
+   "oracle": "VERIFY playtests: NpcState transitions idle->chase when the player enters 60 studs, attack ticks ~0.8s apart dealing 8 (playtest_eval Health sampling), the rig visibly plays a distinct clip per state (capture_animation / playtest_capture), it never sinks through the floor, and killing it runs the fade sequence with the kill counted exactly once.",
+   "rationale": "melee-enemy is proven yet has a single rung (brute); a speed/fragility variant is the second point on the difficulty curve and directly re-applies four banked npc learnings, making it a cheap high-confidence autonomous build.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "gui-combat-hud",
+   "category": "gui",
+   "family": "gui",
+   "proven": false,
+   "brief": "Dark Gotham-font combat HUD ScreenGui in StarterGui: animated health bar (tweened fill + damage flash), wave/kill counter, and weapon-cooldown ring/indicator fed by the tool's ItemState attribute — all state read client-side via GetAttributeChangedSignal on server-set attributes (no remotes), laid out with UIListLayout/UICorner, scale-based sizing, author_icon glyphs (heart/sword) tinted to the palette.",
+   "oracle": "VERIFY playtests: playtest_capture shows the HUD styled and legible at default resolution; taking damage from an NPC visibly drops the tweened bar and updates the numeric label (playtest_eval Health cross-check), swinging the equipped weapon drives the cooldown indicator through busy->ready, and the HUD survives a respawn without erroring (playtest_logs clean).",
+   "rationale": "gui is an untouched queued family and every existing rung produces player-invisible state (health, waves, cooldowns); a live-state HUD is the highest-leverage first ascent because it wires into real gameplay and is fully verifiable in a playtest, unlike a static main menu.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-battleaxe",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": false,
+   "brief": "Single-bladed battle axe ~3.5 studs: Cube-generated slender crescent head + textured haft, heavy timing profile (windup ~0.3s, high damage, long cooldown), upperBody chop clip with torso lead + HitFrame marker, grip fitted via guard-pose lab incl. behind-camera check.",
+   "oracle": "Playtest: equip, activate; ItemState walks windup->active->cooldown with the slower timings; a spawned NPC takes the higher damage exactly once per swing; capture confirms axe silhouette (crescent blade, distinct head vs haft) at hand-weapon scale.",
+   "rationale": "Proven family but all staged weapons are blades with similar timing; an axe adds a distinct silhouette AND the first heavy-timing archetype, exercising the behavior/animation seam differently.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-shieldbearer",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Melee enemy with a welded front shield and a 'blocking' AI state: frontal hits deal 25% damage, flank/rear hits full damage; animated idle/chase/block/attack/death clips per state; light silhouette + emissive eyes readable at gameplay distance.",
+   "oracle": "Playtest: hit it from the front and read Humanoid.Health delta (reduced), then from behind (full); NpcState attribute transitions idle->chase->block->attack observed via playtest_eval; death plays collapse sequence and kill counts on Humanoid.Died.",
+   "rationale": "Brute and skirmisher exist but no enemy punishes or rewards positioning; a directional-mitigation state is the smallest step that makes combat tactical, still inside the proven melee-enemy family.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "system-damage-feedback",
+   "category": "gui",
+   "family": "game-system",
+   "proven": false,
+   "brief": "Hit-feedback layer on the weapon Hit seam: limb-aware floating damage numbers (BillboardGui at the struck part), brief red tint flash on the struck limb, and a Kills leaderstat; client display driven by server-set attributes/events, no polling.",
+   "oracle": "Playtest: strike an NPC; playtest_capture shows a damage number billboard at the struck limb and the tint flash; leaderstats.Kills increments on the NPC's death; playtest_logs clean of errors across 3 consecutive swings.",
+   "rationale": "Every staged rung deals or takes damage yet nothing visualizes it - feedback is the highest-leverage missing layer, it upgrades EVERY existing and future weapon/enemy rung at once, and it fits the proven game-system family.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-scimitar",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": false,
+   "brief": "Curved single-edged scimitar built with the saved procedural-swept-blade generator: swept diamond-profile blade tapering to a true point, cross quillon guard + pommel, ~3 studs total, textured via co-authored UVs; toolified with fitted cross-carry grip, arm-only idle + 5-6 keyframe slash with torso lead, bind_behavior + bind_hitbox with HitFrame-marker-driven hit request.",
+   "oracle": "capture_angles confirms curved silhouette with apex point and quillons vs reference photos at hand-weapon scale; grip_tool captures pass side/front/behind-camera readability; playtest_start + playtest_act record shows idle->windup->active->cooldown ItemState transitions and a target dummy Humanoid loses exactly HitDamage HP once per swing (playtest_eval), zero errors in playtest_logs.",
+   "rationale": "Fills the only missing blade archetype in the proven melee-weapon family while exercising and hardening the saved procedural-swept-blade skill and all three weapons learnings (scale, apex/guard silhouette, reference-first).",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-leaper",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Light fast melee enemy with a telegraphed leap attack: high-contrast silhouette with emissive eyes (per npc learnings), Motor6D-jointed custom body, server AI extending make_npc's machine with a 'leap' state - crouch telegraph clip (~0.6s), BodyVelocity/AlignPosition lunge to the player, damage only on landing contact window, then a recovery cooldown; idle/chase/leap/attack/death clips played per state; death sequence (collapse clip, transparency tween, Died-first kill counting).",
+   "oracle": "playtest_start with the player in detect range: playtest_eval confirms NpcState walks idle->chase->leap->attack and player Health drops only during the landing window; playtest_capture shows the crouch telegraph is visually distinct; killing it logs the death sequence without errors and the model is destroyed after the tween (playtest_logs clean).",
+   "rationale": "The proven melee-enemy family has three walk-and-swing variants; a gap-closer with a readable telegraph is the highest-value behavioral extension and directly applies all four confirmed npc learnings before the factory attempts ranged enemies.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "system-health-pickup",
+   "category": "gui",
+   "family": "game-system",
+   "proven": false,
+   "brief": "Server-authoritative health pickup system: glowing orb parts (Neon sphere + PointLight + slow spin/bob via Heartbeat) spawned at arena points, on touch heal a damaged player +25 HP (reject full-health touches), despawn with a shrink tween + pickup sound, respawn on a 15s timer; expose remaining-pickup count via a Workspace attribute and a small HUD counter label driven by GetAttributeChangedSignal (per gui learning #1).",
+   "oracle": "playtest_start: playtest_eval damages the player then walks them onto an orb - Health increases by exactly 25, orb despawns and respawns after 15s (probed via workspace attribute timestamps); a full-health touch leaves the orb intact; HUD counter matches the attribute; playtest_logs error-free.",
+   "rationale": "Proven game-system family has waves/shop/feedback but no in-combat sustain loop; pickups complete the fight-heal-reposition core loop cheaply, are fully oracle-verifiable in playtest, and reuse the attribute-driven HUD pattern already confirmed in gui learnings.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-mace",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": false,
+   "brief": "One-handed flanged mace at 2.5-3 studs: Cube-generated head (flanged/knobbed, no edge) on a slender haft with pommel, paint/texture verified by capture from side+front+behind-camera; slow-heavy tuning (windup 0.25, active 0.15, cooldown 0.6, damage 40, reach 5) with a torso-led overhead swing clip (upperBody scope, HitFrame marker) and looped armed idle.",
+   "oracle": "Playtest: equip, activate; ItemState walks windup->active->cooldown with the tuned durations; a spawned dummy Humanoid within 5 studs loses exactly 40 HP once per swing and spam-clicks are rejected by the server cooldown; grip readability confirmed by behind-camera capture.",
+   "rationale": "Completes the melee archetype spread (blade/point/axe exist, blunt does not) and stress-tests grip fitting on a top-heavy silhouette using proven-family autonomy.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-berserker",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Melee enemy with a two-phase state machine: normal chase/attack, then at <40% HP an ENRAGE transition — emissive red glow on torso/eyes, WalkSpeed 12->18, attackCooldown 1.5->0.8, and a distinct faster attack clip; per-state idle/chase/attack/enrage/death animations on Motor6D joints, collidable HRP, light silhouette with accent limbs per npc learnings.",
+   "oracle": "Playtest: damage the NPC to 39% via playtest_eval; NpcState attribute flips to 'enrage', WalkSpeed and attack cadence change to the enraged values, glow parts turn Neon; kill it and verify the death sequence (collapse clip -> fade -> Destroy) with the kill counted on Humanoid.Died.",
+   "rationale": "Every staged enemy is a stat reskin of chase-and-hit; a mid-fight state transition adds the first real AI depth and exercises the per-state animation learning the family already confirmed.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "structure-watchtower",
+   "category": "environment",
+   "family": "building",
+   "proven": false,
+   "brief": "A ~20-stud 3-story wooden watchtower: Part frame with paint_texture planks (light base color per environment learning #1), internal stairs or ladder trusses a player can climb, top platform with railings and a Cube-generated brazier prop, readable at ClockTime 14-15 with accent point light only.",
+   "oracle": "Playtest: walk the character up to the top platform and playtest_eval its HRP Y-position exceeds the platform height (proves climbable collision); capture_angles 4 views + evaluate against the environment rubric for silhouette, texture read, and lighting.",
+   "rationale": "Opens the queued building family with a smaller, objectively-probeable first supervised ascent than structure-house — climbability is a hard oracle, not just a visual grade.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-glaive",
+   "category": "combat",
+   "family": "melee-weapon",
+   "proven": false,
+   "brief": "Two-handed glaive: slender 5-6 stud pole with a single-edged swept blade head (procedural-swept-blade skill at polearm scale), cross-carry grip verified from side/front/behind-camera, upperBody-scope horizontal ARC-SWEEP use clip with torso lead + follow-through (not a thrust), HitFrame marker driving a wide swept hitbox (reach ~10, arc coverage), behavior timings matched to the sweep contact.",
+   "oracle": "VERIFY: capture confirms blade silhouette + point and behind-camera readability; grip_tool loop passes; playtest record shows windup->active->cooldown ItemState sequence; playtest_eval confirms a target Humanoid positioned ~8 studs to the SIDE of the swing plane takes damage exactly once per activation and cooldown gates spam.",
+   "rationale": "Deepest proven family but every rung so far is a thrust or chop — an arc-sweep polearm adds a new animation archetype and a swept (not radial-point) hitbox, extending the melee-weapon factory's coverage.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-swarmling",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Pack enemy: small (~2.5 stud) fast low-HP (25) melee swarmling with a high-contrast emissive-eyed silhouette, spawned as a coordinated pack of 4-6 from one spawner script; each has Motor6D joints with idle/chase/attack/death clips played per NpcState, collidable HRP + tuned HipHeight, staggered pack spacing so they surround rather than stack, and full death sequence (collapse clip, transparency tween, Died-counted kill) at pack scale.",
+   "oracle": "VERIFY: playtest_eval confirms 4+ swarmlings spawn with distinct positions (no stacking), NpcState transitions idle->chase->attack on approach, each deals damage in range, and killing one fires Died + removes it while the rest keep chasing; playtest_capture confirms silhouettes read against the arena at distance.",
+   "rationale": "All five existing melee enemies are solo archetypes; a pack unit exercises multi-spawn AI coordination, group readability, and death cleanup at scale — the capabilities wave-based combat actually needs next.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "system-loot-drop",
+   "category": "combat",
+   "family": "game-system",
+   "proven": false,
+   "brief": "Kill-reward economy loop: server script listens for any NPC Humanoid.Died, spawns 1-3 glowing coin pickups (Neon part + PointLight + spin tween) at the corpse with a small scatter, magnetize-tweens them to the nearest player within 8 studs, increments leaderstats.Coins on touch with a collect sound, and despawns uncollected drops after 20s; drop table configurable via spawner Attributes (CoinMin/CoinMax/DropChance).",
+   "oracle": "VERIFY: playtest kills a test NPC via playtest_eval TakeDamage, confirms drops spawn at death position, walk the character near and assert leaderstats.Coins increments by the dropped amount, drops Destroy on collect, and a far-away uncollected drop despawns after timeout with no errors in playtest_logs.",
+   "rationale": "Shop and wave-rounds exist but nothing connects kills to currency — this rung closes the core kill->loot->spend economy loop and composes with every staged enemy and the shop system.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-charger",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "Melee enemy with a telegraphed charge attack: on detect it stops, faces the player, plays a 0.8s windup clip (lean-back pose, oversized emissive eyes flare, scrape sound), then dashes in a straight line at ~3x WalkSpeed dealing contact damage; a miss ends in a 1s self-stun. Readable light-on-dark silhouette per npc learnings; Motor6D-jointed with idle/windup/charge/stun clips played per AI state.",
+   "oracle": "playtest_start; playtest_eval asserts NpcState walks idle->windup->charging->(hit|stunned) with correct timings and that damage applies only during 'charging' contact; playtest_capture during windup shows the telegraph pose+eye flare; standing behind the spawn line during windup and stepping aside proves the charge is dodgeable (no damage).",
+   "rationale": "All six existing melee enemies are stat-variants of walk-and-swing; a movement-mechanic attacker adds the first positioning-based counterplay and a reusable 'telegraph state' pattern for future enemies.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "system-xp-levels",
+   "category": "npc",
+   "family": "game-system",
+   "proven": false,
+   "brief": "Server progression system: enemy Humanoid.Died awards XP to the killer's leaderstats, levels up at escalating thresholds, sets a Level player attribute, and fires a level-up moment (particle burst at the character + brief Gotham-styled banner driven by a client attribute listener, no remotes).",
+   "oracle": "playtest_start; kill a spawned NPC with an equipped weapon via playtest_act; playtest_eval asserts leaderstats.XP incremented and Level attribute rises when the threshold crosses; playtest_capture shows the level-up banner and burst; playtest_logs clean of errors.",
+   "rationale": "Systems cover waves/shop/pickups/loot but nothing rewards the player over time; XP/levels is the sink that makes every existing and future combat rung compound in value.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "gui-death-respawn-screen",
+   "category": "gui",
+   "family": "gui",
+   "proven": false,
+   "brief": "Client ScreenGui that fades in on Humanoid.Died: dark overlay, Gotham-font 'YOU DIED' title, session kill count read from workspace attributes via GetAttributeChangedSignal, and a live respawn countdown; fades out on CharacterAdded. Intentional hierarchy/spacing per the gui rubric, tweened transitions, no remotes.",
+   "oracle": "playtest_start; playtest_eval sets the character's Health to 0; playtest_capture proves the overlay is visible with correct title, kill count, and counting-down number; after respawn a second capture proves it fully faded out; logs error-free across two death cycles.",
+   "rationale": "The gui family has zero completed ascents and its existing proposals (main-menu, combat-hud) are large; a single-screen, event-driven GUI is the tight, verifiable first rung the queued family needs.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-crossbow",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "Build a held crossbow Tool (Cube mesh, slender stock + limbs + string, ~3.5 studs, save_mesh'd) that fires a server-authoritative bolt projectile on activate: windup(draw)->fire->cooldown(reload) via bind_behavior, a fast raycast/fastcast bolt that TakeDamages the first Humanoid hit, arm-only draw+fire clips bound so it reads. Bar: bolt visibly travels, damages at range (>40 studs), reload gate blocks spam, grip reads correctly from the behind-camera.",
+   "oracle": "playtest_start; equip; aim at a spawned make_npc dummy; activate; playtest_eval reads the dummy Humanoid.Health dropping only after the bolt arrives and only within range; confirm cooldown rejects rapid re-fire; capture the in-hand grip from behind.",
+   "rationale": "Ranged is queued with no staged rung; a projectile weapon is the natural first ascent atop the proven melee behavior/hitbox seam and unlocks the whole ranged family.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "vfx-impact-burst",
+   "category": "combat",
+   "family": "vfx",
+   "proven": false,
+   "brief": "A reusable impact-VFX module: on a weapon's Hit/StateChanged=='active' seam, spawn a short-lived ParticleEmitter burst (sparks + a flash quad) at the struck limb, a subtle screen-relative hit-flash, and a fading impact decal, all cleaned up via Debris. Bar: burst fires ONCE per hit at the contact point, colored per material, gone within ~0.4s with no leaked instances.",
+   "oracle": "playtest_start; hit a dummy; playtest_eval counts active ParticleEmitters/Parts before+after to prove the burst spawns at the hit point and is fully cleaned up (<=baseline) within 0.5s; playtest_capture shows the spark flash on contact.",
+   "rationale": "VFX has a full rubric+guide but ZERO rungs; impact feedback multiplies the perceived quality of every already-staged weapon and enemy, and opens the uncovered VFX domain cheaply.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "env-cover-arena",
+   "category": "environment",
+   "family": "environment",
+   "proven": false,
+   "brief": "A playable combat arena dressed for cover-based fighting: a bounded floor with painted-texture ground, 6-10 waist/chest-high cover blocks and low walls in a readable layout, crates/barrels (generate_mesh) as props, a lit perimeter, and crafted lighting (Atmosphere + warm key, ClockTime ~14). Bar: silhouettes read from player eye height, cover is collidable and player-scaled (~3-4 studs tall), interior stays readable (not pitch-black).",
+   "oracle": "capture_angles from eye height confirms cover reads and layout is legible; playtest_start + walk to confirm cover is collidable and blocks line-of-fire; playtest_eval checks lighting Ambient/ClockTime match the readable-interior learning.",
+   "rationale": "Environment is queued and thin; a concrete dressed arena de-risks the family's first ascent AND gives every staged weapon/enemy a real space to fight in, applying the existing environment learnings (readable interiors, palette-first texturing).",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "system-hit-juice",
+   "category": "combat",
+   "family": "game-system",
+   "proven": false,
+   "brief": "A combat game-feel system: on any registered hit, apply brief hit-stop (scaled timescale dip ~0.06s), a decaying camera shake on the attacker's client, and a directional hitspark VFX at the struck limb, all driven off the existing Hit BindableEvent seam. Bar: strikes feel weighty and readable without altering damage numbers; shake magnitude scales with damage and never induces motion sickness (clamped, eased out).",
+   "oracle": "VERIFY playtests: equips a melee weapon, hits an NPC, and confirms via playtest_eval that a timescale dip occurred and recovered, a shake state ran on the client, and a hitspark instance spawned at the contact limb then cleaned up; asserts damage values are unchanged.",
+   "rationale": "Highest game-feel leverage per build effort; combat rungs are mature but nothing converts hits into screen-level feedback. Proven game-system family so it ships autonomously today and every future weapon/enemy inherits the juice.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-melee-slammer",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "A telegraphed heavy melee enemy: chases, then at attack range enters a visible WINDUP (rear-back pose + growing ground AoE warning decal ~0.8s) before a committed slam that deals high damage in a radius, followed by a punishable recovery window where it stands exposed. Bar: the telegraph is unmistakable and dodgeable, the slam has real reach + knockback, and mis-timed slams leave it open — a read-and-react fight, not a DPS check.",
+   "oracle": "VERIFY playtests: spawns the slammer, lets it enter attack range, and asserts via playtest_eval the state sequence chase->windup->slam->recovery with correct durations, that the warning decal appears during windup, that standing in the AoE at slam frame takes damage while leaving it before the frame does not, and that a recovery window exists where its attack is on cooldown.",
+   "rationale": "Every existing enemy is a straight chaser; a telegraphed committed attacker introduces the dodge-and-punish skill loop that makes combat depth. Proven melee-enemy family, autonomous today, and it stresses the hitbox/AoE + AI-state seams for future ranged/boss rungs.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "structure-defense-core",
+   "category": "environment",
+   "family": "building",
+   "proven": false,
+   "brief": "A destructible objective the player defends: a built 'core' structure (crystal/generator, layered mesh + emissive) with a Health attribute that takes damage when enemies reach it, shows staged visual damage (progressive cracks/darkening/tilt + shake at low health), emits a HUD-readable state, and fires a lose condition at 0 HP. Bar: reads as a valuable objective at a glance, damage states are visually distinct, and it turns the wave system into a defend-the-core mode.",
+   "oracle": "VERIFY playtests: reads the core's Health attribute, drives it down via playtest_eval simulating enemy contact, and asserts the visual damage state changes at thresholds, a state attribute updates for the HUD, and reaching 0 fires the documented lose-condition event exactly once.",
+   "rationale": "Buildings so far are inert props (house, watchtower); an interactive objective with health+states is the missing piece that gives waves a WIN/LOSE stake. Spans building+game-system, making it an ideal supervised first-ascent that unlocks a real game mode.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-longbow-projectile",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "A held longbow that fires a real traveling arrow projectile: slender curved-limb bow + string authored via generate_mesh/save_mesh at ~4-stud hand scale, draw-to-fire behavior (windup=nock/draw, active=release), and a server-authoritative arrow that spawns at the bow, travels along aim with gravity, and TakeDamage's the first Humanoid it hits once. Idle=bow-lowered hold clip, use=draw-and-release arm-only clip. Bar: readable bow silhouette from the behind-camera, visible arrow flight, one clean hit per shot.",
+   "oracle": "playtest_start, equip + activate, playtest_eval to confirm a projectile part spawns and travels (position delta over frames), and that a target rig's Humanoid.Health drops exactly once per shot; playtest_logs clean; capture the drawn-bow pose from the behind view.",
+   "rationale": "First ascent of the ranged family — the entire combat loop is melee-only. Proves projectile spawn+travel+hit netcode that every ranged enemy and future gun reuses; maximum structural leverage.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "env-combat-arena-dressed",
+   "category": "environment",
+   "family": "environment",
+   "proven": false,
+   "brief": "Dress the fight space into a real place: bounded arena floor with paint_texture stone/tile (base color set to light tone first), perimeter walls/pillars, generate_mesh man-made props (crates, barrels, braziers) + author_mesh rock/pine organics for cover and silhouette, and crafted lighting (Atmosphere + warm key + restrained post, ClockTime 14-15, Ambient>=100 so it stays readable). Bar: cohesive palette, layered depth, cover that reads at gameplay distance, no pitch-black zones.",
+   "oracle": "use_rubric/use_build_guide environment then evaluate against the environment rubric to a passing tier; capture_angles the arena from 4+ sides to confirm palette cohesion, readable cover, and no black zones; verify props survive with save_mesh.",
+   "rationale": "First ascent of the environment/building family — every fight happens in an undressed box. Unblocks the whole environment domain and my confirmed environment learnings (grout base-color, interior readability, black-texture pitfall) apply directly.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "anim-combat-locomotion-set",
+   "category": "npc",
+   "family": "animation",
+   "proven": false,
+   "brief": "A reusable standalone locomotion+idle animation set authored on an R15 rig: a breathing idle loop and a walk/run cycle built as keypose flip-books (pose_joint/ik_reach per keypose, add_keyframe, full-body scope), with proper weight shift, contralateral arm swing, and foot contacts. Bar: motion reads as alive (no rigid slide), reviewed as a capture_animation filmstrip end-to-end, exportable via export_animation.",
+   "oracle": "capture_animation the idle and walk clips as filmstrips and confirm weight shift + arm/leg contralateral timing + foot contacts across frames; list_clip confirms keyframe count/length; evaluate against the locomotion rubric to a passing tier.",
+   "rationale": "First ascent of the animation family — animation only exists today as per-item bound clips. A standalone locomotion pipeline feeds every NPC and character rung and unblocks autonomous animation production.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-throwing-axe",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "A hand-thrown axe Tool: slender bearded-axe mesh (generate_mesh + save_mesh, ~3-stud, verified silhouette), fitted grip, an idle+throw arm-only clip pair, and on activate a server-authoritative projectile Part that spawns at the hand, arcs under gravity, rotates in flight, and on Humanoid contact deals damage once + sticks/despawns; server enforces per-throw cooldown and validates the request (client-request->server-execute).",
+   "oracle": "playtest_start, equip + activate, playtest_eval the spawned projectile's position over frames to confirm it travels/arcs, confirm a target NPC's Humanoid.Health drops exactly once per throw and cooldown rejects spam, and playtest_capture shows the axe leaving the hand.",
+   "rationale": "First true ranged ascent: reuses the proven weapon mesh/grip/behavior pipeline but adds the new projectile spawn/travel/hit seam the ranged family needs, unblocking bow/crossbow later.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-telegraphed-heavy",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "A melee enemy whose attack is TELEGRAPHED: on entering attack state it plays a distinct wind-up clip (raised weapon, ~0.6s) with a ground warning decal/VFX under the target, THEN commits the strike on the HitFrame marker; if the player leaves range during wind-up the swing whiffs. Light-silhouette body with oversized emissive eyes per npc learnings, Motor6D joints, idle/chase/windup/strike/death clips.",
+   "oracle": "playtest_start, aggro the enemy, playtest_eval NpcState transitions (chase->windup->strike) and confirm the warning VFX appears during windup only; verify a player who dodges out during windup takes 0 damage while one who stays takes the hit; capture the wind-up pose reads clearly.",
+   "rationale": "Opens the queued animation family via a real gameplay use (telegraphs) and makes every enemy fairer/more readable — a fighting-game-grade upgrade over instant attacks, built on proven melee-enemy infra.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "env-destructible-cover",
+   "category": "environment",
+   "family": "environment",
+   "proven": false,
+   "brief": "A cluster of destructible barrels/crates (generate_mesh man-made props + save_mesh) placed as arena cover, each with a health attribute; when destroyed by the player's weapon hitbox it plays a shatter VFX burst (fragment parts + dust particle emitter), removes the prop, and has a chance to drop a health pickup. Server-authoritative destruction with a StateChanged/Hit seam.",
+   "oracle": "playtest_start, attack a barrel until its health hits 0, playtest_eval confirms the prop Instance is destroyed and (on a forced roll) a health pickup spawns; playtest_capture shows the shatter fragments + dust; verify a non-destroyed barrel still blocks/exists.",
+   "rationale": "Under-covered interactive-environment domain; ties environment+vfx+game-system into one testable rung and adds tactical cover + reward loops to the arena the combat content already fills.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-throwing-javelin",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "A thrown javelin/spear tool: slender Cube-generated shaft+point (save_mesh), armed idle + overhand throw clips, and on activate spawns a SERVER-authoritative projectile (a welded mesh part with a BodyVelocity/LinearVelocity + Touched hit) that arcs, sticks or despawns, and TakeDamages the first non-wielder Humanoid it hits. Bar: readable in-hand from the behind-camera, visible arc, one hit = one damage application, cooldown-gated.",
+   "oracle": "playtest_start, equip + activate, playtest_eval to confirm a projectile part spawns server-side and travels (position delta over time), an NPC dummy loses Health exactly once per throw, and no double-hit; playtest_logs clean of errors.",
+   "rationale": "Ranged-weapon is queued but never ascended — a thrown projectile is the smallest real projectile (client-request→server-spawn→travel→hit) that opens the entire ranged domain without full draw-cycle complexity.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-ranged-archer",
+   "category": "npc",
+   "family": "ranged-enemy",
+   "proven": false,
+   "brief": "A stationary/kiting archer NPC: readable light silhouette with emissive eyes, Motor6D idle/aim/fire/death clips, server AI state machine idle→acquire→telegraph(draw)→fire a server projectile at the player's position→cooldown, that backpedals if the player closes to melee range. Bar: visible aim telegraph before every shot, projectile leads toward the player, dies via the standard collapse-then-Destroy sequence counted on Humanoid.Died.",
+   "oracle": "playtest_start, playtest_eval the NpcState cycles idle→telegraph→fire on a cooldown, confirm a projectile spawns and moves toward the player each fire, the player's Health can drop from a hit, and the death sequence runs once; logs clean.",
+   "rationale": "Symmetric partner to the javelin — gives ranged weapons something to fight and is the ranged-enemy family's first ascent, reusing the proven server-AI seam with a new telegraph+projectile behaviour.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-boss-two-phase",
+   "category": "npc",
+   "family": "melee-enemy",
+   "proven": false,
+   "brief": "A larger elite boss reusing the proven melee-brute AI but with a HEALTH-GATED phase machine: Phase1 normal chase+attack; at <=50% HP it plays a roar transition, then Phase2 raises WalkSpeed/damage and adds a telegraphed slam special on a longer cooldown (windup VFX ring → active AoE around it). Distinct oversized silhouette, phase-colored emissive accents, collapse-then-Destroy death counted on Humanoid.Died.",
+   "oracle": "playtest_start, damage it below 50% via playtest_eval TakeDamage and confirm NpcPhase flips 1→2 exactly once with the WalkSpeed/damage change applied, the slam special fires only in Phase2 on its cooldown and only damages inside its reach, and the kill counts once; logs clean.",
+   "rationale": "melee-enemy is proven but only single-behaviour brutes exist — a phase-gated boss raises the ceiling of the proven family (state transitions, specials, AoE telegraph) without leaving safe territory, and gives the wave system a capstone encounter.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "vfx-melee-impact-kit",
+   "category": "combat",
+   "family": "vfx",
+   "proven": false,
+   "brief": "A reusable hit-VFX kit that fires on any weapon's active-window Hit event: a directional spark burst (ParticleEmitter one-shot), a Beam/Trail swoosh on the blade during the swing, a brief per-hit camera shake, and a hitstop micro-freeze; palette-driven and pooled so it layers onto existing melee weapons without per-weapon code. Bar: spark reads at 5-stud character scale, trail follows the blade arc, shake is a short decaying impulse (not a lurch), no orphaned emitters after a hit.",
+   "oracle": "Playtest: equip an existing weapon, activate into an NPC, and VERIFY via playtest_logs/eval that the Hit BindableEvent spawns emitters that self-clean (no growing instance count), the camera CFrame perturbs then settles, and playtest_capture shows a visible spark+trail at contact.",
+   "rationale": "vfx has a full rubric but only one rung staged; a pooled impact kit multiplies the perceived quality of every melee weapon already in the factory and seeds the queued vfx family.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "enemy-ranged-caster",
+   "category": "npc",
+   "family": "ranged-enemy",
+   "proven": false,
+   "brief": "A ranged enemy NPC that keeps distance and lobs a telegraphed projectile: server AI states idle->reposition (maintain a preferred range band)->wind-up (visible cast telegraph + emissive charge)->fire (spawn a traveling projectile that TakeDamages on hit)->recover, plus a death sequence. Bar: light silhouette against the arena with oversized emissive eyes, a readable 0.6-1s telegraph before every shot, projectile is dodgeable at walking speed, animates per state.",
+   "oracle": "Playtest: spawn the caster, stand in range, and VERIFY via playtest_eval that NpcState cycles idle/reposition/windup/fire/recover, a projectile instance spawns on fire and applies damage on hit, the telegraph precedes the shot by the configured window, and it strafes to hold range instead of touching the player.",
+   "rationale": "The melee-enemy family is deep but ranged enemies are nearly absent; a spacing-based caster forces the combat loop to cover kiting/dodging and is the first supervised ascent of the queued ranged-enemy family.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "gui-wave-results-screen",
+   "category": "gui",
+   "family": "gui",
+   "proven": false,
+   "brief": "A between-waves results/summary ScreenGui driven by the wave-rounds system: shows wave number cleared, kills, damage dealt/taken, time, and a countdown to the next wave, with a styled panel (dark Gotham UI, UIListLayout rows, animated count-up numbers and a fill bar). Bar: reads instantly, numbers tween up, responsive via scale-based UDim2, and it appears/dismisses on the round-state transition without remotes racing.",
+   "oracle": "Playtest: clear a wave and VERIFY the panel appears on the state transition, populates from server-set Workspace attributes read via GetAttributeChangedSignal, the count-up completes, and the countdown dismisses it before the next wave; playtest_capture confirms layout/alignment/contrast.",
+   "rationale": "The wave-rounds system is proven and staged repeatedly but has no player-facing payoff screen; a results GUI closes that feedback loop and advances the queued gui family off the proven system's attributes (matching the learned attribute-driven HUD pattern).",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "anim-hit-react-death-set",
+   "category": "combat",
+   "family": "animation",
+   "proven": false,
+   "brief": "Author a layered reaction animation set on an R15 template: a quick flinch (Action3 priority, upper-body scope so it layers under attacks), a directional knockback stagger, and a death collapse clip; server AI plays flinch on TakeDamage and collapse on Humanoid.Died before cleanup.",
+   "oracle": "VERIFY plays each clip via capture_animation filmstrip confirming flinch layers under a swing without canceling it, and a playtest confirms an enemy visibly flinches on hit and collapses (not vanishes) on death.",
+   "rationale": "Animation is a queued family with no proven ascent; combat learnings #6/npc #3-4 already demand layered hit-react and a death sequence, so this rung is the highest-value first step and directly upgrades every existing enemy.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-throwing-spear-projectile",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "Build a thrown spear: slender Cube mesh + save_mesh, make_tool, arm-only wind-up/throw clips, and on activate spawn a server-authoritative projectile that travels with gravity arc, raycasts for hits, deals damage on the struck limb, and sticks or despawns on impact.",
+   "oracle": "VERIFY playtests that activating throws a visible projectile that arcs, travels, and reduces a target dummy's Health on hit via server logs; capture confirms the in-flight spear silhouette reads correctly.",
+   "rationale": "Ranged-weapon is queued with only unbuilt proposals; a real projectile pipeline (spawn/travel/raycast/impact) is the core capability that unlocks the entire ranged domain enemies already await.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "gui-combat-juice-feedback",
+   "category": "gui",
+   "family": "gui",
+   "proven": false,
+   "brief": "Client-side combat feedback layer: floating damage numbers that spawn at the hit position and tween up+fade, a crosshair hitmarker that flashes on a confirmed hit, and a short camera-kick screen shake — all driven by the existing Hit BindableEvent / a damage RemoteEvent, styled dark/Gotham.",
+   "oracle": "VERIFY playtests hitting an enemy and playtest_capture confirms a damage number appears and rises, the hitmarker flashes, and the camera kicks; get_output shows no runtime errors.",
+   "rationale": "Combines the under-covered gui+vfx feedback domains into player-facing juice that multiplies perceived quality of every weapon already staged, with a clean event-driven hook into existing combat infrastructure.",
+   "proposedBy": "forever-author"
+  },
+  {
+   "id": "weapon-flintlock-pistol",
+   "category": "combat",
+   "family": "ranged-weapon",
+   "proven": false,
+   "brief": "A single-shot ranged sidearm: Cube-meshed slender flintlock/pistol (save_mesh, verify silhouette by capture before toolify), fitted grip (guard-pose lab, verify from behind-camera), arm-only idle + raise-and-fire use clips bound at correct windup/active timing, muzzle-flash VFX + tracer, and a server-authoritative projectile (travel time, gravity-optional, per-hit cooldown, TakeDamage on the struck Humanoid once). Bar: reads as a real firearm at gameplay distance, fires on activate with muzzle flash + audible report, projectile visibly travels and damages the enemy.",
+   "oracle": "playtest: equip, activate facing an NPC, playtest_eval the projectile spawns + travels + NPC Health drops exactly once per shot; confirm cooldown gate rejects spam; capture the muzzle flash + in-hand silhouette from the behind view.",
+   "rationale": "The entire ranged-weapon family is queued and never ascended, blocking bow/crossbow rungs; a projectile firearm is the cleanest first ascent and adds the combat dimension melee saturation can't.",
+   "proposedBy": "forever-author"
+  }
+ ]
 }

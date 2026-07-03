@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: 'ItemState 0.00:idle -> 0.06:windup -> 0.11:active -> 0.26:cooldown -> 0.58:idle [tool=Falchion w=0.1 a=0.12 c=0.3]' (tool name + w/a/c config match). Damage logs: '[VerifyTarget] HIT damage=30 hitcount=1', '[VerifyTarget] HIT damage=30 hitcount=2', '[VerifyTarget] HIT damage=30 hitcount=3' — 3 swings, each exactly 30 damage (matches configured damage=30) once per swing. No artifact errors. playtest_eval unavailable (loadstring off) but dummy self-print supplied the readout as designed."
+ },
+ "reasons": [
+  "State machine progresses idle->windup->active->cooldown->idle and echo names tool=Falchion with w=0.1 a=0.12 c=0.3 matching config",
+  "Every swing dealt exactly 30 damage (configured) once per activation across 3 swings",
+  "No errors referencing the Falchion artifact"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 30,
+   "reach": 6
+  },
+  "steps": [
+   "Parked Spear+Dagger from StarterPack into ServerStorage",
+   "generate_mesh a falchion (broad curved single-edged clip-point blade, 3.6 studs) and captured to confirm silhouette",
+   "save_mesh to make the blade durable (survives Play)",
+   "make_tool with the hilt as Handle, moved Tool into StarterPack",
+   "bind_behavior windup 0.10 / active 0.12 / cooldown 0.30 (fast swing)",
+   "bind_hitbox damage 30 / reach 6 / cooldown 0.30 (short reach, moderate damage)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept: a medieval falchion — broad single-edged curved cleaver blade widening to a clip point, cross guard + round pommel, unlike the prior spear/dagger. Cube-generated + save_mesh'd for an above-primitive silhouette (verified by one front/right capture). Toolified with Handle at the hilt, placed in StarterPack. Fast-swing behavior (0.10/0.12/0.30) with a short-reach moderate-damage hitbox (30 dmg, 6 studs, 0.30s server cooldown)."
+ },
+ "stagedAt": 1783087427.8810441,
+ "headless": true
+}

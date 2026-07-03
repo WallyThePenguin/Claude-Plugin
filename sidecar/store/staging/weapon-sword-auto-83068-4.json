@@ -1,0 +1,39 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Attributes: BehaviorWindup=0.1 BehaviorActive=0.12 BehaviorCooldown=0.3 HitDamage=28 HitReach=6. Record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.10:active -> 0.26:cooldown -> 0.54:idle [tool=Falchion w=0.1 a=0.12 c=0.3]'. Damage logs: '[VerifyTarget] HIT damage=28.000 hitcount=1', '[VerifyTarget] HIT damage=28.000 hitcount=2', '[VerifyTarget] HIT damage=28.000 hitcount=3' across 3 swings; no errors mentioning the artifact."
+ },
+ "reasons": [
+  "Record oracle: state machine idle->windup->active->cooldown->idle with echoed tool name 'Falchion' and config w=0.1 a=0.12 c=0.3 matching the build",
+  "Damage oracle: exactly 28.000 damage recorded once per swing (hitcount 1->2->3), matching configured damage=28",
+  "No runtime errors referencing the artifact; playtest_eval was loadstring-disabled but the self-printing probe supplied the damage readout via logs as designed"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 28,
+   "reach": 6
+  },
+  "steps": [
+   "Parked Spear+Dagger from StarterPack into ServerStorage",
+   "generate_mesh a falchion (pointed cleaver blade, crossguard, wrapped grip, round pommel) at ~4 studs",
+   "capture_angles confirmed sword silhouette",
+   "save_mesh -> durable asset 79942995401738",
+   "make_tool (Handle at grip), moved Tool into StarterPack",
+   "bind_behavior windup0.1/active0.12/cooldown0.3 (fast swing)",
+   "bind_hitbox damage28/reach6/cooldown0.3 (short reach, moderate)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a falchion (single broad forward-weighted blade) distinct from prior daggers/spears/scimitars. Generated via Cube generate_mesh, verified silhouette with one capture, persisted with save_mesh so it survives Play. Toolified with grip as Handle, placed in StarterPack. Fast-swing behavior (0.1/0.12/0.3) and short-reach moderate-damage hitbox (28 dmg, 6 studs, 0.3s server cooldown). Scoped build: no animation clips or extra systems."
+ },
+ "stagedAt": 1783084312.012136,
+ "headless": true
+}

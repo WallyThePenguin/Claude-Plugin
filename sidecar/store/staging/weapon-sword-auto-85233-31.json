@@ -1,0 +1,34 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 28,
+   "reach": 7
+  },
+  "steps": [
+   "Parked existing StarterPack tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a medieval falchion (broad single-edged cleaver blade widening to tip, crossguard, wrapped grip, round pommel)",
+   "Captured to confirm distinct falchion silhouette at ~4-stud hand scale",
+   "save_mesh to make the mesh+texture durable (survives Play)",
+   "make_tool with the mesh as Handle, moved Tool into StarterPack",
+   "bind_behavior fast swing (windup 0.1 / active 0.12 / cooldown 0.3), then bind_hitbox (damage 28, reach 7, cooldown 0.3)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a falchion — a broad, forward-widening single-edged cleaver-blade sword, distinct from prior straight swords/dagger/spear. Cube-generated + saved durable, toolified with hilt Handle. Fast swing timings (0.1/0.12/0.3) with moderate 28 damage over a short 7-stud reach and 0.3s server-authoritative cooldown."
+ },
+ "stagedAt": 1783094648.4795327,
+ "headless": true
+}

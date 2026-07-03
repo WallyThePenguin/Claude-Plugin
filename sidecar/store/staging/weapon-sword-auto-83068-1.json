@@ -1,0 +1,38 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: 'ItemState 0.00:idle -> 0.05:windup -> 0.11:active -> 0.26:cooldown -> 0.57:idle [tool=Falchion w=0.1 a=0.12 c=0.3]'; damage logs: '[VerifyTarget] HIT damage=25 hitcount=1', '[VerifyTarget] HIT damage=25 hitcount=2', '[VerifyTarget] HIT damage=25 hitcount=3'; attributes BehaviorWindup=0.1 BehaviorActive=0.12 BehaviorCooldown=0.3 HitDamage=25 HitReach=7; no artifact errors in logs"
+ },
+ "reasons": [
+  "Record echo names tool=Falchion with config w=0.1 a=0.12 c=0.3 exactly matching the build, and state machine transitions idle->windup->active->cooldown->idle",
+  "Three swings each dealt exactly the configured 25 damage, once per swing (hitcount 1,2,3), verified via the self-measuring god-mode VerifyTarget's printed HIT lines",
+  "No errors mentioning the artifact appeared in playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 25,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a one-handed falchion (single-edged cleaver blade, crossguard, wrapped grip, round pommel) at 3.6 studs",
+   "Captured front+right to confirm a clean above-primitive sword silhouette",
+   "save_mesh to persist mesh+texture as durable assets (survives Play)",
+   "make_tool with the mesh as Handle, moved Tool into StarterPack",
+   "bind_behavior windup0.1/active0.12/cooldown0.3 (fast swing), bind_hitbox damage25/reach7/cooldown0.3"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a falchion (broad single-edged curved cleaver blade) distinct from prior daggers/spears/scimitars. Cube-generated mesh at hand scale (3.6 studs), saved durable, wrapped as a Tool with the hilt as Handle. Fast-swing behavior machine (0.1/0.12/0.3s) feeds a 7-stud, 25-damage server-authoritative hitbox on the active window with a 0.3s anti-spam cooldown."
+ },
+ "stagedAt": 1783083279.2565434,
+ "headless": true
+}

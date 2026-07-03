@@ -1,0 +1,37 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "God-mode logger baked into StarterCharacterScripts logged '[GodMode] active' at spawn. Player positioned 8 studs from StoneGolemBrute (DetectRange=22, AttackRange=7). Waited ~33s (>15 attack cooldowns of 2.2s). playtest_logs since 0 returned ONLY: '#1 [warning] [GodMode] active', StudioAgent bootstrap lines — NO '[PlayerHit] damage=' lines at all. Three playtest_captures over 33s show the golem never moved from its idle position (glowing eyes static bottom-left) and the round 'GET READY — the Husks are coming' banner never cleared. NpcAI is self-driven (ReplicatedStorage.StudioAgentRuntime.NpcAI: nearest-player perception -> decide idle/chase/attack -> strike with TakeDamage(NpcDamage)) and HRP is unanchored, yet the enemy neither chased nor struck. Oracle (state=attack in range + player losing configured damage per cooldown) NOT met: zero damage dealt. playtest_eval unavailable (loadstring disabled) as expected — readout relied on the god-mode log, which recorded no hits."
+ },
+ "reasons": [
+  "No '[PlayerHit] damage=' log lines after ~33s and >15 attack cooldowns with the player 8 studs away — the enemy never dealt the configured 45 damage (no hits = never attacked = FAIL)",
+  "Three captures over 33s show the golem never moved from idle and never closed to attack range on the stationary god-mode player",
+  "The round intro 'GET READY' phase never cleared and the self-driven NpcAI produced zero chase/attack activity, so the oracle (state=attack in range, player losing damage per cooldown) was never satisfied"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 45,
+   "walkSpeed": 6,
+   "detectRange": 22,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "reshaped into a wide stone-golem brute: bulked torso/limbs, dark slate head, shoulder boulders, neon molten cracks + glowing eyes with point lights",
+   "moved to clear z=40 spot and captured front+iso to confirm above-blob silhouette",
+   "make_npc damage=45 speed=6 detect=22 attackRange=7 cooldown=2.2",
+   "verified Humanoid/HRP/NpcAI + all Npc attributes"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-enemy: a Stone Golem Brute. Started from a native R15 block rig, resized parts to a squat wide construct, painted Slate/Rock stone with neon molten cracks, shoulder boulders, and glowing molten eyes (PointLights). Confirmed the shaped silhouette via one capture. Wrapped with make_npc for a slow high-damage short-detect brute: 45 dmg, WalkSpeed 6, detect 22, attackRange 7, cooldown 2.2s. Server-authoritative NpcAI idle->chase->attack->dead; NpcState=idle at rest, HRP collidable."
+ },
+ "stagedAt": 1783099196.096103,
+ "headless": true
+}

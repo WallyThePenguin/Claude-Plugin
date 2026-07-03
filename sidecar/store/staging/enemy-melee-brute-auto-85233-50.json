@@ -1,0 +1,35 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolor all parts Slate stone-grey, darker torso/head",
+   "bulk up torso/arms/legs and shrink head into a hulking brute silhouette",
+   "weld neon ember eyes + moss shoulder accents for gameplay-distance readability",
+   "verify geometry (bbox 4.8x5.4) + colors via reads (capture showed selection-tint)",
+   "make_npc damage40 detect24 attackRange7 cooldown2.5 speed6",
+   "verify NpcAI Script + attributes + collidable HRP"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Stone Golem Brute: a hulking Slate-material rock golem, distinct from prior husk-style brutes. Started from spawn_rig block R15, recolored every part to stone-grey (darker torso/head), scaled the torso/arms/legs up and head down for a heavy silhouette, and welded neon ember eyes plus moss shoulder plates so it reads at distance. make_npc configured it as a slow high-damage short-detect brute (40 dmg / speed 6 / detect 24 / attackRange 7 / cooldown 2.5). Verified config, NpcAI Script, idle state, and collidable HRP by reading attributes back."
+ },
+ "stagedAt": 1783100865.6218302,
+ "headless": true
+}

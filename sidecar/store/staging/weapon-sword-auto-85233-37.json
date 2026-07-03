@@ -1,0 +1,35 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 22,
+   "reach": 5
+  },
+  "steps": [
+   "Parked Spear+Dagger from StarterPack into ServerStorage",
+   "generate_mesh a single-edged curved falchion; scaled to ~3.6-stud sword; captured silhouette (round pommel, wrapped grip, straight crossguard, curved blade)",
+   "save_mesh -> durable asset 119900697686804",
+   "make_tool with the mesh as Handle",
+   "Moved Tool into StarterPack",
+   "bind_behavior windup0.10/active0.12/cooldown0.30 (fast swing)",
+   "bind_hitbox damage22/reach5/cooldown0.4"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion: a Cube-generated single-edged curved cleaver blade (distinct from prior straight swords/daggers/spears), persisted via save_mesh so the Handle survives Play. make_tool used the single mesh as the Handle at the hilt. Fast-swing behavior (0.10/0.12/0.30) with a short-reach (5) moderate-damage (22) server-authoritative hitbox. No animation bound (out of scope for this rung)."
+ },
+ "stagedAt": 1783096715.1751573,
+ "headless": true
+}

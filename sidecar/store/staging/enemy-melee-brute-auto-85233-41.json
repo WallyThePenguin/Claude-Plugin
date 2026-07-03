@@ -1,0 +1,36 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Logs: '#1 [warning] [GodMode] armed' then NO further lines across ~26s (>10 cooldowns of 2.5s); playtest_logs since=3 returned 'no new log lines' twice. Zero '[PlayerHit] damage=' lines. NpcState read from play-server DataModel = 'idle' at t~18s AND t~26s (never chase/attack); golem stayed at HRP (0,5,-36), health 100. Config attrs correct: NpcDamage=40, NpcDetectRange=24, NpcAttackRange=7, NpcAttackCooldown=2.5, WalkSpeed=6. Player 'lsoggymuhaha' spawned ~8 studs away (spawn z=-44, golem z=-36) well inside DetectRange 24; capture shows player alone on spawn pad with 'GET READY the Husks are coming' intro and no enemy engaging. NpcAI launcher + ReplicatedStorage.StudioAgentRuntime.NpcAI present but AI never transitioned out of idle. playtest_eval unavailable (loadstring disabled) — relied on god-mode log per approach."
+ },
+ "reasons": [
+  "Enemy never attacked: zero [PlayerHit] damage lines logged over ~26s / 10+ attack cooldowns despite god-mode player spawning ~8 studs away inside DetectRange 24",
+  "NpcState stayed 'idle' the entire test (never chase/attack); golem never moved from (0,5,-36) — oracle (state=attack + player losing configured damage per cooldown) never satisfied"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 24,
+   "attackRange": 7,
+   "cooldown": 2.5
+  },
+  "steps": [
+   "spawn_rig block R15",
+   "recolored to light stone (Slate) body + dark basalt wide arms, bulked torso/arms, added oversized emissive orange core eyes",
+   "made HRP collidable, confirmed visual via one capture",
+   "make_npc damage=40 speed=6 detect=24 attackRange=7 cooldown=2.5",
+   "verified NpcAI Script + attributes present, state=idle"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh melee-enemy concept: a hunched Stone Golem Brute. Started from spawn_rig, gave it a shaped above-blob silhouette (broad light-stone torso/legs, wide dark basalt arms for limb contrast, glowing orange core eyes per npc learning). Ensured collidable HumanoidRootPart + tuned HipHeight so it won't sink. make_npc wired server AI idle->chase->attack->dead with the brief's slow/high-damage/short-detect config. Verified all attributes and the AI script exist."
+ },
+ "stagedAt": 1783098022.281652,
+ "headless": true
+}

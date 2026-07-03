@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo: ItemState 0.00:idle -> 0.05:windup -> 0.11:active -> 0.26:cooldown -> 0.57:idle [tool=Falchion w=0.1 a=0.12 c=0.3]. Damage logs: [VerifyTarget] HIT damage=30.000 hitcount=1 / hitcount=2 / hitcount=3 across 3 swings (once per swing). No errors mentioning Falchion."
+ },
+ "reasons": [
+  "Tool name 'Falchion' and echoed config w=0.1 a=0.12 c=0.3 match the build config exactly",
+  "State machine fired idle->windup->active->cooldown->idle on record",
+  "Each of 3 swings dealt exactly 30.000 damage, incrementing hitcount once per swing (no double-hit, no miss)",
+  "No runtime errors referencing the artifact"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 30,
+   "reach": 6
+  },
+  "steps": [
+   "Parked Spear+Dagger tools from StarterPack into ServerStorage",
+   "generate_mesh a falchion (single-edge curved cleaver blade, crossguard, wrapped grip, round pommel) at 3.4 studs",
+   "capture_angles to confirm the sword silhouette",
+   "save_mesh to persist the mesh+texture as durable owned asset",
+   "make_tool 'Falchion' (single MeshPart = Handle at the hilt), moved into StarterPack",
+   "bind_behavior windup 0.1 / active 0.12 / cooldown 0.3 (fast swing)",
+   "bind_hitbox damage 30 / reach 6 / cooldown 0.3 (short reach, moderate damage)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept vs prior artifacts: a falchion — broad single-edged cleaver-sword with a curved belly widening toward the tip. Cube-generated + save_mesh'd for an above-primitive silhouette, verified by capture before toolifying. Single MeshPart becomes the Handle gripped at the wrapped hilt. Fast-swing behavior machine (0.1/0.12/0.3) drives the active window; short-reach 6-stud, 30-damage server-authoritative hitbox fires once per swing on that window."
+ },
+ "stagedAt": 1783088163.4649384,
+ "headless": true
+}

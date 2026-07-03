@@ -1,0 +1,44 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.OnslaughtDirector",
+  "config": {
+   "systemName": "Onslaught",
+   "params": {
+    "configModule": "game.ReplicatedStorage.OnslaughtConfig",
+    "rounds": 3,
+    "model": "credit-director",
+    "tiers": [
+     "grunt",
+     "brute"
+    ],
+    "stateAttributes": [
+     "OnslaughtRound",
+     "OnslaughtAlive",
+     "OnslaughtState"
+    ]
+   }
+  },
+  "steps": [
+   "Read existing RoundLoop to ensure distinctness (it uses a linear wave list + gate-blocked TestAutoKill)",
+   "Authored ReplicatedStorage.OnslaughtConfig: Arena ring geo, enemy Tiers with credit costs, and Rounds as credit BUDGETS with maxAlive cap + trickle cadence + tier weights",
+   "Authored ServerScriptService.OnslaughtDirector: per-round the director trickle-spends the credit budget, spawning affordable weighted tiers from a golden-angle ring while under the concurrency cap",
+   "Round clears when budget spent AND field empty; live count tracked via Humanoid.Died / AncestryChanged (player kills only)",
+   "Prints [Onslaught] tagged lifecycle: system start, breather, round start, each spawn, budget spent, round CLEARED, VICTORY",
+   "Verified both modules compile, EnemyTemplate has a Humanoid, and no gate-blocked auto-kill symbols present"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a spawn-CREDIT DIRECTOR (not a flat wave list). Each round is a credit budget the director trickle-spends, picking weighted affordable enemy tiers (grunt/brute) from a ring under a concurrency cap. A round advances only when the budget is exhausted AND the field is clear, so player combat drives progression; VICTORY prints after the final round. Config-driven via ReplicatedStorage.OnslaughtConfig; state exposed on Workspace attributes OnslaughtRound/OnslaughtAlive/OnslaughtState. No auto-kill hook."
+ },
+ "stagedAt": 1783100267.0946002,
+ "headless": true
+}

@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "ItemState 0.00:idle -> 0.05:windup -> 0.15:active -> 0.26:cooldown -> 0.57:idle [tool=Gladius w=0.12 a=0.12 c=0.3]; [VerifyTarget] HIT damage=20 hitcount=1; HIT damage=20 hitcount=2; HIT damage=20 hitcount=3"
+ },
+ "reasons": [
+  "record echo names tool=Gladius with w=0.12 a=0.12 c=0.3 matching config exactly",
+  "3 swings produced exactly 3 hit lines each with damage=20 (configured value), one per swing",
+  "tool attributes BehaviorWindup/Active/Cooldown/HitDamage/HitReach all match config",
+  "no runtime errors referencing the artifact in playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 6
+  },
+  "steps": [
+   "Parked Spear and Dagger from StarterPack into ServerStorage",
+   "generate_mesh gladius short sword (3.2 studs) — distinct profile: straight tapered double-edged blade, cross guard, ribbed grip, round pommel",
+   "Captured front angle to confirm silhouette reads as a sword",
+   "save_mesh persisted the mesh to durable asset 76887949513353",
+   "make_tool -> Tool 'Gladius' (single MeshPart Handle), moved to StarterPack",
+   "bind_behavior windup 0.12 / active 0.12 / cooldown 0.30 (fast swing)",
+   "bind_hitbox damage 20 / reach 6 / cooldown 0.30"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Gladius short sword: Cube-generated mesh (slender straight blade prompt per combat learnings), 3.2 studs tall so it sits at hand-weapon scale vs the 5-stud character. Verified silhouette with one capture, persisted via save_mesh before toolifying so it survives Play. make_tool wrapped the single MeshPart as Handle; fast-swing state machine 0.12/0.12/0.30 and server-authoritative hitbox (20 dmg, 6-stud reach, 0.3s cooldown). Distinct from staged spear/dagger/scimitar artifacts."
+ },
+ "stagedAt": 1783079334.6484857,
+ "headless": true
+}

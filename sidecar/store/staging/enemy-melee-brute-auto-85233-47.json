@@ -1,0 +1,39 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "God-mode logger baked into StarterCharacterScripts; golem repositioned to (0,6,-36) ~8 studs from SpawnLocation (0,0.5,-44), inside DetectRange 22. Config confirmed via attributes: NpcDamage=40, NpcDetectRange=22, NpcAttackRange=7, NpcAttackCooldown=2.2, WalkSpeed=5. Playtest logs: '#1 [GodMode] active maxHealth=100' then EXACTLY ONE '#4 [PlayerHit] damage=40', with NO further hit lines across ~30s (~13 cooldown windows). playtest_eval unavailable (loadstring disabled) as anticipated. playtest_capture shows the golem (nametag StoneGolemBrute) standing directly adjacent to the player within attack range during a persistent 'GET READY - the Husks are coming' intermission; the enemy strikes once for the correct 40 damage then never attacks again. No errors mentioning the artifact.",
+  "capture": "golem point-blank next to player, single 40-damage hit only, sustained per-cooldown attack loop absent"
+ },
+ "reasons": [
+  "Damage magnitude correct (40 = configured) on the ONE hit landed",
+  "Oracle requires player losing configured damage PER COOLDOWN (repeated 2.2s strikes); only ONE [PlayerHit] damage=40 observed in ~30s despite golem standing point-blank in attack range - the enemy does not sustain attacks",
+  "Attack loop appears gated by round 'GET READY' intermission state, but regardless of cause the observed behavior fails the oracle's per-cooldown damage requirement"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 5,
+   "detectRange": 22,
+   "attackRange": 7,
+   "cooldown": 2.2
+  },
+  "steps": [
+   "spawn_rig block -> renamed StoneGolemBrute",
+   "Recolored to light Slate stone (light body, dark accent lower limbs) for readability",
+   "Shaped above-blob: neon glowing chest core + PointLight, two boulder ball shoulders, oversized emissive eyes on dark head",
+   "Moved rig to clear ground (0,6,60) and confirmed silhouette with one capture_angles",
+   "make_npc damage=40 speed=5 detect=22 attackRange=7 cooldown=2.2",
+   "Verified attributes, WalkSpeed, collidable HRP, and NpcAI script"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh 'Stone Golem Brute' melee-enemy: bulky Slate rig with neon chest core, boulder shoulders, glowing eyes. make_npc gives it server AI idle->chase(MoveTo<=22)->attack(40dmg/2.2s within 7). Slow (WalkSpeed 5), high-damage, short detect — matches the slow high-damage brief. Distinct from prior artifacts by concept (stone golem), palette, and silhouette."
+ },
+ "stagedAt": 1783099971.9421911,
+ "headless": true
+}

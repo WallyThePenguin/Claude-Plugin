@@ -1,0 +1,39 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.VanguardSiege",
+  "config": {
+   "systemName": "VanguardSiege",
+   "params": {
+    "waves": 3,
+    "spawnModel": "threat-budget",
+    "gates": 4,
+    "archetypes": [
+     "grunt",
+     "runner",
+     "brute"
+    ],
+    "burstSpawning": true
+   }
+  },
+  "steps": [
+   "Created ReplicatedStorage.VanguardConfig ModuleScript: threat-budget waves + archetype cost/stat table + 4 cardinal gate angles",
+   "Created ServerScriptService.VanguardSiege Script: budget->roster builder, staggered burst spawn across rotating gates, registry-based wave-clear via Humanoid.Died/removal, victory print",
+   "Disabled the pre-existing ServerScriptService.RoundLoop so only VanguardSiege drives waves",
+   "Verified both scripts compile and roster builder terminates/composes per wave via run_luau"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct RoundLoop-family system 'VanguardSiege': each wave spends a THREAT BUDGET across weighted enemy archetypes (grunt/runner/brute) rather than a fixed count, releasing them in staggered bursts through 4 cardinal spawn gates. Wave-cleared is detected from a live enemy registry counting REAL deaths (Humanoid.Died + model removal), so clearing requires player combat. No auto-kill/test hook (gate-blocked). Prints [Vanguard] tags for start, intermission, each spawn, wave clear, and VICTORY. Reuses ServerStorage.EnemyTemplate (has NpcAI). Parked nothing; disabled RoundLoop (Disabled=true) as a reversible edit."
+ },
+ "stagedAt": 1783098453.493671,
+ "headless": true
+}

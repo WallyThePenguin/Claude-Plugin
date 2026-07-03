@@ -1,0 +1,38 @@
+{
+ "rung": "enemy-melee-brute",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "NpcAI attributes match config: NpcDamage=40, WalkSpeed=6, NpcDetectRange=20, NpcAttackRange=7, NpcAttackCooldown=2. Golem repositioned to (0,3.7,-36), 8 studs from SpawnLocation (0,0.5,-44), inside detectRange. Playtest logs: '[GodMode] active' then ~24 consecutive '[PlayerHit] damage=40' warnings over ~10s (2s cooldown), e.g. #5-#28 all 'damage=40'. No errors mentioning StoneGolemBrute/NpcAI. Enemy detected+chased+attacked the stationary god-mode player dealing exactly the configured 40 damage per cooldown."
+ },
+ "reasons": [
+  "Enemy attacked the stationary player from 8 studs (within detectRange 20) with no map traversal needed",
+  "Every [PlayerHit] line reports damage=40, matching configured damage exactly, once per ~2s cooldown",
+  "No runtime errors referencing the artifact; NpcAI attributes match the config verbatim"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneGolemBrute",
+  "config": {
+   "damage": 40,
+   "walkSpeed": 6,
+   "detectRange": 20,
+   "attackRange": 7,
+   "cooldown": 2.0
+  },
+  "steps": [
+   "spawn_rig block R15 -> renamed StoneGolemBrute",
+   "recolored all parts Slate stone gray with darker accent limbs",
+   "scaled torso/arms/hands up + head/legs down for heavy brute silhouette",
+   "added neon core ball + glowing eyes + PointLight",
+   "capture_angles front+iso to confirm above-blob shape",
+   "make_npc damage40 speed6 detect20 attackRange7 cooldown2.0"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept: a Stone Golem brute, distinct from prior husk/melee variants. Built from a native R15 block rig, recolored Slate gray with a bulked torso, oversized blocky fists, stubby legs, and an emissive orange chest core + eyes for readability. make_npc wired server AI (idle->chase->attack->dead) with high damage (40), low speed (6), short detect range (20), attackRange 7, cooldown 2.0s. HRP is collidable so it doesn't sink. NpcState attribute tracks state for VERIFY."
+ },
+ "stagedAt": 1783088375.8155444,
+ "headless": true
+}

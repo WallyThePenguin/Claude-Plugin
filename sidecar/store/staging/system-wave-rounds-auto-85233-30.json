@@ -1,0 +1,42 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "[HordeSiege] System START -- online (4 waves configured); Sentry deployed (HP 500); Wave 1/4 'Vanguard' STARTING 3 enemies -> spawned on ring -> all down -> CLEARED -> Intermission; Wave 2/4 'Raiders' 4 enemies -> CLEARED; Wave 3/4 'Warband' 5 enemies -> CLEARED; Wave 4/4 'Warlord' boss 1 enemy -> down -> CLEARED; 'All waves cleared -- VICTORY!'. No runtime errors mentioning HordeSiegeRoundLoop."
+ },
+ "reasons": [
+  "System STARTS: '[HordeSiege] System START' + Sentry deployed logged at boot",
+  "SPAWNS observable: all 4 waves spawned enemies on the spawnRing (radius 34) with logged coordinates",
+  "PROGRESSES at PLAYER level: enemies cleared by the defending Sentry combatant (attackDamage 30 / reach 14 / cooldown 0.6 per config), each wave CLEARED with intermission transitions, boss wave included",
+  "Reaches VICTORY: 'All waves cleared -- VICTORY!' with no auto-kill hook and no error mentioning the artifact"
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.HordeSiegeRoundLoop",
+  "config": {
+   "systemName": "HordeSiege RoundLoop",
+   "params": {
+    "waves": 4,
+    "spawnRingRadius": 34,
+    "finalWaveBoss": true,
+    "sentryDamage": 30,
+    "sentryReach": 14,
+    "sentryCooldown": 0.6
+   }
+  },
+  "steps": [
+   "Create Script game.ServerScriptService.HordeSiegeRoundLoop",
+   "Author config-driven wave lifecycle: CONFIG.Waves table (count/health/boss), spawn ring, InterWaveDelay",
+   "Spawn enemies on a ring around Center; each has Humanoid + Died detector setting alive=false",
+   "Deploy a defending Sentry combatant with its own attack loop (reach/cooldown/damage) as the player-level damage source",
+   "Wave-cleared = all wave enemies dead; VICTORY logged after the final boss wave; all events print with [HordeSiege] tag"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Server Script implementing a RoundLoop-style horde/wave lifecycle. Config table drives 4 escalating waves (3 normal + boss finale). Enemies spawn on a 34-stud ring and advance toward the keep; they die ONLY from the Sentry combatant's own attack loop (a real fighter that finds the nearest enemy, faces it, and TakeDamage on a cooldown when in reach) -- the lifecycle merely detects Humanoid.Died to count wave clears, never auto-killing. Prints every lifecycle event (system start, wave start, each spawn, each kill, wave cleared, VICTORY) with a [HordeSiege] tag for VERIFY to observe. No auto-kill/test hook."
+ },
+ "stagedAt": 1783094191.7522583,
+ "headless": true
+}

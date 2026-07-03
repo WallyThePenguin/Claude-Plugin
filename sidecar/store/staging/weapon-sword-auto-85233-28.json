@@ -1,0 +1,35 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.28,
+   "damage": 22,
+   "reach": 6
+  },
+  "steps": [
+   "Parked existing StarterPack Tools (Spear, Dagger) into ServerStorage",
+   "generate_mesh a slender falchion (single-edged forward-curved cleaver blade, crossguard, wrapped grip, round pommel), 3.6 studs",
+   "Captured right+iso angles to confirm the sword silhouette",
+   "save_mesh to persist the mesh+texture as durable owned assets",
+   "make_tool with the mesh as Handle -> StarterPack.Falchion",
+   "bind_behavior windup 0.10 / active 0.12 / cooldown 0.28 (fast swing)",
+   "bind_hitbox damage 22 / reach 6 / cooldown 0.28 (short reach, moderate damage)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion one-handed sword. Visual = generate_mesh (Cube) falchion profile, saved durable via save_mesh (asset 108238499207328). Toolified with the single blade MeshPart as Handle, moved to StarterPack. Fast-swing behavior state machine (windup 0.1 / active 0.12 / cooldown 0.28) and server-authoritative hitbox (22 dmg, 6-stud reach, 0.28 cooldown) bound on top. Grip fitting and animation left to later rungs per scope."
+ },
+ "stagedAt": 1783093594.235809,
+ "headless": true
+}

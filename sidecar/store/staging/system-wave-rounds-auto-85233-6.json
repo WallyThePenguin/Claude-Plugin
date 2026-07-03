@@ -1,0 +1,47 @@
+{
+ "rung": "system-wave-rounds",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "playtest_logs since 0: '[Siege] SYSTEM START — Escalation Siege online' / '[Siege] Wave 1 START — Vanguard (2 enemies, ring 36)' / '[Siege] Spawn Brute_W1_1 at ring (alive=1)' / '[Siege] Spawn Brute_W1_2 at ring (alive=2)'. Client capture: HUD 'GET READY — the Husks are coming', Brute_W1_1 & Brute_W1_2 nametags at full green health, player holding Spear. After ~50s (walk/activate driving + settle waits), playtest_logs since=7 returned 'no new log lines (cursor=7)' repeatedly — NO enemy death, NO 'Wave CLEARED', NO Intermission, NO VICTORY, no state transition. Enemies never approached the player and remained at full health; player was wedged in a wall corner (camera capture = brown wall blur). playtest_eval/loadstring unavailable. No runtime error mentioned the artifact.",
+  "capture": "enemies alive at full health, no progression logged"
+ },
+ "reasons": [
+  "System START and enemy SPAWN are observable and error-free, but the oracle's required PROGRESSION (a wave clearing, next wave beginning, or a state transition) was NEVER observed in the ~50s window — logs stayed frozen at the spawn point (cursor=7).",
+  "Wave-clear depends on player combat killing enemies; the brutes never closed distance to the player and no Humanoid.Died fired, so no lifecycle advancement past spawn could be confirmed.",
+  "Skeptic rule: cannot PASS on START+SPAWN alone when the stated progression criterion is unmet; the unmanned playtest did NOT reproduce the ORACLE's claimed clear-to-VICTORY behavior."
+ ],
+ "artifactTrace": {
+  "path": "game.ServerScriptService.EscalationSiege",
+  "config": {
+   "systemName": "EscalationSiege",
+   "params": {
+    "waves": 4,
+    "waveNames": [
+     "Vanguard",
+     "Onslaught",
+     "Breach",
+     "Last Stand"
+    ],
+    "intermissionSeconds": 3,
+    "spawnStagger": 0.35,
+    "escalatingRing": true
+   }
+  },
+  "steps": [
+   "Created Script game.ServerScriptService.EscalationSiege",
+   "Authored config-driven wave table (count/health/walkSpeed/ringRadius per wave)",
+   "Self-contained brute factory (Humanoid+HRP+Head, no auto-kill)",
+   "Spawn ring places enemies around arena center; ring tightens each wave",
+   "Wave-clear detected via Humanoid.Died decrementing alive count",
+   "VICTORY printed after final wave; all lifecycle events tagged [Siege]"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Config-driven RoundLoop-family system: Config.Waves lists escalating waves. runSiege waits for a player, then per wave prints START, spawns brutes on a tightening spawn ring (staggered), and each brute chases the nearest player so combat happens. Enemies die ONLY from real player damage via Humanoid.Died, which decrements the alive count; at 0 the wave fires CLEARED. After the last wave it prints VICTORY. All events log with the [Siege] tag; no auto-kill/test hook."
+ },
+ "stagedAt": 1783087128.2417648,
+ "headless": true
+}
