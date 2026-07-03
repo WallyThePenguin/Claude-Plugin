@@ -1,0 +1,20 @@
+{
+ "entries": [
+  {
+   "bucket": "weapons",
+   "id": 1,
+   "text": "After CreateMeshPartAsync, sanity-check part.Size against the 5-stud character BEFORE judging looks: hand weapons belong at ~2.5-4 studs total; the first procedural scimitar shipped at 9.6 studs (double player height) and read as absurd.",
+   "localId": 1,
+   "createdAt": 1783057795
+  },
+  {
+   "bucket": "weapons",
+   "id": 2,
+   "text": "A generated blade only reads as a blade with a converging apex point, thin cross-section (thickness well under width), and a distinct guard+pommel breaking the hilt silhouette; a thick rounded shaft with a blunt tip reads phallic.",
+   "localId": 2,
+   "createdAt": 1783057796
+  }
+ ],
+ "seq": 2,
+ "category": "weapons"
+}
