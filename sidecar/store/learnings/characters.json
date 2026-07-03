@@ -1,20 +1,27 @@
 {
- "seq": 2,
- "category": "characters",
  "entries": [
   {
-   "id": 1,
-   "localId": 1,
    "bucket": "characters",
-   "createdAt": 1783053768,
-   "text": "Real-world reference meshes ingest programmatically: CC0 .glb -> sidecar /assets/mesh (pure-python glTF parser) -> EditableMesh AddVertex/AddTriangle -> CreateMeshPartAsync -> save_mesh; glTF is METERS so scale ~x3 to studs; study the import for proportions/silhouette then build ORIGINALS - never ship non-CC0 expression."
+   "id": 1,
+   "text": "Real-world reference meshes ingest programmatically: CC0 .glb -> sidecar /assets/mesh (pure-python glTF parser) -> EditableMesh AddVertex/AddTriangle -> CreateMeshPartAsync -> save_mesh; glTF is METERS so scale ~x3 to studs; study the import for proportions/silhouette then build ORIGINALS - never ship non-CC0 expression.",
+   "localId": 1,
+   "createdAt": 1783053768
   },
   {
-   "id": 2,
-   "localId": 2,
    "bucket": "characters",
-   "createdAt": 1783053768,
-   "text": "Sourcing rule: MECHANICS from any game are fair to study and recreate (L4D director pacing, Souls telegraphs, RoR2 spawn credits - systems are not expression); ART/models/names/audio only from CC0/owned sources; Cube for man-made props, ingestion pipeline or author_mesh for the rest."
+   "id": 2,
+   "text": "Sourcing rule: MECHANICS from any game are fair to study and recreate (L4D director pacing, Souls telegraphs, RoR2 spawn credits - systems are not expression); ART/models/names/audio only from CC0/owned sources; Cube for man-made props, ingestion pipeline or author_mesh for the rest.",
+   "localId": 2,
+   "createdAt": 1783053768
+  },
+  {
+   "bucket": "characters",
+   "id": 3,
+   "text": "Claude cannot BE a mesh diffusion model (no 3D training; token-emitting vertices is incoherent) but it BEATS diffusion at PROCEDURAL geometry: author parametric generators (swept profiles, lathes, tapers) as code over EditableMesh - deterministic, editable, art-directable; each generator is permanent compounding capital. Profile axes matter: sweep in one plane, put the cross-section on the OTHER two axes or the mesh is paper-flat (check part.Size before capturing).",
+   "localId": 3,
+   "createdAt": 1783056260
   }
- ]
+ ],
+ "seq": 3,
+ "category": "characters"
 }

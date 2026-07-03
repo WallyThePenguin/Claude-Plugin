@@ -1,0 +1,5 @@
+{
+ "description": "Parametric curved-blade generator (scimitar family): swept diamond profile along an arc with taper, via EditableMesh",
+ "name": "procedural-swept-blade",
+ "body": "Claude-authored generator - adapt parameters or the sweep path for new families (horns, tusks, curved staffs):\n1. Profile ring: 4 verts (spine +Z t, side +X w, edge -Z t, side -X w) placed via cf:PointToWorldSpace - cross-section MUST be on the two axes NOT used by the sweep plane.\n2. Handle: N straight rings along +Y (small radius).\n3. Blade: sweep along an arc (radius R, angle A): pos = base * CFrame.new(cos(a)*R - R, sin(a)*R, 0), frame = pos * Angles(0,0,a); taper w,t toward a near-zero tip ring.\n4. Skin ring pairs with quads (2 tris each, consistent winding), cap the base.\n5. CreateMeshPartAsync -> CHECK part.Size for a degenerate axis -> capture -> iterate parameters -> save_mesh when approved.\nDefault params: segments 24, curveRadius 9, curveDeg 70, bladeWidth 0.55, bladeThick 0.09, handleLen 1.1. Scale down curveRadius+handleLen for a hand weapon."
+}
