@@ -135,7 +135,7 @@ def main():
     fails += _check("build prompt names the rung", "weapon-spear" in loop.prompts[0])
     fails += _check("weapon playbook drives build", "make_tool" in loop.prompts[0] and "bind_hitbox" in loop.prompts[0])
     fails += _check("verify prompt is the skeptic", "SKEPTIC" in loop.prompts[1])
-    fails += _check("weapon verify is the damage probe", "TargetDummy" in loop.prompts[1])
+    fails += _check("weapon verify uses the god-mode target", "VerifyTarget" in loop.prompts[1] and "GOD-MODE" in loop.prompts[1])
 
     # --- a NON-weapon rung uses the visual playbook (build anything) ---
     loop = FakeLoop([
@@ -149,7 +149,7 @@ def main():
     st = _wait(r)
     fails += _check("building rung completes", st["state"] == "done" and st["status"] == "PASSED")
     fails += _check("building build prompt is a Model, not a Tool", "Model" in loop.prompts[0] and "make_tool" not in loop.prompts[0])
-    fails += _check("building verify uses references (visual)", "get_references" in loop.prompts[1] and "TargetDummy" not in loop.prompts[1])
+    fails += _check("building verify uses references (visual)", "get_references" in loop.prompts[1] and "VerifyTarget" not in loop.prompts[1])
     fails += _check("building staged as its own id", ("staging", "house-cottage") in store)
 
     # --- playbook resolution: family, category fallback, default ---
