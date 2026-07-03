@@ -147,6 +147,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, gamesync.read_game())
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
+        if parsed.path == "/assets/mesh":
+            try:
+                import meshio
+
+                return self._json(200, meshio.read_reference_mesh(qs.get("file", [""])[0]))
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
         return self._json(404, {"error": "not found"})
 
     def _store_parts(self, path: str):
