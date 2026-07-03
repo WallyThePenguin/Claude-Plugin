@@ -37,10 +37,25 @@ class Store:
     def put_result(self, command_id: int, result: dict):
         with self._lock:
             self._results[int(command_id)] = result
+            # Bounded: raw-mode results can be multi-MB (base64 captures) and describe results
+            # carry the proxy key — never let them pin sidecar RAM for the process lifetime.
+            while len(self._results) > 50:
+                del self._results[min(self._results)]
 
     def get_result(self, command_id: int):
         with self._lock:
             return self._results.get(int(command_id))
+
+    def pop_result(self, command_id: int):
+        """Take a result and REMOVE it (the loop runner's consume path — keeps big raw results
+        and the key-bearing describe result out of the long-lived map)."""
+        with self._lock:
+            return self._results.pop(int(command_id), None)
+
+    def requeue(self, command: dict):
+        """Put a taken command back in the slot unchanged (id preserved)."""
+        with self._lock:
+            self._pending = command
 
     def set_logs(self, lines: list):
         with self._lock:

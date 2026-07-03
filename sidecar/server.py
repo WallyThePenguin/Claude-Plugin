@@ -22,6 +22,8 @@ POST /store/<kind>/<id>  <json body>                      -> {"ok":true}   (atom
 DELETE /store/<kind>/<id>                                 -> {"ok":true,"existed":bool}
 GET  /runtime                                             -> {"version":N,"modules":{name:source}}  (runtime/ library)
 GET  /references?query=<q>&count=N                        -> {"references":[{title,license,author,source,media_type,image(b64)}...]}
+POST /loop {"prompt":str, "maxIterations"?:int}           -> {"id":N}  (sidecar-side agent loop; 409 if one is running)
+GET  /loop/status                                         -> the current/last loop's status
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -32,6 +34,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import agent_loop
 import capture
 import exemplars
 import game as gamesync
@@ -40,6 +43,7 @@ from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
+LOOP = agent_loop.LoopRunner(agent_loop.BridgeCaller(STORE))
 SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
 RUNTIME_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runtime")
 
@@ -166,6 +170,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
+        if parsed.path == "/loop/status":
+            return self._json(200, LOOP.status())
         return self._json(404, {"error": "not found"})
 
     def _store_parts(self, path: str):
@@ -216,8 +222,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/agent":
             kind = body.get("kind")
-            if kind not in ("tool", "luau", "prompt"):
-                return self._json(400, {"error": "kind must be tool|luau|prompt"})
+            if kind not in ("tool", "luau", "prompt", "describe"):
+                return self._json(400, {"error": "kind must be tool|luau|prompt|describe"})
+            # The command queue is a SINGLE SLOT: while a sidecar loop runs, an external
+            # submission would clobber the loop's in-flight command (silent 240s stall +
+            # a false bridge-timeout fed to the model) — fence it off.
+            if LOOP.status().get("state") == "running":
+                return self._json(
+                    409,
+                    {"error": "a sidecar loop run is active — /agent is fenced while it runs "
+                     "(single-slot queue); watch GET /loop/status"},
+                )
             return self._json(200, {"id": STORE.submit(body)})
         if parsed.path == "/agent/result":
             cid = body.get("id")
@@ -255,6 +270,19 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
             return self._json(200, {"ok": True})
+        if parsed.path == "/loop":
+            try:
+                run_id = LOOP.start(
+                    body.get("prompt"),
+                    body.get("maxIterations"),
+                    body.get("model"),
+                )
+            except agent_loop.LoopError as exc:
+                code = 409 if "already running" in str(exc) else 400
+                return self._json(code, {"error": str(exc)})
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
+            return self._json(200, {"id": run_id})
         if parsed.path == "/game/write":
             try:
                 result = gamesync.write_game(

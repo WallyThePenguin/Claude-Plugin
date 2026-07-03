@@ -163,6 +163,19 @@ local function handleCommand(deps: any, cmd: any)
 	local banner = runContextBanner()
 	if kind == "tool" then
 		local content, isError = Tools.dispatch(tostring(cmd.tool), cmd.input, toolContext(deps))
+		if cmd.raw == true then
+			-- Raw mode (the sidecar-side loop runner): post the tool's content UNSERIALIZED —
+			-- a string, or the structured blocks array (text + base64 images) exactly as the
+			-- in-Luau loop would hand it to the model. The banner rides as a separate field so
+			-- the runner can prepend it as a text block.
+			postResult(deps, cmd.id, {
+				ok = not isError,
+				isError = isError,
+				content = content,
+				banner = banner,
+			})
+			return
+		end
 		postResult(deps, cmd.id, {
 			ok = not isError,
 			result = banner .. DevBridge.serializeContent(content),
@@ -214,6 +227,29 @@ local function handleCommand(deps: any, cmd: any)
 			reply = banner .. result.reply,
 			tools = result.tools,
 			error = result.error,
+		})
+	elseif kind == "describe" then
+		-- Everything the sidecar-side loop runner needs to BE the agent loop: the composed
+		-- operating instructions (identical to what runLoop sends as the leading preamble),
+		-- the full tool schema list, and the model/proxy settings. Localhost-only channel —
+		-- the proxy key never leaves this machine.
+		postResult(deps, cmd.id, {
+			ok = true,
+			instructions = AgentLoop.composeInstructions(
+				deps.systemPrompt,
+				deps.memory,
+				deps.skills,
+				deps.rubrics,
+				deps.buildGuides,
+				deps.learnings
+			),
+			tools = Tools.schemas(deps.config),
+			baseUrl = deps.config:getBaseUrl(),
+			proxyKey = deps.config:getProxyKey(),
+			model = deps.config:getModel(),
+			maxTokens = deps.config:getMaxTokens(),
+			maxIterations = deps.config:getMaxIterations(),
+			imagesKept = deps.config:getImagesKept(),
 		})
 	else
 		postResult(deps, cmd.id, { ok = false, error = "unknown command kind: " .. kind })

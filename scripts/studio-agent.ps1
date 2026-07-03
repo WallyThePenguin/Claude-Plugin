@@ -7,6 +7,8 @@
 #   .\studio-agent.ps1 reload                          hot-reload the plugin (no Studio restart)
 #   .\studio-agent.ps1 play start|stop|eval|capture|act <arg>   drive a self-running playtest
 #   .\studio-agent.ps1 capture [outfile.png]
+#   .\studio-agent.ps1 run '<task>' [maxIterations]    sidecar-side agent loop (brain in Python, Studio = hands)
+#   .\studio-agent.ps1 status                          the current/last loop run's status
 param(
     [Parameter(Mandatory = $true)][string]$Command,
     [string]$Arg1,
@@ -87,5 +89,39 @@ switch ($Command) {
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($r.images[0]))
         "saved $out"
     }
-    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|play|capture)" }
+    "run" {
+        $payload = @{ prompt = $Arg1 }
+        if ($Arg2) { $payload.maxIterations = [int]$Arg2 }
+        try {
+            $r = Invoke-RestMethod -Method Post -Uri "$base/loop" -Body ($payload | ConvertTo-Json -Compress) -ContentType "application/json"
+        } catch {
+            $detail = try { ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch { $_.Exception.Message }
+            "run REFUSED: $detail"; break
+        }
+        "loop started (id=$($r.id)) - polling status (Ctrl+C detaches; the loop keeps running)"
+        $lastIter = -1; $lastEvents = 0
+        while ($true) {
+            Start-Sleep -Seconds 2
+            $st = Invoke-RestMethod -Method Get -Uri "$base/loop/status"
+            if ($st.iteration -ne $lastIter) { "[iter $($st.iteration)] tools=$($st.toolCalls)"; $lastIter = $st.iteration }
+            # recent is a rotating 6-cap; diff on the monotonic events counter, not Count.
+            $ev = if ($st.events) { [int]$st.events } else { 0 }
+            if ($ev -gt $lastEvents -and $st.recent) {
+                $new = [Math]::Min($ev - $lastEvents, $st.recent.Count)
+                $st.recent | Select-Object -Last $new | ForEach-Object { "  > $_" }
+            }
+            $lastEvents = $ev
+            if ($st.state -eq "done") { "--- result ---"; $st.result; break }
+            if ($st.state -eq "error") { "LOOP ERROR: $($st.error)"; break }
+        }
+    }
+    "status" {
+        try {
+            $st = Invoke-RestMethod -Method Get -Uri "$base/loop/status"
+            $st | ConvertTo-Json -Depth 5
+        } catch {
+            "status FAILED: $($_.Exception.Message) (a 404 means the running sidecar predates /loop - restart it from source)"
+        }
+    }
+    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|play|capture|run|status)" }
 }

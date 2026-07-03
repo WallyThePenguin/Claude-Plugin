@@ -29,6 +29,41 @@ export type Callbacks = {
 	shouldCancel: (() -> boolean)?,
 }
 
+-- The full operating instructions for a send: base system prompt + memory + the skills/rubrics/
+-- build-guide catalogs + priority learnings. Single source of truth — used by runLoop below AND
+-- by the dev bridge's `describe` command (the sidecar-side loop runner rebuilds the same preamble).
+function AgentLoop.composeInstructions(
+	systemPrompt: string?,
+	memory: any,
+	skills: any,
+	rubrics: any,
+	buildGuides: any,
+	learnings: any
+): string
+	local instructions = systemPrompt or ""
+	local function append(block: string)
+		if block ~= "" then
+			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
+		end
+	end
+	if memory ~= nil then
+		append(memory:promptBlock())
+	end
+	if skills ~= nil then
+		append(skills:catalogBlock())
+	end
+	if rubrics ~= nil then
+		append(rubrics:catalogBlock())
+	end
+	if buildGuides ~= nil then
+		append(buildGuides:catalogBlock())
+	end
+	if learnings ~= nil then
+		append(learnings:promptBlock())
+	end
+	return instructions
+end
+
 local function runLoop(
 	anthropic: any,
 	config: any,
@@ -135,37 +170,8 @@ local function runLoop(
 	-- (MessageUtil.withSystemPreamble), and `system` is OMITTED. The preamble is rebuilt per send and is
 	-- NOT stored in conversation.messages, so history, persistence, rollback, and compaction are all
 	-- unaffected. `instructions` (base prompt + recalled memory) is composed once per Send here.
-	local instructions = systemPrompt or ""
-	if memory ~= nil then
-		local block = memory:promptBlock()
-		if block ~= "" then
-			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
-		end
-	end
-	if skills ~= nil then
-		local cat = skills:catalogBlock()
-		if cat ~= "" then
-			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
-		end
-	end
-	if rubrics ~= nil then
-		local cat = rubrics:catalogBlock()
-		if cat ~= "" then
-			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
-		end
-	end
-	if buildGuides ~= nil then
-		local cat = buildGuides:catalogBlock()
-		if cat ~= "" then
-			instructions = if instructions == "" then cat else instructions .. "\n\n" .. cat
-		end
-	end
-	if learnings ~= nil then
-		local block = learnings:promptBlock()
-		if block ~= "" then
-			instructions = if instructions == "" then block else instructions .. "\n\n" .. block
-		end
-	end
+	local instructions =
+		AgentLoop.composeInstructions(systemPrompt, memory, skills, rubrics, buildGuides, learnings)
 
 	for i = 1, maxIter do
 		if cancelled() then

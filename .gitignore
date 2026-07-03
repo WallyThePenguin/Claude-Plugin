@@ -34,3 +34,6 @@ assets/reference/*.glb
 
 # Reference-image cache (downloaded study material, licenses vary - never ship)
 sidecar/refcache/
+
+# Sidecar-loop transcripts (JSONL run logs)
+sidecar/loops/
