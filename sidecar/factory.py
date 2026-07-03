@@ -431,15 +431,17 @@ _WEAPON_VERIFY = (
     "ALWAYS playtest_stop, then destroy workspace.VerifyTarget in edit."
 )
 _ENEMY_VERIFY = (
-    "The PLAYER is the enemy's target here, so give the player GOD MODE so it can't die mid-measure "
-    "(same idea as a god-mode dummy): (1) In EDIT before playtest, add a StarterCharacterScripts "
-    "Script (baked into the snapshot) that on the player Humanoid.HealthChanged records "
-    "(MaxHealth-health) to workspace attribute 'PlayerLastDamage' + increments 'PlayerHitCount', "
-    "then resets Health=MaxHealth (invincible + self-measuring). (2) playtest_start; (3) via "
-    "playtest_eval read the NPC's state: confirm it reaches chase then attack once the player is in "
-    "range; (4) read workspace 'PlayerLastDamage'/'PlayerHitCount'  -  FAIL unless the enemy deals the "
-    "configured damage per cooldown (a broken enemy shows 0); (5) playtest_logs since 0 for errors; "
-    "(6) ALWAYS playtest_stop."
+    "The PLAYER is the enemy's target. Give the player GOD MODE that LOGS each hit, so the readout "
+    "needs NO playtest_eval/loadstring (which is usually disabled - eval will fail):\n"
+    "(1) In EDIT before playtest (baked into the snapshot), add a StarterCharacterScripts Script "
+    "that on the player Humanoid.HealthChanged, if health dropped, WARNs "
+    "'[PlayerHit] damage=<MaxHealth-health>' and then resets Health=MaxHealth (invincible + "
+    "self-reporting to the log). (2) playtest_start; (3) let the enemy reach the player and attack "
+    "(walk the player toward the enemy with playtest_act if needed; wait through a couple of its "
+    "attack cooldowns); (4) playtest_logs since 0 and read the '[PlayerHit] damage=' lines - FAIL "
+    "unless the enemy deals the configured damage (NO hit lines = the enemy never attacked = FAIL), "
+    "and FAIL on any error mentioning the artifact; (5) ALWAYS playtest_stop. Do NOT rely on "
+    "playtest_eval."
 )
 _VISUAL_VERIFY = (
     "This is judged VISUALLY, not by a runtime probe: (1) get_references for what the brief "
@@ -451,10 +453,16 @@ _VISUAL_VERIFY = (
     "not; UNVERIFIED if you cannot capture."
 )
 _SYSTEM_VERIFY = (
-    "(1) playtest_start; (2) drive the system and read its runtime evidence via playtest_logs/"
-    "playtest_eval  -  the oracle's observable outcome must actually occur at PLAYER level (never via "
-    "an auto-kill/test hook  -  those symbols are gate-blocked); FAIL if the outcome never happens or "
-    "errors; (3) ALWAYS playtest_stop."
+    "Verify from the LOG only (playtest_eval/loadstring is usually disabled - do NOT rely on it). "
+    "Full end-to-end VICTORY needs winning the whole game, which is out of scope for an automated "
+    "check - instead confirm the system RUNS and PROGRESSES observably:\n"
+    "(1) playtest_start; (2) read playtest_logs since 0, then again after ~15-25s (the system needs "
+    "time to run) - confirm the lifecycle is observable in the logs: the system STARTS (e.g. a wave/"
+    "round begins), enemies/state SPAWN or advance, and it PROGRESSES (a wave clears or the next "
+    "begins, or a state transition fires) with NO runtime error mentioning the artifact; (3) PASS if "
+    "that progression is clearly logged at PLAYER level (never via an auto-kill/test hook - those are "
+    "gate-blocked); FAIL if it errors or never starts; UNVERIFIED only if the playtest will not run; "
+    "(4) ALWAYS playtest_stop."
 )
 
 PLAYBOOKS = {
@@ -569,9 +577,11 @@ PLAYBOOKS = {
         "config": '{"systemName":"<name>","params":{}}',
         "build": (
             "(1) author the server script(s) for the system (config-driven, RoundLoop-style) via "
-            "create_instance/edit_script; keep it scoped to the brief's lifecycle; the artifact is "
-            "the script/system (report its path). Do NOT wire any auto-kill/test hook  -  GATE blocks "
-            "those symbols."
+            "create_instance/edit_script; keep it scoped to the brief's lifecycle; PRINT the "
+            "lifecycle events (system start, each wave/round start, spawn, wave clear, victory) with "
+            "a clear tag like '[System]' so VERIFY can observe progression via playtest_logs; the "
+            "artifact is the script/system (report its path). Do NOT wire any auto-kill/test hook - "
+            "GATE blocks those symbols."
         ),
         "verify": _SYSTEM_VERIFY,
     },
