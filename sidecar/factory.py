@@ -241,11 +241,18 @@ class FactoryRunner:
             self._verify_sandbox(True, clear=(sandbox == "clear"))
         try:
             ok, text, err = self._wait_loop(
-                _verify_prompt(rung, build, playbook), max_iterations=24, stage="verify"
+                _verify_prompt(rung, build, playbook), max_iterations=36, stage="verify"
             )
         finally:
             if sandbox:
                 self._verify_sandbox(False)
+            # Deterministic teardown: a verify that hit the iteration cap may not have called
+            # playtest_stop, leaving a ZOMBIE session that blocks the NEXT verify. Force-stop it.
+            if playbook.get("kind") == "runtime":
+                self._bridge.call(
+                    {"kind": "luau", "code": 'pcall(function() game:GetService("RunService"):Stop() end) return "stopped"'},
+                    GATE_TIMEOUT,
+                )
         verify = _last_json(text, VERIFY_JSON_RE) if ok else None
         if not verify or verify.get("status") not in ("PASSED", "FAILED", "UNVERIFIED"):
             verify = {"status": "UNVERIFIED", "reasons": [err or "verify produced no verdict"]}
@@ -433,12 +440,14 @@ _WEAPON_VERIFY = (
 _ENEMY_VERIFY = (
     "The PLAYER is the enemy's target. Give the player GOD MODE that LOGS each hit, so the readout "
     "needs NO playtest_eval/loadstring (which is usually disabled - eval will fail):\n"
-    "(1) In EDIT before playtest (baked into the snapshot), add a StarterCharacterScripts Script "
-    "that on the player Humanoid.HealthChanged, if health dropped, WARNs "
+    "(1) In EDIT before playtest (baked into the snapshot): (a) add a StarterCharacterScripts "
+    "Script that on the player Humanoid.HealthChanged, if health dropped, WARNs "
     "'[PlayerHit] damage=<MaxHealth-health>' and then resets Health=MaxHealth (invincible + "
-    "self-reporting to the log). (2) playtest_start; (3) let the enemy reach the player and attack "
-    "(walk the player toward the enemy with playtest_act if needed; wait through a couple of its "
-    "attack cooldowns); (4) playtest_logs since 0 and read the '[PlayerHit] damage=' lines - FAIL "
+    "self-reporting to the log); (b) POSITION the test enemy ~8 studs from the SpawnLocation (well "
+    "within its DetectRange) so it detects+chases+attacks the spawning player IMMEDIATELY - do NOT "
+    "rely on walking the player across the map. (2) playtest_start; (3) wait through a couple of the "
+    "enemy's attack cooldowns (it should close and strike the stationary god-mode player); (4) "
+    "playtest_logs since 0 and read the '[PlayerHit] damage=' lines - FAIL "
     "unless the enemy deals the configured damage (NO hit lines = the enemy never attacked = FAIL), "
     "and FAIL on any error mentioning the artifact; (5) ALWAYS playtest_stop. Do NOT rely on "
     "playtest_eval."
@@ -665,6 +674,9 @@ def _verify_prompt(rung, build, playbook: dict) -> str:
         "If ANY oracle step is unavailable (playtest will not start, a probe errors, you cannot "
         "capture), status=UNVERIFIED with the reason  -  NEVER PASSED on partial evidence, and NEVER "
         "PASSED on a visual that merely 'looks okay' without meeting the brief.\n\n"
+        "BUDGET: the MOMENT you have the oracle evidence (the pass/fail is decided), do your "
+        "playtest_stop + brief cleanup and emit the JSON verdict immediately - do NOT keep probing. "
+        "Emit the verdict well before iteration 32, or the run is lost to the cap as UNVERIFIED.\n\n"
         "End your FINAL message with EXACTLY ONE line, no code fence:\n"
         'FACTORY_VERIFY_JSON: {"status":"PASSED|FAILED|UNVERIFIED","evidence":{"summary":'
         '"<verbatim probe output OR capture-vs-reference findings>"},"reasons":["..."]}'
