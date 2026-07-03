@@ -9,6 +9,11 @@
 #   .\studio-agent.ps1 capture [outfile.png]
 #   .\studio-agent.ps1 run '<task>' [maxIterations]    sidecar-side agent loop (brain in Python, Studio = hands)
 #   .\studio-agent.ps1 status                          the current/last loop run's status
+#   .\studio-agent.ps1 factory <rungId> [sabotage]     headless BUILD->GATE->VERIFY->STAGE for a curriculum rung
+#   .\studio-agent.ps1 factory-status                  the current/last factory run's status
+#   .\studio-agent.ps1 forever [cycles]                endless curriculum loop (proven families + auto-proposals); Ctrl+C detaches
+#   .\studio-agent.ps1 forever-stop                    graceful stop after the current cycle
+#   .\studio-agent.ps1 forever-status                  the current/last forever run's status
 param(
     [Parameter(Mandatory = $true)][string]$Command,
     [string]$Arg1,
@@ -123,5 +128,58 @@ switch ($Command) {
             "status FAILED: $($_.Exception.Message) (a 404 means the running sidecar predates /loop - restart it from source)"
         }
     }
-    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|play|capture|run|status)" }
+    "factory" {
+        $payload = @{ rungId = $Arg1 }
+        if ($Arg2 -and ($Arg2 -eq "sabotage" -or $Arg2 -eq "true")) { $payload.sabotage = $true }
+        try {
+            $r = Invoke-RestMethod -Method Post -Uri "$base/factory" -Body ($payload | ConvertTo-Json -Compress) -ContentType "application/json"
+        } catch {
+            $detail = try { ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch { $_.Exception.Message }
+            "factory REFUSED: $detail"; break
+        }
+        "factory run started (id=$($r.id), rung=$Arg1) - polling (Ctrl+C detaches; the run keeps going)"
+        $lastStage = ""
+        while ($true) {
+            Start-Sleep -Seconds 3
+            $st = Invoke-RestMethod -Method Get -Uri "$base/factory/status"
+            $tag = "$($st.stage) [loop iter $($st.loopIteration) tools $($st.loopToolCalls)]"
+            if ($tag -ne $lastStage) { "  > $tag"; $lastStage = $tag }
+            if ($st.state -eq "done") { "--- $($st.status) ---"; $st | ConvertTo-Json -Depth 6; break }
+            if ($st.state -eq "error") { "FACTORY ERROR: $($st.error)"; break }
+        }
+    }
+    "factory-status" {
+        try { (Invoke-RestMethod -Method Get -Uri "$base/factory/status") | ConvertTo-Json -Depth 6 }
+        catch { "factory-status FAILED: $($_.Exception.Message)" }
+    }
+    "forever" {
+        $payload = @{}
+        if ($Arg1) { $payload.cycles = [int]$Arg1 }
+        try {
+            $r = Invoke-RestMethod -Method Post -Uri "$base/forever" -Body ($payload | ConvertTo-Json -Compress) -ContentType "application/json"
+        } catch {
+            $detail = try { ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch { $_.Exception.Message }
+            "forever REFUSED: $detail"; break
+        }
+        $limit = if ($Arg1) { "$Arg1 cycles" } else { "unbounded" }
+        "forever loop started ($limit) - polling (Ctrl+C detaches; use 'forever-stop' to end gracefully)"
+        $lastTag = ""
+        while ($true) {
+            Start-Sleep -Seconds 4
+            $st = Invoke-RestMethod -Method Get -Uri "$base/forever/status"
+            $tag = "cycle $($st.cycle) [$($st.family) -> $($st.rung)] $($st.stage) (proposals+$($st.proposalsAdded))"
+            if ($tag -ne $lastTag) { "  > $tag"; $lastTag = $tag }
+            if ($st.state -eq "done") { "--- forever stopped ($($st.stopped)); $($st.cycle) cycles, $($st.proposalsAdded) proposals added ---"; break }
+            if ($st.state -eq "error") { "FOREVER ERROR: $($st.error)"; break }
+        }
+    }
+    "forever-stop" {
+        try { Invoke-RestMethod -Method Post -Uri "$base/forever/stop" -Body "{}" -ContentType "application/json" | Out-Null; "stop requested - the loop ends after the current cycle" }
+        catch { "forever-stop FAILED: $($_.Exception.Message)" }
+    }
+    "forever-status" {
+        try { (Invoke-RestMethod -Method Get -Uri "$base/forever/status") | ConvertTo-Json -Depth 6 }
+        catch { "forever-status FAILED: $($_.Exception.Message)" }
+    }
+    default { "unknown command: $Command (use tool|luau|prompt|logs|reload|play|capture|run|status|factory|factory-status|forever|forever-stop|forever-status)" }
 }

@@ -24,6 +24,11 @@ GET  /runtime                                             -> {"version":N,"modul
 GET  /references?query=<q>&count=N                        -> {"references":[{title,license,author,source,media_type,image(b64)}...]}
 POST /loop {"prompt":str, "maxIterations"?:int}           -> {"id":N}  (sidecar-side agent loop; 409 if one is running)
 GET  /loop/status                                         -> the current/last loop's status
+POST /factory {"rungId":str, "sabotage"?:bool}            -> {"id":N}  (headless BUILD->GATE->VERIFY->STAGE; 409 if busy)
+GET  /factory/status                                      -> the current/last factory run's status
+POST /forever {"cycles"?:int, "families"?:[str]}          -> {"id":N}  (endless curriculum loop; 409 if busy)
+POST /forever/stop                                        -> {"ok":true}  (graceful stop after the current cycle)
+GET  /forever/status                                      -> the current/last forever run's status
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -31,19 +36,46 @@ Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard libra
 import base64
 import json
 import os
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import agent_loop
 import capture
 import exemplars
+import factory as factory_mod
+import forever as forever_mod
 import game as gamesync
 import store as filestore
 from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
-LOOP = agent_loop.LoopRunner(agent_loop.BridgeCaller(STORE))
+_BRIDGE = agent_loop.BridgeCaller(STORE)
+LOOP = agent_loop.LoopRunner(_BRIDGE)
+_CURRICULUM = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "factory", "curriculum.json"
+)
+FACTORY = factory_mod.FactoryRunner(LOOP, _BRIDGE, _CURRICULUM, filestore.write_item)
+FOREVER = forever_mod.ForeverRunner(
+    FACTORY, LOOP, _CURRICULUM, lambda: filestore.list_items("staging")
+)
+
+
+# One mutex serializes the "is anyone busy? -> claim it" decision for ALL entry points that drive
+# the single-slot bridge (/agent submit, /loop, /factory, /forever). ThreadingHTTPServer runs
+# handlers concurrently, so the busy-check and the start() must be ATOMIC together — otherwise two
+# simultaneous requests can both pass an advisory cross-check before either flips its state and the
+# single bridge slot gets double-claimed.
+_START_LOCK = threading.Lock()
+
+
+def _agent_busy() -> bool:
+    """The single-slot bridge/loop is in use by a loop, factory, or forever run — external /agent
+    and orchestrator submissions must be fenced off so they can't clobber the in-flight command."""
+    return (
+        LOOP.status().get("state") == "running" or FACTORY.busy() or FOREVER.busy()
+    )
 SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
 RUNTIME_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runtime")
 
@@ -172,6 +204,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(code, {"error": str(exc)})
         if parsed.path == "/loop/status":
             return self._json(200, LOOP.status())
+        if parsed.path == "/factory/status":
+            return self._json(200, FACTORY.status())
+        if parsed.path == "/forever/status":
+            return self._json(200, FOREVER.status())
         return self._json(404, {"error": "not found"})
 
     def _store_parts(self, path: str):
@@ -224,16 +260,18 @@ class Handler(BaseHTTPRequestHandler):
             kind = body.get("kind")
             if kind not in ("tool", "luau", "prompt", "describe"):
                 return self._json(400, {"error": "kind must be tool|luau|prompt|describe"})
-            # The command queue is a SINGLE SLOT: while a sidecar loop runs, an external
-            # submission would clobber the loop's in-flight command (silent 240s stall +
-            # a false bridge-timeout fed to the model) — fence it off.
-            if LOOP.status().get("state") == "running":
-                return self._json(
-                    409,
-                    {"error": "a sidecar loop run is active — /agent is fenced while it runs "
-                     "(single-slot queue); watch GET /loop/status"},
-                )
-            return self._json(200, {"id": STORE.submit(body)})
+            # The command queue is a SINGLE SLOT: while a sidecar loop or factory run drives
+            # the bridge, an external submission would clobber the in-flight command (silent
+            # 240s stall + a false bridge-timeout fed to the model) — fence it off, atomically.
+            with _START_LOCK:
+                if _agent_busy():
+                    return self._json(
+                        409,
+                        {"error": "a sidecar loop or factory run is active — /agent is fenced "
+                         "while it runs (single-slot queue); watch /loop/status or /factory/status"},
+                    )
+                cid = STORE.submit(body)
+            return self._json(200, {"id": cid})
         if parsed.path == "/agent/result":
             cid = body.get("id")
             if not isinstance(cid, int):
@@ -271,18 +309,51 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(500, {"error": str(exc)})
             return self._json(200, {"ok": True})
         if parsed.path == "/loop":
-            try:
-                run_id = LOOP.start(
-                    body.get("prompt"),
-                    body.get("maxIterations"),
-                    body.get("model"),
-                )
-            except agent_loop.LoopError as exc:
-                code = 409 if "already running" in str(exc) else 400
-                return self._json(code, {"error": str(exc)})
-            except Exception as exc:  # noqa: BLE001
-                return self._json(500, {"error": str(exc)})
+            with _START_LOCK:
+                if FACTORY.busy() or FOREVER.busy():
+                    return self._json(
+                        409, {"error": "a factory or forever run owns the loop; watch its status"}
+                    )
+                try:
+                    run_id = LOOP.start(
+                        body.get("prompt"),
+                        body.get("maxIterations"),
+                        body.get("model"),
+                    )
+                except agent_loop.LoopError as exc:
+                    code = 409 if "already running" in str(exc) else 400
+                    return self._json(code, {"error": str(exc)})
+                except Exception as exc:  # noqa: BLE001
+                    return self._json(500, {"error": str(exc)})
             return self._json(200, {"id": run_id})
+        if parsed.path == "/factory":
+            with _START_LOCK:
+                if FOREVER.busy():
+                    return self._json(
+                        409,
+                        {"error": "a forever run is active — it owns the factory; watch /forever/status"},
+                    )
+                try:
+                    run_id = FACTORY.start(body.get("rungId"), body.get("sabotage", False))
+                except factory_mod.FactoryError as exc:
+                    code = 409 if "already active" in str(exc) else 400
+                    return self._json(code, {"error": str(exc)})
+                except Exception as exc:  # noqa: BLE001
+                    return self._json(500, {"error": str(exc)})
+            return self._json(200, {"id": run_id})
+        if parsed.path == "/forever":
+            with _START_LOCK:
+                try:
+                    run_id = FOREVER.start(body.get("cycles"), body.get("families"))
+                except forever_mod.ForeverError as exc:
+                    code = 409 if "already active" in str(exc) else 400
+                    return self._json(code, {"error": str(exc)})
+                except Exception as exc:  # noqa: BLE001
+                    return self._json(500, {"error": str(exc)})
+            return self._json(200, {"id": run_id})
+        if parsed.path == "/forever/stop":
+            FOREVER.stop()
+            return self._json(200, {"ok": True})
         if parsed.path == "/game/write":
             try:
                 result = gamesync.write_game(

@@ -69,6 +69,38 @@
    "proven": false,
    "brief": "A working shop: GUI + RemoteEvent purchase flow + leaderstats currency — needs a supervised first ascent (purchase-flow probe).",
    "oracle": "TBD in the supervised first ascent."
+  },
+  {
+   "id": "structure-house",
+   "category": "environment",
+   "family": "building",
+   "proven": false,
+   "brief": "A small house/cottage Model: walls, pitched roof, a doorway (~7 studs so a character fits) and windows, scaled to the 5-stud character, coherent materials. VISUAL rung — judged by capture + references, not a runtime probe.",
+   "oracle": "TBD supervised first ascent: get_references('cottage'/'small house') + capture_angles read as a coherent house (proportion vs character, roof+walls+openings present) and clear the building rubric's above-generic bar."
+  },
+  {
+   "id": "anim-idle-breathe",
+   "category": "animation",
+   "family": "animation",
+   "proven": false,
+   "brief": "A looping idle: subtle breathing + weight shift on a humanoid rig, authored as keyposes (pose_joint + add_keyframe). VISUAL rung.",
+   "oracle": "TBD supervised first ascent: capture_animation filmstrip reads as a natural idle (no foot-slide, gentle arc, seamless loop) and clears the locomotion/animation rubric."
+  },
+  {
+   "id": "env-arena-dress",
+   "category": "environment",
+   "family": "environment",
+   "proven": false,
+   "brief": "Environment dressing for the arena: cover props, lighting + Atmosphere for mood, coherent palette — turns a grey box into a place. VISUAL rung.",
+   "oracle": "TBD supervised first ascent: capture_angles + references read as an intentional, coherent space at character scale."
+  },
+  {
+   "id": "gui-main-menu",
+   "category": "gui",
+   "family": "gui",
+   "proven": false,
+   "brief": "A main-menu ScreenGui: title, Play/Settings buttons, clean layout (UIListLayout/UICorner/UIStroke, readable fonts) in StarterGui. Runtime rung — verified by rendering it in a playtest.",
+   "oracle": "TBD supervised first ascent: playtest_capture shows it render cleanly on the player's screen; buttons are present, laid out, and readable; clears the GUI rubric."
   }
  ],
  "proposals": []
