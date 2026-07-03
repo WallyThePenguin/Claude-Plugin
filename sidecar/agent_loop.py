@@ -132,6 +132,22 @@ class ModelClient:
             return {"ok": False, "kind": "decode", "message": "could not decode response body"}
 
 
+# When the primary model's subscription credential rate-limits ("cooling down"), fall through this
+# chain — rate limits are PER-MODEL on this account, so a different model keeps the loop running.
+MODEL_FALLBACKS = ["claude-opus-4-8", "claude-opus-4-7"]
+
+
+def is_rate_limited(res: dict) -> bool:
+    """The model's credential is throttled/cooling down (429 or CLIProxyAPI's cooldown message).
+    Distinct from a plain transient 5xx — the SAME model won't recover soon, so switch models."""
+    if res.get("kind") != "http":
+        return False
+    if res.get("status") == 429:
+        return True
+    msg = str(res.get("message") or "").lower()
+    return "cooling down" in msg or "rate limit" in msg or "rate_limit" in msg or "quota" in msg
+
+
 def is_context_length_error(res: dict) -> bool:
     """Port of Compactor.isContextLengthError — the request itself is too big to send."""
     if res.get("kind") != "http":
@@ -146,12 +162,16 @@ def is_context_length_error(res: dict) -> bool:
 
 
 def is_transient(res: dict) -> bool:
-    """Port of Retry.isTransient — the single source of truth for what retries."""
+    """Port of Retry.isTransient — what retries on the SAME model. A rate-limit (429 / cooling
+    down) is deliberately NOT here: retrying the throttled model wastes the backoff window, so the
+    loop falls back to another model immediately (is_rate_limited handles it)."""
+    if is_rate_limited(res):
+        return False
     if res.get("kind") == "transport":
         return True
     if res.get("kind") == "http":
         status = res.get("status")
-        if status in (408, 409, 429, 500, 502, 503, 504, 529):
+        if status in (408, 409, 500, 502, 503, 504, 529):
             return True
         msg = str(res.get("message") or "").lower()
         if "out of extra usage" in msg:
@@ -432,20 +452,24 @@ class LoopRunner:
         send = self._send_factory(describe)
         deadline = time.monotonic() + WALL_CLOCK_CAP
 
+        # The active model persists across iterations: once the primary rate-limits and we fall
+        # back, STAY on the fallback for the rest of the run (don't re-trigger the primary's 429).
+        active_model = model or describe.get("model")
+        fallbacks = [m for m in MODEL_FALLBACKS if m != active_model]
         messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
         final_text = ""
         trimmed_once = False
         for i in range(1, max_iter + 1):
             if time.monotonic() > deadline:
                 return fail(f"wall-clock cap hit after {i - 1} iterations")
-            self._set(iteration=i)
+            self._set(iteration=i, model=active_model)
             prune_images_keeping_last(messages, images_kept)
 
             # Send, with a ONE-SHOT emergency trim if the prompt outgrew the context window
             # (the deterministic stand-in for Luau's compact-and-retry).
             while True:
                 body = {
-                    "model": model or describe.get("model"),
+                    "model": active_model,
                     "max_tokens": int(describe.get("maxTokens") or 8192),
                     "messages": with_preamble(instructions, messages),
                     "tools": tools,
@@ -459,6 +483,10 @@ class LoopRunner:
                     emit("status", f"context overflow — trimmed {changed} old blocks, retrying")
                     if changed > 0:
                         continue
+                if is_rate_limited(res) and fallbacks:
+                    active_model = fallbacks.pop(0)
+                    emit("status", f"{res.get('status')} rate-limited - falling back to {active_model}")
+                    continue
                 return fail(f"model error [{res.get('kind')}]: {res.get('message')}")
             data = res.get("data") or {}
             content = data.get("content")

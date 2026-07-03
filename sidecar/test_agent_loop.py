@@ -228,6 +228,25 @@ def main():
         agent_loop.is_transient({"kind": "http", "status": 400, "message": "unknown provider for model x"}) is True,
     )
 
+    # --- model fallback: primary 429 rate-limit -> next model in the chain, run continues ---
+    fails += _check("429 is rate-limited", agent_loop.is_rate_limited({"kind": "http", "status": 429, "message": "x"}) is True)
+    fails += _check("cooldown msg is rate-limited", agent_loop.is_rate_limited({"kind": "http", "status": 400, "message": "credentials are cooling down"}) is True)
+    fails += _check("5xx is NOT rate-limited (just transient)", agent_loop.is_rate_limited({"kind": "http", "status": 503, "message": "overloaded"}) is False)
+    fb = {"models": []}
+
+    def cooling(body):
+        fb["models"].append(body["model"])
+        if body["model"] == DESCRIBE["model"]:  # primary keeps cooling down
+            return {"ok": False, "kind": "http", "status": 429, "message": "cooling down via provider claude"}
+        return ok_response([{"type": "text", "text": "on the fallback now"}])
+
+    r = agent_loop.LoopRunner(FakeBridge([]), send_factory=lambda d: cooling, loops_dir=tmp, sleep=lambda s: None)
+    r.start("x")
+    st = _wait_done(r)
+    fails += _check("run completes on the fallback model", st["state"] == "done")
+    fails += _check("fell back to first chain model", fb["models"][-1] == agent_loop.MODEL_FALLBACKS[0])
+    fails += _check("primary tried before fallback", fb["models"][0] == DESCRIBE["model"])
+
     # --- single-flight: second start while running raises ---
     slow_bridge = FakeBridge([])
 
