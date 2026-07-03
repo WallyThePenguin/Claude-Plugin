@@ -136,6 +136,9 @@ def main():
     fails += _check("weapon playbook drives build", "make_tool" in loop.prompts[0] and "bind_hitbox" in loop.prompts[0])
     fails += _check("verify prompt is the skeptic", "SKEPTIC" in loop.prompts[1])
     fails += _check("weapon verify uses the god-mode target", "VerifyTarget" in loop.prompts[1] and "GOD-MODE" in loop.prompts[1])
+    sandbox_calls = [c for c in bridge.calls if "SAVerifyDisabled" in c.get("code", "")]
+    fails += _check("weapon verify sandboxes the game (on+off)", len(sandbox_calls) == 2)
+    fails += _check("weapon sandbox clears mobs", any('if true then' in c.get("code", "") for c in sandbox_calls))
 
     # --- a NON-weapon rung uses the visual playbook (build anything) ---
     loop = FakeLoop([

@@ -1,9 +1,9 @@
-"""factory.py — headless single-rung factory iteration (the unattended learning loop).
+﻿"""factory.py  -  headless single-rung factory iteration (the unattended learning loop).
 
 The factory-iteration workflow (docs/superpowers/workflows/factory-iteration.workflow.js) proved
 the BUILD -> GATE -> VERIFY -> STAGE discipline, but it runs under the Claude Code / Workflow
-harness (attended). This module runs the same discipline with NO attended session — just the
-sidecar + Studio + the model tunnel — by driving the intelligent stages through the sidecar-side
+harness (attended). This module runs the same discipline with NO attended session  -  just the
+sidecar + Studio + the model tunnel  -  by driving the intelligent stages through the sidecar-side
 agent loop (LoopRunner) and the mechanical stages through the dev bridge directly:
 
   BUILD   -> a loop run: the model builds the rung in the live place, ends with FACTORY_BUILD_JSON.
@@ -11,7 +11,7 @@ agent loop (LoopRunner) and the mechanical stages through the dev bridge directl
   VERIFY  -> a loop run: a skeptic drives a real playtest, ends with FACTORY_VERIFY_JSON.
   STAGE   -> write the staging entry to the git-tracked store + move/destroy the artifact.
 
-Charter safety carried over verbatim: PROPOSE-ONLY (this never promotes — it only stages evidence
+Charter safety carried over verbatim: PROPOSE-ONLY (this never promotes  -  it only stages evidence
 for a human), NO unmanned first ascents (proven=false rungs are refused), an unavailable oracle is
 UNVERIFIED never PASSED, and any StudioAgentTest_* / TestAutoKill symbol BLOCKS the rung.
 
@@ -39,7 +39,7 @@ DENYLIST = ["TestAutoKill"]
 
 
 class FactoryError(ValueError):
-    """Client error — maps to HTTP 400/409."""
+    """Client error  -  maps to HTTP 400/409."""
 
 
 def _last_json(text: str, pattern):
@@ -132,11 +132,11 @@ class FactoryRunner:
         if not rung.get("proven"):
             # Charter: no unmanned first ascents. A proven=false rung needs a supervised session.
             raise FactoryError(
-                f"rung '{rung_id}' is not proven — first ascents must be supervised, not headless"
+                f"rung '{rung_id}' is not proven  -  first ascents must be supervised, not headless"
             )
         with self._lock:
             if self._busy or self._loop.status().get("state") == "running":
-                raise FactoryError("a factory or loop run is already active — one at a time")
+                raise FactoryError("a factory or loop run is already active  -  one at a time")
             self._busy = True
             self._counter += 1
             run_id = self._counter
@@ -177,7 +177,7 @@ class FactoryRunner:
     def _run(self, run_id, rung, sabotage, variant_hint=None, staging_id=None):
         try:
             self._run_inner(run_id, rung, sabotage, variant_hint, staging_id)
-        except Exception as exc:  # noqa: BLE001 — never leave _busy stuck
+        except Exception as exc:  # noqa: BLE001  -  never leave _busy stuck
             self._finish(state="error", error=f"internal factory error: {exc!r}")
 
     def _wait_loop(self, prompt, max_iterations, stage):
@@ -229,9 +229,19 @@ class FactoryRunner:
 
         # ---- VERIFY ----
         self._set(stage="verify")
-        ok, text, err = self._wait_loop(
-            _verify_prompt(rung, build, playbook), max_iterations=24, stage="verify"
-        )
+        # A runtime playbook drives a playtest of the LIVE game  -  sandbox it first so the game's
+        # own mobs/round loop don't chase and kill the tester mid-measure ("clear" also removes
+        # stray enemy rigs; "keep" leaves the rung's own test enemy alone).
+        sandbox = playbook.get("sandbox")
+        if sandbox:
+            self._verify_sandbox(True, clear=(sandbox == "clear"))
+        try:
+            ok, text, err = self._wait_loop(
+                _verify_prompt(rung, build, playbook), max_iterations=24, stage="verify"
+            )
+        finally:
+            if sandbox:
+                self._verify_sandbox(False)
         verify = _last_json(text, VERIFY_JSON_RE) if ok else None
         if not verify or verify.get("status") not in ("PASSED", "FAILED", "UNVERIFIED"):
             verify = {"status": "UNVERIFIED", "reasons": [err or "verify produced no verdict"]}
@@ -245,7 +255,7 @@ class FactoryRunner:
         else:
             self._destroy_artifact(build["artifactPath"])
         # Restore whatever the build parked out of StarterPack so the place is left as found
-        # (the artifact itself is now either in FactoryStaging or destroyed) — this runs on EVERY
+        # (the artifact itself is now either in FactoryStaging or destroyed)  -  this runs on EVERY
         # outcome, matching the attended workflow's STAGE step.
         parked = build.get("parked")
         if isinstance(parked, list) and parked:
@@ -276,6 +286,10 @@ class FactoryRunner:
         self._finish(
             state="done", status=status, staged=staged, stagingId=staging_id, **result
         )
+
+    def _verify_sandbox(self, on: bool, clear: bool = False):
+        code = (_SANDBOX_ON_LUAU % ("true" if clear else "false")) if on else _SANDBOX_OFF_LUAU
+        self._bridge.call({"kind": "luau", "code": code}, STAGE_TIMEOUT)
 
     def _destroy_artifact(self, path: str):
         self._bridge.call({"kind": "luau", "code": _destroy_luau(path)}, STAGE_TIMEOUT)
@@ -317,6 +331,50 @@ return "RESTORED:" .. moved
 """
 
 
+_SANDBOX_ON_LUAU = """
+-- VERIFY SANDBOX: stop the live game from swarming the tester. Disable round/wave/spawner
+-- scripts (marked so teardown re-enables exactly them) and, when clearing, remove stray enemy
+-- rigs  -  so the playtest is a CALM arena with just the player + the VerifyTarget.
+local sss = game:GetService("ServerScriptService")
+local n = 0
+for _, s in ipairs(sss:GetDescendants()) do
+  if (s:IsA("BaseScript")) and not s.Disabled then
+    local nm = string.lower(s.Name)
+    if nm:find("round") or nm:find("wave") or nm:find("spawn") or nm:find("enemy") or nm:find("mob") then
+      s.Disabled = true
+      s:SetAttribute("SAVerifyDisabled", true)
+      n += 1
+    end
+  end
+end
+if %s then
+  for _, m in ipairs(workspace:GetChildren()) do
+    if m:FindFirstChildOfClass("Humanoid") and m.Name ~= "VerifyTarget" then
+      local nm = string.lower(m.Name)
+      if nm:find("husk") or nm:find("enemy") or nm:find("mob") or m:GetAttribute("StudioAgentGenerated") then
+        m:Destroy()
+      end
+    end
+  end
+end
+return "sandbox on: " .. n .. " scripts disabled"
+"""
+
+_SANDBOX_OFF_LUAU = """
+-- restore the game: re-enable exactly the scripts the sandbox disabled.
+local sss = game:GetService("ServerScriptService")
+local restored = 0
+for _, s in ipairs(sss:GetDescendants()) do
+  if s:GetAttribute("SAVerifyDisabled") then
+    s.Disabled = false
+    s:SetAttribute("SAVerifyDisabled", nil)
+    restored += 1
+  end
+end
+return "sandbox off: restored " .. restored .. " scripts"
+"""
+
+
 def _stage_luau(path: str, name: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_]", "_", name) or "Artifact"
     return f"""
@@ -341,13 +399,15 @@ return "STAGED"
 # this kind of thing, `verify` = how to prove it. `kind` picks the verification mode:
 #   runtime = drive a playtest and probe live state (weapons, enemies, systems);
 #   visual  = capture the artifact + get_references + grade against the rubric (buildings,
-#             animations, environments, GUI look) — the reference-first image-learning path.
+#             animations, environments, GUI look)  -  the reference-first image-learning path.
 # To make the factory build a NEW category, add a curriculum rung (brief+oracle+family) and, if the
-# family is new, a playbook entry — no pipeline changes.
+# family is new, a playbook entry  -  no pipeline changes.
 
 _WEAPON_VERIFY = (
+    "The game's round/wave/spawner scripts are auto-disabled and stray mobs cleared for this verify "
+    "(a CALM sandbox - the tester will NOT be swarmed). "
     "CRITICAL SEQUENCING: the test target must exist in EDIT mode BEFORE playtest_start so it is "
-    "baked into the play snapshot — a dummy/probe created AFTER the snapshot is NOT in the running "
+    "baked into the play snapshot - a dummy/probe created AFTER the snapshot is NOT in the running "
     "session and forces a restart loop. So:\n"
     "(1) In EDIT (no playtest running), run_luau to place a GOD-MODE self-measuring target near "
     "spawn: clone game.ServerStorage.VerifyDummy into workspace as 'VerifyTarget' (if VerifyDummy is "
@@ -358,12 +418,12 @@ _WEAPON_VERIFY = (
     "restart loop) and records each hit's damage on ITSELF (no separate probe to sequence).\n"
     "The dummy PRINTS each hit to the log as `[VerifyTarget] HIT damage=<n> hitcount=<n>`, so the "
     "damage readout needs NO playtest_eval/loadstring (which is usually disabled).\n"
-    "(2) playtest_start; (3) playtest_act record — the echo ends [tool=<name> w=<x> a=<y> c=<z>]: "
+    "(2) playtest_start; (3) playtest_act record  -  the echo ends [tool=<name> w=<x> a=<y> c=<z>]: "
     "FAIL if the tool name or echoed config does not match the build's config; (4) DAMAGE: walk the "
     "player up to the VerifyTarget (~6 studs ahead of spawn), face it, and playtest_act activate to "
-    "swing 2-3 times; (5) playtest_logs since 0 and read the `[VerifyTarget] HIT damage=` lines — "
+    "swing 2-3 times; (5) playtest_logs since 0 and read the `[VerifyTarget] HIT damage=` lines  -  "
     "FAIL unless a hit's damage EXACTLY equals the configured damage (a broken or sabotaged weapon "
-    "prints NO hit line — hitcount stays 0), and FAIL on any error mentioning the artifact; (6) "
+    "prints NO hit line  -  hitcount stays 0), and FAIL on any error mentioning the artifact; (6) "
     "ALWAYS playtest_stop, then destroy workspace.VerifyTarget in edit."
 )
 _ENEMY_VERIFY = (
@@ -373,7 +433,7 @@ _ENEMY_VERIFY = (
     "(MaxHealth-health) to workspace attribute 'PlayerLastDamage' + increments 'PlayerHitCount', "
     "then resets Health=MaxHealth (invincible + self-measuring). (2) playtest_start; (3) via "
     "playtest_eval read the NPC's state: confirm it reaches chase then attack once the player is in "
-    "range; (4) read workspace 'PlayerLastDamage'/'PlayerHitCount' — FAIL unless the enemy deals the "
+    "range; (4) read workspace 'PlayerLastDamage'/'PlayerHitCount'  -  FAIL unless the enemy deals the "
     "configured damage per cooldown (a broken enemy shows 0); (5) playtest_logs since 0 for errors; "
     "(6) ALWAYS playtest_stop."
 )
@@ -381,26 +441,27 @@ _VISUAL_VERIFY = (
     "This is judged VISUALLY, not by a runtime probe: (1) get_references for what the brief "
     "describes FIRST and list the signature features/proportions real examples show; (2) "
     "capture_angles of the artifact from several sides; (3) grade it feature-by-feature against "
-    "the references AND the matching rubric (use_rubric) — scale vs the 5-stud character, "
+    "the references AND the matching rubric (use_rubric)  -  scale vs the 5-stud character, "
     "silhouette, the parts the brief requires, material/colour coherence; PASS only if it clearly "
     "reads as the intended thing AND clears the above-generic bar; FAILED with the specific gaps if "
     "not; UNVERIFIED if you cannot capture."
 )
 _SYSTEM_VERIFY = (
     "(1) playtest_start; (2) drive the system and read its runtime evidence via playtest_logs/"
-    "playtest_eval — the oracle's observable outcome must actually occur at PLAYER level (never via "
-    "an auto-kill/test hook — those symbols are gate-blocked); FAIL if the outcome never happens or "
+    "playtest_eval  -  the oracle's observable outcome must actually occur at PLAYER level (never via "
+    "an auto-kill/test hook  -  those symbols are gate-blocked); FAIL if the outcome never happens or "
     "errors; (3) ALWAYS playtest_stop."
 )
 
 PLAYBOOKS = {
     "melee-weapon": {
         "kind": "runtime",
+        "sandbox": "clear",
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"reach":<n>}',
         "build": (
             "(1) park any Tools in StarterPack into ServerStorage and report their new paths in "
             "'parked' so STAGE restores them; (2) build a SHAPED above-primitive visual (prefer "
-            "generate_mesh + save_mesh; ONE capture to confirm the silhouette — do not perfection-"
+            "generate_mesh + save_mesh; ONE capture to confirm the silhouette  -  do not perfection-"
             "loop) with a profile distinct to this weapon; (3) make_tool with the grip as Handle; "
             "(4) move the Tool into StarterPack; (5) bind_behavior with windup/active/cooldown per "
             "the brief's speed; (6) bind_hitbox with reach + damage + cooldown per the brief."
@@ -409,6 +470,7 @@ PLAYBOOKS = {
     },
     "ranged-weapon": {
         "kind": "runtime",
+        "sandbox": "clear",
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"range":<n>,"projectileSpeed":<n>}',
         "build": (
             "(1) park StarterPack Tools into ServerStorage (report in 'parked'); (2) build a shaped "
@@ -420,6 +482,7 @@ PLAYBOOKS = {
     },
     "melee-enemy": {
         "kind": "runtime",
+        "sandbox": "keep",
         "config": '{"damage":<n>,"walkSpeed":<n>,"detectRange":<n>,"attackRange":<n>,"cooldown":<n>}',
         "build": (
             "(1) prepare a rig (spawn_rig or the EnemyTemplate); (2) give it a shaped, above-blob "
@@ -430,6 +493,7 @@ PLAYBOOKS = {
     },
     "ranged-enemy": {
         "kind": "runtime",
+        "sandbox": "keep",
         "config": '{"damage":<n>,"walkSpeed":<n>,"detectRange":<n>,"keepDistance":<n>,"cooldown":<n>}',
         "build": (
             "(1) prepare a rig; (2) shaped visual (ONE capture); (3) make_npc that keeps distance "
@@ -448,7 +512,7 @@ PLAYBOOKS = {
         ),
         "verify": (
             "This is judged VISUALLY: (1) capture_animation as a filmstrip; (2) get_references for "
-            "the motion and check the arc/timing/weight; (3) grade against the animation rubric — "
+            "the motion and check the arc/timing/weight; (3) grade against the animation rubric  -  "
             "the motion must READ as the intended action (correct arc, torso lead, no foot-slide, "
             "clean start/end); PASS only if it clearly reads right; FAILED with what's off; "
             "UNVERIFIED if you cannot render the filmstrip."
@@ -461,7 +525,7 @@ PLAYBOOKS = {
             "(1) assemble a Model from primitives and/or meshes: walls, roof, floor, and openings "
             "(doorways ~7 studs so a character fits), scaled to the 5-stud character; coherent "
             "materials and colours; (2) ONE capture_angles to check proportion and silhouette while "
-            "building — iterate a little, then stop; the artifact is the Model in Workspace."
+            "building  -  iterate a little, then stop; the artifact is the Model in Workspace."
         ),
         "verify": _VISUAL_VERIFY,
     },
@@ -469,7 +533,7 @@ PLAYBOOKS = {
         "kind": "visual",
         "config": '{"theme":"<desc>","areaStuds":<n>}',
         "build": (
-            "(1) build the described space — terrain and/or parts, plus Lighting/Atmosphere for the "
+            "(1) build the described space  -  terrain and/or parts, plus Lighting/Atmosphere for the "
             "mood; (2) capture_angles to check scale and coherence; the artifact is the Model/Folder "
             "of the environment set (report its path)."
         ),
@@ -477,15 +541,16 @@ PLAYBOOKS = {
     },
     "gui": {
         "kind": "runtime",
+        "sandbox": "keep",
         "config": '{"screen":"<name>","elements":["..."]}',
         "build": (
-            "(1) build a ScreenGui in StarterGui with the described elements — frames, buttons, "
+            "(1) build a ScreenGui in StarterGui with the described elements  -  frames, buttons, "
             "labels, laid out with UIListLayout/UIPadding, styled with UICorner/UIStroke and "
             "readable fonts; (2) wire any RemoteEvent/handler the brief calls for; the artifact is "
             "the ScreenGui (report its path)."
         ),
         "verify": (
-            "(1) playtest_start; (2) playtest_capture to SEE it render on the player's screen — FAIL "
+            "(1) playtest_start; (2) playtest_capture to SEE it render on the player's screen  -  FAIL "
             "if it does not appear, overlaps, or is unreadable; (3) if the brief specifies an "
             "interaction (button -> effect), drive it via playtest_act/playtest_eval and confirm "
             "the effect; (4) grade layout/readability against the GUI rubric; (5) ALWAYS "
@@ -494,11 +559,12 @@ PLAYBOOKS = {
     },
     "game-system": {
         "kind": "runtime",
+        "sandbox": "keep",
         "config": '{"systemName":"<name>","params":{}}',
         "build": (
             "(1) author the server script(s) for the system (config-driven, RoundLoop-style) via "
             "create_instance/edit_script; keep it scoped to the brief's lifecycle; the artifact is "
-            "the script/system (report its path). Do NOT wire any auto-kill/test hook — GATE blocks "
+            "the script/system (report its path). Do NOT wire any auto-kill/test hook  -  GATE blocks "
             "those symbols."
         ),
         "verify": _SYSTEM_VERIFY,
@@ -507,13 +573,13 @@ PLAYBOOKS = {
         "kind": "visual",
         "config": "{}",
         "build": (
-            "Build exactly what the brief describes with the most appropriate tools, scoped — no "
+            "Build exactly what the brief describes with the most appropriate tools, scoped  -  no "
             "gold-plating. Report the artifact's instance path and the config VERIFY needs."
         ),
         "verify": (
             "Verify per the ORACLE. If it has observable runtime behaviour, playtest and probe it; "
             "if it is visual/aesthetic, get_references + capture and grade against the brief and the "
-            "matching rubric. UNVERIFIED if you cannot gather real evidence — never PASSED on a "
+            "matching rubric. UNVERIFIED if you cannot gather real evidence  -  never PASSED on a "
             "guess."
         ),
     },
@@ -537,13 +603,13 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
     sabotage_line = (
         "SABOTAGE RUN: deliberately break the ONE thing the ORACLE checks (for a weapon skip the "
         "hitbox; for a system omit the win condition; for a visual omit the required feature) and "
-        "do NOT mention the omission anywhere — this tests whether VERIFY catches it.\n\n"
+        "do NOT mention the omission anywhere  -  this tests whether VERIFY catches it.\n\n"
         if sabotage
         else ""
     )
     variant_line = (
         f"AUTONOMOUS VARIATION: {variant_hint} Build a FRESH, distinct concept within the brief's "
-        "family — not a repeat of what already exists.\n\n"
+        "family  -  not a repeat of what already exists.\n\n"
         if variant_hint
         else ""
     )
@@ -556,7 +622,7 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         "Build ONLY what the brief asks, using the approach below, then STOP and emit the JSON. "
         "This is a SCOPED build stage: do NOT gold-plate, do NOT add features from other rungs "
         "(extra animations, polish passes, unrelated systems), do NOT playtest (that is VERIFY's "
-        "job) — over-building burns the iteration budget and FAILS the run. Never create anything "
+        "job)  -  over-building burns the iteration budget and FAILS the run. Never create anything "
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
         f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
@@ -574,14 +640,14 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
 
 def _verify_prompt(rung, build, playbook: dict) -> str:
     return (
-        f"You are the headless factory VERIFY stage for rung '{rung['id']}' — a SKEPTIC whose job "
+        f"You are the headless factory VERIFY stage for rung '{rung['id']}'  -  a SKEPTIC whose job "
         f"is to find reasons to FAIL. Artifact: {build.get('artifactPath')} "
         f"(kind: {build.get('artifactKind', '?')}). Config: {json.dumps(build.get('config'))}.\n"
         f"ORACLE: {rung.get('oracle', '')}\n\n"
         f"VERIFY APPROACH for this {rung.get('family', 'artifact')}, ONE step at a time:\n"
         f"{playbook['verify']}\n\n"
         "If ANY oracle step is unavailable (playtest will not start, a probe errors, you cannot "
-        "capture), status=UNVERIFIED with the reason — NEVER PASSED on partial evidence, and NEVER "
+        "capture), status=UNVERIFIED with the reason  -  NEVER PASSED on partial evidence, and NEVER "
         "PASSED on a visual that merely 'looks okay' without meeting the brief.\n\n"
         "End your FINAL message with EXACTLY ONE line, no code fence:\n"
         'FACTORY_VERIFY_JSON: {"status":"PASSED|FAILED|UNVERIFIED","evidence":{"summary":'
