@@ -9,14 +9,17 @@ export type ConfigValue = string | number | boolean
 -- All known setting keys, with their hard defaults. M11 retry/confirm defaults
 -- are included now to avoid later schema churn.
 -- baseUrl defaults to 127.0.0.1:8318 — the local end of the SSH tunnel to hecate's CLIProxyAPI
--- (proxy/tunnel.ps1). NOTE: every CLIProxyAPI subscription-OAuth daemon (hecate's AND a fresh local
--- one) STRIPS the client `system` field and injects its own Claude Code prompt — verified live. So the
--- plugin delivers its SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which
--- passes through any such proxy. The proxy choice therefore no longer affects prompt delivery.
+-- (proxy/tunnel.ps1). The local docker proxy (proxy/docker-compose.yml) is on 8319 as a fallback.
+-- 2026-07-03: hecate's proxy was redeployed (new image) and serves claude-fable-5; switched the
+-- default model to it (a genuine capability step up for the build/judge loop). NOTE: every
+-- CLIProxyAPI subscription-OAuth daemon (hecate's AND a fresh local one) STRIPS the client `system`
+-- field and injects its own Claude Code prompt — verified live. So the plugin delivers its
+-- SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which passes through any
+-- such proxy. The proxy choice therefore no longer affects prompt delivery.
 local DEFAULTS = {
-	baseUrl = "http://127.0.0.1:8319",
+	baseUrl = "http://127.0.0.1:8318",
 	proxyKey = "",
-	model = "claude-opus-4-8",
+	model = "claude-fable-5",
 	maxTokens = 8192,
 	-- Step budget per Send. Vision tasks ("build, capture, adjust, capture again…") burn several
 	-- steps per iterate-cycle, so this is generous; hitting it now ends gracefully + resumable
@@ -56,7 +59,7 @@ local DEFAULTS = {
 }
 
 -- Allowed models. Never Haiku.
-local MODELS = { "claude-opus-4-8", "claude-sonnet-4-6" }
+local MODELS = { "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6" }
 
 local KEY_PREFIX = "StudioAgent_"
 
