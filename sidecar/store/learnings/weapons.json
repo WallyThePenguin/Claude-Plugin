@@ -1,4 +1,6 @@
 {
+ "category": "weapons",
+ "seq": 3,
  "entries": [
   {
    "bucket": "weapons",
@@ -13,8 +15,13 @@
    "text": "A generated blade only reads as a blade with a converging apex point, thin cross-section (thickness well under width), and a distinct guard+pommel breaking the hilt silhouette; a thick rounded shaft with a blunt tip reads phallic.",
    "localId": 2,
    "createdAt": 1783057796
+  },
+  {
+   "bucket": "weapons",
+   "id": 3,
+   "text": "Before judging a build of any real-world object, pull actual reference proportions first (exemplars or a web lookup) and compare feature-by-feature - judging the scimitar from memory shipped a disc guard and missed that scimitar-family hilts use cross quillons with a hooked/rounded pommel (kilij: yelman flare in the last 30% of the blade).",
+   "localId": 3,
+   "createdAt": 1783059595
   }
- ],
- "seq": 2,
- "category": "weapons"
+ ]
 }
