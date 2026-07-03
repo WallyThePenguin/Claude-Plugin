@@ -198,6 +198,10 @@ class FactoryRunner:
     def _run_inner(self, run_id, rung, sabotage, variant_hint=None, staging_id=None):
         rung_id = rung["id"]
         playbook = _playbook(rung)
+        # Self-heal: if a PRIOR run's verify sandbox was interrupted (sidecar killed before its
+        # teardown finally ran), its scripts are still disabled — re-enable them before we build,
+        # so the game isn't left broken across runs.
+        self._bridge.call({"kind": "luau", "code": _SANDBOX_OFF_LUAU}, GATE_TIMEOUT)
         result = {"rung": rung_id, "sabotage": sabotage, "family": rung.get("family")}
 
         # ---- BUILD ----
@@ -559,7 +563,9 @@ PLAYBOOKS = {
     },
     "game-system": {
         "kind": "runtime",
-        "sandbox": "keep",
+        # NO sandbox: a game-system rung IS the round/wave/spawn logic, so disabling those scripts
+        # would disable the very system under test. Verify runs the game LIVE and reads the outcome
+        # from playtest_logs (server-authoritative — the player dying doesn't stop the wave loop).
         "config": '{"systemName":"<name>","params":{}}',
         "build": (
             "(1) author the server script(s) for the system (config-driven, RoundLoop-style) via "

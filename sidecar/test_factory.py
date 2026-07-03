@@ -136,9 +136,10 @@ def main():
     fails += _check("weapon playbook drives build", "make_tool" in loop.prompts[0] and "bind_hitbox" in loop.prompts[0])
     fails += _check("verify prompt is the skeptic", "SKEPTIC" in loop.prompts[1])
     fails += _check("weapon verify uses the god-mode target", "VerifyTarget" in loop.prompts[1] and "GOD-MODE" in loop.prompts[1])
-    sandbox_calls = [c for c in bridge.calls if "SAVerifyDisabled" in c.get("code", "")]
-    fails += _check("weapon verify sandboxes the game (on+off)", len(sandbox_calls) == 2)
-    fails += _check("weapon sandbox clears mobs", any('if true then' in c.get("code", "") for c in sandbox_calls))
+    # sandbox: a self-heal OFF at run start, then verify ON (clear) + OFF around the verify loop.
+    sandbox_on = [c for c in bridge.calls if "if true then" in c.get("code", "")]
+    fails += _check("weapon verify sandboxes with a clear-ON", len(sandbox_on) == 1)
+    fails += _check("self-heal off runs before build", "SAVerifyDisabled" in bridge.calls[0].get("code", ""))
 
     # --- a NON-weapon rung uses the visual playbook (build anything) ---
     loop = FakeLoop([
@@ -231,7 +232,7 @@ def main():
     r.start("weapon-spear")
     st = _wait(r)
     fails += _check("build loop error blocks", st["status"] == "BLOCKED" and "model down" in st["reason"])
-    fails += _check("no gate call after build error", len(bridge.calls) == 0)
+    fails += _check("no gate call after build error", not any("GetAttributes" in c.get("code", "") for c in bridge.calls))
 
     # --- busy fencing: second start refused while running ---
     class SlowLoop(FakeLoop):
