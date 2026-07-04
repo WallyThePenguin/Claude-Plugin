@@ -251,6 +251,36 @@ def main():
         "confused" in str((st.get("build") or {}).get("notes") or ""),
     )
 
+    # --- iteration cap kills the build turn -> salvage pass recovers the record ---
+    capped = "built most of it\n(iteration cap reached — the work so far is applied; run again to continue)"
+    loop = FakeLoop([
+        {"state": "done", "result": capped},
+        {"state": "done", "result": build_line(notes="salvaged")},
+        {"state": "done", "result": verify_line("PASSED")},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    r = _runner(loop, bridge, store)
+    r.start("weapon-spear")
+    st = _wait(r)
+    fails += _check("capped build salvaged to a record", st["state"] == "done" and st.get("status") == "PASSED")
+    fails += _check("salvage prompt resumes, not rebuilds", len(loop.prompts) == 3 and "Do NOT rebuild" in loop.prompts[1])
+    fails += _check("salvage run flagged in result", st.get("buildSalvaged") is True)
+
+    # --- iteration cap + failed salvage -> still BLOCKED with the tail kept ---
+    loop = FakeLoop([
+        {"state": "done", "result": capped},
+        {"state": "done", "result": "still nothing parseable"},
+    ])
+    r = _runner(loop, FakeBridge({}), {})
+    r.start("weapon-spear")
+    st = _wait(r)
+    fails += _check("failed salvage still blocks", st.get("status") == "BLOCKED")
+    fails += _check(
+        "failed salvage keeps transcript tail",
+        "iteration cap" in str((st.get("build") or {}).get("notes") or ""),
+    )
+
     # --- build ok:false -> BLOCKED ---
     loop = FakeLoop([{"state": "done", "result": build_line(ok=False)}])
     r = _runner(loop, FakeBridge({}), {})

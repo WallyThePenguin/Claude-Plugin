@@ -1,0 +1,44 @@
+{
+ "rung": "gui-main-menu",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "playtest_capture shows the rail rendering cleanly on the player screen: kicker, IRONHOLD title, keyline, PLAY[P]/SETTINGS[S] with accent bars, footer - readable, no overlap, no runtime errors."
+ },
+ "reasons": [
+  "All 9 configured elements present in tree and visible in the play-client capture",
+  "Layout is left-anchored, evenly padded, high-contrast dark Gotham per rubric",
+  "No script errors or infinite-yield warnings in playtest logs (controller loaded)",
+  "Button interaction verified by source read (correct tween-out/toast handlers); runtime click injection blocked by plugin capability (VIM requires RobloxScript)"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterGui.MainMenuRail",
+  "config": {
+   "screen": "MainMenuRail",
+   "elements": [
+    "Shade (gradient vignette)",
+    "Rail frame (left-anchored, UIListLayout+UIPadding+UICorner+UIStroke)",
+    "Kicker label",
+    "Title IRONHOLD (GothamBlack)",
+    "accent keyline",
+    "PlayButton (accent bar + hint [P])",
+    "SettingsButton (accent bar + hint [S])",
+    "Footer version tag",
+    "MenuController LocalScript (Play slides rail out + fades shade; Settings shows stub toast)"
+   ]
+  },
+  "steps": [
+   "Checked StarterGui + staged artifacts to avoid repeating the prior centered-panel gui_main_menu",
+   "Built left-rail ScreenGui via run_luau: gradient shade, rail with list layout, title block, two accent-bar buttons, footer",
+   "Wrote MenuController LocalScript (TweenService dismiss on Play, toast on Settings), compile-checked",
+   "Previewed a clone in CoreGui, captured to confirm readable render, then removed the preview"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept: a LEFT-RAIL menu (vs the existing centered panel variant) - dark Gotham palette, full-screen gradient vignette darker over the rail side, 340px rail with UIListLayout/UIPadding, GothamBlack title + orange keyline, buttons with colored left accent bars and key hints, UICorner/UIStroke throughout. LocalScript controller: Play tweens the rail off-screen and fades the shade then disables the gui; Settings shows a transient stub toast. Verified visually via a CoreGui clone capture (clean render, readable) then cleaned up."
+ },
+ "stagedAt": 1783162089.7511802,
+ "headless": true
+}

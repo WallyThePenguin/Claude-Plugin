@@ -1,0 +1,44 @@
+{
+ "rung": "gui-main-menu",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "playtest_capture shows the rail render cleanly with readable PLAY/SETTINGS buttons, but evaluate(gui) scores 6/35 pass with Baseline only 3/6 - rubric bar not cleared."
+ },
+ "reasons": [
+  "Rubric not cleared: Baseline 3/6 (anchorpoint-intent, padding-breathing-room, role-based-palette unmet)",
+  "Killer systems FAIL: safe-zones-touch-targets (no ScreenInsets/touch sizing) and tweened-state-feedback (hard-cut Enabled toggle, no hover/press tweens)",
+  "Render + button layout themselves verified OK via playtest_capture; playtest_eval unavailable (LoadStringEnabled off) so interaction verified by script read only"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterGui.MainMenuRail",
+  "config": {
+   "screen": "MainMenuRail",
+   "elements": [
+    "Backdrop",
+    "Rail",
+    "Kicker",
+    "Title",
+    "AccentBar",
+    "PlayButton",
+    "SettingsButton",
+    "Footer",
+    "MenuController"
+   ]
+  },
+  "steps": [
+   "Created ScreenGui MainMenuRail in StarterGui (ResetOnSpawn=false, IgnoreGuiInset)",
+   "Added dim full-screen Backdrop + left-rail panel with UICorner/UIStroke/UIPadding/UIListLayout",
+   "Added kicker+title (GothamBlack) with amber accent underline, PLAY (primary amber) and SETTINGS (dark) TextButtons, footer hint",
+   "Wrote MenuController LocalScript: Play hides the menu, Settings toggles a stub label",
+   "Previewed a clone in CoreGui, captured to verify layout/readability, then removed the preview"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct left-rail dark menu (not centered like prior gui-main-menu artifacts): dim backdrop + 360px vertical rail at left, UIListLayout ordering kicker/title/accent/buttons/footer. Dark palette (18,21,28) with amber (255,170,60) primary accent per user Gotham/dark preference. Buttons full-rail-width, 56px, UICorner 10 + subtle UIStroke; primary button uses dark text on amber for contrast. Controller is remote-free: Play sets gui.Enabled=false, Settings is a local stub toggle. Verified visually via CoreGui clone capture before emitting."
+ },
+ "stagedAt": 1783156280.4552627,
+ "headless": true
+}

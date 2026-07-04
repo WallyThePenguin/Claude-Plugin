@@ -1,6 +1,6 @@
 {
  "category": "factory-methods",
- "seq": 25,
+ "seq": 40,
  "entries": [
   {
    "bucket": "factory-methods",
@@ -176,6 +176,111 @@
    "text": "Match set-extension scale to composition: keep the dressed set a dominant fraction of the visible ground plane and give the world edge irregular sculpted falloff, verifying from the widest capture distance rather than only arena-radius shots.",
    "localId": 25,
    "createdAt": 1783155239
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 26,
+   "text": "For gui rungs, load use_rubric(gui) BEFORE building and bake the killer systems in at construction time (ScreenInsets/48px touch targets, TweenService hover/press/open-close transitions, role-named palette module, explicit AnchorPoint on every positioned frame) - a capture-verified render still fails the rubric on structure.",
+   "localId": 26,
+   "createdAt": 1783156294
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 27,
+   "text": "Treat evaluate(category) as the emit gate, not a post-hoc report: run it on the draft, fix the fails-first list, and re-evaluate until 'BAR CLEARED' before marking the rung verified.",
+   "localId": 27,
+   "createdAt": 1783156294
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 28,
+   "text": "A Cube-generated mesh's long axis often runs diagonal through its bounding box, so inspect the blade's actual axis in the first grip_tool capture and expect compound rotations (e.g. rx=-135 + rz=90) rather than assuming axis-aligned geometry.",
+   "localId": 28,
+   "createdAt": 1783159338
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 29,
+   "text": "Park any pre-existing StarterPack tools to ServerStorage before the build so playtest equip/verify steps target only the new weapon, then restore after.",
+   "localId": 29,
+   "createdAt": 1783159338
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 30,
+   "text": "When assembling roof gables from wedge pairs, do a quick capture_angles orientation check (thin edges outward, tall edges meeting at the ridge) BEFORE adding detail layers, since inverted wedges are cheap to fix early but invisible from numeric probes.",
+   "localId": 30,
+   "createdAt": 1783160030
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 31,
+   "text": "Surface relief (timber framing, trim) only reads if it sits ~0.2 studs proud of the base wall, and its layout must be routed AROUND openings - generate beam positions from the same window/door coordinates so braces never overlap glass.",
+   "localId": 31,
+   "createdAt": 1783160030
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 32,
+   "text": "Close an idle loop by re-keying the exact opening pose at the final time and verifying numerically (max joint delta ~0) rather than eyeballing the filmstrip.",
+   "localId": 32,
+   "createdAt": 1783160538
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 33,
+   "text": "Before capture_animation, move the rig to open ground clear of scene clutter so the filmstrip isn't occluded and you don't burn a capture round-trip.",
+   "localId": 33,
+   "createdAt": 1783160538
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 34,
+   "text": "When cloning a textured kit into a ring, paint_texture the few template parts ONCE up front and size segments with chord = 2*r*tan(pi/N), then vary each clone by tint/height for ruin variation - texturing templates first avoids per-part paint passes and keeps any-radius rings seamless.",
+   "localId": 34,
+   "createdAt": 1783161551
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 35,
+   "text": "Kit template parts must be parked outside the camera-reachable scene (or destroyed) after cloning - leftover templates leaked into the verify captures as exposed parts on the outer slope.",
+   "localId": 35,
+   "createdAt": 1783161551
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 36,
+   "text": "Before building a new variant in a family, inspect StarterGui/staged artifacts for prior rungs and deliberately pick a distinct layout concept so cycles don't converge on the same design.",
+   "localId": 36,
+   "createdAt": 1783162101
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 37,
+   "text": "Verify a GUI's render in edit by cloning it into CoreGui and capturing (then deleting the clone) - it catches layout/readability issues without waiting for a playtest.",
+   "localId": 37,
+   "createdAt": 1783162101
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 38,
+   "text": "A mechanic change (2fa47cd502) was auto-reverted after the next same-family cycle regressed - re-diagnose from scratch before re-attempting that fix.",
+   "localId": 38,
+   "createdAt": 1783164371
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 39,
+   "text": "Emit FACTORY_BUILD_JSON incrementally (write a partial record early and update it after each major step) so an iteration-cap kill still leaves a usable build record instead of a BLOCKED cycle.",
+   "localId": 39,
+   "createdAt": 1783164388
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 40,
+   "text": "Budget the iteration cap up front: reserve the final ~10% of iterations for verification + record emission, cutting build scope rather than running the polish loop until the harness kills the turn.",
+   "localId": 40,
+   "createdAt": 1783164388
   }
  ]
 }

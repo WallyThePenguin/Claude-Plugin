@@ -1,0 +1,42 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Record echo [tool=Falchion w=0.12 a=0.15 c=0.35] matched config and dummy logged HIT damage=20 once per swing; both filmstrip angles show blade pointing out of fist through a readable windup-strike arc."
+ },
+ "reasons": [
+  "Sword reads correctly from 4 angles at ~4-stud hand scale (point, quillons, pommel)",
+  "use clip bound; front+right strips show attached, non-clipping swing with blade oriented away from body",
+  "state machine timings and tool name match config exactly",
+  "damage exactly 20 per swing, verified in live playtest logs"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "parked StarterPack.Gladius to ServerStorage",
+   "got falchion references (Wikimedia) - single-edged blade, clipped tip, cross quillons, wheel pommel",
+   "generate_mesh 'Falchion' at 3.5 studs + capture_angles 4 views + save_mesh (asset 138345685094562)",
+   "make_tool with the single MeshPart as Handle",
+   "grip_tool fit loop (4 rounds) to rx=-135, rz=90, offset y=-1.2 - blade up-forward from fist",
+   "authored 3-keypose rightArm swing clip FalchionSwing (windup back 0s, strike through 0.25s, recover 0.7s)",
+   "bind_animation use=FalchionSwing; capture_animation front + right filmstrips verified arc, no clipping",
+   "restored Grip, removed AgentEditGrip weld, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.15/0.35 (fast swing); bind_hitbox damage 20, reach 7, cooldown 0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion (distinct from prior gladius/dagger/spear/scimitar): Cube mesh from a reference-matched prompt (single-edged blade, clipped angled tip, straight quillons, leather grip, wheel pommel) at 3.5 studs, save_mesh'd durable. Toolified single-part Handle; grip fitted visually over 4 rounds (mesh long axis runs diagonal in its bbox, needed rx=-135 + rz=90). 3-keypose rightArm swing (0.7s) bound as 'use'; previewed from front+right filmstrips - clean over-shoulder-to-hip arc. Fast behavior 0.12/0.15/0.35 with 20 dmg / reach 7 hitbox."
+ },
+ "stagedAt": 1783159327.0408967,
+ "headless": true
+}
