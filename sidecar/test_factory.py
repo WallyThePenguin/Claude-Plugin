@@ -192,6 +192,17 @@ def main():
     except factory.FactoryError:
         fails += _check("unknown rung refused", True)
 
+    # --- supervised=True admits a proven=false rung (interactive first ascents only) ---
+    loop = FakeLoop([{"state": "done", "result": build_line()}, {"state": "done", "result": verify_line("PASSED")}])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    r = _runner(loop, bridge, {})
+    try:
+        r.start("weapon-bow", supervised=True)
+        st = _wait(r)
+        fails += _check("supervised first ascent admitted", st["state"] == "done")
+    except factory.FactoryError:
+        fails += _check("supervised first ascent admitted", False)
+
     # --- gate hit -> BLOCKED, artifact destroyed, no verify loop ---
     loop = FakeLoop([{"state": "done", "result": build_line()}])
     bridge = FakeBridge({"GetAttributes": GATE_HITS, "Destroy": DESTROY_OK})

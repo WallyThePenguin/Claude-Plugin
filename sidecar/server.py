@@ -24,7 +24,7 @@ GET  /runtime                                             -> {"version":N,"modul
 GET  /references?query=<q>&count=N                        -> {"references":[{title,license,author,source,media_type,image(b64)}...]}
 POST /loop {"prompt":str, "maxIterations"?:int}           -> {"id":N}  (sidecar-side agent loop; 409 if one is running)
 GET  /loop/status                                         -> the current/last loop's status
-POST /factory {"rungId":str, "sabotage"?:bool}            -> {"id":N}  (headless BUILD->GATE->VERIFY->STAGE; 409 if busy)
+POST /factory {"rungId":str, "sabotage"?:bool, "supervised"?:bool} -> {"id":N}  (BUILD->GATE->VERIFY->STAGE; supervised admits proven=false; 409 if busy)
 GET  /factory/status                                      -> the current/last factory run's status
 POST /forever {"cycles"?:int, "families"?:[str]}          -> {"id":N}  (endless curriculum loop; 409 if busy)
 POST /forever/stop                                        -> {"ok":true}  (graceful stop after the current cycle)
@@ -334,7 +334,11 @@ class Handler(BaseHTTPRequestHandler):
                         {"error": "a forever run is active — it owns the factory; watch /forever/status"},
                     )
                 try:
-                    run_id = FACTORY.start(body.get("rungId"), body.get("sabotage", False))
+                    run_id = FACTORY.start(
+                        body.get("rungId"),
+                        body.get("sabotage", False),
+                        supervised=bool(body.get("supervised", False)),
+                    )
                 except factory_mod.FactoryError as exc:
                     code = 409 if "already active" in str(exc) else 400
                     return self._json(code, {"error": str(exc)})

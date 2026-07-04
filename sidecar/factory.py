@@ -123,14 +123,15 @@ class FactoryRunner:
         with self._lock:
             return json.loads(json.dumps(self._status))
 
-    def start(self, rung_id, sabotage=False, variant_hint=None, staging_id=None) -> int:
+    def start(self, rung_id, sabotage=False, variant_hint=None, staging_id=None, supervised=False) -> int:
         if not isinstance(rung_id, str) or not rung_id.strip():
             raise FactoryError("rungId is required")
         rung = self._find_rung(rung_id.strip())
         if rung is None:
             raise FactoryError(f"unknown rung '{rung_id}'")
-        if not rung.get("proven"):
-            # Charter: no unmanned first ascents. A proven=false rung needs a supervised session.
+        if not rung.get("proven") and not supervised:
+            # Charter: no unmanned first ascents. supervised=True is for interactive sessions where
+            # a human-present operator judges the evidence; the forever loop NEVER sets it.
             raise FactoryError(
                 f"rung '{rung_id}' is not proven  -  first ascents must be supervised, not headless"
             )
