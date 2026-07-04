@@ -361,7 +361,7 @@ for _, s in ipairs(sss:GetDescendants()) do
 end
 if %s then
   for _, m in ipairs(workspace:GetChildren()) do
-    if m:FindFirstChildOfClass("Humanoid") and m.Name ~= "VerifyTarget" then
+    if m:FindFirstChildOfClass("Humanoid") and m.Name ~= "VerifyTarget" and m.Name ~= "TrainingDummy" then
       local nm = string.lower(m.Name)
       if nm:find("husk") or nm:find("enemy") or nm:find("mob") or m:GetAttribute("StudioAgentGenerated") then
         m:Destroy()
@@ -417,26 +417,29 @@ return "STAGED"
 
 _WEAPON_VERIFY = (
     "The game's round/wave/spawner scripts are auto-disabled and stray mobs cleared for this verify "
-    "(a CALM sandbox - the tester will NOT be swarmed). "
-    "CRITICAL SEQUENCING: the test target must exist in EDIT mode BEFORE playtest_start so it is "
-    "baked into the play snapshot - a dummy/probe created AFTER the snapshot is NOT in the running "
-    "session and forces a restart loop. So:\n"
-    "(1) In EDIT (no playtest running), run_luau to place a GOD-MODE self-measuring target near "
-    "spawn: clone game.ServerStorage.VerifyDummy into workspace as 'VerifyTarget' (if VerifyDummy is "
-    "absent, clone EnemyTemplate, delete its scripts, add a Script that on Humanoid.HealthChanged "
-    "records (MaxHealth-health) to the model's 'LastDamage' attribute + increments 'HitCount' then "
-    "resets Health=MaxHealth), set Humanoid.MaxHealth=10000, anchor every BasePart, and PivotTo ~6 "
-    "studs in front of the SpawnLocation. This dummy HEALS after every hit (it never dies -> no "
-    "restart loop) and records each hit's damage on ITSELF (no separate probe to sequence).\n"
-    "The dummy PRINTS each hit to the log as `[VerifyTarget] HIT damage=<n> hitcount=<n>`, so the "
-    "damage readout needs NO playtest_eval/loadstring (which is usually disabled).\n"
-    "(2) playtest_start; (3) playtest_act record  -  the echo ends [tool=<name> w=<x> a=<y> c=<z>]: "
-    "FAIL if the tool name or echoed config does not match the build's config; (4) DAMAGE: walk the "
-    "player up to the VerifyTarget (~6 studs ahead of spawn), face it, and playtest_act activate to "
-    "swing 2-3 times; (5) playtest_logs since 0 and read the `[VerifyTarget] HIT damage=` lines  -  "
-    "FAIL unless a hit's damage EXACTLY equals the configured damage (a broken or sabotaged weapon "
-    "prints NO hit line  -  hitcount stays 0), and FAIL on any error mentioning the artifact; (6) "
-    "ALWAYS playtest_stop, then destroy workspace.VerifyTarget in edit."
+    "(a CALM sandbox - the tester will NOT be swarmed). Evidence is VISUAL + FUNCTIONAL, gathered "
+    "around the PERSISTENT workspace.TrainingDummy - a god-mode fixture of the map that heals after "
+    "every hit, never dies, never fights back, and PRINTS '[TrainingDummy] HIT damage=<n> "
+    "hitcount=<n>' on each hit (so the damage readout needs NO playtest_eval/loadstring).\n"
+    "CRITICAL SEQUENCING: the dummy must exist in EDIT mode BEFORE playtest_start so it is baked "
+    "into the play snapshot.\n"
+    "(1) In EDIT (no playtest running): if workspace.TrainingDummy is MISSING, create it via "
+    "run_luau - clone ServerStorage.VerifyDummy (or EnemyTemplate, deleting its scripts), name it "
+    "'TrainingDummy', SetAttribute('StudioAgentGenerated', nil) so the sandbox spares it, add a "
+    "Script that on Humanoid.HealthChanged prints the hit line then resets Health=MaxHealth, set "
+    "MaxHealth=10000, anchor every BasePart, PivotTo ~6 studs in front of the SpawnLocation. It is "
+    "a PERMANENT map fixture: NEVER destroy it, in edit or play.\n"
+    "(2) EVERY ANGLE: capture_angles the weapon's model (count 3-4) - it must still READ as the "
+    "brief's weapon from all sides; note what the frames show in the evidence.\n"
+    "(3) playtest_start; (4) playtest_act record  -  the echo ends [tool=<name> w=<x> a=<y> c=<z>]: "
+    "FAIL if the tool name or echoed config does not match the build's config; (5) DAMAGE + "
+    "FRAME-BY-FRAME: walk the player up to the TrainingDummy (~6 studs ahead of spawn), face it, "
+    "and playtest_act activate to swing 2-3 times, taking 2-3 playtest_capture frames DURING the "
+    "swings so the attack animation is SEEN (windup/contact readable - describe the frames in the "
+    "evidence); (6) playtest_logs since 0 and read the '[TrainingDummy] HIT damage=' lines  -  FAIL "
+    "unless a hit's damage EXACTLY equals the configured damage (a broken or sabotaged weapon "
+    "prints NO hit line  -  hitcount stays 0), and FAIL on any error mentioning the artifact; "
+    "(7) ALWAYS playtest_stop, and leave the TrainingDummy standing."
 )
 _ENEMY_VERIFY = (
     "The PLAYER is the enemy's target. Give the player GOD MODE that LOGS each hit, so the readout "
