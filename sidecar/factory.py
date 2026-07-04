@@ -248,8 +248,15 @@ class FactoryRunner:
             if sandbox:
                 self._verify_sandbox(False)
             # Deterministic teardown: a verify that hit the iteration cap may not have called
-            # playtest_stop, leaving a ZOMBIE session that blocks the NEXT verify. Force-stop it.
+            # playtest_stop, leaving a ZOMBIE session that blocks the NEXT verify AND poisons the
+            # next build (Studio stuck in play mode). RunService:Stop() alone does NOT end a
+            # StudioTestService session — invoke the real playtest_stop tool, then Stop() as a
+            # belt-and-suspenders fallback.
             if playbook.get("kind") == "runtime":
+                self._bridge.call(
+                    {"kind": "tool", "tool": "playtest_stop", "input": {}},
+                    GATE_TIMEOUT,
+                )
                 self._bridge.call(
                     {"kind": "luau", "code": 'pcall(function() game:GetService("RunService"):Stop() end) return "stopped"'},
                     GATE_TIMEOUT,
@@ -361,7 +368,7 @@ for _, s in ipairs(sss:GetDescendants()) do
 end
 if %s then
   for _, m in ipairs(workspace:GetChildren()) do
-    if m:FindFirstChildOfClass("Humanoid") and m.Name ~= "VerifyTarget" and m.Name ~= "TrainingDummy" then
+    if m:FindFirstChildOfClass("Humanoid") and m.Name ~= "VerifyTarget" and m.Name ~= "TrainingDummy" and m.Name ~= "AgentRig" then
       local nm = string.lower(m.Name)
       if nm:find("husk") or nm:find("enemy") or nm:find("mob") or m:GetAttribute("StudioAgentGenerated") then
         m:Destroy()
@@ -417,34 +424,35 @@ return "STAGED"
 
 _WEAPON_VERIFY = (
     "The game's round/wave/spawner scripts are auto-disabled and stray mobs cleared for this verify "
-    "(a CALM sandbox - the tester will NOT be swarmed). Evidence is VISUAL + FUNCTIONAL, gathered "
-    "around the PERSISTENT workspace.TrainingDummy - a god-mode fixture of the map that heals after "
-    "every hit, never dies, never fights back, and PRINTS '[TrainingDummy] HIT damage=<n> "
-    "hitcount=<n>' on each hit (so the damage readout needs NO playtest_eval/loadstring).\n"
-    "CRITICAL SEQUENCING: the dummy must exist in EDIT mode BEFORE playtest_start so it is baked "
-    "into the play snapshot.\n"
-    "(1) In EDIT (no playtest running): LOCATE workspace.TrainingDummy with run_luau and print BOTH "
-    "its Position AND the SpawnLocation's Position (the dummy may be BESIDE spawn, not ahead - "
-    "compute the offset so you know exactly which way and how far to walk in play; do NOT assume "
-    "'straight ahead'). If the dummy is MISSING, create it: clone ServerStorage.VerifyDummy (or "
-    "EnemyTemplate, deleting its scripts), name it 'TrainingDummy', SetAttribute("
-    "'StudioAgentGenerated', nil) so the sandbox spares it, add a Script that on "
-    "Humanoid.HealthChanged prints the hit line then resets Health=MaxHealth, set MaxHealth=10000, "
-    "anchor every BasePart, PivotTo ~6 studs from the SpawnLocation on OPEN floor. It is a "
-    "PERMANENT map fixture: NEVER destroy or move it, in edit or play.\n"
-    "(2) EVERY ANGLE: capture_angles the weapon's model (count 3-4) - it must still READ as the "
-    "brief's weapon from all sides; note what the frames show in the evidence.\n"
-    "(3) playtest_start; (4) playtest_act record  -  the echo ends [tool=<name> w=<x> a=<y> c=<z>]: "
-    "FAIL if the tool name or echoed config does not match the build's config; (5) DAMAGE + "
-    "FRAME-BY-FRAME: walk the player to the TrainingDummy using the offset you measured in step 1 "
-    "(NOT blindly forward), face it, and playtest_act activate to swing 2-3 times, taking 2-3 "
-    "playtest_capture frames DURING the swings so the attack animation is SEEN (windup/contact "
-    "readable - describe the frames in the evidence). If you cannot reach it within ~3 walk "
-    "attempts, verify damage anyway by any hit you can land and note the mobility trouble; "
-    "(6) playtest_logs since 0 and read the '[TrainingDummy] HIT damage=' lines  -  FAIL "
-    "unless a hit's damage EXACTLY equals the configured damage (a broken or sabotaged weapon "
-    "prints NO hit line  -  hitcount stays 0), and FAIL on any error mentioning the artifact; "
-    "(7) ALWAYS playtest_stop, and leave the TrainingDummy standing."
+    "(a CALM sandbox). Gather ALL visual evidence in EDIT MODE - the playtest at the end is ONLY "
+    "for the damage number, and must be SHORT.\n"
+    "(1) EDIT - EVERY ANGLE: capture_angles the weapon Tool (count 3-4) - it must READ as the "
+    "brief's weapon from all sides.\n"
+    "(2) EDIT - ON THE RIG, FRAME BY FRAME (no playtest needed): use workspace.AgentRig (spawn_rig "
+    "if missing). Record Tool.Grip and Tool.Parent via run_luau FIRST. grip_tool the weapon onto "
+    "the rig - its capture shows the held pose. Then capture_animation the Tool's bound swing "
+    "(animation = the Tool's Anims.use path - the Tool lives UNDER THE RIG while gripped) for a "
+    "frame-by-frame filmstrip of the swing with the weapon in hand. FAIL if the Tool has no "
+    "Anims/use clip (the build must bind one) or the swing does not READ (no windup/strike arc, "
+    "weapon not following the hand). Afterward RESTORE the Tool: set Grip back and reparent it to "
+    "its recorded parent (run_luau).\n"
+    "(3) EDIT - THE DUMMY: locate workspace.TrainingDummy with run_luau and print BOTH its "
+    "Position AND the SpawnLocation's Position (it may be BESIDE spawn - compute the offset so you "
+    "know exactly which way and how far to walk; do NOT assume 'straight ahead'). If MISSING, "
+    "create it: clone ServerStorage.VerifyDummy (or EnemyTemplate, deleting its scripts), name it "
+    "'TrainingDummy', SetAttribute('StudioAgentGenerated', nil), add a Script that on "
+    "Humanoid.HealthChanged prints '[TrainingDummy] HIT damage=<n> hitcount=<n>' then resets "
+    "Health=MaxHealth, MaxHealth=10000, anchor every BasePart, PivotTo ~5 studs from the "
+    "SpawnLocation on OPEN floor. PERMANENT fixture: NEVER destroy or move it.\n"
+    "(4) PLAYTEST - DAMAGE ONLY, IN AND OUT: playtest_start; playtest_act record (the echo ends "
+    "[tool=<name> w=<x> a=<y> c=<z>] - FAIL if the tool name or echoed config does not match the "
+    "build's config); walk to the dummy along the measured offset, face it, swing 2-3 times; "
+    "playtest_logs and read the '[TrainingDummy] HIT damage=' lines - FAIL unless a hit's damage "
+    "EXACTLY equals the configured damage (a broken or sabotaged weapon prints NO hit line), and "
+    "FAIL on any error mentioning the artifact. The MOMENT the damage lines are read - or after "
+    "~3 failed approach attempts (note the mobility trouble, judge on the evidence you have) - "
+    "playtest_stop IMMEDIATELY. Never linger in play mode; the visual evidence is already banked "
+    "from EDIT."
 )
 _ENEMY_VERIFY = (
     "The PLAYER is the enemy's target. Give the player GOD MODE that LOGS each hit, so the readout "
@@ -509,8 +517,17 @@ PLAYBOOKS = {
             "'parked' so STAGE restores them; (2) build a SHAPED above-primitive visual (prefer "
             "generate_mesh + save_mesh) with a profile distinct to this weapon, reference-matched "
             "per the VISION discipline above; (3) make_tool with the grip as Handle; "
-            "(4) move the Tool into StarterPack; (5) bind_behavior with windup/active/cooldown per "
-            "the brief's speed; (6) bind_hitbox with reach + damage + cooldown per the brief."
+            "(4) ANIMATE THE SWING in EDIT (no playtest): on workspace.AgentRig (spawn_rig if "
+            "missing) author a 3-keypose right-arm swing clip (add_keyframe scope rightArm: windup "
+            "back, strike through, recover; total ~0.6-0.9s per the brief's speed), then "
+            "bind_animation {tool, event='use', clip} so the weapon ACTUALLY ANIMATES when used; "
+            "(5) PREVIEW ON THE RIG in EDIT: record Tool.Grip via run_luau, grip_tool the weapon "
+            "onto the rig (its capture shows the held pose - vision-check it), then "
+            "capture_animation the bound clip (animation = the Tool's Anims.use path - NOTE the "
+            "Tool now lives UNDER the rig) for a frame-by-frame filmstrip of the swing with the "
+            "weapon in hand; then RESTORE: set Grip back and reparent the Tool out of the rig; "
+            "(6) move the Tool into StarterPack; (7) bind_behavior with windup/active/cooldown per "
+            "the brief's speed; (8) bind_hitbox with reach + damage + cooldown per the brief."
         ),
         "verify": _WEAPON_VERIFY,
     },
@@ -520,9 +537,13 @@ PLAYBOOKS = {
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"range":<n>,"projectileSpeed":<n>}',
         "build": (
             "(1) park StarterPack Tools into ServerStorage (report in 'parked'); (2) build a shaped "
-            "visual (mesh preferred), reference-matched per the VISION discipline; (3) make_tool (grip as Handle), move "
-            "to StarterPack; (4) bind_behavior for the draw/fire timing; (5) wire the projectile "
-            "spawn+flight+contact-damage per the brief."
+            "visual (mesh preferred), reference-matched per the VISION discipline; (3) make_tool "
+            "(grip as Handle); (4) author a 3-keypose right-arm draw/release clip on "
+            "workspace.AgentRig (spawn_rig if missing) and bind_animation {tool, event='use', "
+            "clip}; (5) preview in EDIT: grip_tool onto the rig + capture_animation the bound clip "
+            "(the Tool's Anims.use path under the rig), then restore Grip and reparent out; "
+            "(6) move to StarterPack; (7) bind_behavior for the draw/fire timing; (8) wire the "
+            "projectile spawn+flight+contact-damage per the brief."
         ),
         "verify": _WEAPON_VERIFY,
     },

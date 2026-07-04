@@ -136,7 +136,9 @@ def main():
     fails += _check("weapon playbook drives build", "make_tool" in loop.prompts[0] and "bind_hitbox" in loop.prompts[0])
     fails += _check("verify prompt is the skeptic", "SKEPTIC" in loop.prompts[1])
     fails += _check("weapon verify uses the persistent dummy", "TrainingDummy" in loop.prompts[1] and "NEVER destroy" in loop.prompts[1])
-    fails += _check("weapon verify gathers visual evidence", "capture_angles" in loop.prompts[1] and "playtest_capture" in loop.prompts[1])
+    fails += _check("weapon verify is edit-first visual", "capture_angles" in loop.prompts[1] and "grip_tool" in loop.prompts[1] and "capture_animation" in loop.prompts[1])
+    fails += _check("weapon verify keeps playtest short", "DAMAGE ONLY" in loop.prompts[1] and "playtest_stop IMMEDIATELY" in loop.prompts[1])
+    fails += _check("weapon build binds a swing animation", "bind_animation" in loop.prompts[0])
     # sandbox: a self-heal OFF at run start, then verify ON (clear) + OFF around the verify loop.
     sandbox_on = [c for c in bridge.calls if "if true then" in c.get("code", "")]
     fails += _check("weapon verify sandboxes with a clear-ON", len(sandbox_on) == 1)
