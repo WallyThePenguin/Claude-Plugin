@@ -11,6 +11,8 @@ local RunService = game:GetService("RunService")
 local CaptureService = game:GetService("CaptureService")
 local Selection = game:GetService("Selection")
 
+local Path = require(script.Parent.Path)
+
 local CaptureCore = {}
 
 local DEFAULT_FOV = 70 -- degrees; Studio's default camera FieldOfView
@@ -109,34 +111,26 @@ end
 
 -- Trigger one CaptureScreenshot and yield until the engine invokes the callback (or a timeout). We
 -- don't need the rbxtemp id — the sidecar reads the file by mtime. Returns true if the callback fired.
+-- The Studio Selection is stashed for the shot: its bright adornment otherwise renders INTO the
+-- screenshot (the "giant cyan box" that made rigs unjudgeable), then restored even on timeout.
 function CaptureCore.triggerCapture(timeoutS: number?): boolean
+	local prevSelection = Selection:Get()
+	Selection:Set({})
+	CaptureCore.settle(1) -- one frame so the adornment is gone before the engine samples the viewport
 	local done = false
 	local ok = pcall(function()
 		CaptureService:CaptureScreenshot(function(_id)
 			done = true
 		end)
 	end)
-	if not ok then
-		return false
-	end
-	local deadline = os.clock() + (timeoutS or 5)
-	while not done and os.clock() < deadline do
-		RunService.Heartbeat:Wait()
-	end
-	return done
-end
-
--- Walk a dotted/slashed instance path from `game` (e.g. "Workspace.Model.Part"). Returns nil on miss.
-local function resolvePath(path: string): Instance?
-	local node: Instance = game
-	for token in string.gmatch(path, "[^%./]+") do
-		local child = node:FindFirstChild(token)
-		if child == nil then
-			return nil
+	if ok then
+		local deadline = os.clock() + (timeoutS or 5)
+		while not done and os.clock() < deadline do
+			RunService.Heartbeat:Wait()
 		end
-		node = child
 	end
-	return if node == game then nil else node
+	Selection:Set(prevSelection)
+	return ok and done
 end
 
 -- World-AABB (center, size) over every BasePart under the given roots (oriented part corners), nil if
@@ -215,9 +209,10 @@ end
 function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
 	local roots: { Instance } = {}
 	if type(target) == "string" and target ~= "" then
-		local inst = resolvePath(target)
+		-- Shared resolver: accepts "game.Workspace.X", "Workspace.X", "workspace.X", service names.
+		local inst, perr = Path.resolve(target)
 		if inst == nil then
-			return nil, nil, "target not found: " .. target
+			return nil, nil, "target not found: " .. target .. " (" .. tostring(perr) .. ")"
 		end
 		table.insert(roots, inst)
 	else
