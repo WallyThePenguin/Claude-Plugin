@@ -10,8 +10,11 @@ export type ConfigValue = string | number | boolean
 -- are included now to avoid later schema churn.
 -- baseUrl defaults to 127.0.0.1:8318 — the local end of the SSH tunnel to hecate's CLIProxyAPI
 -- (proxy/tunnel.ps1). The local docker proxy (proxy/docker-compose.yml) is on 8319 as a fallback.
--- 2026-07-03: hecate's proxy was redeployed (new image) and serves claude-fable-5; switched the
--- default model to it (a genuine capability step up for the build/judge loop). NOTE: every
+-- 2026-07-03: hecate's proxy was redeployed (new image) and serves claude-fable-5.
+-- 2026-07-04: default model switched to claude-opus-4-8 at the user's request (do NOT use
+-- fable-5 as the primary). The fallback chain (agent_loop MODEL_FALLBACKS) filters out the
+-- active model, so with opus-4-8 primary the only fallback left is opus-4-7 — fable-5 is out
+-- of the loop entirely. NOTE: every
 -- CLIProxyAPI subscription-OAuth daemon (hecate's AND a fresh local one) STRIPS the client `system`
 -- field and injects its own Claude Code prompt — verified live. So the plugin delivers its
 -- SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which passes through any
@@ -19,7 +22,7 @@ export type ConfigValue = string | number | boolean
 local DEFAULTS = {
 	baseUrl = "http://127.0.0.1:8318",
 	proxyKey = "",
-	model = "claude-fable-5",
+	model = "claude-opus-4-8",
 	maxTokens = 8192,
 	-- Step budget per Send. Vision tasks ("build, capture, adjust, capture again…") burn several
 	-- steps per iterate-cycle, so this is generous; hitting it now ends gracefully + resumable
