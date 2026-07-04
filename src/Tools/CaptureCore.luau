@@ -109,6 +109,52 @@ function CaptureCore.settle(frames: number?)
 	end
 end
 
+-- The yaw (degrees) a subject Model is FACING, so camera presets can be subject-relative:
+-- "front" should mean the RIG's front, not the world's (a rig facing away gives a strip of its
+-- back — observed live: both weapon-swing strips filmed the rig from behind). nil = no facing.
+function CaptureCore.facingYaw(target: Instance?): number?
+	if target == nil or not target:IsA("Model") then
+		return nil
+	end
+	local root = target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+	if root == nil or not root:IsA("BasePart") then
+		return nil
+	end
+	local lv = root.CFrame.LookVector
+	-- frameCFrame places the camera at yaw 0 = +Z looking back at the center, which FACES a
+	-- subject whose LookVector is +Z. Solve the subject's world yaw so preset yaws add onto it.
+	return math.deg(math.atan2(lv.X, lv.Z))
+end
+
+-- Bright, shadow-free lighting for RIG/ITEM captures: backlit subjects render as near-black
+-- silhouettes that CANNOT be judged (observed live: swing filmstrips were unreadable, and both
+-- build+verify passed them anyway). Runs fn under neutral light, then restores the real lighting.
+-- NOT for environment/mood captures — those must show the artifact's own lighting.
+function CaptureCore.withNeutralLighting(fn: () -> ())
+	local Lighting = game:GetService("Lighting")
+	local saved = {
+		ClockTime = Lighting.ClockTime,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		Brightness = Lighting.Brightness,
+		GlobalShadows = Lighting.GlobalShadows,
+	}
+	Lighting.ClockTime = 14
+	Lighting.Ambient = Color3.fromRGB(140, 140, 140)
+	Lighting.OutdoorAmbient = Color3.fromRGB(160, 160, 160)
+	Lighting.Brightness = 2
+	Lighting.GlobalShadows = false
+	local ok, err = pcall(fn)
+	Lighting.ClockTime = saved.ClockTime
+	Lighting.Ambient = saved.Ambient
+	Lighting.OutdoorAmbient = saved.OutdoorAmbient
+	Lighting.Brightness = saved.Brightness
+	Lighting.GlobalShadows = saved.GlobalShadows
+	if not ok then
+		error(err)
+	end
+end
+
 -- Trigger one CaptureScreenshot and yield until the engine invokes the callback (or a timeout). We
 -- don't need the rbxtemp id — the sidecar reads the file by mtime. Returns true if the callback fired.
 -- The Studio Selection is stashed for the shot: its bright adornment otherwise renders INTO the
@@ -204,15 +250,17 @@ function CaptureCore.unionAABB(boxes: { { center: Vector3, size: Vector3 } }): (
 	return (minV + maxV) / 2, (maxV - minV)
 end
 
--- Resolve the target into (center, size, errString). A path string, or (nil/empty) the current
--- Studio Selection. Unions the bounding boxes of all resolved instances' BaseParts.
-function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
+-- Resolve the target into (center, size, errString, facingYawDeg). A path string, or (nil/empty)
+-- the current Studio Selection. Unions the bounding boxes of all resolved instances' BaseParts.
+-- facingYawDeg is the first root's facing (Models with a root part), so presets can be
+-- subject-relative; nil for plain parts/selections without a facing.
+function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?, number?)
 	local roots: { Instance } = {}
 	if type(target) == "string" and target ~= "" then
 		-- Shared resolver: accepts "game.Workspace.X", "Workspace.X", "workspace.X", service names.
 		local inst, perr = Path.resolve(target)
 		if inst == nil then
-			return nil, nil, "target not found: " .. target .. " (" .. tostring(perr) .. ")"
+			return nil, nil, "target not found: " .. target .. " (" .. tostring(perr) .. ")", nil
 		end
 		table.insert(roots, inst)
 	else
@@ -222,14 +270,15 @@ function CaptureCore.resolveTarget(target: any): (Vector3?, Vector3?, string?)
 		if #roots == 0 then
 			return nil,
 				nil,
-				"nothing selected — select a part/model in Studio or pass a target path."
+				"nothing selected — select a part/model in Studio or pass a target path.",
+				nil
 		end
 	end
 	local center, size = CaptureCore.aabbOf(roots)
 	if center == nil or size == nil then
-		return nil, nil, "target has no parts to frame (no BasePart found)."
+		return nil, nil, "target has no parts to frame (no BasePart found).", nil
 	end
-	return center, size, nil
+	return center, size, nil, CaptureCore.facingYaw(roots[1])
 end
 
 -- Ask the sidecar for `count` newest capture PNGs created at/after `since` (epoch seconds). Returns

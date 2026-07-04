@@ -1,0 +1,41 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "record echo [tool=Falchion w=0.12 a=0.18 c=0.35] matched config and TrainingDummy printed HIT damage=20 once per swing; edit filmstrips (front+right) show a readable in-hand swing"
+ },
+ "reasons": [
+  "state machine timings echo config exactly",
+  "damage exactly 20 per swing, no errors",
+  "3.5-stud sword silhouette reads from all 4 angles",
+  "use clip bound; swing reads from two angles, no detach/clip"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.12,
+   "active": 0.18,
+   "cooldown": 0.35,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "Parked existing StarterPack Tool 'Gladius' into ServerStorage",
+   "Pulled falchion reference photos (Wikimedia) and noted signature features: single-edged flat blade, straight back with clipped/widened tip, cross quillons, disc pommel",
+   "generate_mesh Cube falchion at 3.5 studs (0.9x3.5x0.4 — within hand-weapon scale), verified silhouette via capture_angles (5 presets), save_mesh to durable asset 102071783675543",
+   "make_tool -> Tool 'Falchion' with the single MeshPart as Handle",
+   "Authored 3-keypose right-arm swing clip 'FalchionSwing' on workspace.AgentRig (windup back t=0, strike through t=0.3, recover t=0.7; scope=rightArm), bind_animation event=use",
+   "Previewed in edit: grip_tool held pose (blade-up vertical, offset y=-1.1 rot rx=-90), capture_animation of Anims.use from front + right angles — arm-only arc, no body clipping",
+   "Restored: destroyed AgentEditGrip weld, re-set Grip (0,-1.1,0 / rx-90), moved Tool to StarterPack",
+   "bind_behavior 0.12/0.18/0.35 (fast swing), bind_hitbox damage=20 reach=7 cooldown=0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion (distinct from prior gladius/scimitar/spear/dagger family): Cube-generated single-edged falchion mesh at 3.5 studs, persisted via save_mesh. Toolified with the mesh as Handle, grip set hilt-down (offset 0,-1.1,0; rot rx=-90) so the blade points up out of the fist. 3-keypose rightArm-scoped swing (0.7s) bound as the use clip; behavior 0.12 windup / 0.18 active / 0.35 cooldown for a fast one-hander; hitbox 20 dmg @ 7 studs with matching 0.35s server cooldown. Prior Gladius parked to ServerStorage for STAGE to restore."
+ },
+ "stagedAt": 1783148228.324898,
+ "headless": true
+}

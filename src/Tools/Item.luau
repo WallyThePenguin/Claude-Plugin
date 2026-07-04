@@ -140,7 +140,14 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		return note .. " (couldn't frame: " .. tostring(ferr) .. ")", false
 	end
 	local since = os.time() - 2
-	if not CaptureCore.triggerCapture() then
+	local shotOk = false
+	pcall(function()
+		-- Neutral light: a backlit rig+item renders as a silhouette nobody can judge.
+		CaptureCore.withNeutralLighting(function()
+			shotOk = CaptureCore.triggerCapture()
+		end)
+	end)
+	if not shotOk then
 		return note .. " (CaptureService produced no screenshot — focus Studio and re-call)",
 			false
 	end

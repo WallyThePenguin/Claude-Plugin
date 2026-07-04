@@ -50,7 +50,7 @@ type Shot = { yaw: number, pitch: number, label: string }
 
 local function runAngles(input: any, context: any): (any, boolean)
 	local args = if type(input) == "table" then input else {}
-	local center, size, terr = CaptureCore.resolveTarget(args.target)
+	local center, size, terr, facingYaw = CaptureCore.resolveTarget(args.target)
 	if center == nil or size == nil then
 		return "capture_angles: " .. tostring(terr), true
 	end
@@ -85,16 +85,18 @@ local function runAngles(input: any, context: any): (any, boolean)
 	local distScale = if type(args.distance) == "number" and args.distance > 0
 		then args.distance
 		else 1
+	-- Subject-relative presets: for a Model with a facing (rigs, NPCs), "front" means ITS front.
+	local baseYaw = facingYaw or 0
 	local saved = CaptureCore.saveCamera()
 	local since = os.time() - 2
 	local triggered = 0
-	local okAll = pcall(function()
+	local function shoot()
 		for _, shot in shots do
 			CaptureCore.setCamera(
 				CaptureCore.frameCFrame(
 					center :: Vector3,
 					size :: Vector3,
-					shot.yaw,
+					shot.yaw + baseYaw,
 					shot.pitch,
 					distScale
 				)
@@ -103,6 +105,13 @@ local function runAngles(input: any, context: any): (any, boolean)
 			if CaptureCore.triggerCapture() then
 				triggered += 1
 			end
+		end
+	end
+	local okAll = pcall(function()
+		if args.neutralLight == true then
+			CaptureCore.withNeutralLighting(shoot)
+		else
+			shoot()
 		end
 	end)
 	CaptureCore.restoreCamera(saved)
@@ -310,11 +319,13 @@ local function runAnimation(input: any, context: any): (any, boolean)
 		local boundCF, boundSize = (rig :: Model):GetBoundingBox()
 		sweptCenter, sweptSize = boundCF.Position, boundSize
 	end
+	-- Subject-relative angle ("front" = the RIG's front) + neutral lighting (a backlit rig
+	-- renders as an unjudgeable silhouette — observed live on the first swing filmstrips).
 	CaptureCore.setCamera(
 		CaptureCore.frameCFrame(
 			sweptCenter :: Vector3,
 			sweptSize :: Vector3,
-			preset.yaw,
+			preset.yaw + (CaptureCore.facingYaw(rig) or 0),
 			preset.pitch,
 			zoom
 		)
@@ -324,16 +335,18 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	local triggered = 0
 	local labels: { string } = {}
 	local okAll = pcall(function()
-		for i = 0, frames - 1 do
-			local t = startT + (endT - startT) * (i / (frames - 1))
-			animTrack.TimePosition = t
-			animator:StepAnimations(0)
-			CaptureCore.settle(2)
-			if CaptureCore.triggerCapture() then
-				triggered += 1
-				table.insert(labels, string.format("%.2fs", t))
+		CaptureCore.withNeutralLighting(function()
+			for i = 0, frames - 1 do
+				local t = startT + (endT - startT) * (i / (frames - 1))
+				animTrack.TimePosition = t
+				animator:StepAnimations(0)
+				CaptureCore.settle(2)
+				if CaptureCore.triggerCapture() then
+					triggered += 1
+					table.insert(labels, string.format("%.2fs", t))
+				end
 			end
-		end
+		end)
 	end)
 
 	-- restore everything (always): DESTROY the temp Animator -- AnimationTrack:Stop alone does NOT remove a
@@ -397,7 +410,13 @@ Capture.descriptors = {
 					type = "string",
 					description = "Instance path; omit to use the selection.",
 				},
-				count = {
+				neutralLight = {
+				type = "boolean",
+				description = "true = capture under bright neutral shadow-free lighting (USE for "
+					.. "rigs/items so they never read as silhouettes; leave off for "
+					.. "environment/mood shots that must show real lighting).",
+			},
+			count = {
 					type = "number",
 					description = "Number of evenly-spaced angles (default 6).",
 				},

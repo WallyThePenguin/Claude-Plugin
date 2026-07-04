@@ -1,6 +1,6 @@
 {
  "category": "factory-methods",
- "seq": 2,
+ "seq": 8,
  "entries": [
   {
    "bucket": "factory-methods",
@@ -15,6 +15,48 @@
    "text": "Have the verify stage hard-fail fast with a captured reason when the build record is absent, rather than propagating an all-null cycle to retro.",
    "localId": 2,
    "createdAt": 1783144613
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 3,
+   "text": "Park any pre-existing StarterPack tool into ServerStorage before installing a new weapon so the playtest equips the item under test and the prior rung stays restorable.",
+   "localId": 3,
+   "createdAt": 1783148238
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 4,
+   "text": "After a grip/animation preview lab, explicitly tear down the edit-time weld and re-set Tool.Grip to the final numbers before moving the Tool to StarterPack - a leftover preview weld or lab grip silently ships otherwise.",
+   "localId": 4,
+   "createdAt": 1783148238
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 5,
+   "text": "Roof WedgeParts and angled slabs have easy-to-invert rotation signs (producing a V-valley instead of a pitch) - capture the silhouette from front/iso immediately after placing roof geometry and before any detailing, since the error is invisible in numbers but obvious in one image.",
+   "localId": 5,
+   "createdAt": 1783148730
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 6,
+   "text": "Form real door/window openings by segmenting walls into separate parts around the gap (not by overlaying frames on solid walls) - it makes the building walk-through capable and lets frames/muntins read as depth on capture.",
+   "localId": 6,
+   "createdAt": 1783148730
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 7,
+   "text": "Judge animation filmstrips ONLY by what is visible in the frames: state which way the blade/item points relative to the fist and name one unpredicted detail; a strip where the item is not clearly visible is UNREADABLE and must be re-shot, never passed.",
+   "localId": 7,
+   "createdAt": 1783148820
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 8,
+   "text": "A backlit rig renders as an unjudgeable black silhouette: capture rigs/items with neutralLight=true (capture_animation does this automatically) and re-shoot rather than judge dark frames.",
+   "localId": 8,
+   "createdAt": 1783148820
   }
  ]
 }

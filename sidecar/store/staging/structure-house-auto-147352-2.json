@@ -1,0 +1,36 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle capture reads as a coherent Tudor half-timbered cottage: 29x21.6 bbox matches config, 7-stud plank door, 3 mullioned windows, timber bands/posts, slate roof+ridge, brick chimney, cobble base."
+ },
+ "reasons": [
+  "All brief-required features present and textured on capture from front/back/left/right/iso",
+  "Bounding box 29x21.6 and 7-stud door match config and human scale",
+  "Matches reference signature (dark timber on cream plaster, slate roof, brick chimney); above generic bar",
+  "Minor: gable ends plain, timbering sparser than real references - not brief violations"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.TudorCottage",
+  "config": {
+   "footprintStuds": 29,
+   "heightStuds": 21.6,
+   "style": "Tudor half-timbered cottage: cream plaster walls with dark timber corner posts/bands, slate pitched gable roof with ridge cap and overhang, 7-stud plank door with jambs+stoop, 3 framed mullioned windows, brick chimney, cobblestone slab base"
+  },
+  "steps": [
+   "get_references('stone cottage gable roof') - noted signature features: pitched gable roof, chimney stack, framed multi-pane windows, contrasting timber/masonry facade",
+   "Assembled 60-part Model at (150,0,150): 26x18 footprint, 10-stud walls from segmented plaster parts leaving a 5x7 door opening and 5x4 window openings",
+   "Gable wedges + two angled slate roof slabs with 1.5-stud eave overhang and ridge cap; brick chimney punching through the roof plane",
+   "Timber detailing: corner posts, top/mid facade bands, door frame, window frames + muntins over glass panes; cobblestone floor slab and stoop",
+   "capture_angles round 1 caught inverted roof/gables (V-valley); flipped wedge yaw and slab pitch signs; round 2 confirmed correct pitched silhouette from front/left/iso"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Built a Tudor half-timbered cottage (distinct from prior stone structure-house artifacts) entirely from primitives in one run_luau pass: segmented walls form real openings (7-stud doorway, walk-through capable), WedgeParts close the gables, two rotated slabs form the roof. Materials: Concrete plaster + Wood timber + Slate roof + Brick chimney + Glass windows for a coherent palette. First capture round revealed the roof angle signs were inverted; fixed and re-verified from 3 angles. Door is CanCollide=false so a character can enter."
+ },
+ "stagedAt": 1783148719.2783005,
+ "headless": true
+}
