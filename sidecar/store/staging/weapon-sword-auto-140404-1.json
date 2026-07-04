@@ -1,0 +1,35 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack tools (Spear, Dagger) into ServerStorage",
+   "Pulled 3 gladius reference photos (broad parallel-edge blade, long triangular point, small dark guard, ribbed grip, spherical pommel)",
+   "generate_mesh Cube gladius at 3.2 studs; capture_angles x3 confirmed silhouette matched references (parallel edges, triangular tip, dark guard, ribbed grip, round pommel)",
+   "save_mesh persisted the mesh (asset 139298852481492)",
+   "make_tool -> Tool 'Gladius' with mesh as Handle; moved to StarterPack",
+   "bind_behavior fast swing 0.12/0.15/0.35",
+   "bind_hitbox damage 20, reach 7, cooldown 0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Roman gladius short sword — distinct from prior spear/dagger/generic swords. Reference-first: Wikimedia gladius photos set the target features (broad straight double-edged blade with parallel edges, long triangular point, small hemispherical guard, ribbed pale grip, large round pommel). Cube generate_mesh with a slender-specific prompt produced a clean single-mesh match on the first pass (verified via capture_angles, no re-gen needed); save_mesh made it durable before toolifying. make_tool wrapped it (single part = Handle at hilt), then bind_behavior (fast: 0.12 windup / 0.15 active / 0.35 cooldown) and bind_hitbox (20 dmg, 7 reach, 0.35s server cooldown)."
+ },
+ "stagedAt": 1783141054.5981913,
+ "headless": true
+}

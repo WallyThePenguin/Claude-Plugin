@@ -1,0 +1,35 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.1,
+   "active": 0.12,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "Parked Spear + Dagger from StarterPack into ServerStorage",
+   "Pulled falchion references (clipped single-edge blade, cross quillons, disc pommel)",
+   "generate_mesh 'Falchion' at 3.4 studs; capture_angles confirmed blade+quillons+disc pommel silhouette",
+   "save_mesh to durable asset 100503845013273",
+   "make_tool (single MeshPart Handle) and moved into StarterPack",
+   "bind_behavior 0.10/0.12/0.30 (fast swing)",
+   "bind_hitbox damage 20, reach 7, cooldown 0.3; verified attributes"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion - a NEW single-edged concept distinct from prior straight swords/spear/dagger. Cube prompt stressed slender single-edged blade with clipped angled tip, cross quillons, disc pommel; came back 1.1x3.4x0.2 studs, correct hand-weapon scale vs 5-stud character. Silhouette matched both references (front/iso capture: visible edge profile, quillons, round pommel) on first pass, so one capture round sufficed. save_mesh persisted before toolify; behavior/hitbox attributes read back at configured values."
+ },
+ "stagedAt": 1783139409.9296138,
+ "headless": true
+}

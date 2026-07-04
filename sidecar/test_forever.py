@@ -50,10 +50,12 @@ class FakeLoop:
     def __init__(self, results):
         self.results = list(results)
         self.prompts = []
+        self.local_tools_seen = []
         self._cur = {"state": "idle"}
 
-    def start(self, prompt, max_iterations=None, model=None):
+    def start(self, prompt, max_iterations=None, model=None, local_tools=None):
         self.prompts.append(prompt)
+        self.local_tools_seen.append(local_tools is not None)
         nxt = self.results.pop(0) if self.results else {"state": "done", "result": ""}
         self._cur = {**nxt}
         return len(self.prompts)
@@ -66,13 +68,54 @@ def proposals_result(props):
     return {"state": "done", "result": "Here are ideas.\nFACTORY_PROPOSALS_JSON: " + json.dumps(props)}
 
 
-def _runner(factory, loop, curriculum=CURRICULUM, staged=None):
+def retro_result(lessons=None, issues=None):
+    return {"state": "done", "result": "FACTORY_RETRO_JSON: " + json.dumps(
+        {"methodLessons": lessons or [], "toolingIssues": issues or []})}
+
+
+RETRO_EMPTY = retro_result()
+
+
+class FakeMechanicSession:
+    """Stands in for mechanic.MechanicSession: records reverts, fakes a commit."""
+
+    def __init__(self):
+        self.touched = ["src/Tools/Fake.luau"]
+        self.commits = []
+        self.reverted_uncommitted = False
+        self.reverted_commits = False
+
+    def revert_uncommitted(self):
+        self.reverted_uncommitted = True
+        return list(self.touched)
+
+    def revert_commits(self):
+        self.reverted_commits = True
+        return list(self.commits)
+
+    def dispatch(self, name, args):
+        if name == "git_commit":
+            self.commits.append("abc1234def")
+            return "committed abc1234def", False
+        return "ok", False
+
+    def as_tools(self):
+        return {"schemas": [{"name": "read_source", "description": "d", "input_schema": {"type": "object"}}],
+                "dispatch": self.dispatch, "session": self}
+
+
+def _runner(factory, loop, curriculum=CURRICULUM, staged=None, mechanic=None, git=None):
     d = tempfile.mkdtemp()
     path = os.path.join(d, "curriculum.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(curriculum, fh)
     lister = (lambda: [{"id": s} for s in (staged or [])])
-    r = forever.ForeverRunner(factory, loop, path, lister, sleep=lambda s: None)
+    r = forever.ForeverRunner(
+        factory, loop, path, lister, sleep=lambda s: None,
+        learnings_path=os.path.join(d, "factory-methods.json"),
+        tooling_path=os.path.join(d, "tooling-issues.json"),
+        mechanic_session=mechanic, git_run=git,
+    )
     return r, path
 
 
@@ -93,7 +136,7 @@ def main():
 
     # --- 2 cycles: runs proven families round-robin, appends proposals ---
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result(PROP), proposals_result([{"id": "enemy-archer", "family": "ranged-enemy", "brief": "archer", "oracle": "shoots"}])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result(PROP), RETRO_EMPTY, proposals_result([{"id": "enemy-archer", "family": "ranged-enemy", "brief": "archer", "oracle": "shoots"}])])
     r, path = _runner(factory, loop)
     r.start(cycles=2)
     st = _wait(r)
@@ -110,7 +153,7 @@ def main():
 
     # --- author dedup: a proposal duplicating an existing id is dropped ---
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result([{"id": "weapon-spear", "family": "melee-weapon", "brief": "dup", "oracle": "o"}, {"id": "weapon-axe", "family": "melee-weapon", "brief": "axe", "oracle": "o"}])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result([{"id": "weapon-spear", "family": "melee-weapon", "brief": "dup", "oracle": "o"}, {"id": "weapon-axe", "family": "melee-weapon", "brief": "axe", "oracle": "o"}])])
     r, path = _runner(factory, loop)
     r.start(cycles=1)
     st = _wait(r)
@@ -121,7 +164,7 @@ def main():
 
     # --- malformed / missing-field proposals are skipped ---
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result([{"id": "no-brief", "family": "gui"}, "not a dict", {"family": "gui", "brief": "no id"}, {"id": "GOOD_one!!", "family": "gui", "brief": "ok", "oracle": "o"}])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result([{"id": "no-brief", "family": "gui"}, "not a dict", {"family": "gui", "brief": "no id"}, {"id": "GOOD_one!!", "family": "gui", "brief": "ok", "oracle": "o"}])])
     r, path = _runner(factory, loop)
     r.start(cycles=1)
     _wait(r)
@@ -139,7 +182,7 @@ def main():
 
     # --- families filter restricts which families cycle ---
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result([]), proposals_result([])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result([]), RETRO_EMPTY, proposals_result([])])
     r, path = _runner(factory, loop)
     r.start(cycles=2, families=["melee-enemy"])
     _wait(r)
@@ -152,7 +195,7 @@ def main():
         "proposals": [],
     }
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result([]), proposals_result([])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result([]), RETRO_EMPTY, proposals_result([])])
     r, path = _runner(factory, loop, curriculum=focus_curriculum)
     r.start(cycles=2)
     st = _wait(r)
@@ -160,7 +203,7 @@ def main():
 
     # --- explicit families STILL overrides focus ---
     factory = FakeFactory("PASSED")
-    loop = FakeLoop([proposals_result([])])
+    loop = FakeLoop([RETRO_EMPTY, proposals_result([])])
     r, path = _runner(factory, loop, curriculum=focus_curriculum)
     r.start(cycles=1, families=["melee-enemy"])
     st = _wait(r)
@@ -243,6 +286,63 @@ def main():
         st["state"] == "done" and st["cycle"] == 2 and st.get("cyclesRequested") is None and st.get("cyclesCap") == 2,
     )
     fails += _check("staging id carries a run token", "-auto-" in factory.calls[0]["stagingId"])
+
+    # --- RETRO banks deduped method lessons + files tooling issues; unproven mechanic reverts ---
+    factory = FakeFactory("PASSED")
+    loop = FakeLoop([
+        retro_result(
+            ["measure the dummy offset in edit first", "measure the dummy offset in edit first"],
+            [{"title": "capture path bug", "symptom": "target not found",
+              "suspectFiles": ["src/Tools/CaptureCore.luau"], "repro": "capture_angles X"}],
+        ),
+        {"state": "done", "result": 'FACTORY_MECHANIC_JSON: {"fixed":false,"files":[],"proof":""}'},
+        proposals_result([]),
+    ])
+    session = FakeMechanicSession()
+    r, path = _runner(factory, loop, mechanic=session.as_tools)
+    r.start(cycles=1)
+    st = _wait(r)
+    lessons = json.load(open(r._learnings_path))
+    fails += _check("retro banks deduped lessons", len(lessons["entries"]) == 1 and "dummy offset" in lessons["entries"][0]["text"])
+    issues_data = json.load(open(r._tooling_path))
+    fails += _check("tooling issue filed", issues_data["issues"][0]["title"] == "capture path bug")
+    fails += _check("mechanic ran with local tools", loop.local_tools_seen == [False, True, False])
+    fails += _check("unproven mechanic fully reverted", session.reverted_uncommitted and session.reverted_commits)
+    fails += _check("mechanic status recorded", st.get("mechanicRuns") == 1 and st["mechanicLast"]["fixed"] is False)
+
+    # --- proven mechanic fix is committed (backstop) + regression auto-reverts it ---
+    class SeqFactory(FakeFactory):
+        def __init__(self, seq):
+            super().__init__("PASSED")
+            self.seq = list(seq)
+
+        def start(self, rung_id, sabotage=False, variant_hint=None, staging_id=None):
+            self._status_val = self.seq.pop(0) if self.seq else "PASSED"
+            return super().start(rung_id, sabotage, variant_hint, staging_id)
+
+    one_family = {"rungs": [dict(CURRICULUM["rungs"][0])], "proposals": []}
+    git_calls = []
+
+    def fake_git(args):
+        git_calls.append(list(args))
+        return 0, "ok"
+
+    factory = SeqFactory(["PASSED", "FAILED"])
+    loop = FakeLoop([
+        retro_result([], [{"title": "weld bug", "symptom": "no weld", "suspectFiles": [], "repro": "grip"}]),
+        {"state": "done", "result": 'FACTORY_MECHANIC_JSON: {"fixed":true,"files":["src/Tools/Fake.luau"],"proof":"repro passes now"}'},
+        proposals_result([]),
+        RETRO_EMPTY,
+        proposals_result([]),
+    ])
+    session = FakeMechanicSession()
+    r, path = _runner(factory, loop, curriculum=one_family, mechanic=session.as_tools, git=fake_git)
+    r.start(cycles=2)
+    st = _wait(r)
+    fails += _check("proven fix harness-committed", session.commits == ["abc1234def"])
+    fails += _check("regression auto-reverts the mechanic commit", ["revert", "--no-edit", "abc1234def"] in git_calls)
+    lessons = json.load(open(r._learnings_path))
+    fails += _check("revert banked as a lesson", any("auto-reverted" in e["text"] for e in lessons["entries"]))
 
     # --- proposal parser tolerates trailing prose ---
     parsed = forever._parse_proposals('FACTORY_PROPOSALS_JSON: [{"id":"a","family":"gui","brief":"b"}] thanks!')

@@ -359,7 +359,7 @@ class LoopRunner:
         with self._lock:
             self._status.update(kv)
 
-    def start(self, prompt: str, max_iterations=None, model=None) -> int:
+    def start(self, prompt: str, max_iterations=None, model=None, local_tools=None) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise LoopError("prompt is required")
         # Validate BEFORE committing state="running" — a bad value must fail this request,
@@ -388,7 +388,9 @@ class LoopRunner:
                 "recent": [],
             }
         thread = threading.Thread(
-            target=self._run, args=(run_id, prompt.strip(), max_iterations, model), daemon=True
+            target=self._run,
+            args=(run_id, prompt.strip(), max_iterations, model, local_tools),
+            daemon=True,
         )
         thread.start()
         return run_id
@@ -410,15 +412,15 @@ class LoopRunner:
 
         return write
 
-    def _run(self, run_id: int, prompt: str, max_iterations, model):
+    def _run(self, run_id: int, prompt: str, max_iterations, model, local_tools=None):
         # Total guard: an uncaught throw in the body must NEVER leave state="running"
         # (that wedges every future /loop behind a 409 until a sidecar restart).
         try:
-            self._run_inner(run_id, prompt, max_iterations, model)
+            self._run_inner(run_id, prompt, max_iterations, model, local_tools)
         except Exception as exc:  # noqa: BLE001
             self._set(state="error", error=f"internal loop error: {exc!r}")
 
-    def _run_inner(self, run_id: int, prompt: str, max_iterations, model):
+    def _run_inner(self, run_id: int, prompt: str, max_iterations, model, local_tools=None):
         write = self._transcript(run_id)
 
         def emit(event: str, data):
@@ -446,6 +448,13 @@ class LoopRunner:
         if not describe.get("ok"):
             return fail("describe failed: " + str(describe.get("error")))
         tools = fix_luau_empty_objects(describe.get("tools") or [])
+        # LOCAL tools (mechanic runs): schemas ride alongside the bridge tools, but dispatch
+        # happens SIDECAR-SIDE (filesystem/git/tests) instead of over the bridge into Studio.
+        local = local_tools or {}
+        local_names = set()
+        if isinstance(local.get("schemas"), list) and local.get("dispatch"):
+            tools = tools + list(local["schemas"])
+            local_names = {str(t.get("name")) for t in local["schemas"] if isinstance(t, dict)}
         instructions = str(describe.get("instructions") or "")
         images_kept = int(describe.get("imagesKept") or 6)
         max_iter = int(max_iterations or describe.get("maxIterations") or 40)
@@ -544,13 +553,25 @@ class LoopRunner:
                     return fail(f"wall-clock cap hit during iteration {i}")
                 name = str(tu.get("name"))
                 emit("tool_use", {"name": name, "input": tu.get("input")})
-                bridge_result = self._bridge.call(
-                    {"kind": "tool", "tool": name, "input": tu.get("input") or {}, "raw": True},
-                    TOOL_TIMEOUT,
-                )
+                if name in local_names:
+                    try:
+                        text, is_err = local["dispatch"](name, tu.get("input") or {})
+                    except Exception as exc:  # noqa: BLE001 — a local tool must never kill the loop
+                        text, is_err = f"{name}: local tool crashed: {exc!r}", True
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": str(tu.get("id")),
+                        "content": [{"type": "text", "text": str(text)}],
+                        "is_error": bool(is_err),
+                    })
+                else:
+                    bridge_result = self._bridge.call(
+                        {"kind": "tool", "tool": name, "input": tu.get("input") or {}, "raw": True},
+                        TOOL_TIMEOUT,
+                    )
+                    results.append(_tool_result_block(str(tu.get("id")), bridge_result))
                 with self._lock:
                     self._status["toolCalls"] = int(self._status.get("toolCalls") or 0) + 1
-                results.append(_tool_result_block(str(tu.get("id")), bridge_result))
             messages.append({"role": "user", "content": results})
 
         emit("done", {"iterations": max_iter, "capped": True})

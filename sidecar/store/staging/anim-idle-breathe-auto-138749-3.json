@@ -1,0 +1,36 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "list_clip: 'IdleBreatheWeightShift: 5 keyframes, length 6.000s, loop=true, priority=Idle'. Keyframe dump: neutral at t=0/3/6, weight-shift left at t=1.5 (UpperTorso roll +5, left knee +4, ankle -4), mirrored right at t=4.5; all foot/HRP positions (0,0,0) in every key; probe printed 'LOOP MATCH: IDENTICAL first/last'. Filmstrips (front/right/iso, 8-10 frames) show subtle alternating torso lean + arm drift, feet planted identically in all frames, ending pose == start pose."
+ },
+ "reasons": [
+  "Filmstrip reads as a natural gentle idle: visible breathing/arm drift and alternating left/right weight shift with torso lead",
+  "No foot-slide: feet planted at identical positions in all frames and all keyframe Pose positions are zero",
+  "Seamless loop verified structurally: first and last keyframes identical per joint, Loop=true",
+  "Config matches artifact: 5 keyframes, Idle priority, clip name correct",
+  "Amplitudes 1-8 degrees over 6s = gentle arc; Linear easing produces no visible pops at this scale"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.AgentRig.AnimSaves.IdleBreatheWeightShift",
+  "config": {
+   "clipName": "IdleBreatheWeightShift",
+   "keyframeCount": 5,
+   "priority": "Idle"
+  },
+  "steps": [
+   "spawn_rig block R15 (Workspace.AgentRig)",
+   "authored 5 keyposes with pose_joint + add_keyframe at t=0/1.5/3/4.5/6s",
+   "set Loop=true, Priority=Idle on the KeyframeSequence",
+   "capture_animation 8-frame filmstrip to verify motion + seamless loop"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Full-body looped idle on an R15 block rig. Neutral base pose (slight Waist/Neck pitch, relaxed elbow bend, arms tucked ~2deg) keyed at t=0/3/6 identically for a seamless 6s loop. Breath inhale poses at t=1.5 (weight shifted onto LEFT leg: Waist roll +5, opposite Neck counter-roll, shoulders lift, LeftKnee/LeftAnkle soften 4deg) and t=4.5 (mirror: weight onto RIGHT leg, Waist roll -1..-2, RightKnee/RightAnkle soften). Feet never translate so no foot-slide; all deltas kept 2-8deg so the motion reads as gentle breathing + sway, not fidgeting."
+ },
+ "stagedAt": 1783140282.881837,
+ "headless": true
+}

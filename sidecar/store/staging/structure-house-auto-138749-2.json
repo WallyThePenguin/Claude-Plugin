@@ -1,0 +1,36 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "capture_angles 4 views vs Welsh cottage references: walls/door/windows/foundation match the brief, but both gable-end views (90/270 deg) show the two RoofSlab parts INVERTED into a V-valley (butterfly) instead of an A-frame pitched gable - gable wedges protrude above the slabs, the RidgeCap sits in the valley, the chimney rises from the valley center, and the front view shows an open gap between wall head and floating eave."
+ },
+ "reasons": [
+  "Roof slabs pitched the wrong way: V-valley instead of A-frame gable ridge - the defining cottage silhouette is broken",
+  "No true ridge; RidgeCap is at the valley bottom, chimney emerges from the valley not the ridge",
+  "Visible gap between wall top and roof plane on the front elevation (sky/interior showing)",
+  "Fails the building rubric's coherent-massing/roof-reads-as-roof bar despite correct door/window/foundation detailing"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.WhitewashCottage",
+  "config": {
+   "footprintStuds": 29,
+   "heightStuds": 19.6,
+   "style": "whitewashed Welsh-style cottage: slate-white walls, dark pitched gable roof with ridge cap and eave overhang, red door + red-trimmed cross-mullion windows, cobblestone foundation, stone chimney"
+  },
+  "steps": [
+   "get_references('small stone cottage house') — noted whitewashed walls, contrasting red door/trim, dark slate pitched roof, chimney, small paned windows",
+   "assembled 26x18 footprint, 10-stud walls from segmented Parts leaving a 4x7 doorway and four 4x4 window openings",
+   "added side gable wedges (rise 6), two angled roof slabs with overhang + ridge cap, cobblestone chimney",
+   "dressed openings: glass panes with white cross mullions, red trim/sills, red plank door + stone doorstep",
+   "verified structurally (bounds, ground contact, doorway raycast) since capture sidecar was down"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Built at origin (100,0,100). Walls are wall-piece Parts (Slate, off-white) segmented around openings; gables are WedgeParts on the side walls; roof is two rotated slabs (atan2(6,9) pitch) plus ridge cap. Door opening 4w x 7h fits the 5-stud character; red visual door panel sits in the opening. CAVEAT: capture_angles/capture failed every attempt (CaptureService returned nothing), so the VISION compare step could not run — geometry verified via bounding box + raycast instead; VERIFY should re-capture."
+ },
+ "stagedAt": 1783139806.8693132,
+ "headless": true
+}

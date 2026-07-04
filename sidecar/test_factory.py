@@ -178,6 +178,25 @@ def main():
     fails += _check("default build is reference-first", "BUILD WITH VISION" in dp)
     sp = factory._build_prompt({"id": "s", "family": "game-system", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["game-system"])
     fails += _check("script-only system build skips the vision block", "BUILD WITH VISION" not in sp)
+
+    # --- self-improvement: learned methods injected + edit-first doctrine ---
+    import json as _json
+    import os as _os
+    import tempfile as _tf
+    lm_dir = _tf.mkdtemp()
+    with open(_os.path.join(lm_dir, "factory-methods.json"), "w", encoding="utf-8") as fh:
+        _json.dump({"category": "factory-methods", "seq": 1, "entries": [
+            {"bucket": "factory-methods", "id": 1, "text": "always measure the dummy offset in edit", "localId": 1, "createdAt": 1}
+        ]}, fh)
+    saved_lm = factory.LEARNINGS_DIR
+    factory.LEARNINGS_DIR = lm_dir
+    wp_l = factory._build_prompt(rung, False, factory.PLAYBOOKS["melee-weapon"])
+    vp_l = factory._verify_prompt(rung, {"artifactPath": "game.StarterPack.X"}, factory.PLAYBOOKS["melee-weapon"])
+    factory.LEARNINGS_DIR = saved_lm
+    fails += _check("learned methods injected into build", "LEARNED METHODS" in wp_l and "dummy offset" in wp_l)
+    fails += _check("learned methods injected into verify", "LEARNED METHODS" in vp_l)
+    vp_plain = factory._verify_prompt(rung, {"artifactPath": "game.StarterPack.X"}, factory.PLAYBOOKS["melee-weapon"])
+    fails += _check("edit-first doctrine in verify", "EDIT-MODE FIRST" in vp_plain and "~9" in vp_plain)
     gp = factory._build_prompt({"id": "g", "family": "gui", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["gui"])
     fails += _check("gui build skips wikimedia references", "BUILD WITH VISION" not in gp)
 

@@ -26,7 +26,14 @@ import agent_loop
 import factory as factory_mod
 
 PROPOSALS_JSON_RE = re.compile(r"FACTORY_PROPOSALS_JSON:\s*(\[.*\])", re.DOTALL)
+RETRO_JSON_RE = re.compile(r"FACTORY_RETRO_JSON:\s*(\{.*\})", re.DOTALL)
+MECHANIC_JSON_RE = re.compile(r"FACTORY_MECHANIC_JSON:\s*(\{.*\})", re.DOTALL)
 AUTHOR_MAX_ITER = 6
+RETRO_MAX_ITER = 5
+MECHANIC_MAX_ITER = 30
+MAX_METHOD_LESSONS = 40
+MAX_TOOLING_ISSUES = 40
+_BAD_STATUSES = ("FAILED", "UNVERIFIED", "BLOCKED", "error")
 # Wait generously ABOVE each sub-runner's OWN internal cap, so a healthy long run is never
 # mis-timed-out and its thread never orphaned. A factory iteration = BUILD loop + VERIFY loop
 # (each bounded by factory.LOOP_WAIT_CAP) + gate/stage; the author is one loop (bounded by the
@@ -73,13 +80,57 @@ def _parse_proposals(text: str):
     return []
 
 
+def _parse_last_obj(regex, text: str):
+    """Parse the LAST <MARKER>: {...} object, tolerating trailing prose. -> dict or {}."""
+    if not text:
+        return {}
+    m = None
+    for m in regex.finditer(text):
+        pass
+    if m is None:
+        return {}
+    blob = m.group(1).strip()
+    for end in range(len(blob), 0, -1):
+        if blob[end - 1] != "}":
+            continue
+        try:
+            val = json.loads(blob[:end])
+            return val if isinstance(val, dict) else {}
+        except ValueError:
+            continue
+    return {}
+
+
 class ForeverRunner:
-    def __init__(self, factory_runner, loop_runner, curriculum_path, store_lister, sleep=time.sleep):
+    def __init__(
+        self,
+        factory_runner,
+        loop_runner,
+        curriculum_path,
+        store_lister,
+        sleep=time.sleep,
+        learnings_path=None,
+        tooling_path=None,
+        mechanic_session=None,
+        git_run=None,
+    ):
         self._factory = factory_runner
         self._loop = loop_runner
         self._curriculum_path = curriculum_path
         self._store_lister = store_lister  # () -> [{"id":...}, ...] of staging entries
         self._sleep = sleep
+        here = os.path.dirname(os.path.abspath(__file__))
+        # Method lessons live beside the plugin's quality learnings (same schema, new bucket).
+        self._learnings_path = learnings_path or os.path.join(
+            here, "store", "learnings", "factory-methods.json"
+        )
+        self._tooling_path = tooling_path or os.path.join(
+            os.path.dirname(here), "factory", "tooling-issues.json"
+        )
+        # Hooks (injectable for tests): a fresh mechanic local-tool session per run, and git.
+        self._mechanic_session = mechanic_session  # () -> {"schemas","dispatch","session"}
+        self._git_run = git_run  # (args:list) -> (code, out); default = mechanic._git
+        self._last_mechanic_commit = None  # sha eligible for the regression auto-revert
         self._lock = threading.Lock()
         self._busy = False
         self._stop = False
@@ -166,6 +217,7 @@ class ForeverRunner:
         run_token = _sanitize_id(str(int(self._status.get("startedAt", 0)) % 1000000)) or "0"
         done = 0
         total_added = 0
+        prev_status = {}  # family -> last cycle's status (regression detection)
         while True:
             with self._lock:
                 stop_now = self._stop
@@ -199,6 +251,22 @@ class ForeverRunner:
                 # Do NOT start an author loop or the next cycle on top of it; abort so we never
                 # double-drive the single-slot bridge. (The orphan finishes on its own internal cap.)
                 return self._finish(state="error", error=fres.get("reason"), cycle=done)
+
+            status_now = fres.get("status") or fres.get("state")
+
+            # Regression auto-revert: a mechanic change followed by a same-family PASSED->bad
+            # drop gets reverted automatically (the user's step-in guarantee).
+            self._maybe_revert_on_regression(prev_status.get(fam), status_now)
+            prev_status[fam] = status_now
+
+            # RETRO: bank durable method lessons + detect tooling defects (self-improvement).
+            self._set(stage="retro")
+            issues = self._run_retro(rung, fam, fres)
+
+            # MECHANIC: the loop repairs its own tooling (full autonomy + auto-revert charter).
+            if issues:
+                self._set(stage="mechanic")
+                self._run_mechanic(issues)
 
             self._set(stage="author")
             added = self._run_author()
@@ -264,36 +332,251 @@ class ForeverRunner:
             "reason": f"factory exceeded the {FACTORY_WAIT_CAP / 60:.0f}min backstop — orphaned",
         }
 
-    def _run_author(self) -> int:
-        """One author loop run: propose new rungs, append the deduped valid ones. Returns count."""
-        prompt = self._author_prompt()
+    def _wait_loop_text(self, prompt, max_iterations, local_tools=None):
+        """Start one loop run and wait on the loop's OWN state (bounded by its WALL_CLOCK_CAP),
+        not a shorter cap — a backstop that fires early would leave the loop running and kill the
+        next cycle's factory.start. -> final text, or None on error/backstop."""
         try:
-            self._loop.start(prompt, max_iterations=AUTHOR_MAX_ITER)
+            if local_tools is not None:
+                self._loop.start(prompt, max_iterations=max_iterations, local_tools=local_tools)
+            else:
+                self._loop.start(prompt, max_iterations=max_iterations)
         except Exception:  # noqa: BLE001
-            return 0
-        # Wait on the loop's OWN state (bounded by its WALL_CLOCK_CAP), not a shorter cap — a
-        # backstop that fires early would leave the author loop running and kill the next cycle's
-        # factory.start (loop still marked running).
+            return None
         deadline = time.monotonic() + AUTHOR_WAIT_CAP
-        text = None
         while time.monotonic() < deadline:
             st = self._loop.status()
             state = st.get("state")
             if state == "done":
-                text = str(st.get("result") or "")
-                break
+                return str(st.get("result") or "")
             if state == "error":
-                return 0
+                return None
             self._sleep(POLL)
+        # Backstop fired (should not happen — it is above the loop's own cap). Let the loop
+        # actually SETTLE before returning, so the next start isn't refused by a running loop.
+        settle = time.monotonic() + AUTHOR_WAIT_CAP
+        while time.monotonic() < settle and self._loop.status().get("state") == "running":
+            self._sleep(POLL)
+        return None
+
+    def _run_author(self) -> int:
+        """One author loop run: propose new rungs, append the deduped valid ones. Returns count."""
+        text = self._wait_loop_text(self._author_prompt(), AUTHOR_MAX_ITER)
         if text is None:
-            # Backstop fired (should not happen — it is above the loop's own cap). Let the loop
-            # actually SETTLE before returning, so the next cycle's factory.start isn't refused by
-            # a still-running loop.
-            settle = time.monotonic() + AUTHOR_WAIT_CAP
-            while time.monotonic() < settle and self._loop.status().get("state") == "running":
-                self._sleep(POLL)
             return 0
         return self._append_proposals(_parse_proposals(text))
+
+    # -- self-improvement: retro (method lessons) + mechanic (tool self-repair) --
+
+    def _run_retro(self, rung, fam, fres):
+        """Reflect on the finished cycle: bank durable METHOD lessons and detect TOOLING defects.
+        Returns the toolingIssues list (the mechanic's trigger). Never raises."""
+        try:
+            text = self._wait_loop_text(self._retro_prompt(rung, fam, fres), RETRO_MAX_ITER)
+            retro = _parse_last_obj(RETRO_JSON_RE, text or "")
+            lessons = [
+                l for l in (retro.get("methodLessons") or []) if isinstance(l, str) and l.strip()
+            ]
+            issues = [
+                i for i in (retro.get("toolingIssues") or [])
+                if isinstance(i, dict) and i.get("title")
+            ]
+            n = self._append_method_lessons(lessons)
+            self._append_tooling_issues(issues)
+            with self._lock:
+                self._status["lessonsAdded"] = int(self._status.get("lessonsAdded") or 0) + n
+            return issues
+        except Exception:  # noqa: BLE001 — retro is best-effort, never kills the cycle
+            return []
+
+    def _retro_prompt(self, rung, fam, fres) -> str:
+        build = fres.get("build") or {}
+        verify = fres.get("verify") or {}
+        record = {
+            "rung": rung.get("id"),
+            "family": fam,
+            "status": fres.get("status") or fres.get("state"),
+            "reason": fres.get("reason"),
+            "buildSteps": build.get("steps"),
+            "buildNotes": build.get("notes"),
+            "verifyEvidence": verify.get("evidence"),
+            "verifyReasons": verify.get("reasons"),
+        }
+        return (
+            "You are the factory RETRO stage - its self-improvement reflex. A build+verify cycle "
+            "just finished. The record:\n" + json.dumps(record) + "\n\n"
+            "From the record ALONE (no tools - answer in ONE message), report:\n"
+            "1. METHOD LESSONS: 0-2 durable one-sentence rules that would make FUTURE cycles work "
+            "better (procedure/technique: 'measure X in edit before Y', 'verify Z without a "
+            "playtest by ...'). NOT brief restatements, NOT one-off facts.\n"
+            "2. TOOLING ISSUES: defects in the FACTORY'S OWN MACHINERY that the record shows (a "
+            "tool erroring, a wedge, evidence impossible to gather) - NOT content-quality "
+            "problems. Empty lists are fine - do not invent.\n\n"
+            "Your message must be ONLY this line:\n"
+            'FACTORY_RETRO_JSON: {"methodLessons":["..."],"toolingIssues":[{"title":"...",'
+            '"symptom":"<verbatim error/behaviour>","suspectFiles":["src/..."],'
+            '"repro":"<how to reproduce in EDIT mode>"}]}'
+        )
+
+    def _append_method_lessons(self, lessons) -> int:
+        """Append deduped method lessons to the factory-methods learnings bucket (same schema as
+        the plugin's quality learnings). Capped; newest survive. Returns how many were added."""
+        if not lessons:
+            return 0
+        try:
+            with open(self._learnings_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            data = {"category": "factory-methods", "seq": 0, "entries": []}
+        entries = data.setdefault("entries", [])
+        known = {e.get("text") for e in entries if isinstance(e, dict)}
+        added = 0
+        for text in lessons:
+            t = str(text).strip()[:400]
+            if not t or t in known:
+                continue
+            data["seq"] = int(data.get("seq") or 0) + 1
+            entries.append({
+                "bucket": "factory-methods",
+                "id": data["seq"],
+                "text": t,
+                "localId": data["seq"],
+                "createdAt": int(time.time()),
+            })
+            known.add(t)
+            added += 1
+        del entries[:-MAX_METHOD_LESSONS]
+        os.makedirs(os.path.dirname(self._learnings_path), exist_ok=True)
+        with open(self._learnings_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1)
+        return added
+
+    def _append_tooling_issues(self, issues):
+        """Append tooling defects to the mechanic's backlog file, deduped by title."""
+        if not issues:
+            return
+        try:
+            with open(self._tooling_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            data = {"issues": []}
+        bucket = data.setdefault("issues", [])
+        by_title = {i.get("title"): i for i in bucket if isinstance(i, dict)}
+        for issue in issues:
+            title = str(issue.get("title"))[:200]
+            if title in by_title:
+                by_title[title]["seenCount"] = int(by_title[title].get("seenCount") or 1) + 1
+                by_title[title]["lastSeenAt"] = int(time.time())
+                continue
+            bucket.append({
+                "title": title,
+                "symptom": str(issue.get("symptom") or "")[:600],
+                "suspectFiles": issue.get("suspectFiles") or [],
+                "repro": str(issue.get("repro") or "")[:600],
+                "seenCount": 1,
+                "lastSeenAt": int(time.time()),
+            })
+        del bucket[:-MAX_TOOLING_ISSUES]
+        os.makedirs(os.path.dirname(self._tooling_path), exist_ok=True)
+        with open(self._tooling_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1)
+
+    def _run_mechanic(self, issues) -> bool:
+        """One self-repair run (charter 2026-07-04: FULL autonomy + auto-revert). The mechanic
+        gets local repo tools; unproven work is reverted HERE, not trusted."""
+        try:
+            make = self._mechanic_session
+            if make is None:
+                import mechanic as mechanic_mod
+
+                make = mechanic_mod.make_session
+            tools = make()
+            session = tools.get("session")
+            text = self._wait_loop_text(
+                self._mechanic_prompt(issues),
+                MECHANIC_MAX_ITER,
+                local_tools={"schemas": tools["schemas"], "dispatch": tools["dispatch"]},
+            )
+            verdict = _parse_last_obj(MECHANIC_JSON_RE, text or "")
+            fixed = bool(verdict.get("fixed")) and bool(str(verdict.get("proof") or "").strip())
+            with self._lock:
+                self._status["mechanicRuns"] = int(self._status.get("mechanicRuns") or 0) + 1
+            if not fixed:
+                # Unproven: discard the run's edits entirely (files back, commits reverted).
+                files = session.revert_uncommitted() if session else []
+                commits = session.revert_commits() if session else []
+                with self._lock:
+                    self._status["mechanicLast"] = {
+                        "fixed": False,
+                        "revertedFiles": files,
+                        "revertedCommits": commits,
+                    }
+                return False
+            # Proven but uncommitted work would be unrevertable later — commit it for the audit
+            # trail (the mechanic SHOULD have; this is the harness backstop).
+            if session and session.touched and not session.commits:
+                session.dispatch("git_commit", {
+                    "message": f"{issues[0].get('title', 'tooling fix')} (harness-committed)",
+                })
+            if session and session.commits:
+                self._last_mechanic_commit = session.commits[-1]
+            with self._lock:
+                self._status["mechanicLast"] = {
+                    "fixed": True,
+                    "files": verdict.get("files"),
+                    "commit": self._last_mechanic_commit,
+                    "pendingSidecarRestart": bool(verdict.get("pendingSidecarRestart")),
+                }
+            return True
+        except Exception:  # noqa: BLE001 — the mechanic must never kill the forever loop
+            return False
+
+    def _mechanic_prompt(self, issues) -> str:
+        return (
+            "You are the factory MECHANIC - the self-repair stage. The retro found defects in the "
+            "factory's own machinery. Fix the TOOLING, minimally and provably.\n\n"
+            "DEFECTS:\n" + json.dumps(issues, indent=1) + "\n\n"
+            "You have the normal Studio tools PLUS local repo tools (read_source, search_source, "
+            "edit_source, write_source, reload_plugin, run_pytests, git_commit). Layout: plugin "
+            "Luau under src/ (tools in src/Tools/), factory prompts+playbooks in "
+            "sidecar/factory.py, runtime scripts in runtime/.\n\n"
+            "CONTRACT:\n"
+            "(1) REPRODUCE the defect first in EDIT mode via the Studio tools - if you cannot, "
+            "say so and STOP (never fix blind);\n"
+            "(2) make the MINIMAL source edit (edit_source over write_source);\n"
+            "(3) reload_plugin so src/ edits go live (sidecar/*.py edits only apply after a "
+            "sidecar restart - mark them pendingSidecarRestart instead);\n"
+            "(4) PROVE it: re-run the exact repro and show the new behaviour - unproven edits are "
+            "AUTO-REVERTED by the harness;\n"
+            "(5) run_pytests - every suite must pass;\n"
+            "(6) git_commit naming defect + fix.\n"
+            "Standing goal: prefer CREATING edit-mode test paths over play-mode ones - playtest "
+            "dependence should shrink over time. Never linger in play mode.\n\n"
+            "End your FINAL message with ONLY this line:\n"
+            'FACTORY_MECHANIC_JSON: {"fixed":true|false,"files":["src/..."],'
+            '"proof":"<one sentence: repro before vs after>","pendingSidecarRestart":false}'
+        )
+
+    def _maybe_revert_on_regression(self, prev_family_status, status_now):
+        """PASSED -> bad in the family right after a mechanic change: revert that change."""
+        if self._last_mechanic_commit is None:
+            return
+        if prev_family_status != "PASSED" or status_now not in _BAD_STATUSES:
+            return
+        git = self._git_run
+        if git is None:
+            import mechanic as mechanic_mod
+
+            git = mechanic_mod._git
+        sha = self._last_mechanic_commit
+        code, _out = git(["revert", "--no-edit", sha])
+        with self._lock:
+            self._status["mechanicReverted"] = {"commit": sha, "ok": code == 0}
+        self._append_method_lessons([
+            f"A mechanic change ({sha[:10]}) was auto-reverted after the next same-family cycle "
+            "regressed - re-diagnose from scratch before re-attempting that fix."
+        ])
+        self._last_mechanic_commit = None
 
     def _author_prompt(self) -> str:
         curriculum = self._read_curriculum()

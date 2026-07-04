@@ -33,6 +33,48 @@ GATE_TIMEOUT = 90.0
 LOOP_POLL = 1.0
 LOOP_WAIT_CAP = 50 * 60.0  # a hair over the loop's own 45-min wall-clock cap
 
+# Self-improvement feedback: lessons banked by the RETRO stage (forever.py) + the plugin's
+# per-category quality lessons are injected into every BUILD/VERIFY prompt.
+LEARNINGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "store", "learnings")
+_FAMILY_BUCKET = {
+    "melee-weapon": "weapons",
+    "ranged-weapon": "weapons",
+    "melee-enemy": "npc",
+    "ranged-enemy": "npc",
+    "building": "environment",
+    "environment": "environment",
+    "gui": "gui",
+    "animation": "characters",
+    "game-system": "combat",
+}
+
+
+def _learned_block(family) -> str:
+    """Newest factory-method lessons + the family's quality lessons as a prompt block.
+    Missing/corrupt files mean no block — this must never fail a run."""
+    picks = []
+    sources = [("factory-methods.json", 8)]
+    bucket = _FAMILY_BUCKET.get(family or "")
+    if bucket:
+        sources.append((bucket + ".json", 6))
+    for fname, count in sources:
+        try:
+            with open(os.path.join(LEARNINGS_DIR, fname), encoding="utf-8") as fh:
+                entries = json.load(fh).get("entries") or []
+        except (OSError, ValueError):
+            continue
+        for e in entries[-count:]:
+            t = str((e or {}).get("text") or "").strip()
+            if t:
+                picks.append(t)
+    if not picks:
+        return ""
+    return (
+        "LEARNED METHODS (banked from past cycles - apply these FIRST):\n"
+        + "\n".join("- " + t for t in picks)
+        + "\n\n"
+    )
+
 # Reserved symbols that block extraction (kept in sync with the workflow's GATE).
 RESERVED_PREFIX = "StudioAgentTest_"
 DENYLIST = ["TestAutoKill"]
@@ -713,6 +755,7 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         "(extra animations, polish passes, unrelated systems), do NOT playtest (that is VERIFY's "
         "job)  -  over-building burns the iteration budget and FAILS the run. Never create anything "
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
+        + _learned_block(rung.get("family"))
         + (f"{_VISION_BUILD}\n\n" if playbook.get("vision", True) else "")
         + f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
@@ -734,6 +777,13 @@ def _verify_prompt(rung, build, playbook: dict) -> str:
         f"is to find reasons to FAIL. Artifact: {build.get('artifactPath')} "
         f"(kind: {build.get('artifactKind', '?')}). Config: {json.dumps(build.get('config'))}.\n"
         f"ORACLE: {rung.get('oracle', '')}\n\n"
+        + _learned_block(rung.get("family"))
+        + "EDIT-MODE FIRST (standing rule): before ANY playtest_start, enumerate the edit-mode "
+        "routes to each oracle item - captures, filmstrips, rig scrubbing (grip_tool + "
+        "capture_animation), run_luau probes and direct invocation, RunService:Run() server-sim - "
+        "and ATTEMPT them; aim for ~9 distinct edit-mode checks before you conclude anything "
+        "needs play mode. Play mode is the LAST resort, only for evidence that is provably "
+        "runtime-only, and must be in-and-out.\n\n"
         f"VERIFY APPROACH for this {rung.get('family', 'artifact')}, ONE step at a time:\n"
         f"{playbook['verify']}\n\n"
         "If ANY oracle step is unavailable (playtest will not start, a probe errors, you cannot "

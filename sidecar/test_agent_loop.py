@@ -118,6 +118,40 @@ def main():
         second["messages"][-2]["content"][1]["type"] == "tool_use",
     )
 
+    # --- local tools (mechanic runs): dispatched sidecar-side, never over the bridge ---
+    bridge = FakeBridge([])
+    model = FakeModel(
+        [
+            ok_response([{"type": "tool_use", "id": "tu9", "name": "read_source", "input": {"path": "x.py"}}]),
+            ok_response([{"type": "text", "text": "read it"}]),
+        ]
+    )
+    local_calls = []
+
+    def _local_dispatch(name, args):
+        local_calls.append((name, args))
+        return "file body", False
+
+    local = {
+        "schemas": [{"name": "read_source", "description": "d", "input_schema": {"type": "object"}}],
+        "dispatch": _local_dispatch,
+    }
+    r = _runner(bridge, model, tmp)
+    r.start("fix a tool", local_tools=local)
+    st = _wait_done(r)
+    fails += _check(
+        "local tool dispatched sidecar-side",
+        st["state"] == "done" and local_calls == [("read_source", {"path": "x.py"})],
+    )
+    fails += _check("local tool never hits the bridge", len(bridge.tool_calls) == 0)
+    names = [t["name"] for t in model.bodies[0]["tools"]]
+    fails += _check("local schemas ride the send", "read_source" in names and "make_part" in names)
+    tr = model.bodies[1]["messages"][-1]["content"][0]
+    fails += _check(
+        "local result is a text tool_result",
+        tr["type"] == "tool_result" and tr["content"][0]["text"] == "file body",
+    )
+
     # --- structured (image) tool results + banner as text block ---
     bridge = FakeBridge(
         [
