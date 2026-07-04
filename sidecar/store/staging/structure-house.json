@@ -1,0 +1,35 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "4-angle + iso captures: gabled pitched roof with ridge cap and wedge gables, cream plaster walls, brown wood trim on door and 4+ windows, brick-textured chimney with cap, entry step; extents 29x22.6x23.7 studs matching 28-stud footprint config; door/eaves human-scaled vs 5-stud character. Matches reference cottage signature features (low massing, pitched roof, chimney stack, trimmed openings, white walls). Roof Material=Slate per brief though colored terracotta-brown rather than slate-grey."
+ },
+ "reasons": [
+  "Reads unambiguously as a coherent gabled cottage from every angle (roof+walls+openings all present)",
+  "All brief-required parts verified: plaster walls, gabled pitched roof (Slate material), wood trim, brick chimney",
+  "Proportions match config (29-stud footprint) and read true at character scale; door traversable",
+  "Clears above-generic bar: articulated surfaces (trim, lintel, ridge, step, chimney cap), textured materials, harmonized palette - not a default-plastic box",
+  "Minor non-blocking deviation: roof color reads terracotta rather than slate-grey"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.Cottage",
+  "config": {
+   "footprintStuds": 28,
+   "heightStuds": 18,
+   "style": "plaster-walled gabled cottage with slate pitched roof, wood trim, brick chimney"
+  },
+  "steps": [
+   "get_references for small cottage exterior (gabled roof, central door, flanking windows, chimney)",
+   "run_luau built Model 'Cottage': 26x20 footprint, 10-stud plaster walls, 7x4.5 doorway with wood jamb + open door leaf, 4 trimmed glass windows (2 front, 2 side), wedge gables + 2 sloped slate roof slabs w/ eave overhang + ridge cap, brick chimney, concrete floor/step",
+   "capture_angles front/left/iso + door-side view to verify silhouette, openings, proportions vs references"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "37-part primitive build. Walls = split Part segments around the door opening (lintel above) so the doorway is a real passable 7x4.5 hole. Gables = paired back-to-back WedgeParts at each side wall top; roof = two rotated slabs at atan(gableH/halfSpan) with overhang, ridge cap on top. Coherent palette: plaster walls, wood trim, slate roof, brick chimney, glass windows. Verified visually from 4 angles against Wikimedia cottage references."
+ },
+ "stagedAt": 1783136989.17975,
+ "headless": true
+}

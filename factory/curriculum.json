@@ -81,7 +81,7 @@
       "id": "structure-house",
       "category": "environment",
       "family": "building",
-      "proven": false,
+      "proven": true,
       "brief": "A small house/cottage Model: walls, pitched roof, a doorway (~7 studs so a character fits) and windows, scaled to the 5-stud character, coherent materials. VISUAL rung \u2014 judged by capture + references, not a runtime probe.",
       "oracle": "TBD supervised first ascent: get_references('cottage'/'small house') + capture_angles read as a coherent house (proportion vs character, roof+walls+openings present) and clear the building rubric's above-generic bar."
     },
