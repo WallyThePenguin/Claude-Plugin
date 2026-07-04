@@ -113,6 +113,7 @@ class ForeverRunner:
         tooling_path=None,
         mechanic_session=None,
         git_run=None,
+        narrate=None,
     ):
         self._factory = factory_runner
         self._loop = loop_runner
@@ -130,6 +131,7 @@ class ForeverRunner:
         # Hooks (injectable for tests): a fresh mechanic local-tool session per run, and git.
         self._mechanic_session = mechanic_session  # () -> {"schemas","dispatch","session"}
         self._git_run = git_run  # (args:list) -> (code, out); default = mechanic._git
+        self._narrate_cb = narrate  # (text, warn) -> None; live Studio Output commentary
         self._last_mechanic_commit = None  # sha eligible for the regression auto-revert
         self._lock = threading.Lock()
         self._busy = False
@@ -218,6 +220,9 @@ class ForeverRunner:
         done = 0
         total_added = 0
         prev_status = {}  # family -> last cycle's status (regression detection)
+        self._narrate(
+            f"forever run started: {cycles} cycle(s), rotation [{', '.join(proven_families)}]"
+        )
         while True:
             with self._lock:
                 stop_now = self._stop
@@ -241,6 +246,7 @@ class ForeverRunner:
             staging_id = _sanitize_id(f"{rung['id']}-auto-{run_token}-{done + 1}")
 
             self._set(cycle=done + 1, stage="factory", rung=rung["id"], family=fam)
+            self._narrate(f"=== cycle {done + 1}/{cycles}: {fam} ({rung['id']}) ===")
             try:
                 self._factory.start(rung["id"], variant_hint=hint, staging_id=staging_id)
             except Exception as exc:  # noqa: BLE001 — a busy/refused factory ends the loop cleanly
@@ -271,6 +277,8 @@ class ForeverRunner:
             self._set(stage="author")
             added = self._run_author()
             total_added += added
+            if added:
+                self._narrate(f"author: +{added} proposal(s) in the backlog")
 
             with self._lock:
                 self._status["proposalsAdded"] = total_added
@@ -332,6 +340,15 @@ class ForeverRunner:
             "reason": f"factory exceeded the {FACTORY_WAIT_CAP / 60:.0f}min backstop — orphaned",
         }
 
+    def _narrate(self, text, warn=False):
+        """Live commentary into Studio's Output (best-effort — never breaks the loop)."""
+        if self._narrate_cb is None:
+            return
+        try:
+            self._narrate_cb(str(text)[:400], warn)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _wait_loop_text(self, prompt, max_iterations, local_tools=None):
         """Start one loop run and wait on the loop's OWN state (bounded by its WALL_CLOCK_CAP),
         not a shorter cap — a backstop that fires early would leave the loop running and kill the
@@ -385,6 +402,10 @@ class ForeverRunner:
             self._append_tooling_issues(issues)
             with self._lock:
                 self._status["lessonsAdded"] = int(self._status.get("lessonsAdded") or 0) + n
+            for lesson in lessons[:2]:
+                self._narrate(f"retro lesson: {lesson}")
+            for issue in issues:
+                self._narrate(f"retro: tooling defect filed - {issue.get('title')}", warn=True)
             return issues
         except Exception:  # noqa: BLE001 — retro is best-effort, never kills the cycle
             return []
@@ -492,6 +513,10 @@ class ForeverRunner:
                 make = mechanic_mod.make_session
             tools = make()
             session = tools.get("session")
+            self._narrate(
+                "mechanic: attempting self-repair of "
+                + ", ".join(str(i.get("title")) for i in issues[:3])
+            )
             text = self._wait_loop_text(
                 self._mechanic_prompt(issues),
                 MECHANIC_MAX_ITER,
@@ -511,6 +536,11 @@ class ForeverRunner:
                         "revertedFiles": files,
                         "revertedCommits": commits,
                     }
+                self._narrate(
+                    "mechanic: no PROVEN fix - all changes reverted "
+                    f"({len(files)} file(s), {len(commits)} commit(s))",
+                    warn=True,
+                )
                 return False
             # Proven but uncommitted work would be unrevertable later — commit it for the audit
             # trail (the mechanic SHOULD have; this is the harness backstop).
@@ -527,6 +557,11 @@ class ForeverRunner:
                     "commit": self._last_mechanic_commit,
                     "pendingSidecarRestart": bool(verdict.get("pendingSidecarRestart")),
                 }
+            sha = (self._last_mechanic_commit or "")[:10]
+            self._narrate(
+                f"mechanic: fix PROVEN ({str(verdict.get('proof') or '')[:120]}) - "
+                f"committed {sha or '(no commit)'}"
+            )
             return True
         except Exception:  # noqa: BLE001 — the mechanic must never kill the forever loop
             return False
@@ -572,6 +607,9 @@ class ForeverRunner:
         code, _out = git(["revert", "--no-edit", sha])
         with self._lock:
             self._status["mechanicReverted"] = {"commit": sha, "ok": code == 0}
+        self._narrate(
+            f"regression after a mechanic change - auto-reverted commit {sha[:10]}", warn=True
+        )
         self._append_method_lessons([
             f"A mechanic change ({sha[:10]}) was auto-reverted after the next same-family cycle "
             "regressed - re-diagnose from scratch before re-attempting that fix."

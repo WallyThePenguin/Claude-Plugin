@@ -238,6 +238,13 @@ class FactoryRunner:
             self._sleep(LOOP_POLL)
         return False, "", f"{stage} loop exceeded {LOOP_WAIT_CAP:.0f}s"
 
+    def _narrate(self, text, warn=False):
+        """Live commentary into Studio's Output window (best-effort — never breaks a run)."""
+        try:
+            self._bridge.call({"kind": "narrate", "text": str(text)[:400], "warn": bool(warn)}, 15)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _run_inner(self, run_id, rung, sabotage, variant_hint=None, staging_id=None):
         rung_id = rung["id"]
         playbook = _playbook(rung)
@@ -246,6 +253,9 @@ class FactoryRunner:
         # so the game isn't left broken across runs.
         self._bridge.call({"kind": "luau", "code": _SANDBOX_OFF_LUAU}, GATE_TIMEOUT)
         result = {"rung": rung_id, "sabotage": sabotage, "family": rung.get("family")}
+        self._narrate(
+            f"BUILD {rung_id} ({rung.get('family')}): " + str(rung.get("brief") or "")[:140]
+        )
 
         # ---- BUILD ----
         self._set(stage="build")
@@ -253,6 +263,7 @@ class FactoryRunner:
             _build_prompt(rung, sabotage, playbook, variant_hint), max_iterations=45, stage="build"
         )
         if not ok:
+            self._narrate(f"BUILD blocked: {err}", warn=True)
             return self._finish(state="done", status="BLOCKED", reason=f"build: {err}", **result)
         build = _last_json(text, BUILD_JSON_RE)
         if not build or not build.get("ok") or not build.get("artifactPath"):
@@ -264,10 +275,14 @@ class FactoryRunner:
                 if tail:
                     partial["notes"] = "no FACTORY_BUILD_JSON; transcript tail: " + tail
             result["build"] = partial
+            self._narrate("BUILD blocked: no FACTORY_BUILD_JSON emitted", warn=True)
             return self._finish(
                 state="done", status="BLOCKED", reason="build produced no FACTORY_BUILD_JSON", **result
             )
         result["build"] = build
+        self._narrate(
+            f"BUILD done: {build.get('artifactPath')} - " + str(build.get("notes") or "")[:140]
+        )
 
         # ---- GATE ----
         self._set(stage="gate")
@@ -277,6 +292,7 @@ class FactoryRunner:
         gate_text = "" if not gate else str(gate.get("result") or "")
         if gate is None or gate.get("_timeout") or "GATE_CLEAN" not in gate_text:
             reason = "gate found test symbols" if "GATE_HITS" in gate_text else "gate could not verify a clean artifact"
+            self._narrate(f"GATE blocked: {reason}", warn=True)
             self._destroy_artifact(build["artifactPath"])
             return self._finish(
                 state="done", status="BLOCKED", reason=reason, gate=gate_text, **result
@@ -284,6 +300,7 @@ class FactoryRunner:
 
         # ---- VERIFY ----
         self._set(stage="verify")
+        self._narrate(f"VERIFY {rung_id}: gathering edit-first evidence, then the verdict")
         # A runtime playbook drives a playtest of the LIVE game  -  sandbox it first so the game's
         # own mobs/round loop don't chase and kill the tester mid-measure ("clear" also removes
         # stray enemy rigs; "keep" leaves the rung's own test enemy alone).
@@ -316,13 +333,21 @@ class FactoryRunner:
             verify = {"status": "UNVERIFIED", "reasons": [err or "verify produced no verdict"]}
         result["verify"] = verify
         status = verify["status"]
+        ev = verify.get("evidence")
+        ev_summary = str((ev or {}).get("summary") or "") if isinstance(ev, dict) else ""
+        self._narrate(
+            f"VERIFY {status}: {ev_summary[:180]}" if ev_summary else f"VERIFY {status}",
+            warn=(status != "PASSED"),
+        )
 
         # ---- STAGE ----
         self._set(stage="stage")
         if status == "PASSED":
             self._move_to_staging(build["artifactPath"], build.get("toolName") or rung_id)
+            self._narrate(f"STAGED {staging_id or rung_id} -> ServerStorage.FactoryStaging")
         else:
             self._destroy_artifact(build["artifactPath"])
+            self._narrate(f"artifact destroyed ({status}); the evidence entry is staged for review")
         # Restore whatever the build parked out of StarterPack so the place is left as found
         # (the artifact itself is now either in FactoryStaging or destroyed)  -  this runs on EVERY
         # outcome, matching the attended workflow's STAGE step.

@@ -181,6 +181,16 @@ local function handleCommand(deps: any, cmd: any)
 			result = banner .. DevBridge.serializeContent(content),
 			logs = Logs.recent(40),
 		})
+	elseif kind == "narrate" then
+		-- Live commentary channel: the sidecar loops post their decisions/stages here so the
+		-- user can WATCH the factory think in Studio's Output window. Never fails.
+		local text = "[Factory] " .. tostring(cmd.text or "")
+		if cmd.warn == true then
+			warn(text)
+		else
+			print(text)
+		end
+		postResult(deps, cmd.id, { ok = true, result = "narrated" })
 	elseif kind == "luau" then
 		local content, isError =
 			Tools.dispatch("run_luau", { code = tostring(cmd.code) }, toolContext(deps))

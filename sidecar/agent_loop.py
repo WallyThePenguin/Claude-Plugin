@@ -522,6 +522,15 @@ class LoopRunner:
             if turn_text:
                 emit("assistant_text", "\n".join(turn_text))
                 final_text = "\n".join(turn_text)
+                # Live commentary: the model's own narration lands in Studio's Output so the
+                # user can watch it think. Best-effort — never let narration break the run.
+                try:
+                    snippet = " ".join(final_text.split())
+                    if len(snippet) > 240:
+                        snippet = snippet[:240] + "..."
+                    self._bridge.call({"kind": "narrate", "text": "agent: " + snippet}, 15)
+                except Exception:  # noqa: BLE001
+                    pass
 
             messages.append({"role": "assistant", "content": content})
             if not tool_uses:

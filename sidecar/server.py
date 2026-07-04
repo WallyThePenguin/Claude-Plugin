@@ -58,7 +58,14 @@ _CURRICULUM = os.path.join(
 )
 FACTORY = factory_mod.FactoryRunner(LOOP, _BRIDGE, _CURRICULUM, filestore.write_item)
 FOREVER = forever_mod.ForeverRunner(
-    FACTORY, LOOP, _CURRICULUM, lambda: filestore.list_items("staging")
+    FACTORY,
+    LOOP,
+    _CURRICULUM,
+    lambda: filestore.list_items("staging"),
+    # Live commentary into Studio's Output window (the user watches the loop think).
+    narrate=lambda text, warn=False: _BRIDGE.call(
+        {"kind": "narrate", "text": text, "warn": warn}, 15
+    ),
 )
 
 
