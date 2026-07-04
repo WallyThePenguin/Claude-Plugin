@@ -1,0 +1,36 @@
+{
+ "rung": "env-arena-dress",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "9 angles show a 9-monolith slate ring (~8.7-stud stones) with lit ice runes, glowing rune altar, 3 crystal clusters, drifts, pines under blue haze - matches stone-circle references at character scale."
+ },
+ "reasons": [
+  "All brief elements present and verified by capture + probes: megalith ring, rune glow, central altar, crystals, pines, snow, cold haze",
+  "Scale correct vs 5-stud character; silhouette matches Ardgroom/Castlerigg references",
+  "Red/pink foreign parts probed and confirmed outside FrostmoorCircle",
+  "Coherent cold-blue material/lighting palette; reads as intentional ritual space from every angle"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.FrostmoorCircle",
+  "config": {
+   "theme": "Frostmoor standing-stone ritual circle: snowbound megalith ring with glowing ice runes, central rune altar, crystal clusters, pines under cold blue haze",
+   "areaStuds": 150
+  },
+  "steps": [
+   "Probed existing occupiers' bounding boxes and picked clear ground at (-250,-250)",
+   "Pulled megalith stone-circle + winter references; targeted leaning tapered stones ~1.5-2x character height facing center",
+   "Built 150-stud snow disc + packed inner ring, 9 varied Slate standing stones with taper caps, snow tops, and neon rune strips (PointLights)",
+   "Added central altar + neon RuneDisc, 2 fallen slabs, 3 ice-crystal clusters, 10 snow drifts",
+   "Added 4 author_mesh pines + 2 boulders as perimeter organics",
+   "Set cold-readable Lighting (ClockTime 14.6, Ambient 105+, blue Atmosphere density 0.42) and verified with capture_angles at 5 orbits + 2 ground-level shots"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Snow-circle ritual arena: cylinder snow ground disc + darker packed inner ring; 9 randomized Slate megaliths (Random seed) leaning inward with taper-cap+snow-cap stacking to break box silhouettes, alternate stones carrying neon rune strips with point lights; central 2-tier altar with cyan neon rune disc; author_mesh pines/rocks for organics (never Cube). Lighting per banked learnings: ClockTime ~14.6, Ambient >=100, Atmosphere 0.42 blue haze, lights as accents only. Verified at character scale from ground-level captures."
+ },
+ "stagedAt": 1783173283.545982,
+ "headless": true
+}

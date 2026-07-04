@@ -1,0 +1,36 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Loop diff 0.0, feet constant across all 7 keyframes, but every capture returned the same rig-less frozen frame - filmstrip oracle unrenderable."
+ },
+ "reasons": [
+  "viewport frozen/foreign: all captures byte-identical dark frames with stray CLICK ME GUI despite raycast confirming camera aimed at rig",
+  "visual oracle (filmstrip reads as natural idle) could not be rendered from any angle",
+  "numeric checks pass (seamless palindromic loop, zero foot motion, 4-8deg upper-body arcs) but cannot substitute for the visual brief"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.IdleRig.AnimSaves.IdleBreatheShift",
+  "config": {
+   "clipName": "IdleBreatheShift",
+   "keyframeCount": 7,
+   "priority": "Idle"
+  },
+  "steps": [
+   "spawn_rig block R15, renamed to IdleRig to disambiguate from existing AgentRig",
+   "defined 4 keyposes in Luau (A relaxed, B inhale peak, C left-hip weight shift, D shifted inhale) touching only Waist/Neck/Shoulders/Elbows",
+   "authored palindromic A-B-A-C-D-C-A at t=0,1,2,3.2,4.2,5.2,6.4 via setPose + add_keyframe",
+   "set Loop=true, Priority=Idle",
+   "numeric verify: first-vs-last pose diff 0.0, no leg joints keyed, no Pose translation",
+   "capture pipeline down (byte-identical dark frames) - flagged, relied on numeric checks"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh idle distinct from prior anim-idle-breathe artifacts: breath cycle (Waist pitch -1.5..2 + counter Neck + shoulder-roll rise) layered with a left-hip weight shift (Waist roll 5, Neck counter-roll -4, asymmetric shoulders). Only upper-body rotation joints keyed; legs/feet never posed and no Pose carries translation, so foot-slide is structurally impossible. Palindromic keypose ordering makes first==last exactly (seam diff 0.0). Capture sidecar returned frozen foreign frames both rounds, so visual review is UNVERIFIED here; numeric loop/foot checks all pass. VERIFY should re-run capture_animation front+right once the viewport is healthy."
+ },
+ "stagedAt": 1783167459.7164602,
+ "headless": true
+}

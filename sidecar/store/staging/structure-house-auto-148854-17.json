@@ -1,0 +1,35 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle capture vs cottage references: roof panels slope upward/outward in a V (butterfly) instead of an A gable, floating off the walls with open gaps and exposed gable wedges."
+ },
+ "reasons": [
+  "Roof inverted: slopes rise from a low central ridge outward, opposite of the gabled roof in references and brief",
+  "Roof not seated on walls - visible air gap/black wedge between wall tops and roof underside on front and gable ends",
+  "Gable WedgeParts protrude exposed above wall corners, breaking the silhouette",
+  "Chimney, stone walls, trimmed windows, green door and porch are present but the building does not read as a coherent house from front/left/right"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneHearthCottage",
+  "config": {
+   "footprintStuds": 29.5,
+   "heightStuds": 20.8,
+   "style": "single-storey fieldstone cottage, dark slate gabled roof, massive external gable-end chimney, white-trimmed windows, green plank door under a shed porch"
+  },
+  "steps": [
+   "get_references('stone cottage house') - noted signature features: stone walls, dark pitched roof, white window trim, prominent external chimney, porch over entry",
+   "checked ServerStorage.FactoryStaging prior structure_house variants (timber-jetty, brick+plaster, segmented kits) and chose a distinct concept: fieldstone cottage with external gable-end chimney stack + shed porch",
+   "assembled 54-part Model at (150,150) on open ground: floor slab, pierced stone walls (Slate), wedge gables, two overhanging roof planes + ridge cap, 3-stage tapered stone chimney, framed door (4x7 opening) with slab+knob, 3 white-trimmed glass windows with mullions, shed porch roof on posts + step",
+   "capture pipeline down (CaptureService no screenshot after repeated retries) - verified geometrically instead: doorway raycast clear-through, 7-stud door clearance, bbox 29.5x20.8x22"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fieldstone cottage distinct from prior staged houses (those were timber-jetty/brick-plaster/kit-ring variants). Built entirely from anchored primitives: Slate stone walls in 3 tones, wall openings framed by sill/head parts (no CSG), WedgePart gables, rotated slab roof planes with 1-stud eave overhang, external 3-stage chimney rising past the ridge per reference photos. Door opening 4x7 studs verified by raycast; windows are Glass panes with SmoothPlastic white trim + center mullion. Vision sidecar captures failed all attempts, so visual pass is deferred to VERIFY; geometry validated by bounding-box + raycast probes."
+ },
+ "stagedAt": 1783165500.3224103,
+ "headless": true
+}

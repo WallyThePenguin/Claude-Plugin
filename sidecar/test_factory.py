@@ -251,6 +251,23 @@ def main():
         "confused" in str((st.get("build") or {}).get("notes") or ""),
     )
 
+    # --- verify with no JSON tail -> UNVERIFIED keeps transcript tail for retro ---
+    loop = FakeLoop([
+        {"state": "done", "result": build_line()},
+        {"state": "done", "result": "capture pipeline down; ran out of iterations before a verdict."},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "Destroy": DESTROY_OK})
+    store = {}
+    r = _runner(loop, bridge, store)
+    r.start("weapon-spear")
+    st = _wait(r)
+    fails += _check("no-verdict verify -> UNVERIFIED", st["status"] == "UNVERIFIED")
+    reasons = store.get(("staging", "weapon-spear"), {}).get("reasons") or []
+    fails += _check(
+        "no-verdict verify keeps transcript tail for retro",
+        any("ran out of iterations" in str(x) for x in reasons),
+    )
+
     # --- build ok:false -> BLOCKED ---
     loop = FakeLoop([{"state": "done", "result": build_line(ok=False)}])
     r = _runner(loop, FakeBridge({}), {})

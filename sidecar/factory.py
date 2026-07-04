@@ -330,7 +330,13 @@ class FactoryRunner:
                 )
         verify = _last_json(text, VERIFY_JSON_RE) if ok else None
         if not verify or verify.get("status") not in ("PASSED", "FAILED", "UNVERIFIED"):
-            verify = {"status": "UNVERIFIED", "reasons": [err or "verify produced no verdict"]}
+            # Keep the transcript tail (like BUILD does) so RETRO sees the failure cause
+            # instead of an all-null record with only the generic reason.
+            reasons = [err or "verify produced no verdict"]
+            tail = (text or "").strip()[-600:]
+            if tail:
+                reasons.append("no FACTORY_VERIFY_JSON; transcript tail: " + tail)
+            verify = {"status": "UNVERIFIED", "reasons": reasons}
         result["verify"] = verify
         status = verify["status"]
         ev = verify.get("evidence")

@@ -1,0 +1,35 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle captures read as a coherent stone cottage matching references: stone walls, dark ridge-capped gable roof, chimney top 18>ridge 15.7, 3 shuttered trimmed windows, wood door+step."
+ },
+ "reasons": [
+  "All brief features present and verified visually + numerically",
+  "Proportions coherent vs 5-stud character (walls ~9 studs, door ~6.8)",
+  "Textured materials and trims clear the above-generic bar"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneCottage",
+  "config": {
+   "footprintStuds": 24,
+   "heightStuds": 15,
+   "style": "stone cottage: slate stone walls, dark pitched gable roof with ridge cap, exterior cobblestone chimney past ridge, cream-trimmed shuttered windows x3, 7-stud wood door with step"
+  },
+  "steps": [
+   "Frame-diffed viewport health check via capture (live)",
+   "get_references('stone cottage house') x3 - noted pitched gable roof, stone walls, chimney past ridge, cream trim/shutters",
+   "Assembled 53-part Model at (-150,250) on clear ground: segmented walls with real door/window openings, wedge gables, pitched roof slabs, chimney, trim",
+   "First capture_angles showed inverted roof pitch + arena occlusion - rebuilt at clear coordinates with corrected wedge/slab orientation",
+   "Re-captured front/back/left/iso - all angles read as cottage vs references"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Recipe: segment each wall around openings (sill+header parts) instead of boolean cuts; door opening 4w x 7h. Gables = two wedges per end, vertical faces toward ridge (yaw 180 on the +Z half). Roof = two slabs rotated CFrame.Angles(side*atan2(rise,halfW),0,0) centered at z = center +/- halfW/2, overhang +3 long/+2 slope. Chimney outside the gable wall, height H+rise+3 so it clears the ridge. First placement collided with SiegeArena bounding box - probe big occupiers' bounds first and site on genuinely clear ground."
+ },
+ "stagedAt": 1783172093.5930173,
+ "headless": true
+}

@@ -1,0 +1,34 @@
+{
+ "rung": "env-arena-dress",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "All captures return blank frames - even a 50-stud magenta neon test part aimed dead-center renders black, so the capture pipeline is frozen/foreign; structure probes match the brief but the oracle is visual."
+ },
+ "reasons": [
+  "Viewport unrenderable: capture, capture_angles(5), and scriptable-camera test-part shot all byte-blank",
+  "Learned rule: visual-oracle environments must not be passed on bbox/geometry probes alone",
+  "Structural inventory (floor/lava/fissures/pillars/monoliths/vents/skirt/lighting) matches config but cannot substitute for the visual read"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.EmberCaldera",
+  "config": {
+   "theme": "volcanic ember caldera duel arena — charcoal basalt plate, recessed neon lava pool with obsidian rim rocks, 8 radiating glowing fissures, basalt pillar fight-ring, tilted obsidian monoliths, ember vents, rust/charcoal rubble scatter, irregular edge-rock falloff onto a 200-stud ash skirt; smoldering-dusk Lighting (ClockTime 16.8, warm amber Atmosphere density 0.34, bloom 0.8, warm ColorCorrection)",
+   "areaStuds": 41000
+  },
+  "steps": [
+   "probed viewport health first: two frame-diffed captures rendered black; diagnosed an opaque CoreGui PlaceAnnotations overlay plus a non-rendering 3D view, so switched to geometric verification per banked method",
+   "pulled 2 volcanic-crater references (rim rubble in warm rust/charcoal over pale ash plain, irregular edge falloff) and built to them",
+   "built EmberCaldera at (-190,-190), clear of all prior artifacts: layered ash-skirt + basalt floor cylinders, neon lava pool + PointLights, 8 fissures, 8-pillar ring at r=32, 5 monoliths, 4 ember vents, 40 rubble/edge rocks, 2 author_mesh rock clusters",
+   "set dusk lighting + warm Atmosphere + restrained post (bloom, warm tint CC)",
+   "verified numerically: per-part world-corner extents 205x200x18 studs, zero floating/buried pillars or monoliths, max radius 104 within skirt falloff, pool recessed below floor top"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Recipe: two concentric ground cylinders (ash Ground r100 under charcoal Basalt r65) give a palette-coherent plate with a skirt; a recessed Neon lava pool ringed by tilted obsidian chunks + 8 radiating neon fissures with PointLights make the glow the focal point; an 8-pillar basalt ring at r32 defines the fight circle at character scale (pillars 4.5-7 studs); monoliths/vents/rubble densify inward, edge rocks at r72-105 break the rim. CAVEAT: viewport rendered black all session (foreign/frozen view + PlaceAnnotations overlay), so this build is geometrically verified but VISUALLY UNVERIFIED - VERIFY must re-capture from a healthy viewport."
+ },
+ "stagedAt": 1783169432.8592877,
+ "headless": true
+}

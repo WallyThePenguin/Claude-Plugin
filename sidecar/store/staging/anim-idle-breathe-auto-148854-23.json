@@ -1,0 +1,38 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Two-angle filmstrips + pose probes: torso/head sway 6.6-7.1deg with arms 1-3deg, legs static (no foot-slide), first==last keyframe (0.000deg seam), Loop/Idle/5kf as configured."
+ },
+ "reasons": [
+  "Seamless loop: first and last poses identical numerically and visually",
+  "No foot-slide: leg joints unkeyed-in-motion, feet planted across all frames both angles",
+  "Gentle natural arc: torso/head lead the sway, arms follow subtly, no clipping",
+  "Config matches: 5 keyframes, Priority Idle, Loop true"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.BreatheRig.AnimSaves.IdleBreatheSway",
+  "config": {
+   "clipName": "IdleBreatheSway",
+   "keyframeCount": 5,
+   "priority": "Idle"
+  },
+  "steps": [
+   "Health-checked capture pipeline with neon probe (rendered, not blank)",
+   "Pulled contrapposto statue references (weight-on-one-leg stance, hip tilt + counter shoulder tilt + head counter-turn)",
+   "spawn_rig block R15, renamed BreatheRig, moved to clear ground at (40,~,40)",
+   "Authored contrapposto base pose via a run_luau POSE helper (weight on right leg, soft left knee, hip/shoulder counter-tilt, relaxed hanging arms)",
+   "Keyed 5 full-body keyposes at t=0/1.2/2.4/3.6/4.8: exhale-right, inhale-peak-right, exhale-center-left-drift, inhale-peak-left, back to exhale-right (P4==P0 for seamless loop); legs identical in every key so feet never slide",
+   "Set Loop=true, Priority=Idle on the KeyframeSequence",
+   "Reviewed capture_animation filmstrips from front (8f) and right (6f): planted feet, gentle sway arc, visible breath lift, loop closes"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept vs prior idle rungs: a CONTRAPPOSTO breathing idle - weight committed to the right leg with hip tilt and counter-rotated shoulders/head (built from statue references), breath layered as Waist pitch -3 + shoulder-roll rise, and a slow lateral weight-drift sway (right->left->right) across the 4.8s loop. Foot-slide prevented structurally: all leg joints share one constant pose across every keyframe. Loop seam guaranteed by re-applying P0 verbatim at t=4.8. 12 posed joints per key, authored with pose_joint tables + add_keyframe, no preview running during authoring."
+ },
+ "stagedAt": 1783172682.6510453,
+ "headless": true
+}

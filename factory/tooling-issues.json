@@ -17,6 +17,68 @@
    "repro": "In edit mode, call set_property on game.Lighting Technology (e.g. Future) and observe the write is refused due to plugin security level",
    "seenCount": 1,
    "lastSeenAt": 1783155239
+  },
+  {
+   "title": "Vision sidecar capture failure during BUILD stage",
+   "symptom": "capture pipeline down (CaptureService no screenshot after repeated retries) - verified geometrically instead",
+   "suspectFiles": [
+    "src/capture",
+    "src/sidecar"
+   ],
+   "repro": "In edit mode, call capture repeatedly during a long build session; CaptureService returns no screenshot on every retry, forcing the visual pass to be deferred.",
+   "seenCount": 1,
+   "lastSeenAt": 1783165518
+  },
+  {
+   "title": "Capture/filmstrip sidecar returns frozen foreign frames instead of the Studio viewport",
+   "symptom": "all captures byte-identical dark frames with stray CLICK ME GUI despite raycast confirming camera aimed at rig; filmstrip oracle unrenderable from any angle both rounds",
+   "suspectFiles": [
+    "src/sidecar/capture"
+   ],
+   "repro": "In edit mode with the vision sidecar running, call capture (or capture_animation on any rig) twice and byte-compare the returned images; they come back identical dark frames not showing the rig, reproducing whenever the sidecar is bound to a stale/foreign window (e.g. a user play session).",
+   "seenCount": 1,
+   "lastSeenAt": 1783167476
+  },
+  {
+   "title": "Capture pipeline returns byte-blank frames for entire session (frozen/foreign viewport + opaque PlaceAnnotations CoreGui overlay)",
+   "symptom": "capture, capture_angles(5), and a scriptable-camera shot of a 50-stud magenta neon test part aimed dead-center all returned byte-identical black frames; 'Viewport unrenderable: capture, capture_angles(5), and scriptable-camera test-part shot all byte-blank'",
+   "suspectFiles": [
+    "src/sidecar/capture",
+    "src/tools/capture_angles"
+   ],
+   "repro": "In EDIT mode with the vision sidecar running while a PlaceAnnotations CoreGui overlay is present (or the Studio viewport is foreign/frozen), spawn a large Neon part, aim the camera at it, and call capture twice - frames come back black and byte-identical instead of showing the part.",
+   "seenCount": 1,
+   "lastSeenAt": 1783169449
+  },
+  {
+   "title": "playtest_eval blocked when LoadStringEnabled is off",
+   "symptom": "playtest_eval unavailable (LoadStringEnabled off) but visual+interaction evidence covered the oracle",
+   "suspectFiles": [
+    "src/playtest_eval"
+   ],
+   "repro": "With ServerScriptService.LoadStringEnabled=false, playtest_start then call playtest_eval with any code \u2014 it cannot execute, forcing verification to fall back to captures/logs.",
+   "seenCount": 1,
+   "lastSeenAt": 1783173659
+  },
+  {
+   "title": "CaptureService produced no screenshots all session",
+   "symptom": "CaptureService produced no screenshots all session (headless/unfocused Studio), so visual checks were replaced by numeric verification",
+   "suspectFiles": [
+    "src/sidecar/capture"
+   ],
+   "repro": "Run a build cycle with Studio unfocused/headless and call capture or grip_tool - no image is returned for the entire session",
+   "seenCount": 1,
+   "lastSeenAt": 1783177264
+  },
+  {
+   "title": "Verify stage returned no verdict",
+   "symptom": "status UNVERIFIED with verifyEvidence null and verifyReasons ['verify produced no verdict']",
+   "suspectFiles": [
+    "src/factory/verify"
+   ],
+   "repro": "Complete a build rung in a session where capture is unavailable; the verify stage terminates without emitting any pass/fail verdict or evidence",
+   "seenCount": 1,
+   "lastSeenAt": 1783177264
   }
  ]
 }

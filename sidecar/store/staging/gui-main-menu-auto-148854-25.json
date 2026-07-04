@@ -1,0 +1,48 @@
+{
+ "rung": "gui-main-menu",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Playtest captures show sidebar rendering cleanly; SETTINGS opened panel, MusicToggle flipped ON->OFF, PLAY dismissed menu; zero runtime errors in logs."
+ },
+ "reasons": [
+  "All 11 config elements present in PlayerGui and readable on screen",
+  "SettingsButton toggled SettingsPanel visible (capture-confirmed)",
+  "MusicToggle text flipped Music: ON -> OFF (capture-confirmed)",
+  "PlayButton slide-out dismissed the menu entirely (capture-confirmed)",
+  "playtest_logs clean; playtest_eval unavailable (LoadStringEnabled off) but visual+interaction evidence covered the oracle"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterGui.MainMenuSidebar",
+  "config": {
+   "screen": "MainMenuSidebar",
+   "elements": [
+    "Rail",
+    "Kicker",
+    "Title",
+    "Divider",
+    "PlayButton",
+    "SettingsButton",
+    "Footer",
+    "SettingsPanel",
+    "MusicToggle",
+    "ShakeToggle",
+    "MenuController"
+   ]
+  },
+  "steps": [
+   "Built left-rail ScreenGui (ResetOnSpawn=false, IgnoreGuiInset) with dark panel + UICorner/UIStroke/UIPadding/UIListLayout",
+   "Added kicker, GothamBlack title, amber accent divider, PLAY (primary) + SETTINGS buttons, footer hint",
+   "Added hidden SettingsPanel with Music/CameraShake toggle rows",
+   "Wrote MenuController LocalScript: SETTINGS toggles panel, toggles flip ON/OFF text, PLAY tweens rail off-screen then disables the gui",
+   "Previewed via CoreGui clone + capture: layout/readability confirmed (red overlay in shot was foreign MechanicProbeGui); cleaned up preview"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept: a LEFT SIDEBAR main menu (vs prior centered menus) — 340px dark rail (18,20,26) anchored mid-left, UIListLayout stacked: kicker label, GothamBlack 42pt title IRONHOLLOW, amber pill divider, amber PLAY primary button, neutral SETTINGS button, footer. SETTINGS opens a side sub-panel with two text toggles. PLAY tween-slides the rail out and disables the gui. All styling UICorner+UIStroke, Gotham family fonts."
+ },
+ "stagedAt": 1783173636.8104174,
+ "headless": true
+}

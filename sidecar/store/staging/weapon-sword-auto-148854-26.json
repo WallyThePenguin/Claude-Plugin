@@ -1,0 +1,37 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.33,
+   "damage": 20,
+   "reach": 7
+  },
+  "steps": [
+   "parked StarterPack.Falchion to ServerStorage",
+   "get_references roman gladius (straight double-edged blade, triangular point, hemispherical guard, ribbed grip, ball pommel)",
+   "generate_mesh Gladius at 3.4 studs + save_mesh (asset 113949830268445)",
+   "make_tool with the single MeshPart as Handle",
+   "authored 3-keypose rightArm swing clip GladiusSlash (windup 0s, strike 0.28s, recover 0.65s) on workspace.AgentRig",
+   "bind_animation use=GladiusSlash",
+   "fit Grip (offset 0,-1.1,0; rot rx-90) via grip_tool + numeric probe, restored rig state, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.15/0.33",
+   "bind_hitbox damage 20 reach 7 cooldown 0.6"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Roman gladius short sword — distinct from prior falchion/scimitar/dagger/spear artifacts. Cube mesh from reference-listed features (slender straight blade, triangular tip, small guard, ball pommel) at 3.4 studs (hand-weapon scale per learned rule), persisted with save_mesh. CAVEAT: CaptureService produced no screenshots all session (headless/unfocused Studio), so visual checks were replaced by numeric verification: mesh extents 0.6x3.4x0.6, grip probed via world-space end-point math (blade axis along handle -Y, gripped 1.1 studs from pommel end, rx-90 points blade forward out of the fist). Fast swing: 3-keypose rightArm clip bound to 'use', behavior 0.12/0.15/0.33s, hitbox 20 dmg / 7 studs / 0.6s server cooldown."
+ },
+ "stagedAt": 1783177249.1589491,
+ "headless": true
+}

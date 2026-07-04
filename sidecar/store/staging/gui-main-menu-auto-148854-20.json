@@ -1,0 +1,46 @@
+{
+ "rung": "gui-main-menu",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Playtest captures show the menu rendering cleanly and readably; Settings click toggled the panel visible and Play click dismissed the GUI, with zero runtime errors in logs."
+ },
+ "reasons": [
+  "All 10 briefed elements present and laid out per edit-mode dump",
+  "Capture 1: rail/title/buttons render readable on player screen",
+  "Capture 2 after click:SettingsButton: SettingsPanel visible",
+  "Capture 3 after click:PlayButton: menu dismissed (gui.Enabled=false path)",
+  "playtest_logs clean - no script errors"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterGui.BladefallMenu",
+  "config": {
+   "screen": "BladefallMenu",
+   "elements": [
+    "Rail (left dark panel)",
+    "AccentStripe",
+    "Kicker",
+    "Title BLADEFALL",
+    "Subtitle",
+    "PlayButton (primary, UICorner+UIStroke)",
+    "SettingsButton (secondary)",
+    "SettingsPanel (hidden, toggled)",
+    "Footer",
+    "MenuController LocalScript"
+   ]
+  },
+  "steps": [
+   "Built ScreenGui BladefallMenu in StarterGui with a 380px left rail (dark #10121A, Gotham fonts)",
+   "Laid out kicker/title/subtitle/buttons/footer with UIListLayout + UIPadding, buttons styled with UICorner + UIStroke (orange primary PLAY, slate SETTINGS)",
+   "Added hidden SettingsPanel toggled by SettingsButton; PlayButton disables the gui (MenuController LocalScript, compile-checked)",
+   "Verified visually via CoreGui preview capture (layout/readability confirmed), fixed a stripe/list-layout conflict, removed preview"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Left-rail main menu distinct from prior center-card gui-main-menu builds: full-height dark rail on the left with a 3px orange accent stripe at its edge, vertical UIListLayout (kicker, GothamBlack 52pt title, subtitle, PLAY primary + SETTINGS secondary buttons, footer). Buttons 54px tall, UICorner 10px, UIStroke borders; Play hides the menu, Settings toggles an inline panel. Gotcha: a child stripe anchored inside a UIListLayout container gets laid out too - reparent decorative overlays to the ScreenGui root."
+ },
+ "stagedAt": 1783170375.214748,
+ "headless": true
+}

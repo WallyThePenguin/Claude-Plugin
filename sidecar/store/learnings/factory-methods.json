@@ -1,49 +1,7 @@
 {
  "category": "factory-methods",
- "seq": 25,
+ "seq": 46,
  "entries": [
-  {
-   "bucket": "factory-methods",
-   "id": 1,
-   "text": "Emit FACTORY_BUILD_JSON as the final act of the build stage even when the build is partial or failed, so downstream stages always receive steps/notes instead of a null record.",
-   "localId": 1,
-   "createdAt": 1783144613
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 2,
-   "text": "Have the verify stage hard-fail fast with a captured reason when the build record is absent, rather than propagating an all-null cycle to retro.",
-   "localId": 2,
-   "createdAt": 1783144613
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 3,
-   "text": "Park any pre-existing StarterPack tool into ServerStorage before installing a new weapon so the playtest equips the item under test and the prior rung stays restorable.",
-   "localId": 3,
-   "createdAt": 1783148238
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 4,
-   "text": "After a grip/animation preview lab, explicitly tear down the edit-time weld and re-set Tool.Grip to the final numbers before moving the Tool to StarterPack - a leftover preview weld or lab grip silently ships otherwise.",
-   "localId": 4,
-   "createdAt": 1783148238
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 5,
-   "text": "Roof WedgeParts and angled slabs have easy-to-invert rotation signs (producing a V-valley instead of a pitch) - capture the silhouette from front/iso immediately after placing roof geometry and before any detailing, since the error is invisible in numbers but obvious in one image.",
-   "localId": 5,
-   "createdAt": 1783148730
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 6,
-   "text": "Form real door/window openings by segmenting walls into separate parts around the gap (not by overlaying frames on solid walls) - it makes the building walk-through capable and lets frames/muntins read as depth on capture.",
-   "localId": 6,
-   "createdAt": 1783148730
-  },
   {
    "bucket": "factory-methods",
    "id": 7,
@@ -176,6 +134,153 @@
    "text": "Match set-extension scale to composition: keep the dressed set a dominant fraction of the visible ground plane and give the world edge irregular sculpted falloff, verifying from the widest capture distance rather than only arena-radius shots.",
    "localId": 25,
    "createdAt": 1783155239
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 26,
+   "text": "A mechanic change (4a6ff3b69f) was auto-reverted after the next same-family cycle regressed - re-diagnose from scratch before re-attempting that fix.",
+   "localId": 26,
+   "createdAt": 1783165501
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 27,
+   "text": "Rotated roof planes are sign-fragile: after placing them, assert numerically in edit that the ridge/center Y is HIGHER than the eave edges and that each plane's underside touches the wall-top Y (bbox/vertex probe), since raycast-through-the-door checks say nothing about roof orientation or seating.",
+   "localId": 27,
+   "createdAt": 1783165518
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 28,
+   "text": "When the capture pipeline is down, geometric checks must cover every orientation-sensitive assembly (slope direction, part contact/gaps) or the build should be flagged unverified rather than passed to VERIFY on doorway/bbox probes alone.",
+   "localId": 28,
+   "createdAt": 1783165518
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 29,
+   "text": "Probe viewport health FIRST (take two captures and frame-diff them; byte-identical frames = frozen/foreign view) before starting any cycle whose verify oracle is visual, so the build isn't authored against an unrenderable capture pipeline.",
+   "localId": 29,
+   "createdAt": 1783167476
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 30,
+   "text": "Author loop clips as a palindromic keypose sequence (A-B-A-C-D-C-A) and verify numerically that first-vs-last pose diff is 0.0 and no leg joint or Pose translation is keyed - this makes seam pops and foot-slide structurally impossible without needing playback.",
+   "localId": 30,
+   "createdAt": 1783167476
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 31,
+   "text": "Before starting any visually-verified build, health-check the capture pipeline with a frame-diffed shot of a known high-contrast test part (e.g. a giant neon block dead-center), and if it renders blank, mark the cycle UNVERIFIED up front rather than substituting geometry probes for the visual oracle at the end.",
+   "localId": 31,
+   "createdAt": 1783169449
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 32,
+   "text": "When the visual oracle is unavailable, still bank the build with numeric per-part world-extent checks (floating/buried tests, radius falloff, recess depths) plus an explicit re-capture handoff note, so the geometry work survives and only the visual pass is deferred.",
+   "localId": 32,
+   "createdAt": 1783169449
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 33,
+   "text": "Decorative overlays (accent stripes, glows) must be parented OUTSIDE any UIListLayout container - a layout treats every GuiObject child as a list item, so anchor them to the ScreenGui root or a layout-free sibling frame.",
+   "localId": 33,
+   "createdAt": 1783170384
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 34,
+   "text": "Preview a StarterGui menu via a temporary CoreGui clone to verify layout in edit mode, then delete the preview before playtesting so the shipped StarterGui copy stays the single source of truth.",
+   "localId": 34,
+   "createdAt": 1783170384
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 35,
+   "text": "After fitting a Tool.Grip, verify numerically in edit - probe the world positions of blade tip and pommel relative to the fist and assert the tip is the FAR end - because filmstrip/capture judging alone cannot distinguish blade-up from blade-reversed on a slender weapon.",
+   "localId": 35,
+   "createdAt": 1783171641
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 36,
+   "text": "When a grip fix flips orientation by rotation (e.g. rx -90), re-check the offset SIGN against the mesh's handle axis before binding behavior/hitbox: the same |offset| on the wrong side puts the palm mid-blade while the silhouette still reads plausible.",
+   "localId": 36,
+   "createdAt": 1783171641
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 37,
+   "text": "Before siting a new structure, probe the bounding boxes of existing large occupiers (GetExtentsSize on big Models) and pick genuinely clear ground - don't trust visually-empty coordinates.",
+   "localId": 37,
+   "createdAt": 1783172108
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 38,
+   "text": "Build wall openings by segmenting the wall into sill/header/side parts around each opening instead of boolean cuts, and verify roof wedge/slab orientation with an early capture_angles pass since pitched geometry easily assembles inverted.",
+   "localId": 38,
+   "createdAt": 1783172108
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 39,
+   "text": "For idle loops, prevent foot-slide structurally by giving every keyframe the exact same leg-joint pose table (never re-posing legs per key), so planted feet are guaranteed by construction instead of by visual inspection.",
+   "localId": 39,
+   "createdAt": 1783172692
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 40,
+   "text": "Guarantee a seamless loop by re-applying the first keypose's stored pose table verbatim at the final keyframe time, then verifying first==last numerically (0-degree joint deltas) in addition to filmstrip review.",
+   "localId": 40,
+   "createdAt": 1783172692
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 41,
+   "text": "Before siting a new scene, probe existing occupiers' bounding boxes in edit and pick clear ground coordinates so the build never collides with foreign parts - then probe any stray-colored parts afterward to confirm they lie outside your container.",
+   "localId": 41,
+   "createdAt": 1783173295
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 42,
+   "text": "Verify environments with ground-level character-height captures in addition to orbit shots - orbits confirm layout but only eye-level frames prove scale, silhouette, and readability at gameplay distance.",
+   "localId": 42,
+   "createdAt": 1783173295
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 43,
+   "text": "Before trusting a GUI capture, identify and exclude foreign overlays (e.g. leftover probe/debug guis) in the shot \u2014 clean up or hide stray ScreenGuis first so verification judges only the build under test.",
+   "localId": 43,
+   "createdAt": 1783173659
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 44,
+   "text": "When playtest_eval is unavailable, a GUI oracle can still be closed fully via capture-confirmed interaction states (panel visible, toggle text flipped, dismiss animation completed) plus clean playtest_logs \u2014 design GUI verify plans around visible state changes rather than server eval.",
+   "localId": 44,
+   "createdAt": 1783173659
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 45,
+   "text": "When CaptureService yields no screenshots, verify grips and mesh scale numerically in edit (part.Size extents vs the 5-stud character, world-space blade-axis/end-point math from Tool.Grip) instead of skipping visual gates.",
+   "localId": 45,
+   "createdAt": 1783177264
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 46,
+   "text": "Probe capture availability at cycle start and record the degraded-verification mode in the build notes, so downstream verify stages know to run numeric/playtest checks instead of waiting on images.",
+   "localId": 46,
+   "createdAt": 1783177264
   }
  ]
 }

@@ -1,0 +1,44 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Grip pos (0,-1.1,0) puts the palm mid-blade: probe shows pommel 2.55 studs beyond the fist, tip 0.65 behind it; both filmstrip angles show only the pommel past the hand, no blade."
+ },
+ "reasons": [
+  "Tool.Grip Y sign inverted: palm at handle-local -1.1 (blade) instead of +1.1 (grip section) - sword held backward by the blade",
+  "Swing frames from front and right show hilt/pommel leading the strike, blade pointing into the fist/arm",
+  "Config attributes and use clip are correct, but the held-pose FAIL condition (blade into body from fist) is met"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.3,
+   "damage": 20,
+   "reach": 7,
+   "hitCooldown": 0.4
+  },
+  "steps": [
+   "parked StarterPack.Falchion to ServerStorage",
+   "get_references Roman gladius (3 photos)",
+   "generate_mesh Gladius 0.6x3.2x0.4 + capture_angles 3 views + save_mesh (asset 70782640311152)",
+   "make_tool with mesh as Handle",
+   "authored 3-keypose rightArm swing clip GladiusSwing (0/0.28/0.7s) on workspace.AgentRig",
+   "bind_animation use=GladiusSwing",
+   "grip_tool fitted: offset (0,-1.1,0) rot (-90,0,0) after flipping a blade-down first fit",
+   "capture_animation front + right filmstrips, judged blade-up strike arc",
+   "restored grip, destroyed AgentEditGrip weld, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.15/0.30",
+   "bind_hitbox dmg 20 reach 7 cooldown 0.4"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Roman gladius short sword: Cube mesh from a reference-matched prompt (slender parallel-edged blade, long triangular point, small dark guard, ribbed grip, ball pommel), saved durable, wrapped via make_tool. Fast-swing 3-keypose right-arm clip (windup back at -130 shoulder, strike through, recover; 0.7s) bound as use. Grip fitted visually in two rounds (first fit pointed the blade down; rx -90 with hilt offset -1.1 fixed it). Behavior 0.12/0.15/0.30 matches the fast-swing brief; hitbox 20 dmg / 7 studs / 0.4s server cooldown. Distinct from prior falchion/scimitar/dagger/spear artifacts."
+ },
+ "stagedAt": 1783171624.761009,
+ "headless": true
+}
