@@ -221,8 +221,14 @@ class ForeverRunner:
         self._finish(state="done", stopped="cycles", cycle=done, proposalsAdded=total_added)
 
     def _proven_families(self, families):
-        """Ordered unique families that have at least one proven rung (optionally filtered)."""
+        """Ordered unique families that have at least one proven rung (optionally filtered).
+        With no explicit filter, the curriculum's persistent "focus" list (the user's standing
+        rotation directive) is the filter."""
         curriculum = self._read_curriculum()
+        if families is None:
+            focus = curriculum.get("focus")
+            if isinstance(focus, list) and focus:
+                families = focus
         out = []
         for rung in curriculum.get("rungs", []):
             fam = rung.get("family")

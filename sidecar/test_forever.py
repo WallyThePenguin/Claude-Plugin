@@ -145,6 +145,27 @@ def main():
     _wait(r)
     fails += _check("families filter honored", all(c["rung"] == "enemy-brute" for c in factory.calls))
 
+    # --- curriculum "focus" list is the DEFAULT family filter ---
+    focus_curriculum = {
+        "focus": ["melee-weapon"],
+        "rungs": CURRICULUM["rungs"],
+        "proposals": [],
+    }
+    factory = FakeFactory("PASSED")
+    loop = FakeLoop([proposals_result([]), proposals_result([])])
+    r, path = _runner(factory, loop, curriculum=focus_curriculum)
+    r.start(cycles=2)
+    st = _wait(r)
+    fails += _check("focus filters default rotation", {c["rung"] for c in factory.calls} == {"weapon-spear"})
+
+    # --- explicit families STILL overrides focus ---
+    factory = FakeFactory("PASSED")
+    loop = FakeLoop([proposals_result([])])
+    r, path = _runner(factory, loop, curriculum=focus_curriculum)
+    r.start(cycles=1, families=["melee-enemy"])
+    st = _wait(r)
+    fails += _check("explicit families overrides focus", {c["rung"] for c in factory.calls} == {"enemy-brute"})
+
     # --- graceful stop ends after the current cycle ---
     class SlowFactory(FakeFactory):
         def status(self):
