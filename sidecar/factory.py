@@ -452,6 +452,22 @@ _ENEMY_VERIFY = (
     "and FAIL on any error mentioning the artifact; (5) ALWAYS playtest_stop. Do NOT rely on "
     "playtest_eval."
 )
+# Reference-first image learning (the standing mandate): every recognizable artifact is built
+# against real reference photos and checked by capture, never from memory alone. Injected into
+# the BUILD prompt of every playbook except script-only families (vision=False).
+_VISION_BUILD = (
+    "BUILD WITH VISION - never from memory alone:\n"
+    "(a) BEFORE building the visual, get_references for the real-world thing the brief names "
+    "(the weapon, creature, structure, space, or motion; 2-4 images) and note the signature "
+    "features and proportions the references show - those are your build targets;\n"
+    "(b) once the visual is assembled, capture_angles it (count 3-4, e.g. front/left/iso - NOT "
+    "the default 6, which floods the image window) and COMPARE what you SEE against the "
+    "reference features - if a signature feature is missing or proportions are off, fix the "
+    "concrete mismatches and re-capture ONCE;\n"
+    "(c) then STOP the visual work - two capture rounds max; this is a scoped build, not an art "
+    "pass. If get_references errors, say so in notes and build on - do not stall."
+)
+
 _VISUAL_VERIFY = (
     "This is judged VISUALLY, not by a runtime probe: (1) get_references for what the brief "
     "describes FIRST and list the signature features/proportions real examples show; (2) "
@@ -482,8 +498,8 @@ PLAYBOOKS = {
         "build": (
             "(1) park any Tools in StarterPack into ServerStorage and report their new paths in "
             "'parked' so STAGE restores them; (2) build a SHAPED above-primitive visual (prefer "
-            "generate_mesh + save_mesh; ONE capture to confirm the silhouette  -  do not perfection-"
-            "loop) with a profile distinct to this weapon; (3) make_tool with the grip as Handle; "
+            "generate_mesh + save_mesh) with a profile distinct to this weapon, reference-matched "
+            "per the VISION discipline above; (3) make_tool with the grip as Handle; "
             "(4) move the Tool into StarterPack; (5) bind_behavior with windup/active/cooldown per "
             "the brief's speed; (6) bind_hitbox with reach + damage + cooldown per the brief."
         ),
@@ -495,7 +511,7 @@ PLAYBOOKS = {
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"range":<n>,"projectileSpeed":<n>}',
         "build": (
             "(1) park StarterPack Tools into ServerStorage (report in 'parked'); (2) build a shaped "
-            "visual (mesh preferred, ONE silhouette capture); (3) make_tool (grip as Handle), move "
+            "visual (mesh preferred), reference-matched per the VISION discipline; (3) make_tool (grip as Handle), move "
             "to StarterPack; (4) bind_behavior for the draw/fire timing; (5) wire the projectile "
             "spawn+flight+contact-damage per the brief."
         ),
@@ -507,7 +523,7 @@ PLAYBOOKS = {
         "config": '{"damage":<n>,"walkSpeed":<n>,"detectRange":<n>,"attackRange":<n>,"cooldown":<n>}',
         "build": (
             "(1) prepare a rig (spawn_rig or the EnemyTemplate); (2) give it a shaped, above-blob "
-            "visual (ONE capture to confirm); (3) make_npc with the brief's damage/speed/detect/"
+            "visual, reference-matched per the VISION discipline; (3) make_npc with the brief's damage/speed/detect/"
             "attack-range/cooldown so it idles, chases in range, and attacks."
         ),
         "verify": _ENEMY_VERIFY,
@@ -517,7 +533,7 @@ PLAYBOOKS = {
         "sandbox": "keep",
         "config": '{"damage":<n>,"walkSpeed":<n>,"detectRange":<n>,"keepDistance":<n>,"cooldown":<n>}',
         "build": (
-            "(1) prepare a rig; (2) shaped visual (ONE capture); (3) make_npc that keeps distance "
+            "(1) prepare a rig; (2) shaped visual, reference-matched per the VISION discipline; (3) make_npc that keeps distance "
             "and fires projectiles per the brief."
         ),
         "verify": _ENEMY_VERIFY,
@@ -545,8 +561,8 @@ PLAYBOOKS = {
         "build": (
             "(1) assemble a Model from primitives and/or meshes: walls, roof, floor, and openings "
             "(doorways ~7 studs so a character fits), scaled to the 5-stud character; coherent "
-            "materials and colours; (2) ONE capture_angles to check proportion and silhouette while "
-            "building  -  iterate a little, then stop; the artifact is the Model in Workspace."
+            "materials and colours; (2) proportion and silhouette reference-matched per the VISION "
+            "discipline; the artifact is the Model in Workspace."
         ),
         "verify": _VISUAL_VERIFY,
     },
@@ -555,14 +571,17 @@ PLAYBOOKS = {
         "config": '{"theme":"<desc>","areaStuds":<n>}',
         "build": (
             "(1) build the described space  -  terrain and/or parts, plus Lighting/Atmosphere for the "
-            "mood; (2) capture_angles to check scale and coherence; the artifact is the Model/Folder "
-            "of the environment set (report its path)."
+            "mood; (2) scale and coherence reference-matched per the VISION discipline; the artifact "
+            "is the Model/Folder of the environment set (report its path)."
         ),
         "verify": _VISUAL_VERIFY,
     },
     "gui": {
         "kind": "runtime",
         "sandbox": "keep",
+        # no Wikimedia reference pass: game HUDs aren't a photo subject; verify already
+        # playtest_captures the rendered screen and grades it against the GUI rubric.
+        "vision": False,
         "config": '{"screen":"<name>","elements":["..."]}',
         "build": (
             "(1) build a ScreenGui in StarterGui with the described elements  -  frames, buttons, "
@@ -580,6 +599,7 @@ PLAYBOOKS = {
     },
     "game-system": {
         "kind": "runtime",
+        "vision": False,  # the artifact is a script - nothing recognizable to reference or capture
         # NO sandbox: a game-system rung IS the round/wave/spawn logic, so disabling those scripts
         # would disable the very system under test. Verify runs the game LIVE and reads the outcome
         # from playtest_logs (server-authoritative — the player dying doesn't stop the wave loop).
@@ -649,7 +669,8 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         "(extra animations, polish passes, unrelated systems), do NOT playtest (that is VERIFY's "
         "job)  -  over-building burns the iteration budget and FAILS the run. Never create anything "
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
-        f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
+        + (f"{_VISION_BUILD}\n\n" if playbook.get("vision", True) else "")
+        + f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
         "The MOMENT the core artifact is complete, your VERY NEXT message must be ONLY the JSON "
         "line (emit it well before iteration 40, no polish first). End that message with EXACTLY "

@@ -161,6 +161,21 @@ def main():
     fails += _check("category fallback resolves", factory._playbook({"category": "gui"}) is factory.PLAYBOOKS["gui"])
     fails += _check("unknown -> default", factory._playbook({"id": "x"}) is factory.PLAYBOOKS["_default"])
 
+    # --- reference-first vision discipline in BUILD prompts ---
+    rung = {"id": "w", "family": "melee-weapon", "brief": "b", "oracle": "o"}
+    wp = factory._build_prompt(rung, False, factory.PLAYBOOKS["melee-weapon"])
+    fails += _check("weapon build is reference-first", "BUILD WITH VISION" in wp and "get_references" in wp)
+    fails += _check("weapon build compares capture vs references", "capture_angles" in wp and "COMPARE" in wp)
+    fails += _check("weapon build no longer forbids the compare loop", "do not perfection-loop" not in wp)
+    ep = factory._build_prompt({"id": "e", "family": "melee-enemy", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["melee-enemy"])
+    fails += _check("enemy build is reference-first", "BUILD WITH VISION" in ep)
+    dp = factory._build_prompt({"id": "d", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["_default"])
+    fails += _check("default build is reference-first", "BUILD WITH VISION" in dp)
+    sp = factory._build_prompt({"id": "s", "family": "game-system", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["game-system"])
+    fails += _check("script-only system build skips the vision block", "BUILD WITH VISION" not in sp)
+    gp = factory._build_prompt({"id": "g", "family": "gui", "brief": "b", "oracle": "o"}, False, factory.PLAYBOOKS["gui"])
+    fails += _check("gui build skips wikimedia references", "BUILD WITH VISION" not in gp)
+
     # --- proven=false rung refused (no unmanned first ascents) ---
     r = _runner(FakeLoop([]), FakeBridge({}), {})
     try:
