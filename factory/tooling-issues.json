@@ -17,37 +17,6 @@
    "repro": "In edit mode, call set_property on game.Lighting Technology (e.g. Future) and observe the write is refused due to plugin security level",
    "seenCount": 1,
    "lastSeenAt": 1783155239
-  },
-  {
-   "title": "playtest_eval unusable when place has LoadStringEnabled off",
-   "symptom": "playtest_eval unavailable (LoadStringEnabled off) so interaction verified by script read only",
-   "suspectFiles": [
-    "src/playtest_eval"
-   ],
-   "repro": "Open a place with ServerScriptService.LoadStringEnabled=false, playtest_start, then call playtest_eval with any code - it cannot execute, leaving no way to probe runtime state during the playtest.",
-   "seenCount": 1,
-   "lastSeenAt": 1783156294
-  },
-  {
-   "title": "Playtest cannot simulate GUI button clicks",
-   "symptom": "runtime click injection blocked by plugin capability (VIM requires RobloxScript)",
-   "suspectFiles": [
-    "src/playtest_act"
-   ],
-   "repro": "Start a playtest with a ScreenGui containing a TextButton and attempt to inject a click on it via the playtest driver (VirtualInputManager) at PluginSecurity; the injection is refused, forcing handler verification by source read only.",
-   "seenCount": 1,
-   "lastSeenAt": 1783162101
-  },
-  {
-   "title": "Iteration cap terminates build stage without salvaging any build record",
-   "symptom": "build produced no FACTORY_BUILD_JSON; transcript tail: (iteration cap reached \u2014 the work so far is applied; run again to continue)",
-   "suspectFiles": [
-    "src/factory/build_stage.*",
-    "src/factory/harness.*"
-   ],
-   "repro": "Run a build rung whose work exceeds the per-turn iteration cap (e.g. weapon-sword with full grip/anim/hitbox loop); the harness stops the turn at the cap and the cycle records BLOCKED with null buildSteps/evidence instead of resuming or capturing a partial record.",
-   "seenCount": 1,
-   "lastSeenAt": 1783164388
   }
  ]
 }

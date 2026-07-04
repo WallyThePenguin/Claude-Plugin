@@ -1,4 +1,6 @@
 {
+ "category": "environment",
+ "seq": 3,
  "entries": [
   {
    "bucket": "environment",
@@ -20,15 +22,6 @@
    "text": "paint_texture custom primary/secondary colors can silently produce a BLACK texture (draw-ops fail) - use the curated default palettes, and if a painted surface renders black with a specular glint suspect the texture not the lighting.",
    "localId": 3,
    "createdAt": 1782988455
-  },
-  {
-   "bucket": "environment",
-   "id": 4,
-   "text": "Lighting.Technology and LightingStyle are RobloxScriptSecurity (engine-locked above PluginSecurity) - no tool or Luau at plugin level can read or write them; accept the place default or ask the user to change it in Studio's Properties pane.",
-   "localId": 4,
-   "createdAt": 1783155801
   }
- ],
- "seq": 4,
- "category": "environment"
+ ]
 }

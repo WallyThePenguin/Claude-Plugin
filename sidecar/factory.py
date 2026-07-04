@@ -266,23 +266,6 @@ class FactoryRunner:
             self._narrate(f"BUILD blocked: {err}", warn=True)
             return self._finish(state="done", status="BLOCKED", reason=f"build: {err}", **result)
         build = _last_json(text, BUILD_JSON_RE)
-        if (
-            (not build or not build.get("ok") or not build.get("artifactPath"))
-            and "(iteration cap reached" in text
-        ):
-            # The cap killed the turn mid-work but the work so far IS applied in the live
-            # place. Run ONE short salvage pass: resume, finish only what's missing, and emit
-            # the record — instead of recording BLOCKED with a null build record.
-            self._set(stage="build-salvage")
-            self._narrate("BUILD hit the iteration cap - salvage pass for the record", warn=True)
-            ok2, text2, _err2 = self._wait_loop(
-                _salvage_prompt(rung, playbook, text), max_iterations=15, stage="build-salvage"
-            )
-            if ok2:
-                build2 = _last_json(text2, BUILD_JSON_RE)
-                if build2 and build2.get("ok") and build2.get("artifactPath"):
-                    build = build2
-                    result["buildSalvaged"] = True
         if not build or not build.get("ok") or not build.get("artifactPath"):
             # Keep whatever the build DID say (partial JSON and/or the transcript tail) so the
             # RETRO stage sees the failure cause instead of an all-null record.
@@ -830,26 +813,6 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         '"parked":["<any path you moved out of StarterPack, to restore>"],"steps":["..."],'
         '"notes":"<3-6 line recipe of how you built it>"}\n'
         'If you could not complete the build, emit that line with "ok":false and a notes reason.'
-    )
-
-
-def _salvage_prompt(rung, playbook: dict, prior_tail: str) -> str:
-    tail = (prior_tail or "").strip()[-800:]
-    return (
-        f"You are the factory BUILD stage for rung '{rung['id']}' RESUMING after the iteration "
-        "cap cut your previous turn. Everything you built so far IS applied in the live place. "
-        "Do NOT rebuild or start over: inspect what already exists (get_tree/search), finish "
-        "ONLY the missing steps if any remain, and then emit the build record. This is a SHORT "
-        "salvage pass - budget nearly all of it for the JSON line itself.\n\n"
-        f"BRIEF: {rung.get('brief', '')}\n"
-        f"Your previous transcript tail:\n{tail}\n\n"
-        "End your FINAL message with EXACTLY ONE line, no code fence:\n"
-        'FACTORY_BUILD_JSON: {"ok":true,"artifactPath":"<full instance path>","artifactKind":'
-        '"<Tool|Model|ScreenGui|KeyframeSequence|Script|Folder>","config":' + playbook["config"]
-        + ',"parked":["<any path you moved out of StarterPack>"],"steps":["..."],'
-        '"notes":"<3-6 line recipe>"}\n'
-        'If the artifact is genuinely incomplete, emit that line with "ok":false and a notes '
-        "reason."
     )
 
 
