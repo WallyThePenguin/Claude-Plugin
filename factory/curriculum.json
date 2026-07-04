@@ -89,7 +89,7 @@
       "id": "anim-idle-breathe",
       "category": "animation",
       "family": "animation",
-      "proven": false,
+      "proven": true,
       "brief": "A looping idle: subtle breathing + weight shift on a humanoid rig, authored as keyposes (pose_joint + add_keyframe). VISUAL rung.",
       "oracle": "TBD supervised first ascent: capture_animation filmstrip reads as a natural idle (no foot-slide, gentle arc, seamless loop) and clears the locomotion/animation rubric."
     },
