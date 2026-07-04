@@ -335,9 +335,7 @@ local function runPush(input: any, context: any): (string, boolean)
 	local lines: { string } = {}
 	local counts = { current = 0, update = 0, create = 0, diverged = 0, forced = 0, blocked = 0 }
 	local rid = ChangeHistoryService:TryBeginRecording("game_push")
-	if rid == nil and RunService:IsEdit() then
-		return "game_push: could not begin a change recording", true
-	end
+	-- rid == nil (stuck recording): proceed UNRECORDED rather than wedge the pipeline.
 	local anyWrite = false
 	for _, rel in relpaths do
 		local entry = (manifest :: any)[rel]

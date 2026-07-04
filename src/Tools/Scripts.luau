@@ -359,9 +359,7 @@ local function runEditScript(input: any): (string, boolean)
 	end
 
 	local rid = ChangeHistoryService:TryBeginRecording("edit_script " .. container.Name)
-	if rid == nil and RunService:IsEdit() then
-		return "edit_script: could not begin a change recording", true
-	end
+	-- rid == nil (stuck recording): proceed UNRECORDED rather than wedge the pipeline.
 	local okWrite, writeErr = pcall(function()
 		ScriptEditorService:UpdateSourceAsync(container, function(_old: string): string
 			return new :: string

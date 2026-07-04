@@ -125,14 +125,49 @@ function ToolFactory.resolveRig(rigInst: Instance?): (Model?, string?)
 	return nil, "no rig found — spawn one first with spawn_rig"
 end
 
--- Equip: parent the Tool to the rig (Roblox auto-welds the Handle to the hand in edit — verified live).
+-- Equip: parent the Tool to the rig AND weld the Handle to the RightHand. In EDIT mode the engine
+-- creates NO grip weld (that only happens at runtime via Humanoid:EquipTool), so without this the
+-- tool just sits wherever it was — inside the rig, not following the hand (observed live). The weld
+-- mirrors the runtime RightGrip convention (C0 = RightGripAttachment offset, C1 = Tool.Grip), so
+-- the edit preview renders the hold exactly as a running game would. Idempotent: re-grip replaces
+-- the prior weld. Un-grip = destroy the "AgentEditGrip" weld + reparent the tool out.
 function ToolFactory.equip(tool: Tool, rig: Model)
 	tool.Parent = rig
+	local hand = rig:FindFirstChild("RightHand")
+	local handle = tool:FindFirstChild("Handle")
+	if hand == nil or not hand:IsA("BasePart") or handle == nil or not handle:IsA("BasePart") then
+		return -- no hand/handle to weld; the tool is merely parented
+	end
+	for _, p in tool:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false -- an anchored part ignores the weld and stays put
+		end
+	end
+	local stale = hand:FindFirstChild("AgentEditGrip")
+	if stale ~= nil then
+		stale:Destroy()
+	end
+	local att = hand:FindFirstChild("RightGripAttachment")
+	local weld = Instance.new("Weld")
+	weld.Name = "AgentEditGrip"
+	weld.Part0 = hand
+	weld.Part1 = handle
+	weld.C0 = if att ~= nil and att:IsA("Attachment") then att.CFrame else CFrame.new()
+	weld.C1 = tool.Grip
+	weld.Parent = hand
 end
 
--- Set the live grip CFrame (re-positions the Handle without re-equip — verified live).
+-- Set the live grip CFrame; keeps the edit-mode grip weld's C1 in sync so the Handle re-positions.
 function ToolFactory.applyGrip(tool: Tool, grip: CFrame)
 	tool.Grip = grip
+	local rig = tool.Parent
+	if rig ~= nil and rig:IsA("Model") then
+		local hand = rig:FindFirstChild("RightHand")
+		local weld = if hand ~= nil then hand:FindFirstChild("AgentEditGrip") else nil
+		if weld ~= nil and weld:IsA("Weld") then
+			weld.C1 = grip
+		end
+	end
 end
 
 return ToolFactory

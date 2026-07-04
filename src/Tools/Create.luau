@@ -77,10 +77,8 @@ local function runCreate(input: any, context: any): (string, boolean)
 		-- nil means a recording is already in progress (e.g. left open by a run_luau that threw mid-
 		-- recording). Refuse rather than mutate UNRECORDED inside that other recording — mirrors
 		-- set_property / run_luau. (In a playtest IsEdit() is false, so we never reach here.)
-		if rid == nil then
-			instance:Destroy()
-			return encodeResult({ ok = false, error = "could not begin a change recording" }), true
-		end
+		-- nil = a recording is stuck open (hot-reload host never unloads): proceed UNRECORDED
+		-- rather than wedge the pipeline; the result notes the missing undo.
 	end
 
 	if type(args.name) == "string" then

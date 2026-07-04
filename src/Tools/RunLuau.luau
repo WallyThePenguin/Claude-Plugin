@@ -82,15 +82,17 @@ local function execute(input: Input): Output
 	-- 3. Open the capture window BEFORE running so all print/warn during the chunk is recorded.
 	Session.beginCapture()
 
-	-- 4. In EDIT mode, wrap the run in an undoable ChangeHistory recording; nil means one is already
-	--    in progress, so REFUSE rather than mutate unrecorded (drain+discard the capture first).
-	--    During a playtest (Run/Play) there is no edit-history to record into, so run directly.
+	-- 4. In EDIT mode, wrap the run in an undoable ChangeHistory recording. nil means one is already
+	--    open — historically we REFUSED, but the hot-reload host plugin never unloads, so ONE
+	--    recording orphaned by an interrupted tool wedged every mutating tool until a Studio restart
+	--    (observed live 2026-07-04). Availability beats undo purity for the automated pipeline: run
+	--    UNRECORDED and say so in the result. During a playtest there is no edit history anyway.
 	local rid: string? = nil
+	local recWarn: string? = nil
 	if RunService:IsEdit() then
 		rid = ChangeHistoryService:TryBeginRecording("run_luau")
 		if rid == nil then
-			Session.takeCapture()
-			return { text = "could not begin a change recording", error = true }
+			recWarn = "[no undo recording: a stale recording is stuck open; changes applied unrecorded]"
 		end
 	end
 
@@ -136,7 +138,9 @@ local function execute(input: Input): Output
 	local payload = {
 		returns = Serialize.encode(returns),
 		stdout = cap.stdout,
-		stderr = cap.stderr,
+		stderr = if recWarn ~= nil and recWarn ~= ""
+			then (if cap.stderr ~= "" then recWarn .. "\n" .. cap.stderr else recWarn)
+			else cap.stderr,
 	}
 
 	local okEncode, encoded = pcall(function()

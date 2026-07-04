@@ -79,9 +79,7 @@ local function runDestroy(input: any, context: any): (string, boolean)
 	local rid: string? = nil
 	if RunService:IsEdit() then
 		rid = ChangeHistoryService:TryBeginRecording("Destroy " .. class)
-		if rid == nil then
-			return encodeResult({ ok = false, error = "could not begin a change recording" }), true
-		end
+		-- nil = a recording is stuck open: proceed UNRECORDED rather than wedge the pipeline.
 	end
 
 	local okDestroy = pcall(function()
