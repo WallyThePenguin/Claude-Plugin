@@ -97,7 +97,7 @@
       "id": "env-arena-dress",
       "category": "environment",
       "family": "environment",
-      "proven": false,
+      "proven": true,
       "brief": "Environment dressing for the arena: cover props, lighting + Atmosphere for mood, coherent palette \u2014 turns a grey box into a place. VISUAL rung.",
       "oracle": "TBD supervised first ascent: capture_angles + references read as an intentional, coherent space at character scale."
     },

@@ -1,0 +1,37 @@
+{
+ "rung": "env-arena-dress",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "capture_angles(4 aerials) + 3 ground-level camera_orbit captures: 100x100 sand arena, sandstone walls with 5-per-side pilaster bays + cap trim, 4 crimson/gold banners, 4 bronze braziers with glowing neon flames + PointLights (corner light pools visible), crate/column/barricade cover clusters, central 2-tier stone dais; Lighting probe: ClockTime=14.6, Atmosphere Density=0.32 warm color/decay. Matches Colosseum reference features (sand floor, warm masonry rhythm, perimeter trim, warm light)."
+ },
+ "reasons": [
+  "All 7 brief-required elements present and visible in captures at character scale",
+  "Ground-level views read as coherent, intentional warm arena (textured sand, pilaster rhythm, banner/brazier accents) - above generic flat-box bar",
+  "Minor non-fatal notes: static neon flames (no particles), 8-stud walls squat vs real colosseum but brief specifies no height"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.Arena",
+  "config": {
+   "theme": "warm colosseum-style sand arena: sandstone walls with pilasters + cap trim, crimson/gold banners, bronze fire braziers, crate/column/barricade cover clusters, central stone dais, late-afternoon warm Atmosphere",
+   "areaStuds": 100
+  },
+  "steps": [
+   "got Colosseum interior references (sand floor, warm tiered stone perimeter)",
+   "recolored existing grey box: Sand floor, Sandstone walls in warm palette",
+   "added Dressing folder: wall caps, pilasters every 20 studs, perimeter border ring",
+   "dressed 4 braziers with bronze bowls, neon coals, Fire + warm PointLights",
+   "added crimson/gold banner pairs on N/S walls",
+   "built 4 cover clusters (crate stack, fallen column + drum, L-barricade, block arc) + central dais",
+   "tuned Lighting (ClockTime 14.6, warm Ambient/OutdoorAmbient) + Atmosphere (warm haze) + ColorCorrection warm tint",
+   "capture_angles found floor buried under co-located SiegeArena/BastionSiege builds - moved Arena +220x and removed stale dark floor Texture, re-captured to confirm"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Reference-first: Colosseum photos set the targets (sand field, warm stone ring, vertical rhythm). Kept the existing Arena folder as the artifact; all new props under Arena.Dressing. Applied environment learnings: light base color under surfaces, ClockTime ~14.6 with Ambient raised, point lights as accents only. First capture showed the floor z-fighting the Baseplate and foreign builds (SiegeArena, BastionSiege) sitting inside the arena at origin - relocated Arena to x=220 instead of touching other rungs' artifacts. Second capture confirms coherent warm palette and readable space; stopped at two rounds."
+ },
+ "stagedAt": 1783136676.7569027,
+ "headless": true
+}
