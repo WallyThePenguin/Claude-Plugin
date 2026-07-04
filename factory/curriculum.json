@@ -105,7 +105,7 @@
       "id": "gui-main-menu",
       "category": "gui",
       "family": "gui",
-      "proven": false,
+      "proven": true,
       "brief": "A main-menu ScreenGui: title, Play/Settings buttons, clean layout (UIListLayout/UICorner/UIStroke, readable fonts) in StarterGui. Runtime rung \u2014 verified by rendering it in a playtest.",
       "oracle": "TBD supervised first ascent: playtest_capture shows it render cleanly on the player's screen; buttons are present, laid out, and readable; clears the GUI rubric."
     }
