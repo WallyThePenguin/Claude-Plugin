@@ -1,0 +1,35 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Two-angle filmstrips show gentle torso/arm breathe-sway with feet planted in all frames; loop seam diff ~3.7e-9, Loop=true, Priority=Idle, 5 keyframes, root drift 0."
+ },
+ "reasons": [
+  "Front+right filmstrips read as natural idle, no foot-slide or clipping",
+  "First/last keyframes numerically identical (seamless loop)",
+  "Structure matches config: 5 keyframes, Idle priority, looped"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.SwayIdleRig.AnimSaves.SwayBreatheIdle",
+  "config": {
+   "clipName": "SwayBreatheIdle",
+   "keyframeCount": 5,
+   "priority": "Idle"
+  },
+  "steps": [
+   "spawn_rig block R15, renamed to SwayIdleRig (unique vs existing IdleRig/BreatheRig)",
+   "authored 4 distinct keyposes via a run_luau setPose helper over Motor6D.Transform: A neutral mid-breath, B weight-onto-left-leg inhale with torso counter-lean + head drift, C exhale slump (shoulders drop), D subtle right-leg weight edge",
+   "snapshotted A/B/C/D/A at t=0/1.1/2.2/3.3/4.4 with add_keyframe (full-body scope)",
+   "set KeyframeSequence Loop=true, Priority=Idle",
+   "reviewed capture_animation filmstrips from front AND right: planted feet, gentle arcs, identical first/last frame"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Fresh concept vs prior breathe-only clips: a 4.4s figure-8 weight-shift idle (left-weight inhale, center exhale slump, right-weight drift) layered over breathing. Keyposes are pure Motor6D rotations (hips/ankles counter-rotate so feet never translate = no foot-slide); loop closes by re-snapshotting pose A at the end. All joint angles kept in the 2-7 degree band so it reads subtle at gameplay distance. Both capture angles were readable and confirmed the motion."
+ },
+ "stagedAt": 1783179755.2743914,
+ "headless": true
+}

@@ -1,35 +1,7 @@
 {
  "category": "factory-methods",
- "seq": 46,
+ "seq": 50,
  "entries": [
-  {
-   "bucket": "factory-methods",
-   "id": 7,
-   "text": "Judge animation filmstrips ONLY by what is visible in the frames: state which way the blade/item points relative to the fist and name one unpredicted detail; a strip where the item is not clearly visible is UNREADABLE and must be re-shot, never passed.",
-   "localId": 7,
-   "createdAt": 1783148820
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 8,
-   "text": "A backlit rig renders as an unjudgeable black silhouette: capture rigs/items with neutralLight=true (capture_animation does this automatically) and re-shoot rather than judge dark frames.",
-   "localId": 8,
-   "createdAt": 1783148820
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 9,
-   "text": "When Cube fails on a niche historical weapon name, re-prompt by describing an analogous familiar object plus explicit shape adjectives (e.g. 'kukri machete, drooping forward-curved blade, hooked bird-head pommel' instead of 'falcata') rather than retrying the same term.",
-   "localId": 9,
-   "createdAt": 1783149788
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 10,
-   "text": "Build wall openings by segmenting the wall into separate parts around each door/window (never overlay a hole part), then verify with a raycast through the opening in edit mode.",
-   "localId": 10,
-   "createdAt": 1783150304
-  },
   {
    "bucket": "factory-methods",
    "id": 11,
@@ -281,6 +253,34 @@
    "text": "Probe capture availability at cycle start and record the degraded-verification mode in the build notes, so downstream verify stages know to run numeric/playtest checks instead of waiting on images.",
    "localId": 46,
    "createdAt": 1783177264
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 47,
+   "text": "Build openings by assembling walls as segments around door/window gaps from the start rather than carving solid walls afterward, and frame each opening with protruding trim so it reads at capture distance.",
+   "localId": 47,
+   "createdAt": 1783179373
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 48,
+   "text": "WedgePart roof gables only read correctly at yaw 0/180 relative to the roof ridge (other yaws read as fins) - set gable orientation from the ridge axis and confirm with a multi-angle capture round before detailing.",
+   "localId": 48,
+   "createdAt": 1783179373
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 49,
+   "text": "Close a looping clip by re-snapshotting the exact first keypose as the final keyframe (and diff the two numerically) instead of hand-matching angles - it guarantees a seamless loop seam.",
+   "localId": 49,
+   "createdAt": 1783179767
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 50,
+   "text": "Prevent foot-slide in weight-shift idles at author time by using only Motor6D rotations with hips/ankles counter-rotated (keeping subtle motion in a ~2-7 degree band), then confirm planted feet from two filmstrip angles rather than one.",
+   "localId": 50,
+   "createdAt": 1783179767
   }
  ]
 }

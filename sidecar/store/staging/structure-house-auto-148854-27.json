@@ -1,0 +1,36 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle captures read as coherent half-timbered Tudor cottage matching references: timber frame+plaster, pitched textured roof, brick chimney, mullioned windows, 3.6x6.8 door; bbox 29.9x20.7x21.6 per spec."
+ },
+ "reasons": [
+  "All brief features present and reference-consistent from every angle",
+  "Proportions match config and 5-stud character scale",
+  "Red/magenta objects in frame verified foreign (outside model)",
+  "Minor: roof reads brown tile rather than slate grey - matches reference photos, not a coherence failure"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.TudorCottage",
+  "config": {
+   "footprintStuds": 26,
+   "heightStuds": 21,
+   "style": "half-timbered Tudor cottage: white plaster + dark timber frame, steep slate pitched roof, brick chimney, mullioned windows, 4x7 doorway"
+  },
+  "steps": [
+   "probed occupied bounding boxes, sited at clear ground (-150,-150)",
+   "fetched 2 Tudor half-timber references; noted signature features (dark timber grid on white plaster, steep roof, brick chimney, small mullioned windows)",
+   "assembled 100+ part Model: segmented walls leaving door (4x7) + 6 window openings, wood floor, angled slab roof + ridge beam, wedge gables, timber frame grid with diagonal braces, glass windows with mullion/transom frames, brick chimney, stone step, open plank door",
+   "capture_angles round 1: found gable wedges mis-rotated (yaw bug); rebuilt gables with correct orientation",
+   "capture_angles round 2: all sides read as coherent Tudor cottage; stopped"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Tudor cottage from primitives at (-150,0,-150): 26x18 footprint, 10-stud walls + 7-stud roof rise. Walls built as segments around openings (door 4w x 7h front-center; 3-4 stud windows on every face). Timber look = 0.5-0.7 stud Wood beams protruding 0.35 from plaster SmoothPlastic walls (top plate/mid rail/sill + posts + 40-deg braces). Roof = two Slate slabs rotated atan(7/10) with 1.5-stud overhang + WedgePart gables (yaw 0/180 only - +90 yaw makes them read as fins). Brick chimney outside the right gable breaks the silhouette. Capture verified from back/right/iso; foreign red/pink parts on horizon are outside the container."
+ },
+ "stagedAt": 1783179358.3003244,
+ "headless": true
+}
