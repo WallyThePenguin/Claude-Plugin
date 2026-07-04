@@ -246,6 +246,10 @@ def main():
     r.start("weapon-spear")
     st = _wait(r)
     fails += _check("unparseable build blocks", st["status"] == "BLOCKED" and "FACTORY_BUILD_JSON" in st["reason"])
+    fails += _check(
+        "blocked build keeps transcript tail for retro",
+        "confused" in str((st.get("build") or {}).get("notes") or ""),
+    )
 
     # --- build ok:false -> BLOCKED ---
     loop = FakeLoop([{"state": "done", "result": build_line(ok=False)}])

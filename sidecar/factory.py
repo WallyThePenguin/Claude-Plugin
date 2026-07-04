@@ -256,6 +256,14 @@ class FactoryRunner:
             return self._finish(state="done", status="BLOCKED", reason=f"build: {err}", **result)
         build = _last_json(text, BUILD_JSON_RE)
         if not build or not build.get("ok") or not build.get("artifactPath"):
+            # Keep whatever the build DID say (partial JSON and/or the transcript tail) so the
+            # RETRO stage sees the failure cause instead of an all-null record.
+            partial = dict(build) if isinstance(build, dict) else {}
+            if not partial.get("notes"):
+                tail = (text or "").strip()[-600:]
+                if tail:
+                    partial["notes"] = "no FACTORY_BUILD_JSON; transcript tail: " + tail
+            result["build"] = partial
             return self._finish(
                 state="done", status="BLOCKED", reason="build produced no FACTORY_BUILD_JSON", **result
             )

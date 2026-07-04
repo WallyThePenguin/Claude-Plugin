@@ -1,0 +1,12 @@
+{
+ "issues": [
+  {
+   "title": "Build stage completed without emitting FACTORY_BUILD_JSON and harness captured no partial output",
+   "symptom": "\"status\": \"BLOCKED\", \"reason\": \"build produced no FACTORY_BUILD_JSON\" with buildSteps/buildNotes/verifyEvidence/verifyReasons all null",
+   "suspectFiles": [],
+   "repro": "Run the weapon-sword rung's build stage in edit mode and inspect the cycle record: the build agent's final message lacks the FACTORY_BUILD_JSON line and the harness stores nulls instead of any transcript/partial notes, leaving retro blind to the failure cause.",
+   "seenCount": 1,
+   "lastSeenAt": 1783144613
+  }
+ ]
+}

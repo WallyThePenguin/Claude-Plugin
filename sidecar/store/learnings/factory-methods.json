@@ -1,0 +1,20 @@
+{
+ "category": "factory-methods",
+ "seq": 2,
+ "entries": [
+  {
+   "bucket": "factory-methods",
+   "id": 1,
+   "text": "Emit FACTORY_BUILD_JSON as the final act of the build stage even when the build is partial or failed, so downstream stages always receive steps/notes instead of a null record.",
+   "localId": 1,
+   "createdAt": 1783144613
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 2,
+   "text": "Have the verify stage hard-fail fast with a captured reason when the build record is absent, rather than propagating an all-null cycle to retro.",
+   "localId": 2,
+   "createdAt": 1783144613
+  }
+ ]
+}
