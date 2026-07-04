@@ -198,7 +198,20 @@ local function runSetProperty(input: any, context: any): (string, boolean)
 	end
 
 	if not okSet then
-		return encodeResult({ ok = false, error = tostring(setErr) }), true
+		local msg = tostring(setErr)
+		-- "lacking capability" is an ENGINE security gate (RobloxScriptSecurity+, e.g.
+		-- Lighting.Technology / LightingStyle): NOTHING at plugin level can ever write it, so
+		-- retrying is pointless. Say so plainly and name the only path that works (the user,
+		-- via Studio's Properties pane).
+		if string.find(msg, "lacking capability", 1, true) then
+			msg = "property '"
+				.. name
+				.. "' is engine-locked above plugin security ("
+				.. msg
+				.. "). No plugin or script can set it; do not retry -- ask the user to set it "
+				.. "manually in Studio's Properties pane."
+		end
+		return encodeResult({ ok = false, error = msg }), true
 	end
 
 	-- Echo the freshly-read value (re-serialized) so Claude sees exactly what landed (engine may

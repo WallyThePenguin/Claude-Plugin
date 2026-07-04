@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Record echo [tool=Falcata w=0.12 a=0.16 c=0.32] matches config; dummy logged HIT damage=22 once per swing (3 swings, hitcount 1-3); iso/front strips show blade up-and-out from fist through a readable raise-strike-recover arc."
+ },
+ "reasons": [
+  "Tool.Grip and Anims/use verified in edit; swing read from 3 angles with blade orientation visible (up/outward from fist, no clipping or detachment)",
+  "Behavior timings echoed exactly at configured values in playtest record",
+  "Damage exactly 22 per swing, one hit line per activation, no artifact errors",
+  "Lab weld torn down, grip restored, Tool returned to StarterPack"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falcata",
+  "config": {
+   "windup": 0.12,
+   "active": 0.16,
+   "cooldown": 0.32,
+   "damage": 22,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack.Gladius to ServerStorage",
+   "Pulled falcata references (forward-curving single-edge blade, hooked pommel)",
+   "generate_mesh kukri/falcata prompt, scaled to 3.4 studs, save_mesh (asset 128700550523738)",
+   "make_tool -> Falcata; grip_tool fitted rot(-90,90,0) offset(-1.2,0,0), blade up-out of fist verified front+right",
+   "Authored 3-keypose rightArm swing clip FalcataSwing (0/0.28/0.7s), bind_animation use",
+   "Filmed clip from right+front; front strip readable, arc correct; tore down AgentEditGrip weld, restored Grip, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.16/0.32; bind_hitbox dmg22 reach7 cd0.4"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falcata (Iberian forward-curved chopper) — distinct from prior gladius/falchion/dagger/spear rungs. Cube prompt phrased as 'kukri machete, drooping forward-curved blade, hooked bird-head pommel' after a first falcata prompt returned a blobby non-blade (destroyed). Scaled longest axis to 3.4 studs per hand-weapon rule; save_mesh before toolify. Fast-swing config: windup .12 / active .16 / cooldown .32, damage 22, reach 7. Swing clip is rightArm-scoped 3 keyposes (~0.7s) matching the behavior window."
+ },
+ "stagedAt": 1783149773.0737953,
+ "headless": true
+}

@@ -1,0 +1,36 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle captures match Tudor references (plaster+timber+braces, 45-deg red roof, gables, brick chimney, cross-muntin windows on 3 faces); raycast confirms open 4x7 segmented doorway; bbox 26x21.6x19 per config."
+ },
+ "reasons": [
+  "All brief features present and read correctly from every angle",
+  "Doorway is a real opening (raycast passes through), door scaled to character",
+  "Textured materials clear above-generic bar; only cosmetic gap is an untimbered left gable"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.TimberedCottage",
+  "config": {
+   "footprintStuds": 24,
+   "heightStuds": 21,
+   "style": "half-timbered Tudor cottage: white plaster + dark timber frame with diagonal braces, 45-deg red slate roof with wedge gables, brick chimney, 4x7 segmented-wall doorway, cross-muntin windows on 3 faces"
+  },
+  "steps": [
+   "get_references half-timbered cottage (2 photos studied: steep tiled roof, dark timber grid on white plaster, brick chimney)",
+   "Built shell at x=150: floor slab, front/back/side walls segmented around door (4x7) and three 6x4 window openings",
+   "Roof: two 45-deg slabs meeting at ridge y=19 + 4 WedgePart gable triangles + ridge beam",
+   "Details: timber frame (horizontals, studs, corner posts, diagonal braces), door+frame+lintel+knob+step, glass+frame+muntin windows, brick chimney with cap",
+   "capture_angles round 1: timbers/window frames buried inside wall thickness - pushed all trim proud of wall faces",
+   "capture_angles round 2: all angles read as coherent cottage; stopped"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Recipe: segment walls into parts around openings (never overlay), wedge gables oriented apex-inward at z=+/-4 with yaw 180 on one side, roof slabs at 45deg with slopeLen 12.8 covering half-span+overhang. Trim must sit PROUD of the wall plane (z 8.15 vs wall face 8.0) or it vanishes into the plaster - first capture caught this. Half-timber look = Concrete plaster + Wood beams 0.5-0.6 thick + 2 diagonal braces; Slate roof material at Color 146,74,54 reads as terracotta tile. 71 parts, no meshes, no save_mesh needed."
+ },
+ "stagedAt": 1783150293.8310661,
+ "headless": true
+}

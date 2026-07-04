@@ -7,6 +7,16 @@
    "repro": "Run the weapon-sword rung's build stage in edit mode and inspect the cycle record: the build agent's final message lacks the FACTORY_BUILD_JSON line and the harness stores nulls instead of any transcript/partial notes, leaving retro blind to the failure cause.",
    "seenCount": 1,
    "lastSeenAt": 1783144613
+  },
+  {
+   "title": "Lighting.Technology not settable at PluginSecurity",
+   "symptom": "Technology property was locked (PluginSecurity) - left at place default",
+   "suspectFiles": [
+    "src/tools/set_property"
+   ],
+   "repro": "In edit mode, call set_property on game.Lighting Technology (e.g. Future) and observe the write is refused due to plugin security level",
+   "seenCount": 1,
+   "lastSeenAt": 1783155239
   }
  ]
 }

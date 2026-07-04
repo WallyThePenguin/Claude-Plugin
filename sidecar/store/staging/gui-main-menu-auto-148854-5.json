@@ -1,0 +1,47 @@
+{
+ "rung": "gui-main-menu",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "playtest_capture shows the sidebar rendering cleanly and readably, but evaluate(gui) scored 5/35 pass with Baseline 1/6 — the rubric bar is not cleared."
+ },
+ "reasons": [
+  "GUI rubric NOT cleared: 5 unmet baseline criteria (offset-based 380px layout, missing AnchorPoints, no padding system, no central role-based palette, no governing fullscreen root)",
+  "SettingsPanel opens via instant Visible toggle (no tween) and buttons have zero hover/press feedback",
+  "No constraints/TextScaled anywhere so layout will not hold across viewports",
+  "Render itself is clean and readable on the play client — visual presence passed, quality bar failed"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterGui.MainMenuSidebar",
+  "config": {
+   "screen": "MainMenuSidebar",
+   "elements": [
+    "Dim backdrop",
+    "Sidebar frame",
+    "AccentStripe",
+    "Kicker",
+    "Title IRONHOLD",
+    "Divider",
+    "Tagline",
+    "PlayButton",
+    "SettingsButton",
+    "Footer version",
+    "SettingsPanel flyout",
+    "MenuController LocalScript"
+   ]
+  },
+  "steps": [
+   "Built left-sidebar ScreenGui in StarterGui (distinct from prior centered-panel menu)",
+   "Styled with UIListLayout+UIPadding, UICorner+UIStroke on buttons, Gotham font family, dark palette + amber accent",
+   "Added hidden SettingsPanel flyout and MenuController LocalScript (Play tweens sidebar out + disables gui; Settings toggles flyout)",
+   "Previewed via CoreGui clone, fixed AccentStripe being caught by the list layout, recaptured clean, removed preview"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Left-rail main menu: full-height 380px dark sidebar over a dim frame, amber accent stripe re-parented OUT of the UIListLayout (absolute-positioned children get swept into list flow otherwise). Vertical list: kicker, GothamBlack title, divider, tagline, spacer, primary amber PLAY, secondary dark SETTINGS, footer. MenuController wires Activated: Settings toggles a flyout panel, Play tweens the bar off-screen and disables the ScreenGui. Verified visually via a CoreGui preview clone, then deleted the clone."
+ },
+ "stagedAt": 1783152048.2200544,
+ "headless": true
+}

@@ -1,6 +1,6 @@
 {
  "category": "factory-methods",
- "seq": 8,
+ "seq": 25,
  "entries": [
   {
    "bucket": "factory-methods",
@@ -57,6 +57,125 @@
    "text": "A backlit rig renders as an unjudgeable black silhouette: capture rigs/items with neutralLight=true (capture_animation does this automatically) and re-shoot rather than judge dark frames.",
    "localId": 8,
    "createdAt": 1783148820
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 9,
+   "text": "When Cube fails on a niche historical weapon name, re-prompt by describing an analogous familiar object plus explicit shape adjectives (e.g. 'kukri machete, drooping forward-curved blade, hooked bird-head pommel' instead of 'falcata') rather than retrying the same term.",
+   "localId": 9,
+   "createdAt": 1783149788
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 10,
+   "text": "Build wall openings by segmenting the wall into separate parts around each door/window (never overlay a hole part), then verify with a raycast through the opening in edit mode.",
+   "localId": 10,
+   "createdAt": 1783150304
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 11,
+   "text": "Facade trim (timbers, window frames, muntins) must protrude slightly proud of the wall face (~0.15 studs) or it visually vanishes into the wall - check with a first capture_angles pass before detailing further.",
+   "localId": 11,
+   "createdAt": 1783150304
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 12,
+   "text": "Author idle loops as ABSOLUTE full-body keyposes (unlisted joints identity) with the first keyframe re-snapshotted as the last, then verify loop closure numerically (joint-delta between first/last == 0) instead of eyeballing the filmstrip.",
+   "localId": 12,
+   "createdAt": 1783150994
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 13,
+   "text": "Before capture_animation review, temporarily relocate the rig to clear ground with readable colors (then restore position/colors/pose) so filmstrip frames aren't obscured by scene props.",
+   "localId": 13,
+   "createdAt": 1783150994
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 14,
+   "text": "Ground generated/cloned models by computing the bounding-box bottom and offsetting to terrain height, and rescale Cube outputs by setting MeshPart.Size directly since Model:ScaleTo can silently no-op on them.",
+   "localId": 14,
+   "createdAt": 1783151567
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 15,
+   "text": "When dressing a large set-piece, place all props relative to one arena center/radius (torches at fractional radius, perimeter ring with a deliberate gate gap) so composition stays coherent and verifiable from orbit captures.",
+   "localId": 15,
+   "createdAt": 1783151567
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 16,
+   "text": "Load use_rubric(gui)+use_build_guide(gui) BEFORE laying out any ScreenGui and scaffold the rubric's structural baseline first (fullscreen governing root, scale-based sizing with AnchorPoints, a central role-based palette module, a padding system, constraints/TextScaled) - styling an ad-hoc offset layout and evaluating afterward guarantees baseline fails that require a rebuild.",
+   "localId": 16,
+   "createdAt": 1783152061
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 17,
+   "text": "A clean capture/playtest render is visual-presence evidence only, not quality evidence - run evaluate(category) as the pass gate before recording a rung as verified, and bake interaction feedback (hover/press states, tweened panel transitions) into every button/panel at creation time rather than as a polish pass.",
+   "localId": 17,
+   "createdAt": 1783152061
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 18,
+   "text": "Cube-generated weapon meshes can ship an order of magnitude oversized (31 studs here) - rescale MeshPart.Size to hand scale (~2.5-4 studs) immediately after generate_mesh, BEFORE any grip fitting or visual judging, since grip offsets and filmstrip reads are invalid at the wrong scale.",
+   "localId": 18,
+   "createdAt": 1783153254
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 19,
+   "text": "Choose the bind_behavior windup/active timings FIRST and author the use clip's keypose times to land the strike inside that window (e.g. strike keyframe at ~windup+active midpoint), so animation and hit window match without a rework pass.",
+   "localId": 19,
+   "createdAt": 1783153254
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 20,
+   "text": "Build wall openings as real geometry (pier+lintel+sill segments) instead of decals so doors/windows read as true voids from every angle and pass scale checks against the 5-stud character.",
+   "localId": 20,
+   "createdAt": 1783153820
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 21,
+   "text": "After assembling angled roof geometry, capture from a LOW angle specifically to catch parts left floating at the wall-top junction (eave/gable posts) before calling the build done.",
+   "localId": 21,
+   "createdAt": 1783153820
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 22,
+   "text": "Author idle loops as a palindromic keypose sequence (A-B-A-C-D-C-A) so the first and last keyframes are byte-identical, then verify seamlessness numerically by diffing first-vs-last pose transforms instead of eyeballing the filmstrip.",
+   "localId": 22,
+   "createdAt": 1783154296
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 23,
+   "text": "Prevent foot-slide in weight-shift idles by counter-rotating the ankles against the hip/waist roll and never keying foot translation, then verify by asserting foot/lower-leg pose transforms are constant across every keyframe.",
+   "localId": 23,
+   "createdAt": 1783154296
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 24,
+   "text": "Run an interim evaluate/wide-framing capture checkpoint right after the lighting/atmosphere pass and again before dressing is declared done - close-up captures alone can pass while the grader's full-world framing (which includes the plane edge, skirt, and post effects) fails all baselines.",
+   "localId": 24,
+   "createdAt": 1783155239
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 25,
+   "text": "Match set-extension scale to composition: keep the dressed set a dominant fraction of the visible ground plane and give the world edge irregular sculpted falloff, verifying from the widest capture distance rather than only arena-radius shots.",
+   "localId": 25,
+   "createdAt": 1783155239
   }
  ]
 }

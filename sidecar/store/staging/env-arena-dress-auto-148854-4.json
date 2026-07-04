@@ -1,0 +1,36 @@
+{
+ "rung": "env-arena-dress",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "8-angle captures show packed-earth arena ringed by pines with campfire, 2 tents, 6 lit torches, crates/log barricades, red banners, warm 15.4h atmosphere - all brief items at correct character scale."
+ },
+ "reasons": [
+  "All brief-required elements present and verified visually from multiple angles",
+  "Scale correct vs 5-stud character (crates 4, torches 9, pines ~31, arena 110/160)",
+  "Coherent warm palette and late-afternoon lighting; reads as intentional space",
+  "Minor: torch heads are plain yellow blocks up close (non-blocking)"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.EmberfallWarcamp",
+  "config": {
+   "theme": "Emberfall Warcamp - forest-clearing fight arena: packed-earth circle ringed by pines, central campfire, tents, torch posts, crate/log-barricade cover, red war banners, warm late-afternoon atmosphere",
+   "areaStuds": 160
+  },
+  "steps": [
+   "Placed 160x160 grass apron + 110-stud packed-earth arena cylinder + inner trampled ring at (350,350), clear of existing builds",
+   "Built central campfire: 10-stone ring, crossed logs, neon ember core with Fire + PointLight, 3 log seats",
+   "Added 6 lit torch posts (r=38), 3 crate clusters, 3 triple-log barricades with stakes, 2 red fabric banner poles as camp identity",
+   "author_mesh pine x16 ringed at r=62-76 with scale/rotation variation (gate gap kept at +Z), rock clusters x3 seated flush",
+   "generate_mesh A-frame canvas tent, cloned+scaled second tent, both grounded via bounding-box bottom alignment facing the fire",
+   "Lighting: ClockTime 15.4, Ambient 110+, warm Atmosphere (density .34, warm decay) + gentle warm ColorCorrection; verified with 2 capture_angles rounds"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Recipe: pick a clear site far from prior artifacts; lay grass apron + cylinder earth arena; build fire ring from randomized rotated slate chunks + crossed wood cylinders + neon ember with Fire/PointLight; ring torches at 2/3 arena radius; scatter cover (crates WoodPlanks, stacked log barricades); author_mesh pines for the perimeter leaving one gate; Cube tent prompt 'simple canvas camping tent, A-frame ridge tent' works clean; ground models by bounding-box bottom (ScaleTo on Cube models can silently no-op - rescale the MeshPart.Size directly). Warm 15.4 ClockTime + light warm Atmosphere keeps everything readable per environment learnings."
+ },
+ "stagedAt": 1783151555.6998868,
+ "headless": true
+}

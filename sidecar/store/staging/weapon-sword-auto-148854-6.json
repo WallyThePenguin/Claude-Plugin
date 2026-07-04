@@ -1,0 +1,42 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Record echo [tool=Falchion w=0.12 a=0.18 c=0.35] state cycle matched config; dummy logged HIT damage=20 once per swing; both filmstrip angles show blade-out readable swing."
+ },
+ "reasons": [
+  "Blade reads as falchion from 4 angles at 3.4-stud hand scale",
+  "use clip bound; front+right filmstrips show windup/strike arc, blade out from fist, no detach/clip",
+  "Damage exactly 20 per swing in playtest logs; timings echo config exactly"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Falchion",
+  "config": {
+   "windup": 0.12,
+   "active": 0.18,
+   "cooldown": 0.35,
+   "damage": 20,
+   "reach": 6
+  },
+  "steps": [
+   "parked StarterPack.Gladius to ServerStorage",
+   "get_references falchion (broadening single-edged blade, clipped tip, straight quillons, short grip)",
+   "generate_mesh falchion cleaver, rescaled MeshPart.Size to 3.4 studs total, save_mesh (asset 117448247125961)",
+   "make_tool Falchion (single MeshPart Handle)",
+   "fitted Grip on AgentRig via grip_tool iterations (offset 0,-0.3,1.2 rot rx=180 - blade up-out of fist, hand at hilt)",
+   "authored 3-keypose rightArm swing clip FalchionUse (windup 130deg raise @0, strike-through @0.25, recover @0.7)",
+   "bind_animation use=FalchionUse; filmstrips from right + iso confirmed arc (raised behind head -> down-forward sweep -> rest), no body clipping",
+   "restored grip weld/Grip, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.18/0.35",
+   "bind_hitbox damage 20 reach 6 cooldown 0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Falchion: distinct from prior gladius/dagger/spear/scimitar rungs. Cube prompt 'falchion cleaver, narrow at guard broadening toward tip, clipped machete tip' produced the right silhouette after one regen; mesh shipped 31 studs long so MeshPart.Size was rescaled directly to 3.4 studs before judging. Grip needed rx=180 flip (blade initially pointed into the leg) with hilt offset z=+1.2. Swing is a fast overhead chop: 0.7s arm-only clip matching the 0.12/0.18 windup/active window; hitbox 20 dmg reach 6 server-cooldown 0.35s."
+ },
+ "stagedAt": 1783153236.0477781,
+ "headless": true
+}

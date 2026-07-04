@@ -1,0 +1,37 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Two-angle 6-frame filmstrips show gentle breathe/weight-shift with planted feet; probe: first==last keyframe (diff 0.0000), mid-cycle diff 0.31, foot poses identical at all 7 keys."
+ },
+ "reasons": [
+  "Seamless loop verified numerically (first/last pose diff 0)",
+  "No foot-slide: foot/lower-leg poses constant across all keyframes",
+  "Front+right filmstrips read as natural idle, no clipping, gentle arcs",
+  "Config matches: 7 keyframes, priority Idle, loop=true"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.AgentRig.AnimSaves.IdleBreatheShift",
+  "config": {
+   "clipName": "IdleBreatheShift",
+   "keyframeCount": 7,
+   "priority": "Idle"
+  },
+  "steps": [
+   "spawn_rig block R15 (AgentRig)",
+   "get_references contrapposto statue for weight-shift study",
+   "defined 4 keyposes in run_luau (A=weight-right exhale, B=weight-right inhale, C=weight-left exhale, D=weight-left inhale) as small hip/waist/shoulder/neck/ankle rotations",
+   "added 7 keyframes A(0) B(1.2) A(2.4) C(3.4) D(4.6) C(5.8) A(6.8) so it loops seamlessly",
+   "set Loop=true Priority=Idle on the KeyframeSequence",
+   "capture_animation from front + right, then reset_pose"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Contrapposto-inspired breathing idle, distinct from prior anim-idle-breathe artifacts by adding a bilateral WEIGHT SHIFT cycle: hips sway toward the planted leg (Hip/Waist roll ±4°, free knee softened -5°) while inhale peaks lift both shoulders (+5° roll open) and tilt the chest back (Waist -2° pitch) with a subtle head counter-tilt. 6.8s, 7 keyframes, palindromic A-B-A-C-D-C-A structure so start==end (seamless loop) and ankles counter-rotate to keep both feet planted (no foot-slide). Ankles were counter-rolled against the hip roll so soles stay flat; feet never translate. Authored entirely via pose_joint-style Motor6D transforms in a persistent run_luau POSE() helper + add_keyframe snapshots."
+ },
+ "stagedAt": 1783154286.3882987,
+ "headless": true
+}

@@ -1,0 +1,38 @@
+{
+ "rung": "env-arena-dress",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Close captures read as an oasis ruin, but evaluate(environment)=0/28 pass with all 3 baseline criteria unmet; wide captures show a hazy washed-out speck on a hard-edged flat plane."
+ },
+ "reasons": [
+  "Full-world Blur + untuned Atmosphere wash out every capture; golden-hour mood does not read",
+  "World ends at a hard flat plane edge; dunes/rocks are uniform domes in an even procedural ring",
+  "Arena occupies a tiny fraction of a 560-stud empty plane - no composition, sightlines, or set extension",
+  "No custom materials/PBR anywhere; stock-material primitives read below the generic bar",
+  "evaluate pass-gate (per banked learning) failed: baseline 0/3, killer systems composition/dressing/PBR/perf = FAIL"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.OasisRuinArena",
+  "config": {
+   "theme": "desert oasis ruin arena at golden hour — Siwa-style mudbrick oracle tower, palm-ringed pool, broken wall ring, colonnade, campfire",
+   "areaStuds": 240
+  },
+  "steps": [
+   "get_references desert oasis palm ruins (Siwa Temple of the Oracle) — noted tapering mudbrick tower, sandstone rubble courses, scrub tufts",
+   "Built 240-stud sand disc arena + packed-earth fight ring at X=400 offset from existing artifacts",
+   "Ruin kit: reusable ruinWall segment (base course + randomized broken upper chunks) placed as 7-segment ring with entrance gaps",
+   "Focal OracleTower: 6 tapering Sandstone tiers with jitter/rotation, window insets, broken wedge crown, seated on sunk author_mesh rock mound",
+   "Oasis pool + 5 parametric leaning palms, colonnade w/ lintel + fallen column, urns (one toppled), crates, tattered awning, campfire w/ PointLight+Fire, 3 torches, scrub clusters, 7 varied sunk rocks",
+   "Lighting: ClockTime 16.6, warm ColorShift_Top, cool violet non-black Ambient, Sky+Atmosphere (Density .34, sand-toned Color), CC+Bloom+SunRays post, drifting dust ParticleEmitter",
+   "capture_angles low+eye: fixed island read with 560-stud sand skirt + 10 flattened backdrop dunes, recolored Baseplate to sand"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Recipe: sand disc + darker packed ring; reusable broken-wall kit around radius 88; tapering block tower as focal contrast vs low ring; palms = tapered trunk segments + wedge fronds; dress in contextual clusters (camp at tower base, urns at colonnade, scrub near water) with a toppled urn/fallen column as history beats; golden-hour warm/cool split + sand-toned Atmosphere unifies palette; sand skirt + oversized flattened dune balls extend the world past bounds. Technology property was locked (PluginSecurity) — left at place default; all else applied."
+ },
+ "stagedAt": 1783155220.0578334,
+ "headless": true
+}

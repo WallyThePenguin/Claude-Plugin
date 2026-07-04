@@ -1,0 +1,35 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle captures match Tudor references: dark timber grid on white infill, brick plinth+chimney, terracotta pitched roof, 6.8-stud doorway, mullioned windows; bbox 26.5x23x19.8 fits config."
+ },
+ "reasons": [
+  "All brief features present and correctly scaled vs 5-stud character",
+  "Reads as coherent Tudor cottage from front/back/left/right/iso",
+  "Minor cosmetic gap only: gables/back are lightly timbered vs fully-framed references"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.TudorCottage",
+  "config": {
+   "footprintStuds": 24,
+   "heightStuds": 17,
+   "style": "half-timbered Tudor cottage: white concrete infill, dark timber framing, brick plinth + chimney, terracotta slate pitched roof, 7-stud doorway, mullioned glass windows"
+  },
+  "steps": [
+   "get_references('timber framed Tudor cottage') — noted signature features: timber grid on white infill, brick base/chimney, steep pitched roof",
+   "Assembled 24x16 footprint walls (10 tall) from segmented Parts leaving a real 4x7 door opening and 4x4 window openings with glass panes + timber frames",
+   "Added pitched roof from two angled slabs (ridge y=17) with eave/gable overhangs, ridge cap, and WedgePart gable triangles",
+   "Added brick chimney stack+cap+pot, brick plinth ring, doorstep, open plank door leaf, timber studs/rails/corner posts",
+   "capture_angles x5 low + iso — fixed floating gable posts (resized to sit on wall top), re-verified"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Primitives-only build at 150,150 on the baseplate. Front wall built as piers+lintel+sill segments so the doorway (4w x 7h) and windows are true openings, not decals. Timber framing = proud 0.7-stud Wood studs/rails over Concrete infill; plinth/chimney use Brick material for coherent palette. Roof = two rotated slabs (atan2 pitch) + wedge gables + ridge cap; GablePosts resized after first capture showed them floating. Reads as a Tudor cottage from every angle at 5-stud character scale."
+ },
+ "stagedAt": 1783153800.6444144,
+ "headless": true
+}
