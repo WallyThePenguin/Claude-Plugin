@@ -190,6 +190,7 @@ dbg.Position = UDim2.fromScale(0.01, 0.9)
 dbg.Size = UDim2.fromScale(0.35, 0.05)
 dbg.TextXAlignment = Enum.TextXAlignment.Left
 dbg.ZIndex = 90
+dbg.Visible = DEBUG.autoPlay -- dev readout only; hidden in real play
 
 local banner = text(bg, "", 44, Theme.accent)
 banner.Font = Theme.fontBlack
@@ -847,4 +848,333 @@ function endRun()
 	end
 end
 
-print("[G&G] run half ready")
+-- ===== The Arena (active cooldown-brawl duel vs a real-player-style house Champion) =====
+-- Element counter triangle so timing + build both matter (not just raw stats).
+local COUNTER = { Kinetic = "Rapid", Rapid = "Cold", Cold = "Kinetic" } -- A beats B -> 1.4x
+local function counterMult(atk: string, def: string): number
+	return COUNTER[atk] == def and 1.4 or 1.0
+end
+
+-- House Champions: hand-authored fallback foes (stand in for real players' saved snapshots until
+-- the DataStore ladder is added). Picked near your tier so the fight is fair-ish.
+local HOUSE = {
+	{ name = "Ashborn", archetype = "Bruiser", tag = "Kinetic", color = Color3.fromRGB(255, 150, 90),
+		abilities = {
+			{ name = "Cleave", glyph = "\u{2694}", color = Color3.fromRGB(255, 150, 90), tag = "Kinetic", power = 15, cd = 1.7 },
+			{ name = "Stomp", glyph = "\u{25C9}", color = Color3.fromRGB(255, 190, 120), tag = "Kinetic", power = 9, cd = 1.0 },
+		} },
+	{ name = "Sleet", archetype = "Cryomancer", tag = "Cold", color = Color3.fromRGB(130, 220, 235),
+		abilities = {
+			{ name = "Glacier", glyph = "\u{2744}", color = Color3.fromRGB(130, 220, 235), tag = "Cold", power = 14, cd = 1.6 },
+			{ name = "Sliver", glyph = "\u{2726}", color = Color3.fromRGB(180, 240, 250), tag = "Cold", power = 8, cd = 0.9 },
+		} },
+	{ name = "Quill", archetype = "Duelist", tag = "Rapid", color = Color3.fromRGB(180, 240, 120),
+		abilities = {
+			{ name = "Flurry", glyph = "\u{2726}", color = Color3.fromRGB(180, 240, 120), tag = "Rapid", power = 12, cd = 1.3 },
+			{ name = "Jab", glyph = "\u{00BB}", color = Color3.fromRGB(210, 250, 160), tag = "Rapid", power = 7, cd = 0.7 },
+		} },
+}
+
+local function restartGame()
+	gui:Destroy()
+	if hbConn then hbConn:Disconnect() end
+	local clone = script:Clone()
+	clone.Parent = script.Parent
+	clone.Disabled = false
+end
+
+function runDuel(champ: any)
+	-- pick a house opponent (avoid mirror archetype for variety), scale HP to your tier
+	local pickList = {}
+	for _, h in HOUSE do if h.archetype ~= champ.archetype then table.insert(pickList, h) end end
+	if #pickList == 0 then pickList = HOUSE end
+	local house = pickList[math.random(1, #pickList)]
+	local opp = {
+		name = house.name, archetype = house.archetype, tag = house.tag, color = house.color,
+		hp = 80 + champ.tier * 7, maxHp = 80 + champ.tier * 7,
+		abilities = {},
+	}
+	for _, a in house.abilities do
+		local scaled = {}
+		for k, v in a do scaled[k] = v end
+		scaled.power = math.floor(a.power * (1 + champ.tier * 0.05))
+		scaled.cd0 = a.cd
+		scaled.cd = a.cd * 0.6 -- first cast comes a bit sooner
+		scaled.wind = 0
+		table.insert(opp.abilities, scaled)
+	end
+	local me = { hp = champ.hp, maxHp = champ.hp, guard = 0, guardCd = 0 }
+	for _, a in champ.abilities do a.cd = 0 end
+
+	-- ---- UI ----
+	local ov = frame(bg, "Arena")
+	ov.Size = UDim2.fromScale(1, 1)
+	ov.BackgroundColor3 = Theme.bg
+	ov.ZIndex = 70
+	local title = text(ov, "\u{2694} THE ARENA", 26, Theme.gold)
+	title.Font = Theme.fontBlack
+	title.Position = UDim2.fromScale(0, 0.05)
+	title.Size = UDim2.fromScale(1, 0.07)
+	title.ZIndex = 71
+
+	local function champPanel(anchorX: number, name: string, arche: string, color: Color3)
+		local p = frame(ov, "Panel")
+		p.AnchorPoint = Vector2.new(0.5, 0)
+		p.Position = UDim2.fromScale(anchorX, 0.16)
+		p.Size = UDim2.fromScale(0.34, 0.26)
+		p.BackgroundColor3 = Theme.panel
+		p.ZIndex = 71
+		corner(p, 14)
+		stroke(p, color, 2, 0.2)
+		local av = frame(p, "Av")
+		av.AnchorPoint = Vector2.new(0.5, 0)
+		av.Position = UDim2.fromScale(0.5, 0.1)
+		av.Size = UDim2.fromScale(0.4, 0.45)
+		av.BackgroundColor3 = color
+		av.ZIndex = 72
+		corner(av, 12)
+		local nm = text(p, name, 20, Theme.text)
+		nm.Font = Theme.fontBlack
+		nm.Position = UDim2.fromScale(0, 0.58)
+		nm.Size = UDim2.fromScale(1, 0.14)
+		nm.ZIndex = 72
+		local ar = text(p, arche, 13, color)
+		ar.Position = UDim2.fromScale(0, 0.72)
+		ar.Size = UDim2.fromScale(1, 0.1)
+		ar.ZIndex = 72
+		local hpbg = frame(p, "HPbg")
+		hpbg.AnchorPoint = Vector2.new(0.5, 1)
+		hpbg.Position = UDim2.fromScale(0.5, 0.95)
+		hpbg.Size = UDim2.fromScale(0.86, 0.09)
+		hpbg.BackgroundColor3 = Color3.fromRGB(40, 44, 52)
+		hpbg.ZIndex = 72
+		corner(hpbg, 6)
+		local hp = frame(hpbg, "HP")
+		hp.Size = UDim2.fromScale(1, 1)
+		hp.BackgroundColor3 = Theme.core
+		hp.ZIndex = 73
+		corner(hp, 6)
+		return p, hp
+	end
+	local myPanel, myHpBar = champPanel(0.3, champ.name, champ.archetype, Theme.accent)
+	local oppPanel, oppHpBar = champPanel(0.7, opp.name, opp.archetype, opp.color)
+	local vs = text(ov, "VS", 30, Theme.textDim)
+	vs.Font = Theme.fontBlack
+	vs.AnchorPoint = Vector2.new(0.5, 0.5)
+	vs.Position = UDim2.fromScale(0.5, 0.29)
+	vs.Size = UDim2.fromScale(0.1, 0.1)
+	vs.ZIndex = 72
+
+	-- ability bar
+	local bar = frame(ov, "Bar")
+	bar.BackgroundTransparency = 1
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.fromScale(0.5, 0.92)
+	bar.Size = UDim2.fromScale(0.8, 0.2)
+	bar.ZIndex = 71
+	local bl = Instance.new("UIListLayout")
+	bl.FillDirection = Enum.FillDirection.Horizontal
+	bl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	bl.VerticalAlignment = Enum.VerticalAlignment.Center
+	bl.Padding = UDim.new(0, 14)
+	bl.Parent = bar
+
+	local duelOver = false
+	local function popDuel(s: string, x: number, color: Color3)
+		local l = text(ov, s, 22, color)
+		l.Font = Theme.fontBlack
+		l.ZIndex = 80
+		l.AnchorPoint = Vector2.new(0.5, 0.5)
+		l.Position = UDim2.fromScale(x, 0.42)
+		l.Size = UDim2.fromScale(0.2, 0.08)
+		TweenService:Create(l, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.fromScale(x, 0.34), TextTransparency = 1 }):Play()
+		task.delay(0.65, function() l:Destroy() end)
+	end
+	local function hurt(target: string)
+		local panel = target == "me" and myPanel or oppPanel
+		local f = frame(panel, "Hit")
+		f.Size = UDim2.fromScale(1, 1)
+		f.BackgroundColor3 = Theme.danger
+		f.BackgroundTransparency = 0.4
+		f.ZIndex = 78
+		corner(f, 14)
+		TweenService:Create(f, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.22, function() f:Destroy() end)
+	end
+
+	local endDuel -- fwd
+	local function fireMine(ab: any)
+		if duelOver or ab.cd > 0 then return end
+		ab.cd = ab.cd0 -- cd0 is set when the button is built, below
+		local dmg = math.floor(ab.power * counterMult(ab.tag, opp.tag))
+		opp.hp = math.max(0, opp.hp - dmg)
+		oppHpBar.Size = UDim2.fromScale(opp.hp / opp.maxHp, 1)
+		popDuel("-" .. dmg, 0.7, ab.color)
+		hurt("opp")
+		if ab.slow and ab.slow > 0 then
+			for _, oa in opp.abilities do oa.cd += 0.5 end -- Frostbite slows their cooldowns
+		end
+		if opp.hp <= 0 then endDuel(true) end
+	end
+
+	-- ability buttons (with cooldown fill overlay)
+	local myButtons = {}
+	for _, ab in champ.abilities do
+		ab.cd0 = ab.cd0 or (({ Slug = 1.5, Barrage = 1.0, Frostbite = 1.3 })[ab.name] or 1.3)
+		ab.cd = 0
+		local slot = frame(bar, "AbBtn")
+		slot.Size = UDim2.fromScale(0.16, 1)
+		slot.BackgroundColor3 = ab.color
+		slot.ZIndex = 72
+		corner(slot, 12)
+		stroke(slot, Color3.new(1, 1, 1), 1.5, 0.5)
+		local g = text(slot, ab.glyph, 26, Color3.fromRGB(10, 18, 28))
+		g.Position = UDim2.fromScale(0, 0.08)
+		g.Size = UDim2.fromScale(1, 0.5)
+		g.ZIndex = 73
+		local nm = text(slot, ab.name, 12, Color3.fromRGB(10, 18, 28))
+		nm.Font = Theme.fontBlack
+		nm.Position = UDim2.fromScale(0, 0.6)
+		nm.Size = UDim2.fromScale(1, 0.2)
+		nm.ZIndex = 73
+		local cdFill = frame(slot, "CD")
+		cdFill.AnchorPoint = Vector2.new(0.5, 1)
+		cdFill.Position = UDim2.fromScale(0.5, 1)
+		cdFill.Size = UDim2.fromScale(1, 0)
+		cdFill.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		cdFill.BackgroundTransparency = 0.5
+		cdFill.ZIndex = 74
+		corner(cdFill, 12)
+		button(slot).MouseButton1Click:Connect(function() fireMine(ab) end)
+		table.insert(myButtons, { ab = ab, fill = cdFill })
+	end
+	-- Guard button
+	local guardSlot = frame(bar, "Guard")
+	guardSlot.Size = UDim2.fromScale(0.16, 1)
+	guardSlot.BackgroundColor3 = Color3.fromRGB(90, 200, 160)
+	guardSlot.ZIndex = 72
+	corner(guardSlot, 12)
+	stroke(guardSlot, Color3.new(1, 1, 1), 1.5, 0.5)
+	local gg = text(guardSlot, "\u{1F6E1}", 24, Color3.fromRGB(10, 18, 28))
+	gg.Position = UDim2.fromScale(0, 0.08)
+	gg.Size = UDim2.fromScale(1, 0.5)
+	gg.ZIndex = 73
+	local gn = text(guardSlot, "GUARD", 12, Color3.fromRGB(10, 18, 28))
+	gn.Font = Theme.fontBlack
+	gn.Position = UDim2.fromScale(0, 0.6)
+	gn.Size = UDim2.fromScale(1, 0.2)
+	gn.ZIndex = 73
+	local guardFill = frame(guardSlot, "CD")
+	guardFill.AnchorPoint = Vector2.new(0.5, 1)
+	guardFill.Position = UDim2.fromScale(0.5, 1)
+	guardFill.Size = UDim2.fromScale(1, 0)
+	guardFill.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	guardFill.BackgroundTransparency = 0.5
+	guardFill.ZIndex = 74
+	local function doGuard()
+		if duelOver or me.guardCd > 0 then return end
+		me.guard = 0.9
+		me.guardCd = 3.0
+		local ring = frame(myPanel, "Guarded")
+		ring.Size = UDim2.fromScale(1, 1)
+		ring.BackgroundTransparency = 1
+		ring.ZIndex = 77
+		stroke(ring, Color3.fromRGB(120, 240, 190), 3, 0)
+		corner(ring, 14)
+		task.delay(0.9, function() ring:Destroy() end)
+	end
+	button(guardSlot).MouseButton1Click:Connect(doGuard)
+
+	-- opponent fires -> damages me (halved if guarding), with a wind-up "tell"
+	local function oppFire(ab: any)
+		local dmg = math.floor(ab.power * counterMult(ab.tag, champ.tag))
+		if me.guard > 0 then dmg = math.floor(dmg * 0.4) end
+		me.hp = math.max(0, me.hp - dmg)
+		myHpBar.Size = UDim2.fromScale(me.hp / me.maxHp, 1)
+		popDuel("-" .. dmg, 0.3, ab.color)
+		hurt("me")
+		if me.hp <= 0 then endDuel(false) end
+	end
+
+	-- ---- result ----
+	function endDuel(won: boolean)
+		if duelOver then return end
+		duelOver = true
+		local res = frame(ov, "Result")
+		res.Size = UDim2.fromScale(1, 1)
+		res.BackgroundColor3 = Theme.bg
+		res.BackgroundTransparency = 0.15
+		res.ZIndex = 85
+		local big = text(res, won and "VICTORY" or "DEFEAT", 52, won and Theme.core or Theme.danger)
+		big.Font = Theme.fontBlack
+		big.AnchorPoint = Vector2.new(0.5, 0.5)
+		big.Position = UDim2.fromScale(0.5, 0.4)
+		big.Size = UDim2.fromScale(0.8, 0.2)
+		big.ZIndex = 86
+		big.TextTransparency = 1
+		TweenService:Create(big, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
+		local sub = text(res, won and ("You beat " .. opp.name .. " the " .. opp.archetype) or (opp.name .. " bested your " .. champ.archetype), 18, Theme.textDim)
+		sub.Position = UDim2.fromScale(0, 0.54)
+		sub.Size = UDim2.fromScale(1, 0.06)
+		sub.ZIndex = 86
+		local again = Instance.new("TextButton")
+		again.AnchorPoint = Vector2.new(0.5, 0.5)
+		again.Position = UDim2.fromScale(0.5, 0.68)
+		again.Size = UDim2.fromScale(0.36, 0.1)
+		again.BackgroundColor3 = Theme.accent
+		again.Text = "NEW RUN"
+		again.Font = Theme.fontBlack
+		again.TextSize = 22
+		again.TextColor3 = Color3.fromRGB(10, 16, 26)
+		again.ZIndex = 86
+		corner(again, 10)
+		again.Parent = res
+		again.MouseButton1Click:Connect(restartGame)
+		if DEBUG.autoPlay then task.delay(2.5, restartGame) end
+	end
+
+	-- ---- duel loop (its own Heartbeat) ----
+	local duelConn: RBXScriptConnection
+	duelConn = RunService.Heartbeat:Connect(function(dt)
+		if duelOver then
+			duelConn:Disconnect()
+			return
+		end
+		if me.guard > 0 then me.guard -= dt end
+		if me.guardCd > 0 then me.guardCd -= dt end
+		guardFill.Size = UDim2.fromScale(1, math.clamp(me.guardCd / 3.0, 0, 1))
+		for _, mb in myButtons do
+			if mb.ab.cd > 0 then mb.ab.cd -= dt end
+			mb.fill.Size = UDim2.fromScale(1, math.clamp(mb.ab.cd / (mb.ab.cd0 or 1.2), 0, 1))
+		end
+		-- opponent AI: wind up then fire each ability on its cooldown
+		for _, oa in opp.abilities do
+			oa.cd -= dt
+			if oa.cd <= 0 and oa.wind <= 0 then
+				oa.wind = 0.5 -- tell
+				local warn = frame(oppPanel, "Tell")
+				warn.Size = UDim2.fromScale(1, 1)
+				warn.BackgroundTransparency = 1
+				warn.ZIndex = 76
+				stroke(warn, oa.color, 3, 0)
+				corner(warn, 14)
+				task.delay(0.5, function() warn:Destroy() end)
+			elseif oa.wind > 0 then
+				oa.wind -= dt
+				if oa.wind <= 0 then
+					oppFire(oa)
+					oa.cd = oa.cd0
+				end
+			end
+		end
+		-- DEBUG auto-pilot: fire ready abilities + guard on a tell
+		if DEBUG.autoPlay then
+			for _, mb in myButtons do
+				if mb.ab.cd <= 0 then fireMine(mb.ab) end
+			end
+			if me.guardCd <= 0 and oppPanel:FindFirstChild("Tell") then doGuard() end
+		end
+	end)
+end
+
+print("[G&G] full loop ready")
