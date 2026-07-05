@@ -25,6 +25,7 @@ local StoreClient = require(script.Parent.StoreClient)
 local DevBridge = require(script.Parent.DevBridge)
 local PlayBridge = require(script.Parent.PlayBridge)
 local HotReload = require(script.Parent.HotReload)
+local MeshFactory = require(script.Parent.MeshFactory)
 
 local Main = {}
 
@@ -80,6 +81,20 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 
 	DevBridge.start(deps, lifecycle)
 	PlayBridge.start(deps, lifecycle)
+
+	-- Restore LOCALLY-stored meshes: geometry is serialized in-place (a MeshData child + SALocalMesh
+	-- tag) instead of uploaded to Roblox, so session-backed geometry goes blank on open/reopen/play and
+	-- must be rebuilt. Async + fail-open — a mesh that can't rebuild just stays blank, never blocks load.
+	task.spawn(function()
+		local ok, rebuilt = pcall(function()
+			local r1 = MeshFactory.rebuildAllLocal(workspace)
+			local r2 = MeshFactory.rebuildAllLocal(game:GetService("ServerStorage"))
+			return r1 + r2
+		end)
+		if ok and (rebuilt :: number) > 0 then
+			print(("[StudioAgent] rebuilt %d local mesh(es) from stored geometry"):format(rebuilt))
+		end
+	end)
 
 	-- Hydrate USER skills from the sidecar's durable, git-versioned store into the plugin-settings
 	-- working cache. NOT a blind overwrite: a skill saved while the sidecar was down exists ONLY

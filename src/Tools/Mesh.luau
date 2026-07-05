@@ -194,37 +194,20 @@ local function runSave(input: any, _context: any): (string, boolean)
 		return "save_mesh: no session-backed custom meshes found (already durable, or only Parts present).",
 			false
 	end
-	local swapped, pending, failed = 0, 0, 0
-	local ids: { string } = {}
+	-- LOCAL persistence: serialize each mesh's geometry into the place (NO CreateAssetAsync upload).
+	-- Uploading is what caused the pending-moderation CDN load-failures that destabilized Studio; this
+	-- stores geometry as a MeshData child + a SALocalMesh tag, and the plugin/runtime rebuilds it on load.
+	local stored, failed = 0, 0
 	local firstErr: string? = nil
-	local texPersisted, texFailed = 0, 0
-	local firstTexErr: string? = nil
 	local function doPersist()
-		for i, mp in parts do
-			local result = MeshFactory.persistMeshPart(mp, mp.Name .. "_" .. tostring(i))
-			if result.meshAssetId ~= nil then
-				table.insert(ids, tostring(result.meshAssetId))
-				if result.swapped then
-					swapped += 1
-				else
-					pending += 1
-				end
+		for _, mp in parts do
+			local result = MeshFactory.persistMeshPartLocal(mp)
+			if result.stored then
+				stored += 1
 			else
 				failed += 1
 				if firstErr == nil then
 					firstErr = result.err
-				end
-			end
-			local tex = result.texture
-			if tex ~= nil then
-				if tex.err ~= nil then
-					texFailed += 1
-					if firstTexErr == nil then
-						firstTexErr = tex.err
-					end
-				elseif tex.imageId ~= nil then
-					-- count only an actual upload; a "carry" (durable ref copied, no upload) is a no-op here
-					texPersisted += 1
 				end
 			end
 		end
@@ -232,6 +215,7 @@ local function runSave(input: any, _context: any): (string, boolean)
 	if RunService:IsEdit() then
 		local rid = ChangeHistoryService:TryBeginRecording("save_mesh")
 		doPersist()
+		-- rid == nil (stale recording): proceed UNRECORDED rather than wedge the pipeline.
 		if rid ~= nil then
 			ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
 		end
@@ -239,29 +223,15 @@ local function runSave(input: any, _context: any): (string, boolean)
 		doPersist()
 	end
 	local msg = string.format(
-		"save_mesh: %d/%d mesh(es) now DURABLE in the scene (survive Play / save / ship). asset ids: %s",
-		swapped,
-		#parts,
-		(if #ids > 0 then table.concat(ids, ", ") else "(none)")
+		"save_mesh: %d/%d mesh(es) stored LOCALLY (geometry serialized in-place; NO upload — survives "
+			.. "save/reopen via rebuild, no moderation/CDN dependency).",
+		stored,
+		#parts
 	)
-	if pending > 0 then
-		msg = msg
-			.. string.format(
-				" — %d uploaded but PENDING moderation (not swapped yet; re-run save_mesh shortly to make them durable)",
-				pending
-			)
-	end
 	if failed > 0 then
 		msg = msg .. string.format(" — %d FAILED (%s)", failed, tostring(firstErr))
 	end
-	if texPersisted > 0 then
-		msg = msg .. string.format(" — %d texture(s) persisted", texPersisted)
-	end
-	if texFailed > 0 then
-		msg = msg
-			.. string.format(" — %d texture(s) FAILED (%s)", texFailed, tostring(firstTexErr))
-	end
-	return msg, (swapped == 0 and pending == 0)
+	return msg, (stored == 0)
 end
 
 local POS_SCHEMA = {

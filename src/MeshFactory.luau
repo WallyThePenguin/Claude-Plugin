@@ -97,6 +97,61 @@ function MeshFactory.rockClusterLayout(size: number, seed: number): { RockPiece 
 	return pieces
 end
 
+-- ---- local mesh serialization (PURE encode/decode; extract/rebuild are impure below) ----
+--
+-- LOCAL STORAGE (no Roblox upload): a mesh's geometry is pure data — a flat vertex-position array
+-- `v = {x,y,z, x,y,z, ...}` and a flat 0-based triangle-index array `t = {i,i,i, ...}`. We serialize
+-- that into a StringValue in the place and rebuild the EditableMesh on load, so the mesh NEVER goes
+-- through CreateAssetAsync (upload -> pending moderation -> CDN load-failure -> Studio instability).
+-- Encode/decode are string<->table PURE (unit-tested round-trip in MeshFactorySpec).
+
+export type MeshData = { v: { number }, t: { number } }
+
+-- Encode geometry to a compact "v:<floats>;t:<ints>" string (tostring/tonumber round-trips exactly).
+function MeshFactory.encodeMeshData(data: MeshData): string
+	local vp: { string } = {}
+	for _, n in data.v do
+		vp[#vp + 1] = tostring(n)
+	end
+	local tp: { string } = {}
+	for _, n in data.t do
+		tp[#tp + 1] = tostring(n)
+	end
+	return "v:" .. table.concat(vp, ",") .. ";t:" .. table.concat(tp, ",")
+end
+
+local function parseNums(s: string): { number }?
+	local out: { number } = {}
+	if s == "" then
+		return out
+	end
+	for tok in string.gmatch(s, "[^,]+") do
+		local n = tonumber(tok)
+		if n == nil then
+			return nil -- malformed token -> whole decode fails cleanly (nil, never a throw)
+		end
+		out[#out + 1] = n
+	end
+	return out
+end
+
+-- Inverse of encodeMeshData. Returns nil (never throws) on any malformed input.
+function MeshFactory.decodeMeshData(str: string): MeshData?
+	if type(str) ~= "string" then
+		return nil
+	end
+	local vs, ts = string.match(str, "^v:(.-);t:(.*)$")
+	if vs == nil then
+		return nil
+	end
+	local v = parseNums(vs)
+	local t = parseNums(ts :: string)
+	if v == nil or t == nil then
+		return nil
+	end
+	return { v = v, t = t }
+end
+
 -- ---- impure (live-verified) ----
 
 -- Build a MeshPart from a Geometry via EditableMesh. Anchored + colored. (Content is a Luau global;
@@ -336,6 +391,115 @@ function MeshFactory.persistMeshPart(mp: MeshPart, name: string): PersistResult
 	d.Parent = mp.Parent
 	mp:Destroy()
 	return { meshAssetId = id, swapped = true, err = nil, texture = texture }
+end
+
+-- ---- local mesh storage (impure: reads/rebuilds EditableMesh; NO upload) ----
+
+MeshFactory.LOCAL_TAG = "SALocalMesh" -- attribute marking a part whose geometry is stored locally
+MeshFactory.DATA_NAME = "MeshData" -- StringValue child holding the encoded geometry
+
+-- Read a live EditableMesh's geometry into a serializable MeshData (0-based triangle indices).
+-- Read APIs live-verified 2026-07-05: GetVertices/GetPosition + GetFaces/GetFaceVertices.
+function MeshFactory.extractGeometry(em: EditableMesh): MeshData
+	local vids = em:GetVertices()
+	local idToIdx: { [number]: number } = {}
+	local vflat: { number } = {}
+	for i, vid in vids do
+		idToIdx[vid] = i - 1 -- 0-based
+		local p = em:GetPosition(vid)
+		vflat[#vflat + 1] = p.X
+		vflat[#vflat + 1] = p.Y
+		vflat[#vflat + 1] = p.Z
+	end
+	local tflat: { number } = {}
+	for _, fid in em:GetFaces() do
+		local fv = em:GetFaceVertices(fid)
+		tflat[#tflat + 1] = idToIdx[fv[1]]
+		tflat[#tflat + 1] = idToIdx[fv[2]]
+		tflat[#tflat + 1] = idToIdx[fv[3]]
+	end
+	return { v = vflat, t = tflat }
+end
+
+export type LocalPersistResult = { stored: boolean, dataChars: number, err: string? }
+
+-- Persist a session-backed MeshPart's geometry LOCALLY (no CreateAssetAsync). Extracts the geometry,
+-- encodes it into a `MeshData` StringValue child, and tags the part `SALocalMesh=true`. The part stays
+-- session-backed (renders live now); rebuildLocalMesh restores it after a save/reopen/play blanks it.
+function MeshFactory.persistMeshPartLocal(mp: MeshPart): LocalPersistResult
+	local okEx, em = pcall(function()
+		return AssetService:CreateEditableMeshAsync(mp.MeshContent)
+	end)
+	if not okEx or em == nil then
+		return { stored = false, dataChars = 0, err = "could not extract EditableMesh: " .. tostring(em) }
+	end
+	local okData, encoded = pcall(function()
+		return MeshFactory.encodeMeshData(MeshFactory.extractGeometry(em :: EditableMesh))
+	end)
+	if not okData or type(encoded) ~= "string" then
+		return { stored = false, dataChars = 0, err = "extract/encode failed: " .. tostring(encoded) }
+	end
+	local existing = mp:FindFirstChild(MeshFactory.DATA_NAME)
+	if existing then
+		existing:Destroy()
+	end
+	local sv = Instance.new("StringValue")
+	sv.Name = MeshFactory.DATA_NAME
+	sv.Value = encoded :: string
+	sv.Parent = mp
+	mp:SetAttribute(MeshFactory.LOCAL_TAG, true)
+	return { stored = true, dataChars = #(encoded :: string), err = nil }
+end
+
+-- Rebuild a locally-stored mesh's geometry from its `MeshData` child and apply it back onto the part.
+-- Used on load (edit: plugin bootstrap; play/ship: runtime module) after session geometry goes blank.
+function MeshFactory.rebuildLocalMesh(mp: MeshPart): (boolean, string?)
+	local dataInst = mp:FindFirstChild(MeshFactory.DATA_NAME)
+	if dataInst == nil or not dataInst:IsA("StringValue") then
+		return false, "no MeshData child"
+	end
+	local data = MeshFactory.decodeMeshData(dataInst.Value)
+	if data == nil then
+		return false, "MeshData did not decode"
+	end
+	local okBuild, err = pcall(function()
+		local em = AssetService:CreateEditableMesh()
+		local idx: { [number]: number } = {}
+		for i = 1, #data.v, 3 do
+			idx[(i - 1) // 3] = em:AddVertex(Vector3.new(data.v[i], data.v[i + 1], data.v[i + 2]))
+		end
+		for i = 1, #data.t, 3 do
+			em:AddTriangle(idx[data.t[i]], idx[data.t[i + 1]], idx[data.t[i + 2]])
+		end
+		-- Apply the rebuilt geometry ONTO the existing part IN PLACE (no swap — preserves the
+		-- instance, so welds / Tool.Handle references survive). MeshContent isn't writable and
+		-- MeshPart:ApplyMesh takes a MeshPart, so build a throwaway part from the geometry, apply it,
+		-- then destroy it (live-verified 2026-07-05).
+		local fresh = AssetService:CreateMeshPartAsync(Content.fromObject(em))
+		mp:ApplyMesh(fresh)
+		fresh:Destroy()
+	end)
+	if not okBuild then
+		return false, "rebuild failed: " .. tostring(err)
+	end
+	return true, nil
+end
+
+-- Rebuild every locally-stored mesh under `root` (or the whole DataModel). Returns (rebuilt, failed).
+function MeshFactory.rebuildAllLocal(root: Instance?): (number, number)
+	local scope = root or game
+	local rebuilt, failed = 0, 0
+	for _, d in scope:GetDescendants() do
+		if d:IsA("MeshPart") and d:GetAttribute(MeshFactory.LOCAL_TAG) == true then
+			local ok = MeshFactory.rebuildLocalMesh(d)
+			if ok then
+				rebuilt += 1
+			else
+				failed += 1
+			end
+		end
+	end
+	return rebuilt, failed
 end
 
 return MeshFactory

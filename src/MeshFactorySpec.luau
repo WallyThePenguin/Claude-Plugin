@@ -73,6 +73,50 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	local function numArraysEqual(a: { number }, b: { number }): boolean
+		if #a ~= #b then
+			return false
+		end
+		for i = 1, #a do
+			if a[i] ~= b[i] then
+				return false
+			end
+		end
+		return true
+	end
+
+	add("encode/decode round-trips geometry (ints + floats)", function()
+		local data = { v = { 0, 0, 0, 2, 0, 0, 1, 2, 0, 0.5, -1.25, 3.333 }, t = { 0, 1, 2, 2, 3, 0 } }
+		local back = MeshFactory.decodeMeshData(MeshFactory.encodeMeshData(data))
+		if back == nil then
+			return false, "decoded nil"
+		end
+		if not numArraysEqual(back.v, data.v) then
+			return false, "v mismatch"
+		end
+		if not numArraysEqual(back.t, data.t) then
+			return false, "t mismatch"
+		end
+		return true
+	end)
+
+	add("encode/decode round-trips an empty mesh", function()
+		local back = MeshFactory.decodeMeshData(MeshFactory.encodeMeshData({ v = {}, t = {} }))
+		return back ~= nil and #back.v == 0 and #back.t == 0
+	end)
+
+	add("decode handles large index values (Cube-scale meshes)", function()
+		local data = { v = { 1, 2, 3 }, t = { 0, 1, 2, 1000, 2000, 3000 } }
+		local back = MeshFactory.decodeMeshData(MeshFactory.encodeMeshData(data))
+		return back ~= nil and numArraysEqual(back.t, data.t)
+	end)
+
+	add("decode returns nil (not a throw) on malformed input", function()
+		return MeshFactory.decodeMeshData("garbage") == nil
+			and MeshFactory.decodeMeshData("v:1,2,x;t:0") == nil
+			and MeshFactory.decodeMeshData(123 :: any) == nil
+	end)
+
 	add("coneGeometry triangle indices are all in [1, #vertices]", function()
 		local g = MeshFactory.coneGeometry(2, 5, 7)
 		for _, t in g.triangles do
