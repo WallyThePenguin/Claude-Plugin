@@ -211,6 +211,7 @@ local RunState = {
 }
 local state = {
 	wave = 0, coins = 40, alive = true, drafting = false,
+	started = (_G :: any).GGStarted == true, -- skip the title on a NEW RUN restart (same session)
 	enemies = {} :: { any }, spawnQueue = {} :: { any }, towers = {} :: { any },
 }
 local MAX_LIVE = 40
@@ -670,6 +671,12 @@ local function waveClear(): boolean
 end
 
 task.spawn(function()
+	while not state.started and state.alive do
+		task.wait(0.05)
+	end
+	if not state.alive then
+		return
+	end
 	startWave()
 	while state.alive do
 		task.wait(0.4)
@@ -1175,6 +1182,63 @@ function runDuel(champ: any)
 			if me.guardCd <= 0 and oppPanel:FindFirstChild("Tell") then doGuard() end
 		end
 	end)
+end
+
+-- ===== Title / start menu (only on first entry of a session; NEW RUN skips it) =====
+if not state.started then
+	local menu = frame(bg, "Menu")
+	menu.Size = UDim2.fromScale(1, 1)
+	menu.BackgroundColor3 = Theme.bg
+	menu.ZIndex = 95
+	do
+		local g = Instance.new("UIGradient")
+		g.Rotation = 90
+		g.Color = ColorSequence.new(Color3.fromRGB(18, 22, 30), Color3.fromRGB(12, 13, 17))
+		g.Parent = menu
+	end
+	local t1 = text(menu, "GAUNTLET", 60, Theme.accent)
+	t1.Font = Theme.fontBlack
+	t1.AnchorPoint = Vector2.new(0.5, 1)
+	t1.Position = UDim2.fromScale(0.5, 0.4)
+	t1.Size = UDim2.fromScale(0.9, 0.13)
+	t1.ZIndex = 96
+	local t2 = text(menu, "& GLORY", 60, Theme.gold)
+	t2.Font = Theme.fontBlack
+	t2.AnchorPoint = Vector2.new(0.5, 0)
+	t2.Position = UDim2.fromScale(0.5, 0.4)
+	t2.Size = UDim2.fromScale(0.9, 0.13)
+	t2.ZIndex = 96
+	local tag = text(menu, "survive the gauntlet  \u{2022}  forge a champion  \u{2022}  duel the ladder", 17, Theme.textDim)
+	tag.Position = UDim2.fromScale(0, 0.56)
+	tag.Size = UDim2.fromScale(1, 0.05)
+	tag.ZIndex = 96
+	local play = Instance.new("TextButton")
+	play.AnchorPoint = Vector2.new(0.5, 0.5)
+	play.Position = UDim2.fromScale(0.5, 0.7)
+	play.Size = UDim2.fromScale(0.3, 0.1)
+	play.BackgroundColor3 = Theme.accent
+	play.Text = "PLAY"
+	play.Font = Theme.fontBlack
+	play.TextSize = 26
+	play.TextColor3 = Color3.fromRGB(10, 16, 26)
+	play.ZIndex = 96
+	corner(play, 12)
+	play.Parent = menu
+	local function beginGame()
+		(_G :: any).GGStarted = true
+		state.started = true
+		TweenService:Create(menu, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+		for _, c in menu:GetChildren() do
+			if c:IsA("TextLabel") or c:IsA("TextButton") then
+				TweenService:Create(c, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+			end
+		end
+		task.delay(0.32, function() menu:Destroy() end)
+	end
+	play.MouseButton1Click:Connect(beginGame)
+	if DEBUG.autoPlay then
+		task.delay(0.4, beginGame)
+	end
 end
 
 print("[G&G] full loop ready")
