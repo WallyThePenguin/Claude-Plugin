@@ -1,1244 +1,788 @@
 --!strict
--- GAUNTLET & GLORY — GUI-only one-life roguelite tower-defense + duel.
--- One client LocalScript builds the whole UI and runs the game (no meshes/parts/DataStore).
--- Loop: survive the infinite one-life TD -> the towers/upgrades you draft FORGE a Champion ->
--- duel that Champion vs a house Champion. Modularizes as it grows; today it's one focused file.
+-- NEON GAUNTLET // 無限刃 — an infinite, anime, Bloons-deep GUI tower defense.
+-- You summon shonen "fighters" onto a curving neon battle-street, forge a CLASS across a roguelite
+-- draft, and hold the line forever against escalating waves + NPC BOSSES that SMASH your fighters
+-- off the board. Pure GUI (no meshes/parts). ONE Heartbeat drives everything; all FX pooled.
+-- Anime feel = ink+neon cel-shaded panels, bold outlines, slanted shonen text, and heavy impact FX
+-- (hit-stop, crit numbers, slash flashes, hit sparks, screen shake/flash, boss intro cards).
 
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local pg = player:WaitForChild("PlayerGui")
 
--- DEBUG auto-driver: lets the game be verified headlessly (no clicks available in a capture).
--- autoPlay places towers + picks drafts; pauseOnDraft keeps a draft on screen long enough to
--- capture; forceDeathWave forces the run to end so the forge/duel screens can be verified.
-local DEBUG = { autoPlay = false, pauseOnDraft = 0, forceDeathWave = 0 }
+local DEBUG = { autoPlay = false, forceBossWave = 0 }
 
--- ===== Theme =====
-local Theme = {
-	bg = Color3.fromRGB(14, 16, 20),
-	panel = Color3.fromRGB(22, 26, 33),
-	panelHi = Color3.fromRGB(34, 40, 51),
-	lane = Color3.fromRGB(18, 21, 27),
-	accent = Color3.fromRGB(94, 160, 255),
-	gold = Color3.fromRGB(255, 205, 90),
-	danger = Color3.fromRGB(255, 84, 96),
-	core = Color3.fromRGB(120, 235, 190),
-	text = Color3.fromRGB(232, 238, 246),
-	textDim = Color3.fromRGB(140, 150, 165),
-	enemy = Color3.fromRGB(226, 96, 110),
-	elite = Color3.fromRGB(196, 120, 255),
-	font = Enum.Font.GothamBold,
-	fontBlack = Enum.Font.GothamBlack,
+-- ===== Palette (ink base so neon POPS) =====
+local C = {
+	ink = Color3.fromRGB(11, 14, 20),
+	ink2 = Color3.fromRGB(17, 21, 30),
+	panel = Color3.fromRGB(24, 29, 42),
+	panelHi = Color3.fromRGB(40, 48, 66),
+	cyan = Color3.fromRGB(53, 230, 255),
+	magenta = Color3.fromRGB(255, 77, 157),
+	gold = Color3.fromRGB(255, 209, 92),
+	lime = Color3.fromRGB(170, 255, 120),
+	violet = Color3.fromRGB(168, 120, 255),
+	red = Color3.fromRGB(255, 76, 96),
+	white = Color3.fromRGB(245, 249, 255),
+	dim = Color3.fromRGB(120, 132, 155),
+	ink0 = Color3.fromRGB(6, 8, 12),
+	core = Color3.fromRGB(90, 240, 200),
 }
+local FONT = Enum.Font.GothamBlack
+local FONT2 = Enum.Font.GothamBold
 
+-- ===== styled helpers (cel + ink outline is the "anime line-art" trick) =====
 local function corner(p: Instance, r: number)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r)
-	c.Parent = p
-	return c
+	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p; return c
 end
-local function stroke(p: Instance, color: Color3, th: number, tr: number?)
-	local s = Instance.new("UIStroke")
-	s.Color = color
-	s.Thickness = th
-	s.Transparency = tr or 0
-	s.Parent = p
-	return s
+local function stroke(p: Instance, col: Color3, th: number, tr: number?)
+	local s = Instance.new("UIStroke"); s.Color = col; s.Thickness = th; s.Transparency = tr or 0
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = p; return s
 end
 local function frame(parent: Instance, name: string?): Frame
-	local f = Instance.new("Frame")
-	f.Name = name or "F"
-	f.BorderSizePixel = 0
-	f.BackgroundColor3 = Theme.panel
-	f.Parent = parent
+	local f = Instance.new("Frame"); f.Name = name or "F"; f.BorderSizePixel = 0
+	f.BackgroundColor3 = C.panel; f.Parent = parent; return f
+end
+-- a cel-shaded panel: fill + hard ink outline + a top highlight wedge (2-tone anime shading)
+local function cel(parent: Instance, col: Color3, r: number, outline: number?): Frame
+	local f = frame(parent)
+	f.BackgroundColor3 = col
+	corner(f, r)
+	stroke(f, C.ink0, outline or 3, 0)
+	local hi = frame(f, "Hi")
+	hi.BackgroundColor3 = C.white
+	hi.BackgroundTransparency = 0.82
+	hi.Size = UDim2.new(1, 0, 0.42, 0)
+	hi.Position = UDim2.fromScale(0, 0)
+	hi.ZIndex = (f.ZIndex or 1)
+	corner(hi, r)
 	return f
 end
-local function text(parent: Instance, s: string, size: number, color: Color3?): TextLabel
-	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1
-	t.Font = Theme.font
-	t.Text = s
-	t.TextSize = size
-	t.TextColor3 = color or Theme.text
-	t.Parent = parent
+local function text(parent: Instance, s: string, size: number, col: Color3?): TextLabel
+	local t = Instance.new("TextLabel"); t.BackgroundTransparency = 1; t.Font = FONT2
+	t.Text = s; t.TextSize = size; t.TextColor3 = col or C.white; t.Parent = parent; return t
+end
+-- slanted shonen headline: rotated + fat black ink outline (the shonen title look)
+local function shout(parent: Instance, s: string, size: number, col: Color3): TextLabel
+	local t = text(parent, s, size, col)
+	t.Font = FONT; t.Rotation = -6
+	stroke(t, C.ink0, math.max(2, size / 9), 0)
 	return t
 end
 local function button(parent: Instance): TextButton
-	local b = Instance.new("TextButton")
-	b.BackgroundTransparency = 1
-	b.Text = ""
-	b.AutoButtonColor = false
-	b.Size = UDim2.fromScale(1, 1)
-	b.Parent = parent
-	return b
+	local b = Instance.new("TextButton"); b.BackgroundTransparency = 1; b.Text = ""
+	b.AutoButtonColor = false; b.Size = UDim2.fromScale(1, 1); b.Parent = parent; return b
 end
 
--- ===== Tower definitions (SINGLE source: TD stats + tags + duel-ability mapping + tooltips) =====
-type TowerDef = {
-	id: string, name: string, color: Color3, glyph: string, tag: string,
-	damage: number, fireRate: number, range: number, slow: number,
-	cost: number, ability: string, abilityDesc: string, gauntlet: string, arena: string,
-}
-local TOWERS: { [string]: TowerDef } = {
-	Cannon = { id = "Cannon", name = "Cannon", color = Color3.fromRGB(120, 200, 255), glyph = "\u{25C9}", tag = "Kinetic",
-		damage = 12, fireRate = 0.85, range = 0.24, slow = 0, cost = 15,
-		ability = "Slug", abilityDesc = "A heavy single-target blow.",
-		gauntlet = "Hard single hits", arena = "High-damage nuke" },
-	Splinter = { id = "Splinter", name = "Splinter", color = Color3.fromRGB(180, 240, 120), glyph = "\u{2726}", tag = "Rapid",
-		damage = 5, fireRate = 0.32, range = 0.20, slow = 0, cost = 18,
-		ability = "Barrage", abilityDesc = "A flurry of fast light hits.",
-		gauntlet = "Fast, weak, rapid fire", arena = "Rapid multi-hit combo" },
-	Frost = { id = "Frost", name = "Frost", color = Color3.fromRGB(130, 220, 235), glyph = "\u{2744}", tag = "Cold",
-		damage = 7, fireRate = 0.7, range = 0.26, slow = 0.4, cost = 20,
-		ability = "Frostbite", abilityDesc = "Chip damage that slows the foe.",
-		gauntlet = "Slows enemies + chip", arena = "Slows their cooldowns" },
-}
-local START_TOWER = "Cannon"
-
--- ===== Root =====
+-- ===== root =====
 local gui = Instance.new("ScreenGui")
-gui.Name = "GauntletGlory"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.DisplayOrder = 50
-gui.Parent = playerGui
+gui.Name = "NeonGauntlet"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; gui.DisplayOrder = 60; gui.Parent = pg
 
-local bg = frame(gui, "BG")
-bg.Size = UDim2.fromScale(1, 1)
-bg.BackgroundColor3 = Theme.bg
-
-local lane = frame(bg, "Lane")
-lane.AnchorPoint = Vector2.new(0.5, 0.5)
-lane.Position = UDim2.fromScale(0.5, 0.52)
-lane.Size = UDim2.fromScale(0.26, 0.82)
-lane.BackgroundColor3 = Theme.lane
-corner(lane, 14)
-stroke(lane, Theme.panelHi, 2, 0.2)
-do
-	local g = Instance.new("UIGradient")
-	g.Rotation = 90
-	g.Color = ColorSequence.new(Color3.fromRGB(24, 28, 36), Color3.fromRGB(15, 17, 22))
-	g.Parent = lane
+local root = frame(gui, "Root") -- shaken as a whole for screen-shake
+root.Size = UDim2.fromScale(1, 1)
+root.BackgroundColor3 = C.ink
+local bgGrad = Instance.new("UIGradient")
+bgGrad.Rotation = 90
+bgGrad.Color = ColorSequence.new(Color3.fromRGB(16, 20, 30), Color3.fromRGB(8, 9, 14))
+bgGrad.Parent = root
+-- faint diagonal ink hatch vibe via two tinted bars
+for i = 0, 1 do
+	local streak = frame(root, "Streak")
+	streak.BackgroundColor3 = i == 0 and C.cyan or C.magenta
+	streak.BackgroundTransparency = 0.94
+	streak.Size = UDim2.fromScale(1.4, 0.06)
+	streak.Rotation = -18
+	streak.Position = UDim2.fromScale(-0.2, i == 0 and 0.2 or 0.75)
 end
 
-local core = frame(lane, "Core")
-core.AnchorPoint = Vector2.new(0.5, 1)
-core.Position = UDim2.fromScale(0.5, 1)
-core.Size = UDim2.new(1, -8, 0, 14)
-core.BackgroundColor3 = Theme.core
-corner(core, 7)
-stroke(core, Theme.core, 3, 0.3)
+local fxLayer = frame(root, "FX"); fxLayer.BackgroundTransparency = 1; fxLayer.Size = UDim2.fromScale(1, 1); fxLayer.ZIndex = 40
 
-type Slot = { frame: Frame, side: number, y: number, tower: any, plus: TextLabel, btn: TextButton }
-local slots: { Slot } = {}
-for side = 0, 1 do
-	for i = 0, 3 do
-		local yScale = 0.13 + (i / 3) * 0.64
-		local s = frame(lane, "Slot")
-		s.AnchorPoint = Vector2.new(0.5, 0.5)
-		s.Size = UDim2.fromScale(0.30, 0.095)
-		s.Position = UDim2.fromScale(side == 0 and -0.06 or 1.06, yScale)
-		s.BackgroundColor3 = Theme.panel
-		s.BackgroundTransparency = 0.12
-		corner(s, 10)
-		stroke(s, Theme.panelHi, 2, 0.3)
-		local plus = text(s, "+", 22, Theme.textDim)
-		plus.Size = UDim2.fromScale(1, 1)
-		local btn = button(s)
-		table.insert(slots, { frame = s, side = side, y = yScale, tower = nil, plus = plus, btn = btn })
+-- ===== global time-scale (hit-stop) =====
+local timeScale = 1.0
+local function hitStop(dur: number)
+	timeScale = 0.0
+	task.delay(dur, function() timeScale = 1.0 end)
+end
+
+-- ===== track (curving neon battle-street via waypoints) =====
+local WAYPOINTS = {
+	Vector2.new(0.5, 0.06), Vector2.new(0.78, 0.16), Vector2.new(0.80, 0.40),
+	Vector2.new(0.55, 0.50), Vector2.new(0.22, 0.44), Vector2.new(0.20, 0.68),
+	Vector2.new(0.45, 0.80), Vector2.new(0.72, 0.82), Vector2.new(0.5, 0.94),
+}
+local board = frame(root, "Board")
+board.BackgroundTransparency = 1
+board.AnchorPoint = Vector2.new(0.5, 0.5)
+board.Position = UDim2.fromScale(0.5, 0.53)
+board.Size = UDim2.fromScale(0.62, 0.88)
+board.ZIndex = 2
+-- draw the street as overlapping segment Frames between waypoints
+local function drawTrack()
+	for i = 1, #WAYPOINTS - 1 do
+		local a, b = WAYPOINTS[i], WAYPOINTS[i + 1]
+		local mid = (a + b) / 2
+		local d = b - a
+		local len = d.Magnitude
+		local seg = frame(board, "Seg")
+		seg.AnchorPoint = Vector2.new(0.5, 0.5)
+		seg.Position = UDim2.fromScale(mid.X, mid.Y)
+		seg.Size = UDim2.new(len, 6, 0, 26)
+		seg.BackgroundColor3 = C.ink2
+		seg.Rotation = math.deg(math.atan2(d.Y, d.X))
+		seg.ZIndex = 2
+		corner(seg, 13)
+		stroke(seg, C.cyan, 2, 0.55)
+		local glow = frame(seg, "Glow")
+		glow.BackgroundColor3 = C.cyan
+		glow.BackgroundTransparency = 0.86
+		glow.Size = UDim2.new(1, -6, 0, 4)
+		glow.AnchorPoint = Vector2.new(0.5, 0.5)
+		glow.Position = UDim2.fromScale(0.5, 0.5)
+		glow.ZIndex = 3
+		corner(glow, 2)
 	end
 end
+drawTrack()
+-- helper: world (scale) position of progress p in [0,1] along the waypoint path
+local segLens = {}
+local totalLen = 0
+for i = 1, #WAYPOINTS - 1 do
+	local l = (WAYPOINTS[i + 1] - WAYPOINTS[i]).Magnitude
+	segLens[i] = l; totalLen += l
+end
+local function pathPos(p: number): Vector2
+	p = math.clamp(p, 0, 1)
+	local target = p * totalLen
+	local acc = 0
+	for i = 1, #WAYPOINTS - 1 do
+		if acc + segLens[i] >= target then
+			local t = (target - acc) / segLens[i]
+			return WAYPOINTS[i]:Lerp(WAYPOINTS[i + 1], t)
+		end
+		acc += segLens[i]
+	end
+	return WAYPOINTS[#WAYPOINTS]
+end
+
+-- Core at the end of the track
+local coreP = pathPos(1)
+local coreNode = cel(board, C.core, 12)
+coreNode.AnchorPoint = Vector2.new(0.5, 0.5)
+coreNode.Position = UDim2.fromScale(coreP.X, coreP.Y)
+coreNode.Size = UDim2.fromScale(0.12, 0.05)
+coreNode.ZIndex = 5
+text(coreNode, "\u{6838}", 20, C.ink0).Size = UDim2.fromScale(1, 1)
+
+-- ===== fighter defs (element-colored, glyph, one upgrade path for now) =====
+type Def = { id: string, name: string, color: Color3, glyph: string, element: string,
+	dmg: number, rate: number, range: number, cost: number, slow: number, kind: string }
+local FIGHTERS: { [string]: Def } = {
+	Ronin = { id = "Ronin", name = "Ronin", color = C.cyan, glyph = "\u{5203}", element = "Blade",
+		dmg = 14, rate = 0.7, range = 0.16, cost = 18, slow = 0, kind = "slash" },
+	Onmyoji = { id = "Onmyoji", name = "Frost Onmyoji", color = Color3.fromRGB(130, 220, 235), glyph = "\u{96EA}", element = "Cold",
+		dmg = 8, rate = 0.85, range = 0.2, cost = 22, slow = 0.5, kind = "beam" },
+	Archer = { id = "Archer", name = "Storm Archer", color = C.violet, glyph = "\u{5F13}", element = "Storm",
+		dmg = 10, rate = 0.5, range = 0.24, cost = 20, slow = 0, kind = "bolt" },
+	Monk = { id = "Monk", name = "War Monk", color = C.gold, glyph = "\u{62F3}", element = "Kinetic",
+		dmg = 22, rate = 1.1, range = 0.15, cost = 24, slow = 0, kind = "impact" },
+}
+local START = "Ronin"
+local ELEM_COLOR = { Blade = C.cyan, Cold = Color3.fromRGB(130, 220, 235), Storm = C.violet, Kinetic = C.gold }
+
+-- ===== upgrade traits (the "class curation") =====
+-- Each fighter has distinct named upgrades drafted between waves. Picking them shapes
+-- a build — bloons-TD-style paths, not one flat "+dmg" button. Additive modifiers:
+-- dmg/rate/range are +fractions; crit is +chance; critMul is +multiplier; slowAdd extends slow.
+local TRAITS: { [string]: { any } } = {
+	Ronin = {
+		{ key = "bloodlust",   name = "Bloodlust",   tip = "+45% attack speed", rate = 0.45 },
+		{ key = "executioner", name = "Executioner", tip = "+18% crit, crits x2.6", crit = 0.18, critMul = 0.6 },
+		{ key = "longreach",   name = "Long Reach",  tip = "+40% range", range = 0.40 },
+		{ key = "keenedge",    name = "Keen Edge",   tip = "+55% damage", dmg = 0.55 },
+	},
+	Onmyoji = {
+		{ key = "deepfreeze",  name = "Deep Freeze", tip = "+50% stronger slow", slowAdd = 0.25 },
+		{ key = "frostbite",   name = "Frostbite",   tip = "+60% damage", dmg = 0.60 },
+		{ key = "gale",        name = "Gale",        tip = "+40% attack speed", rate = 0.40 },
+		{ key = "glacier",     name = "Glacier",     tip = "+45% range", range = 0.45 },
+	},
+	Archer = {
+		{ key = "volley",      name = "Volley",      tip = "+55% attack speed", rate = 0.55 },
+		{ key = "piercer",     name = "Piercer",     tip = "+22% crit", crit = 0.22 },
+		{ key = "farsight",    name = "Farsight",    tip = "+45% range", range = 0.45 },
+		{ key = "broadhead",   name = "Broadhead",   tip = "+50% damage", dmg = 0.50 },
+	},
+	Monk = {
+		{ key = "quake",       name = "Quake Palm",  tip = "+70% damage", dmg = 0.70 },
+		{ key = "flurry",      name = "Flurry",      tip = "+50% attack speed", rate = 0.50 },
+		{ key = "ironbody",    name = "Iron Body",   tip = "+35% range", range = 0.35 },
+		{ key = "focus",       name = "Focus",       tip = "+16% crit, crits x2.5", crit = 0.16, critMul = 0.5 },
+	},
+}
 
 -- ===== HUD =====
-local hud = frame(bg, "HUD")
-hud.BackgroundTransparency = 1
-hud.Size = UDim2.new(1, 0, 0, 56)
+local hud = frame(root, "HUD"); hud.BackgroundTransparency = 1; hud.Size = UDim2.new(1, 0, 0, 64); hud.ZIndex = 30
+local waveT = shout(hud, "WAVE 1", 26, C.cyan)
+waveT.AnchorPoint = Vector2.new(0.5, 0); waveT.Position = UDim2.fromScale(0.5, 0.15); waveT.Size = UDim2.fromScale(0.5, 0.7)
+waveT.ZIndex = 31
+local yenT = text(hud, "\u{00A5} 40", 22, C.gold)
+yenT.Font = FONT; yenT.AnchorPoint = Vector2.new(1, 0); yenT.Position = UDim2.new(1, -24, 0, 16); yenT.Size = UDim2.fromScale(0.2, 0.5)
+yenT.TextXAlignment = Enum.TextXAlignment.Right; yenT.ZIndex = 31
+-- core lives (hearts)
+local lifeBox = frame(hud, "Lives"); lifeBox.BackgroundTransparency = 1; lifeBox.Position = UDim2.fromScale(0.02, 0.2); lifeBox.Size = UDim2.fromScale(0.2, 0.5); lifeBox.ZIndex = 31
+local lifeText = text(lifeBox, "", 22, C.red); lifeText.Font = FONT; lifeText.Size = UDim2.fromScale(1, 1); lifeText.TextXAlignment = Enum.TextXAlignment.Left
 
-local waveLabel = text(hud, "WAVE 1", 24, Theme.text)
-waveLabel.Font = Theme.fontBlack
-waveLabel.AnchorPoint = Vector2.new(0.5, 0)
-waveLabel.Position = UDim2.fromScale(0.5, 0.2)
-waveLabel.Size = UDim2.fromScale(0.5, 0.6)
+-- class tray (your roster) down the left
+local tray = frame(root, "Tray"); tray.BackgroundTransparency = 1; tray.AnchorPoint = Vector2.new(0, 0.5)
+tray.Position = UDim2.fromScale(0.015, 0.55); tray.Size = UDim2.fromScale(0.1, 0.6); tray.ZIndex = 30
+local tl = Instance.new("UIListLayout"); tl.Padding = UDim.new(0, 8); tl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+tl.SortOrder = Enum.SortOrder.LayoutOrder; tl.Parent = tray
+local trayTitle = text(tray, "CLASS", 13, C.dim); trayTitle.Size = UDim2.new(1, 0, 0, 16); trayTitle.LayoutOrder = 0
 
-local coinLabel = text(hud, "0", 22, Theme.gold)
-coinLabel.AnchorPoint = Vector2.new(1, 0)
-coinLabel.Position = UDim2.new(1, -20, 0, 14)
-coinLabel.Size = UDim2.fromScale(0.25, 0.5)
-coinLabel.TextXAlignment = Enum.TextXAlignment.Right
+-- ===== state =====
+-- owned = summoned fighters; traits = the acquired upgrade keys per fighter (the "class");
+-- upgrades = trait-count tier (drives the tray star pips); dmgByType = forge bookkeeping
+local RunState = { owned = { [START] = true }, traits = { [START] = {} }, upgrades = { [START] = 0 }, dmgByType = { [START] = 0 } }
+local state = { wave = 0, yen = 40, lives = 5, running = true, drafting = false,
+	enemies = {} :: { any }, queue = {} :: { any }, towers = {} :: { any } }
+local MAX_LIVE = 44
 
--- Build tray: shows your growing class (owned tower types) down the left edge.
-local tray = frame(bg, "Tray")
-tray.BackgroundTransparency = 1
-tray.AnchorPoint = Vector2.new(0, 0.5)
-tray.Position = UDim2.fromScale(0.02, 0.52)
-tray.Size = UDim2.fromScale(0.1, 0.5)
-local trayLayout = Instance.new("UIListLayout")
-trayLayout.Padding = UDim.new(0, 8)
-trayLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-trayLayout.SortOrder = Enum.SortOrder.LayoutOrder
-trayLayout.Parent = tray
-local trayTitle = text(tray, "CLASS", 13, Theme.textDim)
-trayTitle.Size = UDim2.new(1, 0, 0, 16)
-trayTitle.LayoutOrder = 0
-
-local dbg = text(bg, "", 14, Color3.fromRGB(255, 120, 120))
-dbg.Position = UDim2.fromScale(0.01, 0.9)
-dbg.Size = UDim2.fromScale(0.35, 0.05)
-dbg.TextXAlignment = Enum.TextXAlignment.Left
-dbg.ZIndex = 90
-dbg.Visible = DEBUG.autoPlay -- dev readout only; hidden in real play
-
-local banner = text(bg, "", 44, Theme.accent)
-banner.Font = Theme.fontBlack
-banner.AnchorPoint = Vector2.new(0.5, 0.5)
-banner.Position = UDim2.fromScale(0.5, 0.32)
-banner.Size = UDim2.fromScale(0.8, 0.12)
-banner.TextTransparency = 1
-
--- ===== State + RunState =====
-local RunState = {
-	owned = { [START_TOWER] = true } :: { [string]: boolean },
-	up = { [START_TOWER] = { dmg = 0, rate = 0 } } :: { [string]: { dmg: number, rate: number } },
-	perks = {} :: { string },
-	dmgByType = { [START_TOWER] = 0 } :: { [string]: number },
-	wavesSurvived = 0,
-	coinBonus = 0,
-	globalDmg = 0,
-}
-local state = {
-	wave = 0, coins = 40, alive = true, drafting = false,
-	started = (_G :: any).GGStarted == true, -- skip the title on a NEW RUN restart (same session)
-	enemies = {} :: { any }, spawnQueue = {} :: { any }, towers = {} :: { any },
-}
-local MAX_LIVE = 40
-
-local function setCoins(n: number)
-	state.coins = n
-	coinLabel.Text = "\u{1FA99} " .. tostring(n)
-end
-setCoins(state.coins)
+local function setYen(n: number) state.yen = n; yenT.Text = "\u{00A5} " .. n end
+local function setLives(n: number) state.lives = math.max(0, n); lifeText.Text = string.rep("\u{2665}", state.lives) end
+setYen(state.yen); setLives(state.lives)
 
 local function refreshTray()
-	for _, c in tray:GetChildren() do
-		if c:IsA("Frame") then
-			c:Destroy()
-		end
-	end
-	local order = 1
+	for _, c in tray:GetChildren() do if c:IsA("Frame") then c:Destroy() end end
+	local i = 1
 	for id in RunState.owned do
-		local def = TOWERS[id]
-		local chip = frame(tray, "Chip")
-		chip.Size = UDim2.new(0, 44, 0, 44)
-		chip.BackgroundColor3 = def.color
-		chip.LayoutOrder = order
-		corner(chip, 10)
-		stroke(chip, Color3.new(1, 1, 1), 1.5, 0.5)
-		local g = text(chip, def.glyph, 22, Color3.fromRGB(10, 18, 28))
-		g.Size = UDim2.fromScale(1, 1)
-		order += 1
+		local def = FIGHTERS[id]
+		local chip = cel(tray, def.color, 10)
+		chip.Size = UDim2.new(0, 46, 0, 46); chip.LayoutOrder = i; chip.ZIndex = 30
+		local g = text(chip, def.glyph, 22, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 31
+		if (RunState.upgrades[id] or 0) > 0 then
+			local pip = text(chip, string.rep("\u{2605}", RunState.upgrades[id]), 11, C.gold)
+			pip.AnchorPoint = Vector2.new(0.5, 1); pip.Position = UDim2.fromScale(0.5, 1); pip.Size = UDim2.fromScale(1, 0.3); pip.ZIndex = 32
+		end
+		i += 1
 	end
 end
 refreshTray()
 
--- ===== FeedbackFX =====
-local function popup(s: string, ax: number, ay: number, color: Color3)
-	local l = text(lane, s, 18, color)
-	l.Font = Theme.fontBlack
-	l.ZIndex = 20
-	l.AnchorPoint = Vector2.new(0.5, 0.5)
-	l.Position = UDim2.fromScale(ax, ay)
-	l.Size = UDim2.fromScale(0.5, 0.06)
-	TweenService:Create(l, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.fromScale(ax, ay - 0.06), TextTransparency = 1,
-	}):Play()
-	task.delay(0.6, function() l:Destroy() end)
+-- ===== FX (pooled-ish; capped) =====
+local critCount = 0
+local function critNumber(px: number, py: number, val: number, crit: boolean, col: Color3)
+	if critCount > 26 then return end
+	critCount += 1
+	local l = text(fxLayer, val .. (crit and "!!" or ""), crit and 34 or 22, crit and C.gold or col)
+	l.Font = FONT; l.Rotation = crit and math.random(-12, 12) or -6
+	stroke(l, C.ink0, crit and 3 or 2, 0)
+	l.AnchorPoint = Vector2.new(0.5, 0.5); l.Position = UDim2.fromScale(px, py)
+	l.ZIndex = 45
+	l.TextScaled = true -- so the size-punch actually scales the number
+	-- punch scale via TextSize tween proxy (use Size scale)
+	local endSize = crit and UDim2.fromScale(0.11, 0.05) or UDim2.fromScale(0.07, 0.032)
+	l.Size = UDim2.fromScale(0.02, 0.01)
+	TweenService:Create(l, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = endSize }):Play()
+	TweenService:Create(l, TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.fromScale(px + (math.random() - 0.5) * 0.04, py - 0.06), TextTransparency = 1 }):Play()
+	task.delay(0.45, function() l:Destroy(); critCount -= 1 end)
 end
-local function flashBanner(s: string, color: Color3)
-	banner.Text = s
-	banner.TextColor3 = color
-	banner.TextTransparency = 0
-	banner.Size = UDim2.fromScale(0.5, 0.10)
-	TweenService:Create(banner, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.8, 0.12) }):Play()
-	task.delay(0.9, function() TweenService:Create(banner, TweenInfo.new(0.4), { TextTransparency = 1 }):Play() end)
+local sparkCount = 0
+local function hitSpark(px: number, py: number, col: Color3)
+	if sparkCount > 30 then return end
+	for _ = 1, 5 do
+		sparkCount += 1
+		local s = frame(fxLayer, "Spark")
+		s.BackgroundColor3 = col; s.AnchorPoint = Vector2.new(0.5, 0.5)
+		s.Position = UDim2.fromScale(px, py); s.Size = UDim2.fromScale(0.012, 0.006)
+		s.Rotation = math.random(0, 360); s.ZIndex = 44
+		corner(s, 2)
+		local ang = math.rad(math.random(0, 360)); local dist = 0.03 + math.random() * 0.03
+		TweenService:Create(s, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = UDim2.fromScale(px + math.cos(ang) * dist, py + math.sin(ang) * dist),
+			BackgroundTransparency = 1 }):Play()
+		task.delay(0.22, function() s:Destroy(); sparkCount -= 1 end)
+	end
+end
+local function slashFlash(px: number, py: number, col: Color3)
+	local f = frame(fxLayer, "Slash")
+	f.BackgroundColor3 = C.white; f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.Position = UDim2.fromScale(px, py); f.Size = UDim2.fromScale(0.14, 0.01)
+	f.Rotation = math.random(20, 50); f.ZIndex = 43
+	corner(f, 2)
+	TweenService:Create(f, TweenInfo.new(0.12), { BackgroundTransparency = 1, Size = UDim2.fromScale(0.2, 0.002) }):Play()
+	task.delay(0.13, function() f:Destroy() end)
+end
+local function screenShake(mag: number, frames: number)
+	task.spawn(function()
+		for _ = 1, frames do
+			root.Position = UDim2.fromOffset(math.random(-mag, mag), math.random(-mag, mag))
+			task.wait(0.02)
+		end
+		root.Position = UDim2.fromScale(0, 0)
+	end)
+end
+local function screenFlash(col: Color3, alpha: number)
+	local f = frame(fxLayer, "Flash"); f.Size = UDim2.fromScale(1, 1); f.BackgroundColor3 = col
+	f.BackgroundTransparency = alpha; f.ZIndex = 48
+	TweenService:Create(f, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+	task.delay(0.36, function() f:Destroy() end)
+end
+local function speedLines()
+	for _ = 1, 12 do
+		local s = frame(fxLayer, "SL"); s.BackgroundColor3 = C.white; s.BackgroundTransparency = 0.2
+		local ang = math.random(0, 360); local r = 0.6
+		s.AnchorPoint = Vector2.new(0.5, 0.5)
+		s.Position = UDim2.fromScale(0.5 + math.cos(math.rad(ang)) * r, 0.5 + math.sin(math.rad(ang)) * r * 0.6)
+		s.Size = UDim2.fromScale(0.16, 0.004); s.Rotation = ang; s.ZIndex = 47
+		TweenService:Create(s, TweenInfo.new(0.3), { Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, Size = UDim2.fromScale(0.02, 0.002) }):Play()
+		task.delay(0.32, function() s:Destroy() end)
+	end
+end
+local function banner(s: string, col: Color3)
+	local b = shout(fxLayer, s, 46, col)
+	b.AnchorPoint = Vector2.new(0.5, 0.5); b.Position = UDim2.fromScale(0.5, 0.34); b.Size = UDim2.fromScale(0.8, 0.12)
+	b.ZIndex = 46; b.TextTransparency = 0
+	b.Size = UDim2.fromScale(0.5, 0.1)
+	TweenService:Create(b, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.8, 0.12) }):Play()
+	task.delay(0.9, function()
+		TweenService:Create(b, TweenInfo.new(0.4), { TextTransparency = 1 }):Play()
+		task.delay(0.45, function() b:Destroy() end)
+	end)
 end
 
--- ===== Enemy pool =====
+-- ===== enemy pool (anime tokens) =====
 local function makeEnemy(): any
-	local f = frame(lane, "Enemy")
-	f.AnchorPoint = Vector2.new(0.5, 0.5)
-	f.Size = UDim2.fromScale(0.34, 0.05)
-	f.BackgroundColor3 = Theme.enemy
-	f.Visible = false
-	f.ZIndex = 8
-	corner(f, 9)
-	stroke(f, Color3.new(1, 1, 1), 1.5, 0.6)
-	local bar = frame(f, "HP")
-	bar.AnchorPoint = Vector2.new(0, 1)
-	bar.Position = UDim2.new(0, 3, 1, -2)
-	bar.Size = UDim2.new(1, -6, 0, 3)
-	bar.BackgroundColor3 = Color3.fromRGB(120, 255, 150)
-	bar.ZIndex = 9
-	corner(bar, 2)
-	return { frame = f, hp = 0, maxHp = 0, speed = 0, baseSpeed = 0, slowT = 0, progress = 0, active = false, hpbar = bar, elite = false }
-end
-local pool: { any } = {}
-for _ = 1, MAX_LIVE do
-	table.insert(pool, makeEnemy())
-end
-local function acquire(): any?
-	for _, e in pool do
-		if not e.active and not e.dying then return e end -- don't reuse a frame mid death-pop
+	local body = cel(board, C.magenta, 10, 2)
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Size = UDim2.fromScale(0.09, 0.05); body.Visible = false; body.ZIndex = 8
+	-- two glowing eye slits
+	for i = 0, 1 do
+		local eye = frame(body, "Eye"); eye.BackgroundColor3 = C.white; eye.Size = UDim2.fromScale(0.16, 0.12)
+		eye.Position = UDim2.fromScale(0.28 + i * 0.34, 0.32); eye.ZIndex = 10; corner(eye, 2)
 	end
+	local bar = frame(body, "HP"); bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.fromScale(0.5, 1.34)
+	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = C.lime; bar.ZIndex = 11; corner(bar, 2)
+	local barBg = frame(body, "HPbg"); barBg.AnchorPoint = Vector2.new(0.5, 1); barBg.Position = UDim2.fromScale(0.5, 1.34)
+	barBg.Size = UDim2.new(1, 0, 0, 4); barBg.BackgroundColor3 = C.ink0; barBg.ZIndex = 10; corner(barBg, 2)
+	bar.ZIndex = 11
+	return { body = body, bar = bar, hp = 0, maxHp = 0, speed = 0, baseSpeed = 0, slowT = 0,
+		progress = 0, active = false, dying = false, boss = false }
+end
+local pool = {}
+for _ = 1, MAX_LIVE do table.insert(pool, makeEnemy()) end
+local function acquire(): any?
+	for _, e in pool do if not e.active and not e.dying then return e end end
 	return nil
 end
-local function release(e: any)
-	e.active = false
-	e.frame.Visible = false
-	local i = table.find(state.enemies, e)
-	if i then table.remove(state.enemies, i) end
+local function releaseEnemy(e: any)
+	e.active = false; e.body.Visible = false
+	local i = table.find(state.enemies, e); if i then table.remove(state.enemies, i) end
 end
 
--- ===== Wave director =====
+-- ===== waves =====
+-- enemy archetypes — distinct color/size/HP/speed so a wave reads as a varied horde,
+-- not a line of identical blobs. Mixed in by wave number below.
+local ETYPES = {
+	runner = { color = C.magenta, sizeMul = 1.0, hpMul = 1.0, spdMul = 1.0 },
+	swift  = { color = C.lime,    sizeMul = 0.78, hpMul = 0.55, spdMul = 1.8 },
+	brute  = { color = C.red,     sizeMul = 1.4,  hpMul = 3.4, spdMul = 0.68 },
+}
 local function schedule(n: number): { any }
-	local count = 6 + math.floor(n * 1.6)
-	local hp = math.floor(12 * (1.16 ^ n))
-	local speed = 0.05 + math.min(n, 30) * 0.0016
-	local elite = (n % 5 == 0)
+	local count = 6 + math.floor(n * 1.5)
+	local hp = 14 * (1.15 ^ n)
+	local spd = 0.05 + math.min(n, 30) * 0.0015
+	local swarm = (n % 10 == 0) -- every 10th wave = a fast swarm
 	local list = {}
-	for _ = 1, count do
-		table.insert(list, { hp = elite and hp * 6 or hp, speed = elite and speed * 0.6 or speed, elite = elite })
+	for i = 1, count do
+		local t = "runner"
+		if swarm then t = "swift"
+		elseif n >= 5 and i % 5 == 0 then t = "brute"
+		elseif n >= 3 and i % 3 == 0 then t = "swift" end
+		local et = ETYPES[t]
+		table.insert(list, { hp = math.floor(hp * et.hpMul), speed = spd * et.spdMul, boss = false, etype = t })
 	end
 	return list
 end
-local function spawn(def: any)
-	local e = acquire()
-	if not e then return end
+local function spawnOne(def: any)
+	local e = acquire(); if not e then return end
 	e.hp = def.hp; e.maxHp = def.hp; e.speed = def.speed; e.baseSpeed = def.speed
-	e.slowT = 0; e.elite = def.elite; e.progress = 0; e.active = true
-	e.frame.BackgroundColor3 = def.elite and Theme.elite or Theme.enemy
-	e.frame.Size = def.elite and UDim2.fromScale(0.5, 0.07) or UDim2.fromScale(0.34, 0.05)
-	e.frame.Position = UDim2.fromScale(0.5, 0.05)
-	e.hpbar.Size = UDim2.new(1, -6, 0, 3)
-	e.frame.Visible = true
+	e.slowT = 0; e.boss = def.boss or false; e.progress = 0; e.active = true
+	local et = ETYPES[def.etype or "runner"]
+	e.body.BackgroundColor3 = def.boss and C.red or et.color
+	e.body.Size = def.boss and UDim2.fromScale(0.22, 0.13)
+		or UDim2.fromScale(0.09 * et.sizeMul, 0.05 * et.sizeMul)
+	e.bar.Size = UDim2.new(1, 0, 0, 4)
+	e.body.Visible = true
 	table.insert(state.enemies, e)
 end
 
--- ===== Towers =====
+-- ===== fighters (towers) =====
 local endRun -- fwd
-local function towerStats(id: string): (number, number)
-	local def = TOWERS[id]
-	local u = RunState.up[id]
-	local dmg = (def.damage + (u and u.dmg or 0)) * (1 + RunState.globalDmg)
-	local rate = def.fireRate * (1 - (u and u.rate or 0) * 0.06)
-	return dmg, math.max(0.12, rate)
+local function fStats(id: string): any
+	local def = FIGHTERS[id]
+	local dmgMul, rateMul, rangeMul = 1, 1, 1
+	local critC, critMul, slowAdd = 0.22, 2.0, 0
+	local owned = RunState.traits[id] or {}
+	for _, tr in TRAITS[id] or {} do
+		if owned[tr.key] then
+			dmgMul += (tr.dmg or 0); rateMul += (tr.rate or 0); rangeMul += (tr.range or 0)
+			critC += (tr.crit or 0); critMul += (tr.critMul or 0); slowAdd += (tr.slowAdd or 0)
+		end
+	end
+	return {
+		dmg = def.dmg * dmgMul,
+		rate = math.max(0.12, def.rate / rateMul),
+		range = def.range * rangeMul,
+		crit = math.min(0.85, critC),
+		critMul = critMul,
+		slow = def.slow > 0 and (def.slow + slowAdd) or 0,
+	}
+end
+local function pxOf(p: Vector2): (number, number)
+	-- board is 0.62x0.88 of screen centered at (0.5,0.53); convert board-scale to screen-scale
+	return 0.5 + (p.X - 0.5) * 0.62, 0.53 + (p.Y - 0.5) * 0.88
 end
 
-local ey = function(prog: number): number return 0.05 + prog * 0.86 end
-
-local function fireBolt(fromY: number, side: number, toY: number, color: Color3)
-	local b = frame(lane, "Bolt")
-	b.BackgroundColor3 = color
-	b.ZIndex = 15
-	b.AnchorPoint = Vector2.new(0.5, 0.5)
-	b.BackgroundTransparency = 0.1
-	corner(b, 2)
-	local x0 = side == 0 and 0.06 or 0.94
-	local dx, dy = 0.5 - x0, (toY - fromY)
-	b.Size = UDim2.fromScale(math.sqrt(dx * dx + dy * dy), 0.008)
-	b.Position = UDim2.fromScale((x0 + 0.5) / 2, (fromY + toY) / 2)
-	b.Rotation = math.deg(math.atan2(dy, dx))
-	TweenService:Create(b, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
-	task.delay(0.13, function() b:Destroy() end)
+local NODES = {} -- socket positions beside the track
+do
+	local spots = { Vector2.new(0.62, 0.30), Vector2.new(0.40, 0.30), Vector2.new(0.66, 0.55), Vector2.new(0.34, 0.55),
+		Vector2.new(0.60, 0.72), Vector2.new(0.36, 0.72), Vector2.new(0.5, 0.20), Vector2.new(0.5, 0.64) }
+	for _, s in spots do table.insert(NODES, s) end
 end
 
-local function damageEnemy(e: any, dmg: number, typeId: string, atY: number)
+local function damageEnemy(e: any, dmg: number, crit: boolean, id: string)
 	e.hp -= dmg
-	RunState.dmgByType[typeId] = (RunState.dmgByType[typeId] or 0) + dmg
-	e.hpbar.Size = UDim2.new(math.clamp(e.hp / e.maxHp, 0, 1), -6, 0, 3)
+	RunState.dmgByType[id] = (RunState.dmgByType[id] or 0) + dmg
+	e.bar.Size = UDim2.new(math.clamp(e.hp / e.maxHp, 0, 1), 0, 0, 4)
+	local sx, sy = pxOf(Vector2.new(pathPos(e.progress).X, pathPos(e.progress).Y))
+	critNumber(sx, sy, dmg, crit, FIGHTERS[id].color)
+	hitSpark(sx, sy, FIGHTERS[id].color)
+	if crit then hitStop(0.06); screenShake(4, 3) end
 	if e.hp <= 0 and e.active then
-		local reward = (e.elite and 30 or 4) + RunState.coinBonus
-		setCoins(state.coins + reward)
-		popup("+" .. reward, 0.5, atY, Theme.gold)
-		e.active = false
-		e.dying = true
-		local i = table.find(state.enemies, e)
-		if i then table.remove(state.enemies, i) end -- leave the active list NOW so waves clear instantly
-		TweenService:Create(e.frame, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromScale(0.02, 0.02) }):Play()
-		task.delay(0.16, function() e.frame.Visible = false; e.dying = false end)
+		local reward = e.boss and 120 or 5
+		setYen(state.yen + reward)
+		e.active = false; e.dying = true
+		hitSpark(sx, sy, C.white)
+		TweenService:Create(e.body, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromScale(0.01, 0.01) }):Play()
+		task.delay(0.16, function() e.body.Visible = false; e.dying = false; local i = table.find(state.enemies, e); if i then table.remove(state.enemies, i) end end)
+		if e.boss then banner("BOSS SLAIN", C.gold); screenFlash(C.gold, 0.4); speedLines() end
 	end
 end
 
-local typePicker -- fwd (defined after draft helpers)
-local function upgradeTower(tw: any)
-	local def = TOWERS[tw.id]
-	local cost = 12 + tw.level * 8
-	if state.coins < cost then
-		popup("need \u{1FA99}", tw.slot.side == 0 and 0.1 or 0.9, tw.slot.y, Theme.danger)
-		return
-	end
-	setCoins(state.coins - cost)
-	tw.level += 1
-	tw.dmgBonus += math.ceil(def.damage * 0.5)
-	local pip = text(tw.frame, string.rep("\u{2022}", tw.level), 12, Color3.fromRGB(10, 18, 28))
-	pip.Name = "Pips"
-	pip.AnchorPoint = Vector2.new(0.5, 1)
-	pip.Position = UDim2.fromScale(0.5, 1)
-	pip.Size = UDim2.fromScale(1, 0.3)
-	local old = tw.frame:FindFirstChild("Pips")
-	if old and old ~= pip then old:Destroy() end
-	popup("LV" .. (tw.level + 1), tw.slot.side == 0 and 0.15 or 0.85, tw.slot.y, def.color)
+local slots = {}
+local function placeFighter(node: any, id: string)
+	local def = FIGHTERS[id]
+	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return end
+	setYen(state.yen - def.cost)
+	node.plus.Visible = false
+	local t = cel(node.frame, def.color, 10)
+	t.Size = UDim2.fromScale(1, 1); t.ZIndex = 15
+	local g = text(t, def.glyph, 24, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 16
+	local tw = { id = id, node = node, cd = 0, frame = t }
+	node.tower = tw; table.insert(state.towers, tw)
+	-- aura ring
+	local aura = frame(t, "Aura"); aura.BackgroundTransparency = 1; aura.Size = UDim2.fromScale(1.3, 1.3)
+	aura.AnchorPoint = Vector2.new(0.5, 0.5); aura.Position = UDim2.fromScale(0.5, 0.5); aura.ZIndex = 14
+	stroke(aura, def.color, 2, 0.4); corner(aura, 12)
+	button(t).MouseButton1Click:Connect(function()
+		-- inspect: pulse the range aura (upgrades are drafted between waves now)
+		local S = fStats(id)
+		local r = math.clamp(S.range * 4.2, 1.3, 2.6)
+		TweenService:Create(aura, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true),
+			{ Size = UDim2.fromScale(r, r) }):Play()
+	end)
+	t.Size = UDim2.fromScale(0.3, 0.3)
+	TweenService:Create(t, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(1, 1) }):Play()
+	hitSpark(select(1, pxOf(node.pos)), select(2, pxOf(node.pos)), def.color)
 end
 
-local function placeType(slot: Slot, id: string)
-	local def = TOWERS[id]
-	if state.coins < def.cost then
-		popup("need \u{1FA99}", slot.side == 0 and 0.1 or 0.9, slot.y, Theme.danger)
-		return
-	end
-	setCoins(state.coins - def.cost)
-	slot.plus.Visible = false
-	local t = frame(slot.frame, "Tower")
-	t.Size = UDim2.fromScale(1, 1)
-	t.BackgroundColor3 = def.color
-	t.BackgroundTransparency = 0.05
-	corner(t, 10)
-	stroke(t, Color3.new(1, 1, 1), 1.5, 0.4)
-	local glyph = text(t, def.glyph, 22, Color3.fromRGB(10, 18, 28))
-	glyph.Size = UDim2.fromScale(1, 1)
-	local tw = { id = id, slot = slot, cd = 0, level = 0, dmgBonus = 0, frame = t }
-	slot.tower = tw
-	table.insert(state.towers, tw)
-	button(t).MouseButton1Click:Connect(function() upgradeTower(tw) end)
-	t.Size = UDim2.fromScale(0.4, 0.4)
-	TweenService:Create(t, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(1, 1) }):Play()
+-- a boss can SMASH a placed fighter: free the node, shatter the frame, re-summon later
+local function removeFighter(tw: any)
+	local node = tw.node
+	node.tower = nil
+	node.plus.Visible = true
+	local i = table.find(state.towers, tw); if i then table.remove(state.towers, i) end
+	local fx = tw.frame
+	TweenService:Create(fx, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+		{ Size = UDim2.fromScale(0.01, 0.01), Rotation = 55 }):Play()
+	task.delay(0.2, function() fx:Destroy() end)
 end
 
--- picker: click an empty slot -> choose which OWNED tower type to place
-function typePicker(slot: Slot)
-	if slot.tower or not state.alive then return end
+local pickerOpen = false
+local function openPicker(node: any)
+	if node.tower or not state.running or pickerOpen then return end
 	local owned = {}
 	for id in RunState.owned do table.insert(owned, id) end
-	if #owned == 1 then
-		placeType(slot, owned[1])
-		return
-	end
-	local menu = frame(bg, "Picker")
-	menu.AnchorPoint = Vector2.new(0.5, 0.5)
-	menu.Position = UDim2.fromScale(slot.side == 0 and 0.22 or 0.78, slot.y * 0.82 + 0.09)
-	menu.Size = UDim2.fromScale(0.14, 0.06 * #owned)
-	menu.BackgroundColor3 = Theme.panel
-	menu.ZIndex = 40
-	corner(menu, 10)
-	stroke(menu, Theme.accent, 2, 0.3)
-	local ll = Instance.new("UIListLayout")
-	ll.Padding = UDim.new(0, 4)
-	ll.Parent = menu
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 4); pad.PaddingBottom = UDim.new(0, 4)
-	pad.PaddingLeft = UDim.new(0, 4); pad.PaddingRight = UDim.new(0, 4)
-	pad.Parent = menu
+	if #owned == 1 then placeFighter(node, owned[1]); return end
+	pickerOpen = true
+	local menu = frame(root, "Picker"); menu.AnchorPoint = Vector2.new(0.5, 0.5)
+	local nx, ny = pxOf(node.pos)
+	menu.Position = UDim2.fromScale(nx, ny); menu.Size = UDim2.fromScale(0.16, 0.055 * #owned)
+	menu.BackgroundColor3 = C.panel; menu.ZIndex = 50; corner(menu, 10); stroke(menu, C.cyan, 2, 0.2)
+	local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0, 4); ll.Parent = menu
+	local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0, 4); pad.PaddingBottom = UDim.new(0, 4); pad.PaddingLeft = UDim.new(0, 4); pad.PaddingRight = UDim.new(0, 4); pad.Parent = menu
+	local function close() pickerOpen = false; menu:Destroy() end
 	for _, id in owned do
-		local def = TOWERS[id]
-		local row = frame(menu, "Row")
-		row.Size = UDim2.new(1, 0, 0, 34)
-		row.BackgroundColor3 = def.color
-		row.ZIndex = 41
-		corner(row, 8)
-		local lbl = text(row, def.glyph .. "  " .. def.name .. "  \u{1FA99}" .. def.cost, 14, Color3.fromRGB(10, 18, 28))
-		lbl.ZIndex = 42
-		lbl.Size = UDim2.fromScale(1, 1)
-		button(row).MouseButton1Click:Connect(function()
-			menu:Destroy()
-			placeType(slot, id)
-		end)
+		local def = FIGHTERS[id]
+		local row = cel(menu, def.color, 8); row.Size = UDim2.new(1, 0, 0, 34); row.ZIndex = 51
+		local lbl = text(row, def.glyph .. "  " .. def.name .. "  \u{00A5}" .. def.cost, 13, C.ink0); lbl.Font = FONT; lbl.Size = UDim2.fromScale(1, 1); lbl.ZIndex = 52
+		button(row).MouseButton1Click:Connect(function() close(); placeFighter(node, id) end)
 	end
-	task.delay(4, function() if menu and menu.Parent then menu:Destroy() end end)
+	task.delay(4, function() if menu.Parent then close() end end)
 end
 
-for _, slot in slots do
-	slot.btn.MouseButton1Click:Connect(function() typePicker(slot) end)
+for _, p in NODES do
+	local node = frame(board, "Node")
+	node.AnchorPoint = Vector2.new(0.5, 0.5); node.Position = UDim2.fromScale(p.X, p.Y)
+	node.Size = UDim2.fromScale(0.11, 0.06); node.BackgroundColor3 = C.panel; node.BackgroundTransparency = 0.25
+	node.ZIndex = 6; corner(node, 10); stroke(node, C.panelHi, 2, 0.4)
+	local plus = text(node, "+", 22, C.dim); plus.Font = FONT; plus.Size = UDim2.fromScale(1, 1)
+	local n = { frame = node, pos = p, tower = nil, plus = plus }
+	button(node).MouseButton1Click:Connect(function() openPicker(n) end)
+	table.insert(slots, n)
 end
 
--- ===== Heartbeat (one connection) =====
+-- ===== fire =====
+local function fire(tw: any, e: any)
+	local def = FIGHTERS[tw.id]
+	local S = fStats(tw.id)
+	local ex, ey = pxOf(pathPos(e.progress))
+	local nx, ny = pxOf(tw.node.pos)
+	local dmg = S.dmg
+	local crit = math.random() < S.crit
+	if crit then dmg = math.floor(dmg * S.critMul) end
+	if def.kind == "slash" then slashFlash(ex, ey, def.color)
+	elseif def.kind == "beam" then
+		local b = frame(fxLayer, "Beam"); b.BackgroundColor3 = def.color; b.AnchorPoint = Vector2.new(0.5, 0.5)
+		local dx, dy = ex - nx, ey - ny
+		b.Size = UDim2.fromScale(math.sqrt(dx * dx + dy * dy), 0.006); b.Position = UDim2.fromScale((nx + ex) / 2, (ny + ey) / 2)
+		b.Rotation = math.deg(math.atan2(dy, dx)); b.ZIndex = 42; corner(b, 2)
+		TweenService:Create(b, TweenInfo.new(0.1), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.11, function() b:Destroy() end)
+	else
+		local p = frame(fxLayer, "Bolt"); p.BackgroundColor3 = def.color; p.AnchorPoint = Vector2.new(0.5, 0.5)
+		p.Size = UDim2.fromScale(0.014, 0.014); p.Position = UDim2.fromScale(nx, ny); p.ZIndex = 42; corner(p, 6)
+		TweenService:Create(p, TweenInfo.new(0.1), { Position = UDim2.fromScale(ex, ey) }):Play()
+		task.delay(0.1, function() p:Destroy() end)
+	end
+	if S.slow > 0 then e.slowT = S.slow end
+	damageEnemy(e, math.floor(dmg), crit, tw.id)
+end
+
+-- ===== one Heartbeat =====
 local hbConn: RBXScriptConnection
-hbConn = RunService.Heartbeat:Connect(function(dt)
-	local act = 0
-	for _, e in state.enemies do if e.active then act += 1 end end
-	dbg.Text = string.format("e=%d act=%d q=%d w=%d draft=%s alive=%s", #state.enemies, act, #state.spawnQueue, state.wave, tostring(state.drafting), tostring(state.alive))
-	if not state.alive or state.drafting then return end
-	if #state.spawnQueue > 0 and #state.enemies < MAX_LIVE then
-		local def = state.spawnQueue[1]
-		def._t = (def._t or 0) + dt
-		if def._t >= (def._gap or 0) then
-			table.remove(state.spawnQueue, 1)
-			spawn(def)
-		end
+hbConn = RunService.Heartbeat:Connect(function(raw)
+	if not state.running then return end
+	local dt = raw * timeScale
+	if state.drafting then return end
+	if #state.queue > 0 and #state.enemies < MAX_LIVE then
+		local def = state.queue[1]; def._t = (def._t or 0) + dt
+		if def._t >= (def._gap or 0) then table.remove(state.queue, 1); spawnOne(def) end
 	end
 	for i = #state.enemies, 1, -1 do
 		local e = state.enemies[i]
 		if e.active then
+			-- BOSS: smash the nearest fighter it passes (towers CAN be destroyed at higher levels)
+			if e.boss then
+				e.smashCd = (e.smashCd or 3.2) - dt
+				if e.smashCd <= 0 and #state.towers > 0 then
+					local bp = pathPos(e.progress)
+					local victim, vd = nil, 0.17 * 0.17
+					for _, tw in state.towers do
+						local dx = bp.X - tw.node.pos.X; local dy = bp.Y - tw.node.pos.Y
+						local d2 = dx * dx + dy * dy
+						if d2 <= vd then victim, vd = tw, d2 end
+					end
+					if victim then
+						local vx, vy = pxOf(victim.node.pos)
+						removeFighter(victim)
+						banner("FIGHTER SMASHED", C.red); screenShake(9, 5); screenFlash(C.red, 0.45); hitStop(0.08)
+						hitSpark(vx, vy, C.red); slashFlash(vx, vy, C.red)
+						e.smashCd = 3.4
+					else
+						e.smashCd = 0.5
+					end
+				end
+			end
 			if e.slowT > 0 then e.slowT -= dt end
-			e.speed = e.slowT > 0 and e.baseSpeed * 0.5 or e.baseSpeed
+			e.speed = e.slowT > 0 and e.baseSpeed * 0.45 or e.baseSpeed
 			e.progress += e.speed * dt
-			if e.progress >= 0.92 then endRun(); return end
-			e.frame.Position = UDim2.fromScale(0.5, ey(e.progress))
+			if e.progress >= 1 then
+				releaseEnemy(e)
+				setLives(state.lives - (e.boss and 3 or 1))
+				screenShake(6, 4); screenFlash(C.red, 0.5)
+				if state.lives <= 0 then endRun(); return end
+			else
+				local p = pathPos(e.progress)
+				e.body.Position = UDim2.fromScale(p.X, p.Y)
+			end
 		end
 	end
 	for _, tw in state.towers do
 		tw.cd -= dt
 		if tw.cd <= 0 then
-			local def = TOWERS[tw.id]
+			local S = fStats(tw.id)
 			local best, bp = nil, -1
 			for _, e in state.enemies do
 				if e.active then
-					local y = ey(e.progress)
-					if math.abs(y - tw.slot.y) <= def.range and e.progress > bp then best, bp = e, e.progress end
+					local dx = pathPos(e.progress).X - tw.node.pos.X
+					local dy = pathPos(e.progress).Y - tw.node.pos.Y
+					if (dx * dx + dy * dy) <= S.range * S.range and e.progress > bp then best, bp = e, e.progress end
 				end
 			end
-			if best then
-				local y = ey(best.progress)
-				local dmg, rate = towerStats(tw.id)
-				dmg += tw.dmgBonus
-				fireBolt(tw.slot.y, tw.slot.side, y, def.color)
-				if def.slow > 0 then best.slowT = def.slow end
-				damageEnemy(best, dmg, tw.id, y)
-				tw.cd = rate
-			end
+			if best then fire(tw, best); tw.cd = S.rate end
 		end
 	end
 end)
 
--- ===== Draft (between waves) =====
-local DRAFT_POOL_ORDER = { "Splinter", "Frost" }
-local function buildDraftCards(): { any }
+-- ===== draft =====
+local POOL = { "Onmyoji", "Archer", "Monk" }
+local function draftCards(): { any }
 	local cards = {}
-	-- offer an unowned tower if any
-	for _, id in DRAFT_POOL_ORDER do
-		if not RunState.owned[id] then
-			local def = TOWERS[id]
-			table.insert(cards, { kind = "tower", id = id, title = "NEW: " .. def.name, glyph = def.glyph, color = def.color,
-				gauntlet = def.gauntlet, arena = def.arena })
+	-- summon un-owned fighters
+	for _, id in POOL do if not RunState.owned[id] then local d = FIGHTERS[id]
+		table.insert(cards, { kind = "new", id = id, title = "SUMMON " .. d.name, glyph = d.glyph, color = d.color,
+			tip = d.element .. " \u{2022} " .. (d.slow > 0 and "slows + chips" or "dmg dealer") }) end end
+	-- one un-owned TRAIT per owned fighter (this is the class curation)
+	for id in RunState.owned do
+		local ownedT = RunState.traits[id] or {}
+		local avail = {}
+		for _, tr in TRAITS[id] or {} do if not ownedT[tr.key] then table.insert(avail, tr) end end
+		if #avail > 0 then
+			local tr = avail[math.random(1, #avail)]
+			local d = FIGHTERS[id]
+			table.insert(cards, { kind = "trait", id = id, trait = tr,
+				title = d.name .. " \u{2022} " .. tr.name, glyph = d.glyph, color = d.color, tip = tr.tip })
 		end
 	end
-	-- upgrades for owned towers
-	for id in RunState.owned do
-		local def = TOWERS[id]
-		table.insert(cards, { kind = "up", id = id, stat = "dmg", title = def.name .. " +DMG", glyph = "\u{2191}", color = def.color,
-			gauntlet = "+damage to " .. def.name, arena = "+ability power" })
-		table.insert(cards, { kind = "up", id = id, stat = "rate", title = def.name .. " +SPEED", glyph = "\u{00BB}", color = def.color,
-			gauntlet = "faster " .. def.name, arena = "faster cooldowns" })
-	end
-	-- perks
-	table.insert(cards, { kind = "perk", id = "Greed", title = "GREED", glyph = "\u{1FA99}", color = Theme.gold,
-		gauntlet = "+2 coins per kill", arena = "start duels with shield" })
-	table.insert(cards, { kind = "perk", id = "Fury", title = "FURY", glyph = "\u{1F525}", color = Theme.danger,
-		gauntlet = "+12% all tower damage", arena = "+12% ability damage" })
-	-- pick 3 distinct at random
+	table.insert(cards, { kind = "eco", id = "Yen", title = "WAR CHEST", glyph = "\u{00A5}", color = C.gold, tip = "+40 \u{00A5} now" })
 	local out = {}
-	for _ = 1, 3 do
-		if #cards == 0 then break end
-		local idx = math.random(1, #cards)
-		table.insert(out, cards[idx])
-		table.remove(cards, idx)
-	end
+	for _ = 1, 3 do if #cards == 0 then break end local x = math.random(1, #cards); table.insert(out, cards[x]); table.remove(cards, x) end
 	return out
 end
-
 local function applyCard(c: any)
-	if c.kind == "tower" then
-		RunState.owned[c.id] = true
-		RunState.up[c.id] = { dmg = 0, rate = 0 }
-		RunState.dmgByType[c.id] = 0
-	elseif c.kind == "up" then
-		local u = RunState.up[c.id]
-		u[c.stat] = (u[c.stat] or 0) + 1
-	elseif c.kind == "perk" then
-		table.insert(RunState.perks, c.id)
-		if c.id == "Greed" then RunState.coinBonus += 2 end
-		if c.id == "Fury" then RunState.globalDmg += 0.12 end
-	end
+	if c.kind == "new" then
+		RunState.owned[c.id] = true; RunState.traits[c.id] = {}; RunState.upgrades[c.id] = 0; RunState.dmgByType[c.id] = 0
+	elseif c.kind == "trait" then
+		RunState.traits[c.id] = RunState.traits[c.id] or {}
+		RunState.traits[c.id][c.trait.key] = true
+		RunState.upgrades[c.id] = (RunState.upgrades[c.id] or 0) + 1 -- tier = trait count (drives tray star pips)
+	elseif c.kind == "eco" then setYen(state.yen + 40) end
 	refreshTray()
 end
-
-local runDuel -- fwd (Stage 2)
 local function showDraft()
 	state.drafting = true
-	local drawn = buildDraftCards()
-	local ov = frame(bg, "Draft")
-	ov.Size = UDim2.fromScale(1, 1)
-	ov.BackgroundColor3 = Theme.bg
-	ov.BackgroundTransparency = 0.35
-	ov.ZIndex = 50
-	local title = text(ov, "DRAFT \u{2014} forge your class", 26, Theme.text)
-	title.Font = Theme.fontBlack
-	title.Position = UDim2.fromScale(0, 0.14)
-	title.Size = UDim2.fromScale(1, 0.08)
-	title.ZIndex = 51
-	local row = frame(ov, "Row")
-	row.BackgroundTransparency = 1
-	row.AnchorPoint = Vector2.new(0.5, 0.5)
-	row.Position = UDim2.fromScale(0.5, 0.5)
-	row.Size = UDim2.fromScale(0.82, 0.5)
-	row.ZIndex = 51
-	local ll = Instance.new("UIListLayout")
-	ll.FillDirection = Enum.FillDirection.Horizontal
-	ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	ll.VerticalAlignment = Enum.VerticalAlignment.Center
-	ll.Padding = UDim.new(0, 18)
-	ll.Parent = row
-	local finished = false
-	local function choose(c: any)
-		if finished then return end
-		finished = true
-		applyCard(c)
-		ov:Destroy()
-		state.drafting = false -- the wave loop unblocks on this and starts the next wave
-	end
+	local drawn = draftCards()
+	local ov = frame(root, "Draft"); ov.Size = UDim2.fromScale(1, 1); ov.BackgroundColor3 = C.ink0; ov.BackgroundTransparency = 0.35; ov.ZIndex = 52
+	local title = shout(ov, "FORGE YOUR CLASS", 28, C.cyan); title.Position = UDim2.fromScale(0, 0.16); title.Size = UDim2.fromScale(1, 0.08); title.ZIndex = 53
+	local rowf = frame(ov, "Row"); rowf.BackgroundTransparency = 1; rowf.AnchorPoint = Vector2.new(0.5, 0.5); rowf.Position = UDim2.fromScale(0.5, 0.52); rowf.Size = UDim2.fromScale(0.82, 0.5); rowf.ZIndex = 53
+	local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Horizontal; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.VerticalAlignment = Enum.VerticalAlignment.Center; ll.Padding = UDim.new(0, 18); ll.Parent = rowf
+	local done = false
+	local function choose(c: any) if done then return end done = true; applyCard(c); ov:Destroy(); state.drafting = false end
 	for _, c in drawn do
-		local card = frame(row, "Card")
-		card.Size = UDim2.fromScale(0.28, 1)
-		card.BackgroundColor3 = Theme.panel
-		card.ZIndex = 52
-		corner(card, 14)
-		stroke(card, c.color, 2, 0.15)
-		local icon = frame(card, "Icon")
-		icon.AnchorPoint = Vector2.new(0.5, 0)
-		icon.Position = UDim2.fromScale(0.5, 0.08)
-		icon.Size = UDim2.fromScale(0.4, 0.28)
-		icon.BackgroundColor3 = c.color
-		icon.ZIndex = 53
-		corner(icon, 12)
-		local g = text(icon, c.glyph, 30, Color3.fromRGB(10, 18, 28))
-		g.Size = UDim2.fromScale(1, 1)
-		g.ZIndex = 54
-		local nm = text(card, c.title, 18, Theme.text)
-		nm.Font = Theme.fontBlack
-		nm.Position = UDim2.fromScale(0, 0.42)
-		nm.Size = UDim2.fromScale(1, 0.1)
-		nm.ZIndex = 53
-		local tg = text(card, "\u{2694} Gauntlet: " .. c.gauntlet, 13, Theme.textDim)
-		tg.Position = UDim2.fromScale(0.06, 0.58)
-		tg.Size = UDim2.fromScale(0.88, 0.1)
-		tg.TextWrapped = true
-		tg.TextXAlignment = Enum.TextXAlignment.Left
-		tg.ZIndex = 53
-		local ar = text(card, "\u{1F6E1} Arena: " .. c.arena, 13, Theme.accent)
-		ar.Position = UDim2.fromScale(0.06, 0.7)
-		ar.Size = UDim2.fromScale(0.88, 0.1)
-		ar.TextWrapped = true
-		ar.TextXAlignment = Enum.TextXAlignment.Left
-		ar.ZIndex = 53
-		local b = button(card)
-		b.ZIndex = 55
+		local card = cel(rowf, C.panel, 14); card.Size = UDim2.fromScale(0.28, 1); card.ZIndex = 54; stroke(card, c.color, 3, 0)
+		local icon = cel(card, c.color, 12); icon.AnchorPoint = Vector2.new(0.5, 0); icon.Position = UDim2.fromScale(0.5, 0.08); icon.Size = UDim2.fromScale(0.42, 0.32); icon.ZIndex = 55
+		local g = text(icon, c.glyph, 34, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 56
+		local nm = shout(card, c.title, 17, c.color); nm.Position = UDim2.fromScale(0, 0.5); nm.Size = UDim2.fromScale(1, 0.12); nm.ZIndex = 55
+		local tp = text(card, c.tip, 13, C.dim); tp.Position = UDim2.fromScale(0.06, 0.68); tp.Size = UDim2.fromScale(0.88, 0.2); tp.TextWrapped = true; tp.ZIndex = 55
+		local b = button(card); b.ZIndex = 57
 		b.MouseButton1Click:Connect(function() choose(c) end)
-		b.MouseEnter:Connect(function()
-			TweenService:Create(card, TweenInfo.new(0.12), { Size = UDim2.fromScale(0.30, 1.04) }):Play()
-		end)
-		b.MouseLeave:Connect(function()
-			TweenService:Create(card, TweenInfo.new(0.12), { Size = UDim2.fromScale(0.28, 1) }):Play()
-		end)
+		b.MouseEnter:Connect(function() TweenService:Create(card, TweenInfo.new(0.1), { Size = UDim2.fromScale(0.3, 1.04) }):Play() end)
+		b.MouseLeave:Connect(function() TweenService:Create(card, TweenInfo.new(0.1), { Size = UDim2.fromScale(0.28, 1) }):Play() end)
 	end
-	if DEBUG.autoPlay then
-		task.delay(DEBUG.pauseOnDraft > 0 and DEBUG.pauseOnDraft or 0.5, function()
-			if not finished then choose(drawn[1]) end
-		end)
-	end
+	if DEBUG.autoPlay then task.delay(1.0, function() if not done then choose(drawn[1]) end end) end
 end
 
--- ===== Wave flow =====
+-- ===== boss intro card =====
+local function bossIntro(name: string, epithet: string, onDone: () -> ())
+	local ov = frame(root, "Intro"); ov.Size = UDim2.fromScale(1, 1); ov.BackgroundColor3 = C.ink0; ov.BackgroundTransparency = 0.1; ov.ZIndex = 55
+	for i = 0, 1 do
+		local bar = frame(ov, "Bar"); bar.BackgroundColor3 = i == 0 and C.magenta or C.cyan; bar.Size = UDim2.fromScale(1.5, 0.16)
+		bar.Rotation = -12; bar.AnchorPoint = Vector2.new(0.5, 0.5); bar.Position = UDim2.fromScale(1.6, i == 0 and 0.4 or 0.6); bar.ZIndex = 56
+		TweenService:Create(bar, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.fromScale(0.5, i == 0 and 0.4 or 0.6) }):Play()
+	end
+	-- procedural boss portrait
+	local port = cel(ov, C.red, 16); port.AnchorPoint = Vector2.new(0.5, 0.5); port.Position = UDim2.fromScale(0.5, 0.42); port.Size = UDim2.fromScale(0.001, 0.001); port.ZIndex = 57
+	local face = text(port, "\u{9B3C}", 60, C.ink0); face.Font = FONT; face.Size = UDim2.fromScale(1, 1); face.ZIndex = 58
+	TweenService:Create(port, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.22, 0.28) }):Play()
+	task.delay(0.25, function() screenShake(8, 4); speedLines(); screenFlash(C.red, 0.5); hitStop(0.08) end)
+	local nm = shout(ov, name, 48, C.red); nm.Position = UDim2.fromScale(0, 0.6); nm.Size = UDim2.fromScale(1, 0.12); nm.ZIndex = 57
+	local ep = shout(ov, epithet, 22, C.gold); ep.Position = UDim2.fromScale(0, 0.72); ep.Size = UDim2.fromScale(1, 0.06); ep.ZIndex = 57
+	task.delay(1.4, function() ov:Destroy(); onDone() end)
+end
+
+-- ===== wave flow =====
+local function waveClear(): boolean
+	if #state.queue > 0 then return false end
+	for _, e in state.enemies do if e.active then return false end end
+	return true
+end
 local function startWave()
 	state.wave += 1
-	RunState.wavesSurvived = state.wave
-	waveLabel.Text = "WAVE " .. state.wave
-	local isElite = state.wave % 5 == 0
-	flashBanner(isElite and "ELITE WAVE" or ("WAVE " .. state.wave), isElite and Theme.elite or Theme.accent)
-	local gap = math.max(0.35, 0.9 - state.wave * 0.02)
-	for _, def in schedule(state.wave) do
-		def._gap = gap
-		table.insert(state.spawnQueue, def)
+	waveT.Text = "WAVE " .. state.wave
+	local isBoss = (DEBUG.forceBossWave > 0 and state.wave >= DEBUG.forceBossWave) or (state.wave % 5 == 0)
+	if isBoss then
+		bossIntro("VULCANINE", "THE EMBER FOX", function()
+			banner("WAVE " .. state.wave, C.red)
+			local list = schedule(state.wave)
+			-- prepend a boss
+			table.insert(list, 1, { hp = math.floor(14 * (1.15 ^ state.wave)) * 10, speed = 0.03 + state.wave * 0.001, boss = true })
+			local gap = math.max(0.35, 0.9 - state.wave * 0.02)
+			for _, d in list do d._gap = gap; table.insert(state.queue, d) end
+		end)
+	else
+		banner("WAVE " .. state.wave, C.cyan)
+		local gap = math.max(0.35, 0.9 - state.wave * 0.02)
+		for _, d in schedule(state.wave) do d._gap = gap; table.insert(state.queue, d) end
 	end
-end
-local function waveClear(): boolean
-	if #state.spawnQueue > 0 then return false end
-	for _, e in state.enemies do
-		if e.active then return false end
-	end
-	return true
 end
 
 task.spawn(function()
-	while not state.started and state.alive do
-		task.wait(0.05)
-	end
-	if not state.alive then
-		return
-	end
 	startWave()
-	while state.alive do
+	while state.running do
 		task.wait(0.4)
-		if state.alive and not state.drafting and waveClear() then
-			if DEBUG.forceDeathWave > 0 and state.wave >= DEBUG.forceDeathWave then
-				endRun()
-				return
-			end
-			showDraft() -- sets state.drafting = true; resolves (choose) sets it false
-			local guard = 0
-			while state.drafting and state.alive and guard < 600 do
-				task.wait(0.1)
-				guard += 1
-			end
-			if state.alive then
-				startWave()
-			end
+		if state.running and not state.drafting and waveClear() then
+			showDraft()
+			local g = 0
+			while state.drafting and state.running and g < 600 do task.wait(0.1); g += 1 end
+			if state.running then startWave() end
 		end
 	end
 end)
 
--- DEBUG auto-place towers each frame budget
+-- DEBUG auto-place + auto-upgrade
 if DEBUG.autoPlay then
 	task.spawn(function()
-		while state.alive do
-			for _, slot in slots do
-				if not slot.tower and state.coins >= 15 and not state.drafting then
-					typePicker(slot)
-					task.wait(0.15)
-				end
+		while state.running do
+			for _, n in slots do
+				if not n.tower and state.yen >= 18 and not state.drafting then openPicker(n); task.wait(0.1) end
 			end
-			task.wait(0.6)
+			task.wait(0.7)
 		end
 	end)
 end
 
--- ===== Forge =====
-local function forgeChampion(): any
-	-- top-4 tower types by damage become abilities; waves set tier; dominant tag = archetype
-	local ranked = {}
-	for id, dmg in RunState.dmgByType do
-		table.insert(ranked, { id = id, dmg = dmg })
-	end
-	table.sort(ranked, function(a, b) return a.dmg > b.dmg end)
-	local abilities = {}
-	for i = 1, math.min(4, #ranked) do
-		local def = TOWERS[ranked[i].id]
-		local u = RunState.up[ranked[i].id] or { dmg = 0, rate = 0 }
-		table.insert(abilities, {
-			id = def.id, name = def.ability, glyph = def.glyph, color = def.color, tag = def.tag,
-			power = math.floor((def.damage + u.dmg) * (1 + RunState.globalDmg) * (1 + u.rate * 0.1) + 6),
-			cd = def.fireRate * (def.slow > 0 and 1.6 or 1.2), desc = def.abilityDesc, slow = def.slow,
-		})
-	end
-	local tagCount = {}
-	for id in RunState.owned do
-		local t = TOWERS[id].tag
-		tagCount[t] = (tagCount[t] or 0) + 1
-	end
-	local domTag, domN = "Kinetic", 0
-	for t, n in tagCount do if n > domN then domTag, domN = t, n end end
-	local archetype = ({ Kinetic = "Bruiser", Rapid = "Duelist", Cold = "Cryomancer" })[domTag] or "Fighter"
-	local tier = RunState.wavesSurvived
-	return {
-		name = player.DisplayName,
-		archetype = archetype,
-		tier = tier,
-		hp = 80 + tier * 8,
-		abilities = abilities,
-		hasShield = table.find(RunState.perks, "Greed") ~= nil,
-	}
-end
-
--- ===== One-life fail -> forge screen =====
+-- ===== run over =====
 function endRun()
-	if not state.alive then return end
-	state.alive = false
-	local flash = frame(bg, "Flash")
-	flash.Size = UDim2.fromScale(1, 1)
-	flash.BackgroundColor3 = Theme.danger
-	flash.BackgroundTransparency = 0.35
-	flash.ZIndex = 60
-	TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
-	for _ = 1, 6 do
-		bg.Position = UDim2.fromOffset(math.random(-8, 8), math.random(-8, 8))
-		task.wait(0.03)
-	end
-	bg.Position = UDim2.fromScale(0, 0)
-
-	local champ = forgeChampion()
-	local ov = frame(bg, "Forge")
-	ov.Size = UDim2.fromScale(1, 1)
-	ov.BackgroundColor3 = Theme.bg
-	ov.BackgroundTransparency = 0.1
-	ov.ZIndex = 61
-	local h = text(ov, "RUN OVER \u{2014} WAVE " .. state.wave, 22, Theme.danger)
-	h.Font = Theme.fontBlack
-	h.Position = UDim2.fromScale(0, 0.08)
-	h.Size = UDim2.fromScale(1, 0.07)
-	h.ZIndex = 62
-	local sub = text(ov, "YOU FORGED A CHAMPION", 16, Theme.textDim)
-	sub.Position = UDim2.fromScale(0, 0.16)
-	sub.Size = UDim2.fromScale(1, 0.05)
-	sub.ZIndex = 62
-	local card = frame(ov, "Champ")
-	card.AnchorPoint = Vector2.new(0.5, 0.5)
-	card.Position = UDim2.fromScale(0.5, 0.5)
-	card.Size = UDim2.fromScale(0.6, 0.5)
-	card.BackgroundColor3 = Theme.panel
-	card.ZIndex = 62
-	corner(card, 16)
-	stroke(card, Theme.accent, 2, 0.15)
-	local nm = text(card, champ.archetype, 34, Theme.accent)
-	nm.Font = Theme.fontBlack
-	nm.Position = UDim2.fromScale(0, 0.06)
-	nm.Size = UDim2.fromScale(1, 0.14)
-	nm.ZIndex = 63
-	local stat = text(card, "TIER " .. champ.tier .. "   \u{2665} " .. champ.hp .. " HP", 16, Theme.text)
-	stat.Position = UDim2.fromScale(0, 0.22)
-	stat.Size = UDim2.fromScale(1, 0.07)
-	stat.ZIndex = 63
-	local abRow = frame(card, "Abilities")
-	abRow.BackgroundTransparency = 1
-	abRow.AnchorPoint = Vector2.new(0.5, 0.5)
-	abRow.Position = UDim2.fromScale(0.5, 0.52)
-	abRow.Size = UDim2.fromScale(0.9, 0.3)
-	abRow.ZIndex = 63
-	local al = Instance.new("UIListLayout")
-	al.FillDirection = Enum.FillDirection.Horizontal
-	al.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	al.VerticalAlignment = Enum.VerticalAlignment.Center
-	al.Padding = UDim.new(0, 12)
-	al.Parent = abRow
-	for _, ab in champ.abilities do
-		local slot = frame(abRow, "Ab")
-		slot.Size = UDim2.fromScale(0.2, 1)
-		slot.BackgroundColor3 = ab.color
-		slot.ZIndex = 64
-		corner(slot, 12)
-		stroke(slot, Color3.new(1, 1, 1), 1.5, 0.5)
-		local g = text(slot, ab.glyph, 26, Color3.fromRGB(10, 18, 28))
-		g.Position = UDim2.fromScale(0, 0.06)
-		g.Size = UDim2.fromScale(1, 0.5)
-		g.ZIndex = 65
-		local an = text(slot, ab.name, 12, Color3.fromRGB(10, 18, 28))
-		an.Font = Theme.fontBlack
-		an.Position = UDim2.fromScale(0, 0.56)
-		an.Size = UDim2.fromScale(1, 0.2)
-		an.ZIndex = 65
-		local ap = text(slot, tostring(ab.power), 12, Color3.fromRGB(20, 30, 40))
-		ap.Position = UDim2.fromScale(0, 0.76)
-		ap.Size = UDim2.fromScale(1, 0.2)
-		ap.ZIndex = 65
-	end
-	local duelBtn = Instance.new("TextButton")
-	duelBtn.AnchorPoint = Vector2.new(0.5, 1)
-	duelBtn.Position = UDim2.fromScale(0.5, 0.92)
-	duelBtn.Size = UDim2.fromScale(0.5, 0.13)
-	duelBtn.BackgroundColor3 = Theme.accent
-	duelBtn.Text = "\u{2694} ENTER THE ARENA"
-	duelBtn.Font = Theme.fontBlack
-	duelBtn.TextSize = 20
-	duelBtn.TextColor3 = Color3.fromRGB(10, 16, 26)
-	duelBtn.ZIndex = 63
-	corner(duelBtn, 10)
-	duelBtn.Parent = card
-	duelBtn.MouseButton1Click:Connect(function()
-		ov:Destroy()
-		if runDuel then runDuel(champ) end
+	if not state.running then return end
+	state.running = false
+	screenFlash(C.red, 0.5); screenShake(10, 8)
+	local ov = frame(root, "Over"); ov.Size = UDim2.fromScale(1, 1); ov.BackgroundColor3 = C.ink0; ov.BackgroundTransparency = 0.12; ov.ZIndex = 90
+	local big = shout(ov, "OVERRUN", 60, C.red); big.AnchorPoint = Vector2.new(0.5, 0.5); big.Position = UDim2.fromScale(0.5, 0.38); big.Size = UDim2.fromScale(0.8, 0.16); big.ZIndex = 91
+	local sub = text(ov, "You held to WAVE " .. state.wave, 22, C.white); sub.Font = FONT; sub.Position = UDim2.fromScale(0, 0.54); sub.Size = UDim2.fromScale(1, 0.06); sub.ZIndex = 91
+	local again = Instance.new("TextButton"); again.AnchorPoint = Vector2.new(0.5, 0.5); again.Position = UDim2.fromScale(0.5, 0.68); again.Size = UDim2.fromScale(0.34, 0.1)
+	again.BackgroundColor3 = C.cyan; again.Text = "RUN IT BACK"; again.Font = FONT; again.TextSize = 22; again.TextColor3 = C.ink0; again.ZIndex = 91; corner(again, 10); stroke(again, C.ink0, 3, 0); again.Parent = ov
+	again.MouseButton1Click:Connect(function()
+		gui:Destroy(); if hbConn then hbConn:Disconnect() end
+		local clone = script:Clone(); clone.Parent = script.Parent; clone.Disabled = false
 	end)
-	if DEBUG.autoPlay and runDuel then
-		task.delay(1.5, function()
-			ov:Destroy()
-			runDuel(champ)
-		end)
-	end
+	if DEBUG.autoPlay then task.delay(2.5, function() again.MouseButton1Click:Fire() end) end
 end
 
--- ===== The Arena (active cooldown-brawl duel vs a real-player-style house Champion) =====
--- Element counter triangle so timing + build both matter (not just raw stats).
-local COUNTER = { Kinetic = "Rapid", Rapid = "Cold", Cold = "Kinetic" } -- A beats B -> 1.4x
-local function counterMult(atk: string, def: string): number
-	return COUNTER[atk] == def and 1.4 or 1.0
-end
-
--- House Champions: hand-authored fallback foes (stand in for real players' saved snapshots until
--- the DataStore ladder is added). Picked near your tier so the fight is fair-ish.
-local HOUSE = {
-	{ name = "Ashborn", archetype = "Bruiser", tag = "Kinetic", color = Color3.fromRGB(255, 150, 90),
-		abilities = {
-			{ name = "Cleave", glyph = "\u{2694}", color = Color3.fromRGB(255, 150, 90), tag = "Kinetic", power = 15, cd = 1.7 },
-			{ name = "Stomp", glyph = "\u{25C9}", color = Color3.fromRGB(255, 190, 120), tag = "Kinetic", power = 9, cd = 1.0 },
-		} },
-	{ name = "Sleet", archetype = "Cryomancer", tag = "Cold", color = Color3.fromRGB(130, 220, 235),
-		abilities = {
-			{ name = "Glacier", glyph = "\u{2744}", color = Color3.fromRGB(130, 220, 235), tag = "Cold", power = 14, cd = 1.6 },
-			{ name = "Sliver", glyph = "\u{2726}", color = Color3.fromRGB(180, 240, 250), tag = "Cold", power = 8, cd = 0.9 },
-		} },
-	{ name = "Quill", archetype = "Duelist", tag = "Rapid", color = Color3.fromRGB(180, 240, 120),
-		abilities = {
-			{ name = "Flurry", glyph = "\u{2726}", color = Color3.fromRGB(180, 240, 120), tag = "Rapid", power = 12, cd = 1.3 },
-			{ name = "Jab", glyph = "\u{00BB}", color = Color3.fromRGB(210, 250, 160), tag = "Rapid", power = 7, cd = 0.7 },
-		} },
-}
-
-local function restartGame()
-	gui:Destroy()
-	if hbConn then hbConn:Disconnect() end
-	local clone = script:Clone()
-	clone.Parent = script.Parent
-	clone.Disabled = false
-end
-
-function runDuel(champ: any)
-	-- pick a house opponent (avoid mirror archetype for variety), scale HP to your tier
-	local pickList = {}
-	for _, h in HOUSE do if h.archetype ~= champ.archetype then table.insert(pickList, h) end end
-	if #pickList == 0 then pickList = HOUSE end
-	local house = pickList[math.random(1, #pickList)]
-	local opp = {
-		name = house.name, archetype = house.archetype, tag = house.tag, color = house.color,
-		hp = 80 + champ.tier * 7, maxHp = 80 + champ.tier * 7,
-		abilities = {},
-	}
-	for _, a in house.abilities do
-		local scaled = {}
-		for k, v in a do scaled[k] = v end
-		scaled.power = math.floor(a.power * (1 + champ.tier * 0.05))
-		scaled.cd0 = a.cd
-		scaled.cd = a.cd * 0.6 -- first cast comes a bit sooner
-		scaled.wind = 0
-		table.insert(opp.abilities, scaled)
-	end
-	local me = { hp = champ.hp, maxHp = champ.hp, guard = 0, guardCd = 0 }
-	for _, a in champ.abilities do a.cd = 0 end
-
-	-- ---- UI ----
-	local ov = frame(bg, "Arena")
-	ov.Size = UDim2.fromScale(1, 1)
-	ov.BackgroundColor3 = Theme.bg
-	ov.ZIndex = 70
-	local title = text(ov, "\u{2694} THE ARENA", 26, Theme.gold)
-	title.Font = Theme.fontBlack
-	title.Position = UDim2.fromScale(0, 0.05)
-	title.Size = UDim2.fromScale(1, 0.07)
-	title.ZIndex = 71
-
-	local function champPanel(anchorX: number, name: string, arche: string, color: Color3)
-		local p = frame(ov, "Panel")
-		p.AnchorPoint = Vector2.new(0.5, 0)
-		p.Position = UDim2.fromScale(anchorX, 0.16)
-		p.Size = UDim2.fromScale(0.34, 0.26)
-		p.BackgroundColor3 = Theme.panel
-		p.ZIndex = 71
-		corner(p, 14)
-		stroke(p, color, 2, 0.2)
-		local av = frame(p, "Av")
-		av.AnchorPoint = Vector2.new(0.5, 0)
-		av.Position = UDim2.fromScale(0.5, 0.1)
-		av.Size = UDim2.fromScale(0.4, 0.45)
-		av.BackgroundColor3 = color
-		av.ZIndex = 72
-		corner(av, 12)
-		local nm = text(p, name, 20, Theme.text)
-		nm.Font = Theme.fontBlack
-		nm.Position = UDim2.fromScale(0, 0.58)
-		nm.Size = UDim2.fromScale(1, 0.14)
-		nm.ZIndex = 72
-		local ar = text(p, arche, 13, color)
-		ar.Position = UDim2.fromScale(0, 0.72)
-		ar.Size = UDim2.fromScale(1, 0.1)
-		ar.ZIndex = 72
-		local hpbg = frame(p, "HPbg")
-		hpbg.AnchorPoint = Vector2.new(0.5, 1)
-		hpbg.Position = UDim2.fromScale(0.5, 0.95)
-		hpbg.Size = UDim2.fromScale(0.86, 0.09)
-		hpbg.BackgroundColor3 = Color3.fromRGB(40, 44, 52)
-		hpbg.ZIndex = 72
-		corner(hpbg, 6)
-		local hp = frame(hpbg, "HP")
-		hp.Size = UDim2.fromScale(1, 1)
-		hp.BackgroundColor3 = Theme.core
-		hp.ZIndex = 73
-		corner(hp, 6)
-		return p, hp
-	end
-	local myPanel, myHpBar = champPanel(0.3, champ.name, champ.archetype, Theme.accent)
-	local oppPanel, oppHpBar = champPanel(0.7, opp.name, opp.archetype, opp.color)
-	local vs = text(ov, "VS", 30, Theme.textDim)
-	vs.Font = Theme.fontBlack
-	vs.AnchorPoint = Vector2.new(0.5, 0.5)
-	vs.Position = UDim2.fromScale(0.5, 0.29)
-	vs.Size = UDim2.fromScale(0.1, 0.1)
-	vs.ZIndex = 72
-
-	-- ability bar
-	local bar = frame(ov, "Bar")
-	bar.BackgroundTransparency = 1
-	bar.AnchorPoint = Vector2.new(0.5, 1)
-	bar.Position = UDim2.fromScale(0.5, 0.92)
-	bar.Size = UDim2.fromScale(0.8, 0.2)
-	bar.ZIndex = 71
-	local bl = Instance.new("UIListLayout")
-	bl.FillDirection = Enum.FillDirection.Horizontal
-	bl.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	bl.VerticalAlignment = Enum.VerticalAlignment.Center
-	bl.Padding = UDim.new(0, 14)
-	bl.Parent = bar
-
-	local duelOver = false
-	local function popDuel(s: string, x: number, color: Color3)
-		local l = text(ov, s, 22, color)
-		l.Font = Theme.fontBlack
-		l.ZIndex = 80
-		l.AnchorPoint = Vector2.new(0.5, 0.5)
-		l.Position = UDim2.fromScale(x, 0.42)
-		l.Size = UDim2.fromScale(0.2, 0.08)
-		TweenService:Create(l, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.fromScale(x, 0.34), TextTransparency = 1 }):Play()
-		task.delay(0.65, function() l:Destroy() end)
-	end
-	local function hurt(target: string)
-		local panel = target == "me" and myPanel or oppPanel
-		local f = frame(panel, "Hit")
-		f.Size = UDim2.fromScale(1, 1)
-		f.BackgroundColor3 = Theme.danger
-		f.BackgroundTransparency = 0.4
-		f.ZIndex = 78
-		corner(f, 14)
-		TweenService:Create(f, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
-		task.delay(0.22, function() f:Destroy() end)
-	end
-
-	local endDuel -- fwd
-	local function fireMine(ab: any)
-		if duelOver or ab.cd > 0 then return end
-		ab.cd = ab.cd0 -- cd0 is set when the button is built, below
-		local dmg = math.floor(ab.power * counterMult(ab.tag, opp.tag))
-		opp.hp = math.max(0, opp.hp - dmg)
-		oppHpBar.Size = UDim2.fromScale(opp.hp / opp.maxHp, 1)
-		popDuel("-" .. dmg, 0.7, ab.color)
-		hurt("opp")
-		if ab.slow and ab.slow > 0 then
-			for _, oa in opp.abilities do oa.cd += 0.5 end -- Frostbite slows their cooldowns
-		end
-		if opp.hp <= 0 then endDuel(true) end
-	end
-
-	-- ability buttons (with cooldown fill overlay)
-	local myButtons = {}
-	for _, ab in champ.abilities do
-		ab.cd0 = ab.cd0 or (({ Slug = 1.5, Barrage = 1.0, Frostbite = 1.3 })[ab.name] or 1.3)
-		ab.cd = 0
-		local slot = frame(bar, "AbBtn")
-		slot.Size = UDim2.fromScale(0.16, 1)
-		slot.BackgroundColor3 = ab.color
-		slot.ZIndex = 72
-		corner(slot, 12)
-		stroke(slot, Color3.new(1, 1, 1), 1.5, 0.5)
-		local g = text(slot, ab.glyph, 26, Color3.fromRGB(10, 18, 28))
-		g.Position = UDim2.fromScale(0, 0.08)
-		g.Size = UDim2.fromScale(1, 0.5)
-		g.ZIndex = 73
-		local nm = text(slot, ab.name, 12, Color3.fromRGB(10, 18, 28))
-		nm.Font = Theme.fontBlack
-		nm.Position = UDim2.fromScale(0, 0.6)
-		nm.Size = UDim2.fromScale(1, 0.2)
-		nm.ZIndex = 73
-		local cdFill = frame(slot, "CD")
-		cdFill.AnchorPoint = Vector2.new(0.5, 1)
-		cdFill.Position = UDim2.fromScale(0.5, 1)
-		cdFill.Size = UDim2.fromScale(1, 0)
-		cdFill.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		cdFill.BackgroundTransparency = 0.5
-		cdFill.ZIndex = 74
-		corner(cdFill, 12)
-		button(slot).MouseButton1Click:Connect(function() fireMine(ab) end)
-		table.insert(myButtons, { ab = ab, fill = cdFill })
-	end
-	-- Guard button
-	local guardSlot = frame(bar, "Guard")
-	guardSlot.Size = UDim2.fromScale(0.16, 1)
-	guardSlot.BackgroundColor3 = Color3.fromRGB(90, 200, 160)
-	guardSlot.ZIndex = 72
-	corner(guardSlot, 12)
-	stroke(guardSlot, Color3.new(1, 1, 1), 1.5, 0.5)
-	local gg = text(guardSlot, "\u{1F6E1}", 24, Color3.fromRGB(10, 18, 28))
-	gg.Position = UDim2.fromScale(0, 0.08)
-	gg.Size = UDim2.fromScale(1, 0.5)
-	gg.ZIndex = 73
-	local gn = text(guardSlot, "GUARD", 12, Color3.fromRGB(10, 18, 28))
-	gn.Font = Theme.fontBlack
-	gn.Position = UDim2.fromScale(0, 0.6)
-	gn.Size = UDim2.fromScale(1, 0.2)
-	gn.ZIndex = 73
-	local guardFill = frame(guardSlot, "CD")
-	guardFill.AnchorPoint = Vector2.new(0.5, 1)
-	guardFill.Position = UDim2.fromScale(0.5, 1)
-	guardFill.Size = UDim2.fromScale(1, 0)
-	guardFill.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	guardFill.BackgroundTransparency = 0.5
-	guardFill.ZIndex = 74
-	local function doGuard()
-		if duelOver or me.guardCd > 0 then return end
-		me.guard = 0.9
-		me.guardCd = 3.0
-		local ring = frame(myPanel, "Guarded")
-		ring.Size = UDim2.fromScale(1, 1)
-		ring.BackgroundTransparency = 1
-		ring.ZIndex = 77
-		stroke(ring, Color3.fromRGB(120, 240, 190), 3, 0)
-		corner(ring, 14)
-		task.delay(0.9, function() ring:Destroy() end)
-	end
-	button(guardSlot).MouseButton1Click:Connect(doGuard)
-
-	-- opponent fires -> damages me (halved if guarding), with a wind-up "tell"
-	local function oppFire(ab: any)
-		local dmg = math.floor(ab.power * counterMult(ab.tag, champ.tag))
-		if me.guard > 0 then dmg = math.floor(dmg * 0.4) end
-		me.hp = math.max(0, me.hp - dmg)
-		myHpBar.Size = UDim2.fromScale(me.hp / me.maxHp, 1)
-		popDuel("-" .. dmg, 0.3, ab.color)
-		hurt("me")
-		if me.hp <= 0 then endDuel(false) end
-	end
-
-	-- ---- result ----
-	function endDuel(won: boolean)
-		if duelOver then return end
-		duelOver = true
-		local res = frame(ov, "Result")
-		res.Size = UDim2.fromScale(1, 1)
-		res.BackgroundColor3 = Theme.bg
-		res.BackgroundTransparency = 0.15
-		res.ZIndex = 85
-		local big = text(res, won and "VICTORY" or "DEFEAT", 52, won and Theme.core or Theme.danger)
-		big.Font = Theme.fontBlack
-		big.AnchorPoint = Vector2.new(0.5, 0.5)
-		big.Position = UDim2.fromScale(0.5, 0.4)
-		big.Size = UDim2.fromScale(0.8, 0.2)
-		big.ZIndex = 86
-		big.TextTransparency = 1
-		TweenService:Create(big, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
-		local sub = text(res, won and ("You beat " .. opp.name .. " the " .. opp.archetype) or (opp.name .. " bested your " .. champ.archetype), 18, Theme.textDim)
-		sub.Position = UDim2.fromScale(0, 0.54)
-		sub.Size = UDim2.fromScale(1, 0.06)
-		sub.ZIndex = 86
-		local again = Instance.new("TextButton")
-		again.AnchorPoint = Vector2.new(0.5, 0.5)
-		again.Position = UDim2.fromScale(0.5, 0.68)
-		again.Size = UDim2.fromScale(0.36, 0.1)
-		again.BackgroundColor3 = Theme.accent
-		again.Text = "NEW RUN"
-		again.Font = Theme.fontBlack
-		again.TextSize = 22
-		again.TextColor3 = Color3.fromRGB(10, 16, 26)
-		again.ZIndex = 86
-		corner(again, 10)
-		again.Parent = res
-		again.MouseButton1Click:Connect(restartGame)
-		if DEBUG.autoPlay then task.delay(2.5, restartGame) end
-	end
-
-	-- ---- duel loop (its own Heartbeat) ----
-	local duelConn: RBXScriptConnection
-	duelConn = RunService.Heartbeat:Connect(function(dt)
-		if duelOver then
-			duelConn:Disconnect()
-			return
-		end
-		if me.guard > 0 then me.guard -= dt end
-		if me.guardCd > 0 then me.guardCd -= dt end
-		guardFill.Size = UDim2.fromScale(1, math.clamp(me.guardCd / 3.0, 0, 1))
-		for _, mb in myButtons do
-			if mb.ab.cd > 0 then mb.ab.cd -= dt end
-			mb.fill.Size = UDim2.fromScale(1, math.clamp(mb.ab.cd / (mb.ab.cd0 or 1.2), 0, 1))
-		end
-		-- opponent AI: wind up then fire each ability on its cooldown
-		for _, oa in opp.abilities do
-			oa.cd -= dt
-			if oa.cd <= 0 and oa.wind <= 0 then
-				oa.wind = 0.5 -- tell
-				local warn = frame(oppPanel, "Tell")
-				warn.Size = UDim2.fromScale(1, 1)
-				warn.BackgroundTransparency = 1
-				warn.ZIndex = 76
-				stroke(warn, oa.color, 3, 0)
-				corner(warn, 14)
-				task.delay(0.5, function() warn:Destroy() end)
-			elseif oa.wind > 0 then
-				oa.wind -= dt
-				if oa.wind <= 0 then
-					oppFire(oa)
-					oa.cd = oa.cd0
-				end
-			end
-		end
-		-- DEBUG auto-pilot: fire ready abilities + guard on a tell
-		if DEBUG.autoPlay then
-			for _, mb in myButtons do
-				if mb.ab.cd <= 0 then fireMine(mb.ab) end
-			end
-			if me.guardCd <= 0 and oppPanel:FindFirstChild("Tell") then doGuard() end
-		end
-	end)
-end
-
--- ===== Title / start menu (only on first entry of a session; NEW RUN skips it) =====
-if not state.started then
-	local menu = frame(bg, "Menu")
-	menu.Size = UDim2.fromScale(1, 1)
-	menu.BackgroundColor3 = Theme.bg
-	menu.ZIndex = 95
-	do
-		local g = Instance.new("UIGradient")
-		g.Rotation = 90
-		g.Color = ColorSequence.new(Color3.fromRGB(18, 22, 30), Color3.fromRGB(12, 13, 17))
-		g.Parent = menu
-	end
-	local t1 = text(menu, "GAUNTLET", 60, Theme.accent)
-	t1.Font = Theme.fontBlack
-	t1.AnchorPoint = Vector2.new(0.5, 1)
-	t1.Position = UDim2.fromScale(0.5, 0.4)
-	t1.Size = UDim2.fromScale(0.9, 0.13)
-	t1.ZIndex = 96
-	local t2 = text(menu, "& GLORY", 60, Theme.gold)
-	t2.Font = Theme.fontBlack
-	t2.AnchorPoint = Vector2.new(0.5, 0)
-	t2.Position = UDim2.fromScale(0.5, 0.4)
-	t2.Size = UDim2.fromScale(0.9, 0.13)
-	t2.ZIndex = 96
-	local tag = text(menu, "survive the gauntlet  \u{2022}  forge a champion  \u{2022}  duel the ladder", 17, Theme.textDim)
-	tag.Position = UDim2.fromScale(0, 0.56)
-	tag.Size = UDim2.fromScale(1, 0.05)
-	tag.ZIndex = 96
-	local play = Instance.new("TextButton")
-	play.AnchorPoint = Vector2.new(0.5, 0.5)
-	play.Position = UDim2.fromScale(0.5, 0.7)
-	play.Size = UDim2.fromScale(0.3, 0.1)
-	play.BackgroundColor3 = Theme.accent
-	play.Text = "PLAY"
-	play.Font = Theme.fontBlack
-	play.TextSize = 26
-	play.TextColor3 = Color3.fromRGB(10, 16, 26)
-	play.ZIndex = 96
-	corner(play, 12)
-	play.Parent = menu
-	local function beginGame()
-		(_G :: any).GGStarted = true
-		state.started = true
-		TweenService:Create(menu, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
-		for _, c in menu:GetChildren() do
-			if c:IsA("TextLabel") or c:IsA("TextButton") then
-				TweenService:Create(c, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
-			end
-		end
-		task.delay(0.32, function() menu:Destroy() end)
-	end
-	play.MouseButton1Click:Connect(beginGame)
-	if DEBUG.autoPlay then
-		task.delay(0.4, beginGame)
-	end
-end
-
-print("[G&G] full loop ready")
+print("[NeonGauntlet] ready")
