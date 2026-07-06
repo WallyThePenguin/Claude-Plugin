@@ -127,6 +127,12 @@ function fx.glow(p: Instance, color: Color3?): Instance?
 	end)
 	return ok and sh or nil
 end
+-- thick dark GLYPH outline (the juicy gacha/anime display-type look). Contextual = outlines the text.
+function fx.textOutline(label: TextLabel, color: Color3?, th: number?): UIStroke
+	local s = Instance.new("UIStroke"); s.Color = color or T.color.ink; s.Thickness = th or 3
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; s.LineJoinMode = Enum.LineJoinMode.Round; s.Parent = label
+	return s
+end
 -- 2-tone anime highlight sheen across the top of a rounded surface
 function fx.highlight(p: GuiObject, r: number?): Frame
 	local hi = Instance.new("Frame"); hi.Name = "Hi"; hi.BorderSizePixel = 0
@@ -272,6 +278,7 @@ function C.IconChip(props: { [string]: any }?): (Frame, TextLabel)
 	local g = Instance.new("TextLabel"); g.BackgroundTransparency = 1; g.Font = props.font or T.font.display
 	g.Text = props.glyph or "?"; g.TextSize = props.glyphSize or T.tsize.xxl; g.TextColor3 = props.glyphColor or role(props.accent)
 	g.Size = UDim2.fromScale(1, 1); g.ZIndex = chip.ZIndex + 2; g.Parent = chip
+	fx.textOutline(g, T.color.ink, 2)
 	return chip, g
 end
 -- Button: CTA with gradient, rim, shadow, hover/press pop
@@ -288,6 +295,7 @@ function C.Button(props: { [string]: any }?): (TextButton, TextLabel)
 	local lbl = Instance.new("TextLabel"); lbl.BackgroundTransparency = 1; lbl.Font = T.font.heading; lbl.Text = props.text or "OK"
 	lbl.TextSize = props.textSize or T.tsize.lg; lbl.TextColor3 = props.textColor or T.color.textOnAccent; lbl.Size = UDim2.fromScale(1, 1)
 	lbl.ZIndex = b.ZIndex + 2; lbl.Parent = b
+	if props.outline ~= false then fx.textOutline(lbl, T.color.ink, 2) end
 	motion.hoverGrow(b, 6)
 	b.MouseButton1Down:Connect(function() motion.tween(b, T.motion.fast, { Size = (props.size or UDim2.fromOffset(200, 48)) - UDim2.fromOffset(4, 3) }) end)
 	if props.parent then b.Parent = props.parent end

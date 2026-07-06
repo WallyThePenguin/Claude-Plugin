@@ -385,6 +385,7 @@ local waveChip = UI.Panel({ name = "WaveChip", parent = hud, anchor = Vector2.ne
 	size = UDim2.fromOffset(228, 52), radius = UI.T.radius.pill, fill = UI.T.color.surface, accent = "cyan", shadow = "md", z = 101 })
 local waveT = Instance.new("TextLabel"); waveT.BackgroundTransparency = 1; waveT.Font = UI.T.font.display; waveT.Text = "WAVE 1"
 waveT.TextSize = UI.T.tsize.xl; waveT.TextColor3 = UI.T.color.cyan; waveT.Size = UDim2.fromScale(1, 1); waveT.ZIndex = 104; waveT.Parent = waveChip
+UI.fx.textOutline(waveT, UI.T.color.ink, 3)
 waveChip.Position = UDim2.new(0.5, 0, 0, 4)
 -- lives + currency pills (icon + value, laid out by the engine)
 local lifeChip, lifeText = UI.Pill({ name = "LifeChip", parent = hud, pos = UDim2.fromOffset(26, 6), size = UDim2.fromOffset(110, 52),
@@ -423,7 +424,7 @@ local function refreshTray()
 	local i = 1
 	for id in RunState.owned do
 		local def = FIGHTERS[id]
-		local chip = UI.IconChip({ parent = tray, glyph = def.glyph, glyphColor = UI.T.color.textOnAccent, glyphSize = UI.T.tsize.lg,
+		local chip = UI.IconChip({ parent = tray, glyph = def.glyph, glyphColor = UI.T.color.text, glyphSize = UI.T.tsize.lg,
 			fill = def.color, accent = def.color, size = UDim2.fromOffset(54, 54), radius = UI.T.radius.md, z = 30 })
 		chip.LayoutOrder = i
 		local lvl = (RunState.upgrades[id] or 0) + 1
@@ -790,7 +791,7 @@ local function placeFighter(node: any, id: string)
 	node.plus.Visible = false
 	node.frame.BackgroundTransparency = 1 -- the clean token IS the tower now (no pad card)
 	-- clean premium TOKEN via the engine: class-colored circle chip + kanji glyph + soft glow
-	local chip = UI.IconChip({ parent = node.frame, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.textOnAccent,
+	local chip = UI.IconChip({ parent = node.frame, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.text,
 		glyphSize = UI.T.tsize.xl, fill = def.color, accent = def.color, glow = def.color,
 		size = UDim2.fromOffset(76, 76), radius = UI.T.radius.pill, anchor = Vector2.new(0.5, 0.5), pos = UDim2.fromScale(0.5, 0.5), z = 15 })
 	local _, badgeT = UI.Badge(chip, tostring((RunState.upgrades[id] or 0) + 1), "gold")
@@ -1005,6 +1006,7 @@ local function showDraft()
 	local title = Instance.new("TextLabel"); title.BackgroundTransparency = 1; title.Font = UI.T.font.display
 	title.Text = "FORGE YOUR CLASS"; title.TextSize = UI.T.tsize.xxl; title.TextColor3 = UI.T.color.cyan
 	title.Size = UDim2.fromScale(1, 0.1); title.Position = UDim2.fromScale(0, 0.13); title.ZIndex = UI.T.z.modal + 1; title.Parent = scrim
+	UI.fx.textOutline(title, UI.T.color.ink, 4)
 	local done = false
 	local function choose(c: any)
 		if done then return end; done = true; applyCard(c)
@@ -1016,7 +1018,7 @@ local function showDraft()
 		local accent = c.color
 		local card = UI.Card({ parent = scrim, size = UDim2.fromOffset(250, 384), anchor = Vector2.new(0.5, 0.5),
 			pos = UDim2.fromScale(xs[i] or 0.5, 0.55), accent = accent, glow = accent, z = UI.T.z.modal + 2 })
-		local ic = UI.IconChip({ parent = card.body, glyph = c.glyph, glyphColor = UI.T.color.textOnAccent, glyphSize = UI.T.tsize.hero,
+		local ic = UI.IconChip({ parent = card.body, glyph = c.glyph, glyphColor = UI.T.color.text, glyphSize = UI.T.tsize.hero,
 			fill = accent, accent = accent, size = UDim2.fromOffset(100, 100), radius = UI.T.radius.lg, z = UI.T.z.modal + 3 })
 		ic.LayoutOrder = 1
 		local nm = Instance.new("TextLabel"); nm.BackgroundTransparency = 1; nm.Font = UI.T.font.heading; nm.Text = c.title
@@ -1121,6 +1123,7 @@ function endRun()
 	local card = UI.Card({ parent = scrim, size = UDim2.fromOffset(420, 330), accent = "danger", glow = "danger", z = UI.T.z.modal + 11 })
 	local big = Instance.new("TextLabel"); big.BackgroundTransparency = 1; big.Font = UI.T.font.display; big.Text = "OVERRUN"
 	big.TextSize = UI.T.tsize.hero; big.TextColor3 = UI.T.color.danger; big.Size = UDim2.new(1, 0, 0, 64); big.LayoutOrder = 1; big.ZIndex = UI.T.z.modal + 12; big.Parent = card.body
+	UI.fx.textOutline(big, UI.T.color.ink, 4)
 	local sub = Instance.new("TextLabel"); sub.BackgroundTransparency = 1; sub.Font = UI.T.font.body; sub.Text = "You held to WAVE " .. state.wave
 	sub.TextSize = UI.T.tsize.lg; sub.TextColor3 = UI.T.color.text; sub.Size = UDim2.new(1, 0, 0, 30); sub.LayoutOrder = 2; sub.ZIndex = UI.T.z.modal + 12; sub.Parent = card.body
 	local btn = UI.Button({ parent = card.footer, text = "RUN IT BACK", accent = "cyan", size = UDim2.new(1, 0, 0, 44), z = UI.T.z.modal + 12 })
