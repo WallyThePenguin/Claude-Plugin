@@ -903,6 +903,139 @@ local function selectTower(tw: any)
 	selectedTw = tw
 end
 
+-- ===== top-down fighter rig: builders + aim/recoil helpers =====
+local function lighten(c: Color3, k: number): Color3
+	return c:Lerp(C.white, k)
+end
+-- a chunky glossy OUTLINED rounded piece inside the aimer (px sizes, scale pos) — makeEnemy idiom
+local function piece(aimer: Frame, wpx: number, hpx: number, sx: number, sy: number,
+		col: Color3, r: number, z: number, sheen: boolean?): Frame
+	local f = frame(aimer, "WPart")
+	f.AnchorPoint = Vector2.new(0.5, 0.5); f.Position = UDim2.fromScale(sx, sy)
+	f.Size = UDim2.fromOffset(wpx, hpx); f.BackgroundColor3 = col; f.ZIndex = z
+	corner(f, r)
+	UI.fx.gradient(f, ColorSequence.new(lighten(col, 0.28), col), 90) -- lit top -> saturated bottom
+	stroke(f, C.ink0, 2.5, 0)                                          -- thick anime line-art rim
+	if sheen then
+		local s = frame(f, "Sheen"); s.BackgroundColor3 = C.white; s.BackgroundTransparency = 0.5
+		s.AnchorPoint = Vector2.new(0.5, 0.5); s.Position = UDim2.fromScale(0.5, 0.26)
+		s.Size = UDim2.fromScale(0.6, 0.28); s.ZIndex = z + 1; corner(s, 999)
+	end
+	return f
+end
+-- two rounded chibi HANDS gripping the weapon near the aimer centre (arms-from-above read)
+local function hands(aimer: Frame, gripX: number, col: Color3, z: number)
+	for i = -1, 1, 2 do
+		piece(aimer, 15, 15, gripX, 0.5 + i * 0.09, lighten(col, 0.12), 999, z)
+	end
+end
+-- per-class weapon builders — arms+weapon extend toward aimer LOCAL +X. Return the moving part.
+local WEAPONS: { [string]: (Frame, any) -> Frame } = {}
+WEAPONS.Ronin = function(aimer: Frame, def: any): Frame -- 刃 neon katana
+	local z = aimer.ZIndex; local col = def.color
+	hands(aimer, 0.52, col, z + 2)
+	piece(aimer, 16, 9, 0.56, 0.5, C.ink2, 4, z + 1)     -- wrapped tsuka
+	piece(aimer, 7, 22, 0.64, 0.5, C.gold, 3, z + 1)     -- tsuba crossguard
+	local blade = piece(aimer, 46, 10, 0.86, 0.5, lighten(col, 0.35), 5, z + 1, true)
+	UI.fx.glow(blade, col)
+	piece(aimer, 12, 10, 1.0, 0.5, C.white, 6, z + 2)    -- bright kissaki tip
+	return blade
+end
+WEAPONS.Onmyoji = function(aimer: Frame, def: any): Frame -- 雪 staff + ice orb
+	local z = aimer.ZIndex; local col = def.color
+	piece(aimer, 22, 20, 0.42, 0.36, lighten(col, 0.18), 999, z, true) -- sleeve
+	piece(aimer, 22, 20, 0.42, 0.64, lighten(col, 0.10), 999, z, true)
+	hands(aimer, 0.5, col, z + 2)
+	piece(aimer, 40, 7, 0.72, 0.5, C.panelHi, 3, z + 1)  -- pale staff
+	local orb = piece(aimer, 26, 26, 0.9, 0.5, lighten(col, 0.22), 999, z + 2, true)
+	UI.fx.glow(orb, col); stroke(orb, C.white, 2, 0.2)   -- frost rim
+	return orb
+end
+WEAPONS.Archer = function(aimer: Frame, def: any): Frame -- 弓 bow + drawn arrow
+	local z = aimer.ZIndex; local col = def.color
+	hands(aimer, 0.42, col, z + 2)                       -- draw hand
+	local upper = piece(aimer, 10, 26, 0.86, 0.34, col, 5, z + 1, true); upper.Rotation = 22
+	local lower = piece(aimer, 10, 26, 0.86, 0.66, col, 5, z + 1, true); lower.Rotation = -22
+	piece(aimer, 8, 20, 0.86, 0.5, lighten(col, 0.2), 4, z + 1) -- riser
+	local str = piece(aimer, 30, 3, 0.62, 0.5, C.white, 2, z + 1); str.BackgroundTransparency = 0.15
+	local arrow = piece(aimer, 34, 5, 0.76, 0.5, lighten(col, 0.4), 3, z + 2)
+	UI.fx.glow(arrow, col)
+	piece(aimer, 8, 11, 0.98, 0.5, C.white, 3, z + 3)    -- bright broadhead
+	return arrow
+end
+WEAPONS.Monk = function(aimer: Frame, def: any): Frame -- 拳 two fists
+	local z = aimer.ZIndex; local col = def.color
+	piece(aimer, 26, 13, 0.5, 0.62, lighten(col, 0.05), 8, z + 1, true)  -- rear forearm
+	piece(aimer, 20, 20, 0.66, 0.62, col, 999, z + 1, true)             -- rear fist
+	piece(aimer, 30, 15, 0.62, 0.42, lighten(col, 0.12), 8, z + 2, true) -- lead forearm
+	for w = 0, 2 do
+		local wrap = piece(aimer, 4, 15, 0.5 + w * 0.09, 0.42, C.white, 2, z + 3)
+		wrap.BackgroundTransparency = 0.35
+	end
+	local leadFist = piece(aimer, 24, 24, 0.88, 0.42, lighten(col, 0.2), 999, z + 3, true)
+	UI.fx.glow(leadFist, col)
+	return leadFist
+end
+-- buildFighter: shadow + glowing ring pad + glossy TOKEN body (click/badge host) + rotatable aimer+weapon
+local function buildFighter(holder: Instance, id: string, def: any): any
+	local col = def.color
+	-- (0a) soft ground shadow (never rotates)
+	local shadow = frame(holder, "Shadow"); shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+	shadow.Position = UDim2.fromScale(0.5, 0.62); shadow.Size = UDim2.fromOffset(70, 30)
+	shadow.BackgroundColor3 = C.ink0; shadow.BackgroundTransparency = 0.45; shadow.ZIndex = 12
+	corner(shadow, 999)
+	-- (0b) glowing class RING pad (never rotates) — the rune pad the fighter stands on
+	local pad = frame(holder, "Pad"); pad.AnchorPoint = Vector2.new(0.5, 0.5)
+	pad.Position = UDim2.fromScale(0.5, 0.5); pad.Size = UDim2.fromOffset(82, 82)
+	pad.BackgroundColor3 = col; pad.BackgroundTransparency = 0.82; pad.ZIndex = 13; corner(pad, 999)
+	stroke(pad, lighten(col, 0.25), 3, 0.1)   -- bright inner rim
+	stroke(pad, col, 6, 0.55)                 -- soft outer halo band
+	UI.fx.glow(pad, col)
+	-- (1) TOKEN body — glossy top-lit disc; STATIC (glyph/face upright). Click + badge host.
+	local chip = frame(holder, "Token"); chip.AnchorPoint = Vector2.new(0.5, 0.5)
+	chip.Position = UDim2.fromScale(0.5, 0.5); chip.Size = UDim2.fromOffset(72, 72)
+	chip.BackgroundColor3 = col; chip.ZIndex = 15; corner(chip, 999)
+	UI.fx.gradient(chip, ColorSequence.new(lighten(col, 0.35), col), 90)
+	UI.fx.rim(chip, col, 3)
+	UI.fx.glow(chip, col)
+	local sheen = frame(chip, "Sheen"); sheen.BackgroundColor3 = C.white; sheen.BackgroundTransparency = 0.55
+	sheen.AnchorPoint = Vector2.new(0.5, 0.5); sheen.Position = UDim2.fromScale(0.5, 0.26)
+	sheen.Size = UDim2.fromScale(0.58, 0.3); sheen.ZIndex = 16; corner(sheen, 999)
+	-- (2) AIMER — transparent group centred on the token; ONLY this rotates. Weapon lives at +X.
+	local aimer = frame(chip, "Aimer"); aimer.BackgroundTransparency = 1
+	aimer.AnchorPoint = Vector2.new(0.5, 0.5); aimer.Position = UDim2.fromScale(0.5, 0.5)
+	aimer.Size = UDim2.fromScale(1, 1); aimer.ZIndex = 18; aimer.Rotation = 0
+	local weapon = (WEAPONS[id] or WEAPONS.Ronin)(aimer, def)
+	local rest = weapon.Position
+	-- (2b) HEAD medallion on TOP (static, never rotates) — keeps the class glyph readable
+	-- above the weapon so each fighter stays identifiable from above
+	local head = frame(chip, "Head"); head.AnchorPoint = Vector2.new(0.5, 0.5)
+	head.Position = UDim2.fromScale(0.5, 0.5); head.Size = UDim2.fromOffset(42, 42)
+	head.BackgroundColor3 = lighten(col, 0.12); head.ZIndex = 23; corner(head, 999)
+	UI.fx.gradient(head, ColorSequence.new(lighten(col, 0.45), col), 90)
+	stroke(head, C.ink0, 2.5, 0)
+	local hs = frame(head, "HS"); hs.BackgroundColor3 = C.white; hs.BackgroundTransparency = 0.5
+	hs.AnchorPoint = Vector2.new(0.5, 0.5); hs.Position = UDim2.fromScale(0.5, 0.28)
+	hs.Size = UDim2.fromScale(0.6, 0.3); hs.ZIndex = 24; corner(hs, 999)
+	local g = text(head, def.glyph, UI.T.tsize.lg, UI.T.color.text)
+	g.AnchorPoint = Vector2.new(0.5, 0.5); g.Position = UDim2.fromScale(0.5, 0.5)
+	g.Size = UDim2.fromScale(1, 1); g.Font = UI.T.font.display; g.ZIndex = 25
+	UI.fx.textOutline(g, C.ink0, 2)
+	-- (3) recoil — snap weapon back toward centre, then ease home to +X (a thrust/slash kick)
+	local function recoil()
+		weapon.Position = UDim2.fromScale(0.5, 0.5)
+		TweenService:Create(weapon, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Position = rest }):Play()
+	end
+	return { chip = chip, aimer = aimer, weapon = weapon, recoil = recoil }
+end
+-- screen-space angle (deg) from a tower to a board-scale point; uses pxOf like fire()'s beam
+local function aimAngleTo(pos: Vector2, boardPt: Vector2): number
+	local ox, oy = pxOf(pos)
+	local tx, ty = pxOf(boardPt)
+	return math.deg(math.atan2(ty - oy, tx - ox))
+end
+
 -- ===== place a fighter at a free board position =====
 local function placeFighterAt(pos: Vector2, id: string): any
 	local def = FIGHTERS[id]
@@ -911,12 +1044,12 @@ local function placeFighterAt(pos: Vector2, id: string): any
 	local holder = frame(board, "Tower"); holder.BackgroundTransparency = 1
 	holder.AnchorPoint = Vector2.new(0.5, 0.5); holder.Position = UDim2.fromScale(pos.X, pos.Y)
 	holder.Size = UDim2.fromScale(0.11, 0.06); holder.ZIndex = 14
-	local chip = UI.IconChip({ parent = holder, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.text,
-		glyphSize = UI.T.tsize.xl, fill = def.color, accent = def.color, glow = def.color,
-		size = UDim2.fromOffset(76, 76), radius = UI.T.radius.pill, anchor = Vector2.new(0.5, 0.5), pos = UDim2.fromScale(0.5, 0.5), z = 15 })
+	local fb = buildFighter(holder, id, def)
+	local chip = fb.chip
 	local _, badgeT = UI.Badge(chip, tostring((RunState.upgrades[id] or 0) + 1), "gold")
 	badgeT.Parent.AnchorPoint = Vector2.new(0.5, 0.5); badgeT.Parent.Position = UDim2.fromScale(0.9, 0.92); badgeT.Parent.ZIndex = 22
-	local tw = { id = id, pos = pos, cd = 0, frame = holder, chip = chip, badge = badgeT, ring = nil }
+	local tw = { id = id, pos = pos, cd = 0, frame = holder, chip = chip, badge = badgeT, ring = nil,
+		aimer = fb.aimer, weapon = fb.weapon, recoil = fb.recoil, aimAngle = 0, hasTarget = false }
 	table.insert(state.towers, tw)
 	button(chip).MouseButton1Click:Connect(function() selectTower(tw) end)
 	UI.motion.pop(chip)
@@ -1085,20 +1218,34 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 		end
 	end
 	for _, tw in state.towers do
-		tw.cd -= dt
-		if tw.cd <= 0 then
-			local S = fStats(tw.id)
-			local best, bp = nil, -1
-			local asp = boardAspect()
-			for _, e in state.enemies do
-				if e.active then
-					local ep = pathPos(e.progress)
-					local dx = ep.X - tw.pos.X
-					local dy = (ep.Y - tw.pos.Y) * asp -- Y in board-width units => circular range
-					if (dx * dx + dy * dy) <= S.range * S.range and e.progress > bp then best, bp = e, e.progress end
-				end
+		local S = fStats(tw.id)
+		local asp = boardAspect()
+		-- (A) EVERY-FRAME target scan (nearest in-range, furthest along) + smooth aim slew
+		local best, bp = nil, -1
+		for _, e in state.enemies do
+			if e.active then
+				local ep = pathPos(e.progress)
+				local dx = ep.X - tw.pos.X
+				local dy = (ep.Y - tw.pos.Y) * asp -- circular range in board-width units
+				if (dx * dx + dy * dy) <= S.range * S.range and e.progress > bp then best, bp = e, e.progress end
 			end
-			if best then fire(tw, best); tw.cd = S.rate end
+		end
+		local targetAngle
+		if best then
+			tw.hasTarget = true
+			targetAngle = aimAngleTo(tw.pos, pathPos(best.progress))
+		else
+			tw.hasTarget = false
+			targetAngle = math.sin(gameClock * 1.3 + tw.pos.X * 20) * 22 -- idle sweep
+		end
+		local diff = (targetAngle - tw.aimAngle + 180) % 360 - 180 -- shortest signed arc
+		tw.aimAngle += diff * math.clamp(dt * 14, 0, 1)            -- framerate-independent slew
+		if tw.aimer then tw.aimer.Rotation = tw.aimAngle end
+		-- (B) FIRE GATE — unchanged cadence, plus the recoil kick
+		tw.cd -= dt
+		if tw.cd <= 0 and best then
+			fire(tw, best); tw.cd = S.rate
+			if tw.recoil then tw.recoil() end
 		end
 	end
 end)
