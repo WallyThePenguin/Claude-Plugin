@@ -423,12 +423,13 @@ local function refreshTray()
 	local i = 1
 	for id in RunState.owned do
 		local def = FIGHTERS[id]
-		local chip = cel(tray, def.color, 10)
-		chip.Size = UDim2.new(0, 46, 0, 46); chip.LayoutOrder = i; chip.ZIndex = 30
-		local g = text(chip, def.glyph, 22, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 31
-		if (RunState.upgrades[id] or 0) > 0 then
-			local pip = text(chip, string.rep("\u{2605}", RunState.upgrades[id]), 11, C.gold)
-			pip.AnchorPoint = Vector2.new(0.5, 1); pip.Position = UDim2.fromScale(0.5, 1); pip.Size = UDim2.fromScale(1, 0.3); pip.ZIndex = 32
+		local chip = UI.IconChip({ parent = tray, glyph = def.glyph, glyphColor = UI.T.color.textOnAccent, glyphSize = UI.T.tsize.lg,
+			fill = def.color, accent = def.color, size = UDim2.fromOffset(54, 54), radius = UI.T.radius.md, z = 30 })
+		chip.LayoutOrder = i
+		local lvl = (RunState.upgrades[id] or 0) + 1
+		if lvl > 1 then
+			local _, bt = UI.Badge(chip, tostring(lvl), "gold")
+			bt.Parent.AnchorPoint = Vector2.new(0.5, 0.5); bt.Parent.Position = UDim2.fromScale(0.92, 0.92); bt.Parent.Size = UDim2.fromOffset(22, 22)
 		end
 		i += 1
 	end
@@ -787,27 +788,34 @@ local function placeFighter(node: any, id: string)
 	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return end
 	setYen(state.yen - def.cost)
 	node.plus.Visible = false
-	-- turn the node panel into a warm stone foundation pad so the tower stands ON the ground
-	node.frame.BackgroundColor3 = C.pad; node.frame.BackgroundTransparency = 0.06
-	-- a real rotating 3D model in a ViewportFrame (replaces the flat cel card + glyph)
-	local vpData = makeTowerViewport(node.frame, def)
-	local t = vpData.vp -- `t` is now the ViewportFrame; the rest of placeFighter uses `t` unchanged
-	local tw = { id = id, node = node, cd = 0, frame = t, model = vpData.model, pocket = vpData.pocket }
+	node.frame.BackgroundTransparency = 1 -- the clean token IS the tower now (no pad card)
+	-- clean premium TOKEN via the engine: class-colored circle chip + kanji glyph + soft glow
+	local chip = UI.IconChip({ parent = node.frame, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.textOnAccent,
+		glyphSize = UI.T.tsize.xl, fill = def.color, accent = def.color, glow = def.color,
+		size = UDim2.fromOffset(76, 76), radius = UI.T.radius.pill, anchor = Vector2.new(0.5, 0.5), pos = UDim2.fromScale(0.5, 0.5), z = 15 })
+	local _, badgeT = UI.Badge(chip, tostring((RunState.upgrades[id] or 0) + 1), "gold")
+	badgeT.Parent.AnchorPoint = Vector2.new(0.5, 0.5); badgeT.Parent.Position = UDim2.fromScale(0.9, 0.92); badgeT.Parent.ZIndex = 22
+	local tw = { id = id, node = node, cd = 0, frame = chip, badge = badgeT }
 	node.tower = tw; table.insert(state.towers, tw)
-	-- aura ring
-	local aura = frame(t, "Aura"); aura.BackgroundTransparency = 1; aura.Size = UDim2.fromScale(1.3, 1.3)
-	aura.AnchorPoint = Vector2.new(0.5, 0.5); aura.Position = UDim2.fromScale(0.5, 0.5); aura.ZIndex = 14
-	stroke(aura, def.color, 2, 0.4); corner(aura, 12)
-	button(t).MouseButton1Click:Connect(function()
-		-- inspect: pulse the range aura (upgrades are drafted between waves now)
+	button(chip).MouseButton1Click:Connect(function()
+		-- inspect: expand a range ring
 		local S = fStats(id)
-		local r = math.clamp(S.range * 4.2, 1.3, 2.6)
-		TweenService:Create(aura, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true),
-			{ Size = UDim2.fromScale(r, r) }):Play()
+		local ring = frame(node.frame, "Ring"); ring.BackgroundTransparency = 1; ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.fromScale(0.5, 0.5); ring.Size = UDim2.fromScale(0.6, 0.6); ring.ZIndex = 9
+		UI.fx.corner(ring, 999); local rst = UI.fx.stroke(ring, def.color, 3, 0.2)
+		local r = math.clamp(S.range * 20, 3.5, 9)
+		TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale(r, r) }):Play()
+		TweenService:Create(rst, TweenInfo.new(0.45), { Transparency = 1 }):Play()
+		task.delay(0.5, function() ring:Destroy() end)
 	end)
-	t.Size = UDim2.fromScale(0.3, 0.3)
-	TweenService:Create(t, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(1, 1) }):Play()
+	UI.motion.pop(chip)
 	hitSpark(select(1, pxOf(node.pos)), select(2, pxOf(node.pos)), def.color)
+end
+-- keep the level badges in sync when a fighter's tier changes (drafted trait)
+local function updateTowerBadges()
+	for _, tw in state.towers do
+		if tw.badge then tw.badge.Text = tostring((RunState.upgrades[tw.id] or 0) + 1) end
+	end
 end
 
 -- a boss can SMASH a placed fighter: free the node, shatter the frame, re-summon later
@@ -983,29 +991,42 @@ local function applyCard(c: any)
 	elseif c.kind == "trait" then
 		RunState.traits[c.id] = RunState.traits[c.id] or {}
 		RunState.traits[c.id][c.trait.key] = true
-		RunState.upgrades[c.id] = (RunState.upgrades[c.id] or 0) + 1 -- tier = trait count (drives tray star pips)
+		RunState.upgrades[c.id] = (RunState.upgrades[c.id] or 0) + 1
+		updateTowerBadges()
 	elseif c.kind == "eco" then setYen(state.yen + 40) end
 	refreshTray()
 end
 local function showDraft()
 	state.drafting = true
 	local drawn = draftCards()
-	local ov = frame(root, "Draft"); ov.Size = UDim2.fromScale(1, 1); ov.BackgroundColor3 = C.ink0; ov.BackgroundTransparency = 0.35; ov.ZIndex = 52
-	local title = shout(ov, "FORGE YOUR CLASS", 28, C.cyan); title.Position = UDim2.fromScale(0, 0.16); title.Size = UDim2.fromScale(1, 0.08); title.ZIndex = 53
-	local rowf = frame(ov, "Row"); rowf.BackgroundTransparency = 1; rowf.AnchorPoint = Vector2.new(0.5, 0.5); rowf.Position = UDim2.fromScale(0.5, 0.52); rowf.Size = UDim2.fromScale(0.82, 0.5); rowf.ZIndex = 53
-	local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Horizontal; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.VerticalAlignment = Enum.VerticalAlignment.Center; ll.Padding = UDim.new(0, 18); ll.Parent = rowf
+	local scrim = UI.create("Frame", { Name = "Draft", Parent = root, BackgroundColor3 = UI.T.color.overlay,
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = UI.T.z.modal }) :: Frame
+	TweenService:Create(scrim, UI.T.motion.base, { BackgroundTransparency = 0.42 }):Play()
+	local title = Instance.new("TextLabel"); title.BackgroundTransparency = 1; title.Font = UI.T.font.display
+	title.Text = "FORGE YOUR CLASS"; title.TextSize = UI.T.tsize.xxl; title.TextColor3 = UI.T.color.cyan
+	title.Size = UDim2.fromScale(1, 0.1); title.Position = UDim2.fromScale(0, 0.13); title.ZIndex = UI.T.z.modal + 1; title.Parent = scrim
 	local done = false
-	local function choose(c: any) if done then return end done = true; applyCard(c); ov:Destroy(); state.drafting = false end
-	for _, c in drawn do
-		local card = cel(rowf, C.panel, 14); card.Size = UDim2.fromScale(0.28, 1); card.ZIndex = 54; stroke(card, c.color, 3, 0)
-		local icon = cel(card, c.color, 12); icon.AnchorPoint = Vector2.new(0.5, 0); icon.Position = UDim2.fromScale(0.5, 0.08); icon.Size = UDim2.fromScale(0.42, 0.32); icon.ZIndex = 55
-		local g = text(icon, c.glyph, 34, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 56
-		local nm = shout(card, c.title, 17, c.color); nm.Position = UDim2.fromScale(0, 0.5); nm.Size = UDim2.fromScale(1, 0.12); nm.ZIndex = 55
-		local tp = text(card, c.tip, 13, C.dim); tp.Position = UDim2.fromScale(0.06, 0.68); tp.Size = UDim2.fromScale(0.88, 0.2); tp.TextWrapped = true; tp.ZIndex = 55
-		local b = button(card); b.ZIndex = 57
-		b.MouseButton1Click:Connect(function() choose(c) end)
-		b.MouseEnter:Connect(function() TweenService:Create(card, TweenInfo.new(0.1), { Size = UDim2.fromScale(0.3, 1.04) }):Play() end)
-		b.MouseLeave:Connect(function() TweenService:Create(card, TweenInfo.new(0.1), { Size = UDim2.fromScale(0.28, 1) }):Play() end)
+	local function choose(c: any)
+		if done then return end; done = true; applyCard(c)
+		TweenService:Create(scrim, UI.T.motion.fast, { BackgroundTransparency = 1 }):Play()
+		task.delay(0.16, function() scrim:Destroy() end); state.drafting = false
+	end
+	local xs = { 0.24, 0.5, 0.76 }
+	for i, c in drawn do
+		local accent = c.color
+		local card = UI.Card({ parent = scrim, size = UDim2.fromOffset(250, 384), anchor = Vector2.new(0.5, 0.5),
+			pos = UDim2.fromScale(xs[i] or 0.5, 0.55), accent = accent, glow = accent, z = UI.T.z.modal + 2 })
+		local ic = UI.IconChip({ parent = card.body, glyph = c.glyph, glyphColor = UI.T.color.textOnAccent, glyphSize = UI.T.tsize.hero,
+			fill = accent, accent = accent, size = UDim2.fromOffset(100, 100), radius = UI.T.radius.lg, z = UI.T.z.modal + 3 })
+		ic.LayoutOrder = 1
+		local nm = Instance.new("TextLabel"); nm.BackgroundTransparency = 1; nm.Font = UI.T.font.heading; nm.Text = c.title
+		nm.TextSize = UI.T.tsize.md; nm.TextColor3 = accent; nm.Size = UDim2.new(1, 0, 0, 44); nm.TextWrapped = true
+		nm.LayoutOrder = 2; nm.ZIndex = UI.T.z.modal + 3; nm.Parent = card.body
+		local tp = Instance.new("TextLabel"); tp.BackgroundTransparency = 1; tp.Font = UI.T.font.med; tp.Text = c.tip
+		tp.TextSize = UI.T.tsize.sm; tp.TextColor3 = UI.T.color.textMid; tp.Size = UDim2.new(1, 0, 0, 40); tp.TextWrapped = true
+		tp.LayoutOrder = 3; tp.ZIndex = UI.T.z.modal + 3; tp.Parent = card.body
+		local btn = UI.Button({ parent = card.footer, text = "CHOOSE", accent = accent, size = UDim2.new(1, 0, 0, 42), z = UI.T.z.modal + 3 })
+		btn.MouseButton1Click:Connect(function() choose(c) end)
 	end
 	if DEBUG.autoPlay then task.delay(1.0, function() if not done then choose(drawn[1]) end end) end
 end
@@ -1094,16 +1115,20 @@ function endRun()
 	if not state.running then return end
 	state.running = false
 	screenFlash(C.red, 0.5); screenShake(10, 8)
-	local ov = frame(root, "Over"); ov.Size = UDim2.fromScale(1, 1); ov.BackgroundColor3 = C.ink0; ov.BackgroundTransparency = 0.12; ov.ZIndex = 90
-	local big = shout(ov, "OVERRUN", 60, C.red); big.AnchorPoint = Vector2.new(0.5, 0.5); big.Position = UDim2.fromScale(0.5, 0.38); big.Size = UDim2.fromScale(0.8, 0.16); big.ZIndex = 91
-	local sub = text(ov, "You held to WAVE " .. state.wave, 22, C.white); sub.Font = FONT; sub.Position = UDim2.fromScale(0, 0.54); sub.Size = UDim2.fromScale(1, 0.06); sub.ZIndex = 91
-	local again = Instance.new("TextButton"); again.AnchorPoint = Vector2.new(0.5, 0.5); again.Position = UDim2.fromScale(0.5, 0.68); again.Size = UDim2.fromScale(0.34, 0.1)
-	again.BackgroundColor3 = C.cyan; again.Text = "RUN IT BACK"; again.Font = FONT; again.TextSize = 22; again.TextColor3 = C.ink0; again.ZIndex = 91; corner(again, 10); stroke(again, C.ink0, 3, 0); again.Parent = ov
-	again.MouseButton1Click:Connect(function()
+	local scrim = UI.create("Frame", { Name = "Over", Parent = root, BackgroundColor3 = UI.T.color.overlay,
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = UI.T.z.modal + 10 }) :: Frame
+	TweenService:Create(scrim, UI.T.motion.base, { BackgroundTransparency = 0.28 }):Play()
+	local card = UI.Card({ parent = scrim, size = UDim2.fromOffset(420, 330), accent = "danger", glow = "danger", z = UI.T.z.modal + 11 })
+	local big = Instance.new("TextLabel"); big.BackgroundTransparency = 1; big.Font = UI.T.font.display; big.Text = "OVERRUN"
+	big.TextSize = UI.T.tsize.hero; big.TextColor3 = UI.T.color.danger; big.Size = UDim2.new(1, 0, 0, 64); big.LayoutOrder = 1; big.ZIndex = UI.T.z.modal + 12; big.Parent = card.body
+	local sub = Instance.new("TextLabel"); sub.BackgroundTransparency = 1; sub.Font = UI.T.font.body; sub.Text = "You held to WAVE " .. state.wave
+	sub.TextSize = UI.T.tsize.lg; sub.TextColor3 = UI.T.color.text; sub.Size = UDim2.new(1, 0, 0, 30); sub.LayoutOrder = 2; sub.ZIndex = UI.T.z.modal + 12; sub.Parent = card.body
+	local btn = UI.Button({ parent = card.footer, text = "RUN IT BACK", accent = "cyan", size = UDim2.new(1, 0, 0, 44), z = UI.T.z.modal + 12 })
+	btn.MouseButton1Click:Connect(function()
 		gui:Destroy(); if hbConn then hbConn:Disconnect() end
 		local clone = script:Clone(); clone.Parent = script.Parent; clone.Disabled = false
 	end)
-	if DEBUG.autoPlay then task.delay(2.5, function() again.MouseButton1Click:Fire() end) end
+	if DEBUG.autoPlay then task.delay(2.5, function() btn.MouseButton1Click:Fire() end) end
 end
 
 print("[NeonGauntlet] ready")
