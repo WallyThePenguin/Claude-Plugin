@@ -752,12 +752,12 @@ local function frameCamera(cam: Camera, _model: Model)
 	-- all warriors share the ~4.6-stud skeleton, so frame by a fixed vertical extent (not the bbox,
 	-- which balloons from tall staffs/katanas and shrinks the body). Camera sits on the +Z (front) side.
 	local halfFov = rad(cam.FieldOfView) * 0.5
-	local frameH = 5.6 -- studs to fit vertically: the ~4.6 figure + a little head/weapon room
+	local frameH = 4.4 -- tighter than the ~4.6 figure => a bigger HERO framing that fills the card
 	local dist = (frameH * 0.5) / math.tan(halfFov)
 	local el, az = rad(12), rad(20) -- gentle look-up, slight 3/4 so side-held weapons separate from the torso
 	local h = math.cos(el)
 	local offset = Vector3.new(h * math.sin(az), math.sin(el), h * math.cos(az)) -- +Z side => we see the FACE
-	local target = Vector3.new(0, 2.3, 0)
+	local target = Vector3.new(0, 2.45, 0)
 	cam.CFrame = CFrame.lookAt(target + offset * dist, target)
 end
 -- ONE shared spinner loop for ALL viewports (raw dt: keeps turning during hit-stop) + a subtle idle bob
