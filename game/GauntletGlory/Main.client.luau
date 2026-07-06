@@ -38,9 +38,9 @@ C.asphaltD   = Color3.fromRGB(50, 52, 60)
 C.roadEdge   = Color3.fromRGB(176, 158, 120)  -- bright warm stone curb (catches dusk light)
 C.lanePaint  = Color3.fromRGB(236, 229, 206)
 C.roadShadow = Color3.fromRGB(12, 12, 16)
-C.groundTop  = Color3.fromRGB(138, 122, 100)  -- warm packed-earth tabletop, LIT
-C.groundBot  = Color3.fromRGB(92, 80, 68)     -- earth near the rim (lifted so the center reads)
-C.pad        = Color3.fromRGB(150, 134, 108)  -- warm stone foundation under a placed tower
+C.groundTop  = Color3.fromRGB(150, 144, 130)  -- cleaner warm-STONE tabletop (less muddy brown => colors pop)
+C.groundBot  = Color3.fromRGB(84, 80, 74)     -- warm dark stone near the rim
+C.pad        = Color3.fromRGB(158, 148, 128)  -- lit warm stone foundation under a placed tower
 C.groundEdge = Color3.fromRGB(150, 132, 104)  -- warm stone rim of the tabletop
 C.skyTop     = Color3.fromRGB(44, 50, 92)     -- deep dusk indigo (now visible)
 C.skyBot     = Color3.fromRGB(168, 104, 90)   -- warm sunset horizon
@@ -164,6 +164,19 @@ do
 	local gg = Instance.new("UIGradient"); gg.Rotation = 90
 	gg.Color = ColorSequence.new(C.groundTop, C.groundBot); gg.Parent = board
 	corner(board, 18); stroke(board, C.groundEdge, 4, 0)
+end
+-- foreground VIGNETTE: darken the top/bottom edges to funnel the eye inward (cheap cinematic depth).
+-- A plain Frame (not Active, not a button) does not intercept clicks to the nodes below it.
+local vign = frame(root, "Vignette"); vign.Size = UDim2.fromScale(1, 1)
+vign.BackgroundColor3 = Color3.new(0, 0, 0); vign.BackgroundTransparency = 0; vign.ZIndex = 25
+do
+	local vg = Instance.new("UIGradient"); vg.Rotation = 90
+	vg.Color = ColorSequence.new(Color3.new(0, 0, 0))
+	vg.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(0.28, 1),
+		NumberSequenceKeypoint.new(0.72, 1), NumberSequenceKeypoint.new(1, 0.25),
+	})
+	vg.Parent = vign
 end
 -- (the road is drawn as a solid ribbon AFTER pathPos is defined — see drawRoad below)
 -- helper: world (scale) position of progress p in [0,1] along the waypoint path
@@ -724,19 +737,27 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 local function makeTowerViewport(parent: Instance, def: any): any
 	local vp = Instance.new("ViewportFrame")
-	-- taller than the node: the warrior RISES from the node pad instead of being squashed into it
 	vp.Size = UDim2.fromScale(1.9, 3.9)
 	vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.fromScale(0.5, 1.05)
 	vp.BackgroundTransparency = 1; vp.ZIndex = 15
-	vp.Ambient = Color3.fromRGB(154, 150, 150) -- brighter fill so the stone/wood reads (was too dark)
-	vp.LightColor = Color3.fromRGB(255, 244, 214)
-	vp.LightDirection = Vector3.new(-0.6, -1, -0.35).Unit
+	vp.Ambient = Color3.fromRGB(86, 104, 150)     -- SATURATED-COOL dusk fill: shadows get hue, not flat grey
+	vp.LightColor = Color3.fromRGB(255, 236, 200) -- warm key (dusk sun)
+	vp.LightDirection = Vector3.new(-1, -0.55, -0.35).Unit -- angled upper-left-front => cheekbone/shoulder modeling
 	vp.Parent = parent
 	local world = Instance.new("WorldModel"); world.Parent = vp
+	-- CONTACT SHADOW: a flat dark disc at the feet (parented to the WORLD, not the model, so it
+	-- stays put while the model spins) => the warrior reads as PLACED, not floating.
+	local sh = Instance.new("Part")
+	sh.Shape = Enum.PartType.Cylinder
+	sh.Size = Vector3.new(0.1, 3.0, 3.0) -- thin along its axis; rotate the axis to point up => a ground disc
+	sh.CFrame = CFrame.new(0.35, 0.05, 0.2) * CFrame.Angles(0, 0, rad(90))
+	sh.Color = Color3.new(0, 0, 0); sh.Material = Enum.Material.SmoothPlastic
+	sh.Transparency = 0.52; sh.Anchored = true; sh.CanCollide = false; sh.CastShadow = false
+	sh.Parent = world
 	local model = buildModel(def.id)
 	model.Parent = world
 	local cam = Instance.new("Camera")
-	cam.FieldOfView = 38; cam.Parent = vp -- wider than the building's tele so a 4.6-stud figure reads with depth
+	cam.FieldOfView = 26; cam.Parent = vp -- LONG lens: product-shot flatten, stops the head ballooning
 	vp.CurrentCamera = cam
 	frameCamera(cam, model)
 	addSpinner(model, rad(20))
@@ -754,7 +775,7 @@ local function placeFighter(node: any, id: string)
 	-- a real rotating 3D model in a ViewportFrame (replaces the flat cel card + glyph)
 	local vpData = makeTowerViewport(node.frame, def)
 	local t = vpData.vp -- `t` is now the ViewportFrame; the rest of placeFighter uses `t` unchanged
-	local tw = { id = id, node = node, cd = 0, frame = t, model = vpData.model }
+	local tw = { id = id, node = node, cd = 0, frame = t, model = vpData.model, pocket = vpData.pocket }
 	node.tower = tw; table.insert(state.towers, tw)
 	-- aura ring
 	local aura = frame(t, "Aura"); aura.BackgroundTransparency = 1; aura.Size = UDim2.fromScale(1.3, 1.3)
@@ -780,6 +801,7 @@ local function removeFighter(tw: any)
 	node.frame.BackgroundColor3 = C.panel; node.frame.BackgroundTransparency = 0.25 -- revert pad to empty slot
 	local i = table.find(state.towers, tw); if i then table.remove(state.towers, i) end
 	if tw.model then removeSpinner(tw.model) end -- stop spinning the model we're about to destroy
+	if tw.pocket then local p = tw.pocket; TweenService:Create(p, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play(); task.delay(0.2, function() p:Destroy() end) end
 	local fx = tw.frame
 	TweenService:Create(fx, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
 		{ Size = UDim2.fromScale(0.01, 0.01), Rotation = 55 }):Play()
