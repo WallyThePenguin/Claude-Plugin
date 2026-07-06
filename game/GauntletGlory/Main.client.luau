@@ -583,52 +583,82 @@ local rad = math.rad
 -- MODELS: id -> { accent, parts = { {shape,size,off, rotY?,tilt?, material,color, neon?,light?}, ... } }
 local MODELS = {
 	Ronin = { accent = C.cyan, parts = {
-		{ "Block", Vector3.new(3.2,0.5,3.2),  Vector3.new(0,0.25,0),  "Slate",  Color3.fromRGB(96,104,112) },
-		{ "Block", Vector3.new(2.9,1.2,2.9),  Vector3.new(0,1.1,0),   "Slate",  Color3.fromRGB(120,126,134) },
-		{ "Block", Vector3.new(2.3,1.3,2.3),  Vector3.new(0,2.35,0),  "Marble", Color3.fromRGB(224,222,214) },
-		{ "Block", Vector3.new(2.4,0.25,2.4), Vector3.new(0,3.1,0),   "Slate",  Color3.fromRGB(70,74,82) },
-		{ "Wedge", Vector3.new(3.4,0.9,1.7),  Vector3.new(0,3.6,0.85),"Slate",  Color3.fromRGB(58,62,70) },
-		{ "Wedge", Vector3.new(3.4,0.9,1.7),  Vector3.new(0,3.6,-0.85),"Slate", Color3.fromRGB(58,62,70), rotY = 180 },
-		{ "Block", Vector3.new(1.4,0.35,3.6), Vector3.new(0,4.05,0),  "Slate",  Color3.fromRGB(48,52,60) },
-		{ "Block", Vector3.new(0.28,0.5,0.28),Vector3.new(0,4.45,0),  "Metal",  Color3.fromRGB(150,140,110) },
-		{ "Ball",  Vector3.new(0.55,0.55,0.55),Vector3.new(0,2.35,1.16),"Neon", C.cyan, neon = true, light = true },
+		{ "Block", Vector3.new(0.55,1.1,0.55), Vector3.new(-0.42,0.55,0), "Slate", Color3.fromRGB(32,34,46) }, -- left leg / greave (dark lacquer)
+		{ "Block", Vector3.new(0.55,1.1,0.55), Vector3.new(0.42,0.55,0), "Slate", Color3.fromRGB(32,34,46) }, -- right leg / greave
+		{ "Block", Vector3.new(1.5,1.5,0.9), Vector3.new(0,1.85,0), "Metal", Color3.fromRGB(38,46,84) }, -- torso / dou armor (indigo lacquered)  PrimaryPart
+		{ "Block", Vector3.new(1.55,0.35,0.98), Vector3.new(0,1.2,0), "Fabric", Color3.fromRGB(20,22,30) }, -- kusazuri armor skirt hem (charcoal)  hides leg-torso sea
+		{ "Block", Vector3.new(0.7,0.5,1.05), Vector3.new(-0.95,2.42,0), "Metal", Color3.fromRGB(26,30,54), tilt = Vector3.new(0,0,-14) }, -- left shoulder pauldron (sode)
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(-1.02,2.0,0), "Slate", Color3.fromRGB(32,34,46), tilt = Vector3.new(0,0,6) }, -- left arm (baseline thickness)
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(1.02,1.9,0.15), "Slate", Color3.fromRGB(32,34,46), tilt = Vector3.new(18,0,-10) }, -- right arm  extended to grip katana out to the side
+		{ "Block", Vector3.new(1.7,1.6,1.55), Vector3.new(0,3.35,0), "SmoothPlastic", Color3.fromRGB(22,24,34) }, -- head (dark, mostly under helmet)  baseline chibi head
+		{ "Block", Vector3.new(1.85,0.95,1.7), Vector3.new(0,3.9,0), "Metal", Color3.fromRGB(30,34,60) }, -- kabuto helmet dome (indigo/charcoal)
+		{ "Block", Vector3.new(1.95,0.32,0.55), Vector3.new(0,3.28,0.62), "Metal", Color3.fromRGB(22,24,36), tilt = Vector3.new(-24,0,0) }, -- helmet brim / mabizashi peak over the face
+		{ "Wedge", Vector3.new(0.28,1.1,0.9), Vector3.new(0,4.75,-0.1), "Metal", Color3.fromRGB(212,178,92), tilt = Vector3.new(20,0,0) }, -- golden maedate horn crest sweeping up from helmet front
+		{ "Block", Vector3.new(1.5,0.45,0.35), Vector3.new(0,3.05,0.72), "Fabric", Color3.fromRGB(20,22,30) }, -- menpo lower face-mask guard
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(-0.34,3.42,0.8), "SmoothPlastic", Color3.fromRGB(12,14,20) }, -- left eye  matte dark, unified roster face style (+Z face
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(0.34,3.42,0.8), "SmoothPlastic", Color3.fromRGB(12,14,20) }, -- right eye  matte dark, unified roster face style
+		{ "Block", Vector3.new(0.22,0.22,0.9), Vector3.new(1.52,1.45,0.35), "WoodPlanks", Color3.fromRGB(58,40,30), tilt = Vector3.new(20,0,-10) }, -- katana tsuka (wrapped hilt) in right hand
+		{ "Cylinder", Vector3.new(0.34,0.14,0.34), Vector3.new(1.6,1.68,0.48), "Metal", Color3.fromRGB(36,32,24), tilt = Vector3.new(20,0,80) }, -- tsuba round guard, aligned to blade axis
+		{ "Block", Vector3.new(0.16,3.0,0.16), Vector3.new(1.82,2.62,0.98), "Metal", Color3.fromRGB(210,220,230), tilt = Vector3.new(20,0,-10) }, -- katana blade (steel core) thrust up-and-out to the right
+		{ "Block", Vector3.new(0.08,3.0,0.2), Vector3.new(1.88,2.62,1.05), "Neon", Color3.fromRGB(53,230,255), tilt = Vector3.new(20,0,-10), light = true }, -- glowing cyan katana edge  the ONE emissive accent
 	}},
 	Onmyoji = { accent = Color3.fromRGB(130,220,235), parts = {
-		{ "Block",    Vector3.new(2.2,0.4,2.2), Vector3.new(0,0.2,0),  "Concrete",  Color3.fromRGB(150,152,150) },
-		{ "Cylinder", Vector3.new(1.5,0.9,1.5), Vector3.new(0,0.85,0), "WoodPlanks",Color3.fromRGB(150,60,54) },
-		{ "Block",    Vector3.new(2.6,0.35,2.6),Vector3.new(0,1.45,0), "Slate",     Color3.fromRGB(72,84,96) },
-		{ "Cylinder", Vector3.new(1.2,0.8,1.2), Vector3.new(0,2.05,0), "WoodPlanks",Color3.fromRGB(150,60,54) },
-		{ "Block",    Vector3.new(2.1,0.32,2.1),Vector3.new(0,2.6,0),  "Slate",     Color3.fromRGB(72,84,96) },
-		{ "Cylinder", Vector3.new(0.95,0.75,0.95),Vector3.new(0,3.15,0),"WoodPlanks",Color3.fromRGB(150,60,54) },
-		{ "Block",    Vector3.new(1.6,0.3,1.6), Vector3.new(0,3.65,0), "Slate",     Color3.fromRGB(72,84,96) },
-		{ "Cylinder", Vector3.new(0.22,1.1,0.22),Vector3.new(0,4.4,0), "Metal",     Color3.fromRGB(170,150,90) },
-		{ "Ball",     Vector3.new(0.4,0.4,0.4), Vector3.new(0,5.05,0), "Neon",      Color3.fromRGB(130,220,235), neon = true, light = true },
+		{ "Cylinder", Vector3.new(1.9,0.35,1.9), Vector3.new(0,0.05,0), "Marble", Color3.fromRGB(210,222,236) }, -- round dais/base on the y=0 plane
+		{ "Block", Vector3.new(0.55,1.1,0.55), Vector3.new(-0.42,0.6,0), "Fabric", Color3.fromRGB(235,240,246) }, -- left leg  upsized to roster baseline, sits on dais top
+		{ "Block", Vector3.new(0.55,1.1,0.55), Vector3.new(0.42,0.6,0), "Fabric", Color3.fromRGB(235,240,246) }, -- right leg  upsized to roster baseline
+		{ "Wedge", Vector3.new(2.2,1.2,1.6), Vector3.new(0,0.62,0), "Fabric", Color3.fromRGB(238,242,248), rotY = 180 }, -- robe skirt/hem flaring to the feet, covers the leg-dais 
+		{ "Block", Vector3.new(1.5,1.5,0.9), Vector3.new(0,1.9,0), "Fabric", Color3.fromRGB(246,249,252) }, -- torso trunk  pale robe body, PrimaryPart candidate
+		{ "Block", Vector3.new(1.62,0.35,1.0), Vector3.new(0,1.42,0), "Fabric", Color3.fromRGB(92,120,158) }, -- indigo obi/sash cinching the waist
+		{ "Block", Vector3.new(1.6,0.5,1.0), Vector3.new(0,2.55,0), "Fabric", Color3.fromRGB(120,150,190) }, -- blue collar/shoulder yoke
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(-1.02,1.98,0.1), "Fabric", Color3.fromRGB(244,247,251), tilt = Vector3.new(12,0,8) }, -- left sleeve/arm  normalized thickness, holding staff
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(1.02,1.98,0.05), "Fabric", Color3.fromRGB(244,247,251), tilt = Vector3.new(0,0,-6) }, -- right sleeve/arm resting at side  normalized thickness
+		{ "Ball", Vector3.new(0.42,0.42,0.42), Vector3.new(-1.22,1.32,0.45), "SmoothPlastic", Color3.fromRGB(236,214,190) }, -- left hand gripping the staff shaft (nudged onto shaft)
+		{ "Block", Vector3.new(1.7,1.6,1.55), Vector3.new(0,3.4,0), "SmoothPlastic", Color3.fromRGB(238,214,190) }, -- BIG chibi head, pale skin
+		{ "Block", Vector3.new(1.78,0.55,1.62), Vector3.new(0,4.02,0), "Fabric", Color3.fromRGB(28,32,44) }, -- black hair fringe cap over the brow
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(-0.34,3.44,0.8), "SmoothPlastic", Color3.fromRGB(40,44,58) }, -- left eye  matte (demoted from neon so the orb is the sin
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(0.34,3.44,0.8), "SmoothPlastic", Color3.fromRGB(40,44,58) }, -- right eye  matte to match
+		{ "Wedge", Vector3.new(1.0,1.5,0.7), Vector3.new(0,5.35,-0.15), "Fabric", Color3.fromRGB(20,24,34), rotY = 180, tilt = Vector3.new(14,0,0) }, -- tall pointed eboshi hat  unmistakable onmyoji topper
+		{ "Block", Vector3.new(1.15,0.28,1.05), Vector3.new(0,4.42,0), "Fabric", Color3.fromRGB(36,40,52) }, -- hat base band seating the eboshi
+		{ "Cylinder", Vector3.new(0.16,4.6,0.16), Vector3.new(-1.35,2.6,0.45), "WoodPlanks", Color3.fromRGB(150,110,74), tilt = Vector3.new(6,0,4) }, -- staff shaft, held in left hand, rising past the head
+		{ "Ball", Vector3.new(0.72,0.72,0.72), Vector3.new(-1.5,5.05,0.6), "Neon", Color3.fromRGB(130,220,235), light = true }, -- ice-blue glowing orb crowning the staff  the ONE emissiv
 	}},
 	Archer = { accent = C.violet, parts = {
-		{ "Block",    Vector3.new(2.6,0.3,2.6), Vector3.new(0,0.15,0),   "Concrete",  Color3.fromRGB(140,136,128) },
-		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(0.9,1.6,0.9),  "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,-8) },
-		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(-0.9,1.6,0.9), "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,8) },
-		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(0.9,1.6,-0.9), "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,-8) },
-		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(-0.9,1.6,-0.9),"WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,8) },
-		{ "Block",    Vector3.new(1.9,0.18,1.9),Vector3.new(0,1.7,0),    "WoodPlanks",Color3.fromRGB(138,100,60) },
-		{ "Block",    Vector3.new(2.4,0.35,2.4),Vector3.new(0,3.15,0),   "WoodPlanks",Color3.fromRGB(150,110,66) },
-		{ "Block",    Vector3.new(2.4,0.5,0.12),Vector3.new(0,3.6,1.14), "WoodPlanks",Color3.fromRGB(128,92,54) },
-		{ "Block",    Vector3.new(2.4,0.5,0.12),Vector3.new(0,3.6,-1.14),"WoodPlanks",Color3.fromRGB(128,92,54) },
-		{ "Block",    Vector3.new(0.12,0.5,2.4),Vector3.new(1.14,3.6,0), "WoodPlanks",Color3.fromRGB(128,92,54) },
-		{ "Block",    Vector3.new(0.12,0.5,2.4),Vector3.new(-1.14,3.6,0),"WoodPlanks",Color3.fromRGB(128,92,54) },
-		{ "Wedge",    Vector3.new(2.6,0.7,1.3), Vector3.new(0,4.15,0.65),"WoodPlanks",Color3.fromRGB(96,66,40) },
-		{ "Wedge",    Vector3.new(2.6,0.7,1.3), Vector3.new(0,4.15,-0.65),"WoodPlanks",Color3.fromRGB(96,66,40), rotY = 180 },
-		{ "Ball",     Vector3.new(0.5,0.5,0.5), Vector3.new(0,3.55,0),   "Neon",      C.violet, neon = true, light = true },
+		{ "Cylinder", Vector3.new(0.55,1.1,0.55), Vector3.new(-0.42,0.55,0.12), "Fabric", Color3.fromRGB(120,110,95), rotY = 8 }, -- left leg, staggered forward for drawn stance  baseline s
+		{ "Cylinder", Vector3.new(0.55,1.1,0.55), Vector3.new(0.42,0.55,-0.12), "Fabric", Color3.fromRGB(120,110,95), rotY = -8 }, -- right leg, set back (archer's brace)  baseline size
+		{ "Block", Vector3.new(1.5,1.5,0.9), Vector3.new(0,1.85,0), "Fabric", Color3.fromRGB(225,220,205) }, -- torso, light tunic  PrimaryPart candidate
+		{ "Block", Vector3.new(1.55,0.42,0.95), Vector3.new(0,1.28,0), "Fabric", Color3.fromRGB(90,80,70) }, -- belt / tunic hem wrap (anime layering, hides seam)
+		{ "Block", Vector3.new(0.5,1.2,0.35), Vector3.new(-0.42,2.6,-0.62), "WoodPlanks", Color3.fromRGB(95,70,50), rotY = -12, tilt = Vector3.new(18,0,10) }, -- quiver slung across the back
+		{ "Cylinder", Vector3.new(0.09,0.95,0.09), Vector3.new(-0.5,3.2,-0.7), "WoodPlanks", Color3.fromRGB(205,185,150), tilt = Vector3.new(20,0,14) }, -- arrow shafts + fletching jutting from quiver
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(1.02,2.0,0.55), "Fabric", Color3.fromRGB(225,220,205), tilt = Vector3.new(0,0,-10) }, -- front arm extended forward, gripping the bow  baseline t
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(-1.0,2.05,-0.35), "Fabric", Color3.fromRGB(225,220,205), tilt = Vector3.new(0,-25,20) }, -- back arm drawn to the ear  lengthened to baseline 1.25
+		{ "Block", Vector3.new(0.75,0.35,0.7), Vector3.new(1.0,2.65,0.15), "Metal", Color3.fromRGB(150,150,160) }, -- shoulder guard / anime pauldron on draw side
+		{ "Block", Vector3.new(0.12,1.4,0.28), Vector3.new(1.7,2.5,0.75), "WoodPlanks", Color3.fromRGB(105,75,55), tilt = Vector3.new(18,0,0) }, -- bow upper limb (C-arc top)
+		{ "Block", Vector3.new(0.12,1.4,0.28), Vector3.new(1.7,1.5,0.75), "WoodPlanks", Color3.fromRGB(105,75,55), tilt = Vector3.new(-18,0,0) }, -- bow lower limb (C-arc bottom)
+		{ "Block", Vector3.new(0.14,0.55,0.26), Vector3.new(1.72,2.0,0.68), "WoodPlanks", Color3.fromRGB(120,88,62) }, -- bow grip / riser closing the C
+		{ "Cylinder", Vector3.new(0.05,2.3,0.05), Vector3.new(1.5,2.0,0.86), "Neon", Color3.fromRGB(168,120,255), light = true }, -- the ONE emissive accent: glowing violet bowstring + nock
+		{ "Ball", Vector3.new(1.7,1.6,1.55), Vector3.new(0,3.35,0), "SmoothPlastic", Color3.fromRGB(245,225,200) }, -- big chibi head
+		{ "Wedge", Vector3.new(1.45,0.75,1.35), Vector3.new(0,4.05,-0.05), "SmoothPlastic", Color3.fromRGB(60,55,80), tilt = Vector3.new(-8,0,0) }, -- short spiky hair topper (class cue)
+		{ "Block", Vector3.new(1.75,0.28,1.6), Vector3.new(0,3.58,0), "Fabric", Color3.fromRGB(140,100,215) }, -- violet headband across the brow (class cue)
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(-0.32,3.42,0.8), "SmoothPlastic", Color3.fromRGB(30,26,40) }, -- left eye  matte dark, unified roster face style
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(0.32,3.42,0.8), "SmoothPlastic", Color3.fromRGB(30,26,40) }, -- right eye  matte dark, unified roster face style
 	}},
 	Monk = { accent = C.gold, parts = {
-		{ "Cylinder", Vector3.new(1.8,0.5,1.8), Vector3.new(0,0.25,0), "Slate", Color3.fromRGB(128,126,118) },
-		{ "Cylinder", Vector3.new(0.55,2.0,0.55),Vector3.new(0,1.5,0), "Slate", Color3.fromRGB(150,148,140) },
-		{ "Cylinder", Vector3.new(1.5,0.4,1.5), Vector3.new(0,2.7,0),  "Slate", Color3.fromRGB(134,132,124) },
-		{ "Ball",     Vector3.new(1.1,1.1,1.1), Vector3.new(0,3.35,0), "Neon",  C.gold, neon = true, light = true },
-		{ "Cylinder", Vector3.new(0.9,0.25,0.9),Vector3.new(0,3.95,0), "Slate", Color3.fromRGB(120,118,110) },
-		{ "Wedge",    Vector3.new(2.2,0.7,1.1), Vector3.new(0,4.4,0.55),"Slate", Color3.fromRGB(104,102,96) },
-		{ "Wedge",    Vector3.new(2.2,0.7,1.1), Vector3.new(0,4.4,-0.55),"Slate",Color3.fromRGB(104,102,96), rotY = 180 },
-		{ "Ball",     Vector3.new(0.5,0.6,0.5), Vector3.new(0,4.95,0), "Slate", Color3.fromRGB(112,110,104) },
+		{ "Cylinder", Vector3.new(0.55,1.1,0.55), Vector3.new(-0.42,0.55,0), "Fabric", Color3.fromRGB(120,58,40) }, -- left leg  dark saffron trouser wrap, baseline size
+		{ "Cylinder", Vector3.new(0.55,1.1,0.55), Vector3.new(0.42,0.55,0), "Fabric", Color3.fromRGB(120,58,40) }, -- right leg  dark saffron trouser wrap, baseline size
+		{ "Block", Vector3.new(1.5,1.5,0.9), Vector3.new(0,1.85,0), "Fabric", Color3.fromRGB(163,74,42) }, -- torso  russet monk robe trunk, PrimaryPart candidate
+		{ "Wedge", Vector3.new(1.55,1.5,0.18), Vector3.new(-0.15,1.95,0.5), "Fabric", Color3.fromRGB(255,178,60), tilt = Vector3.new(0,0,32) }, -- kesa sash  bright orange band across the chest (signatur
+		{ "Block", Vector3.new(1.6,0.35,1.0), Vector3.new(0,1.12,0), "Fabric", Color3.fromRGB(120,58,40) }, -- waist knot/belt cinch, hides leg-torso seam
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(-1.02,2.0,0), "SmoothPlastic", Color3.fromRGB(224,180,140) }, -- left arm  holds the staff upright, baseline thickness
+		{ "Cylinder", Vector3.new(0.4,1.25,0.4), Vector3.new(1.02,2.3,0), "SmoothPlastic", Color3.fromRGB(224,180,140), tilt = Vector3.new(18,0,-40) }, -- right arm  raised into a fist stance, baseline thickness
+		{ "Ball", Vector3.new(0.5,0.5,0.5), Vector3.new(1.4,2.98,0.15), "SmoothPlastic", Color3.fromRGB(224,180,140) }, -- raised right fist knuckles, seated at arm end
+		{ "Ball", Vector3.new(1.7,1.6,1.55), Vector3.new(0,3.35,0), "SmoothPlastic", Color3.fromRGB(233,190,150) }, -- head  BIG bald round chibi head (signature shaved dome),
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(-0.32,3.42,0.8), "SmoothPlastic", Color3.fromRGB(20,16,14) }, -- left eye  matte dark dot, unified roster face style
+		{ "Block", Vector3.new(0.2,0.2,0.16), Vector3.new(0.32,3.42,0.8), "SmoothPlastic", Color3.fromRGB(20,16,14) }, -- right eye  matte dark dot, unified roster face style
+		{ "Cylinder", Vector3.new(0.24,0.16,0.24), Vector3.new(0,3.72,0.8), "Marble", Color3.fromRGB(180,130,90), tilt = Vector3.new(90,0,0) }, -- forehead tilaka/ash mark  ascetic face read, raised abov
+		{ "Cylinder", Vector3.new(0.22,4.3,0.22), Vector3.new(-1.42,2.15,0.15), "WoodPlanks", Color3.fromRGB(110,74,44) }, -- shakujo staff  tall pilgrim staff held upright (signatur
+		{ "Cylinder", Vector3.new(0.55,0.5,0.55), Vector3.new(-1.42,4.35,0.15), "Neon", Color3.fromRGB(255,209,92), tilt = Vector3.new(90,0,0), light = true }, -- shakujo ringed finial  the ONE glowing gold emissive acc
+		{ "Ball", Vector3.new(0.42,0.42,0.42), Vector3.new(-1.42,4.72,0.15), "Metal", Color3.fromRGB(212,168,70) }, -- tama jewel atop the finial
+		{ "Block", Vector3.new(0.85,0.5,0.5), Vector3.new(-1.15,2.55,0.05), "Fabric", Color3.fromRGB(255,178,60) }, -- kesa shoulder drape over the left arm  orange accent tie
 	}},
 }
 local function buildModel(id: string): Model
@@ -657,20 +687,23 @@ local function buildModel(id: string): Model
 	m:PivotTo(CFrame.new()) -- pivot at origin => clean spin
 	return m
 end
-local function frameCamera(cam: Camera, model: Model)
-	local cframe, size = model:GetBoundingBox()
-	local center = cframe.Position
-	local radius = size.Magnitude * 0.5
+local function frameCamera(cam: Camera, _model: Model)
+	-- all warriors share the ~4.6-stud skeleton, so frame by a fixed vertical extent (not the bbox,
+	-- which balloons from tall staffs/katanas and shrinks the body). Camera sits on the +Z (front) side.
 	local halfFov = rad(cam.FieldOfView) * 0.5
-	local dist = (radius / math.sin(halfFov)) * 1.04 -- tighter framing so the tower fills the viewport
-	local az, el = rad(35), rad(20)
-	local dir = Vector3.new(math.cos(el) * math.sin(az), -math.sin(el), math.cos(el) * math.cos(az)).Unit
-	cam.CFrame = CFrame.lookAt(center - dir * dist, center + Vector3.new(0, radius * 0.08, 0))
+	local frameH = 5.6 -- studs to fit vertically: the ~4.6 figure + a little head/weapon room
+	local dist = (frameH * 0.5) / math.tan(halfFov)
+	local el, az = rad(12), rad(20) -- gentle look-up, slight 3/4 so side-held weapons separate from the torso
+	local h = math.cos(el)
+	local offset = Vector3.new(h * math.sin(az), math.sin(el), h * math.cos(az)) -- +Z side => we see the FACE
+	local target = Vector3.new(0, 2.3, 0)
+	cam.CFrame = CFrame.lookAt(target + offset * dist, target)
 end
--- ONE shared spinner loop for ALL viewports (raw dt: keeps turning during hit-stop)
+-- ONE shared spinner loop for ALL viewports (raw dt: keeps turning during hit-stop) + a subtle idle bob
 local spinModels: { any } = {}
+local spinT = 0
 local function addSpinner(model: Model, speed: number)
-	table.insert(spinModels, { model = model, angle = 0, speed = speed })
+	table.insert(spinModels, { model = model, angle = 0, speed = speed, phase = #spinModels * 0.9 })
 end
 local function removeSpinner(model: Model)
 	for i = #spinModels, 1, -1 do
@@ -678,17 +711,21 @@ local function removeSpinner(model: Model)
 	end
 end
 RunService.RenderStepped:Connect(function(dt)
+	spinT += dt
 	for _, s in spinModels do
 		if s.model.Parent then
 			s.angle += s.speed * dt
-			s.model:PivotTo(CFrame.Angles(0, s.angle, 0))
+			local ph = spinT * math.pi + s.phase -- ~0.5 Hz breathing bob so they feel alive, not turntable-stiff
+			local bob = math.sin(ph) * 0.06
+			local roll = math.sin(ph) * rad(1.5)
+			s.model:PivotTo(CFrame.new(0, bob, 0) * CFrame.Angles(0, s.angle, roll))
 		end
 	end
 end)
 local function makeTowerViewport(parent: Instance, def: any): any
 	local vp = Instance.new("ViewportFrame")
-	-- taller than the node: the tower RISES from the node pad instead of being squashed into it
-	vp.Size = UDim2.fromScale(1.7, 3.2)
+	-- taller than the node: the warrior RISES from the node pad instead of being squashed into it
+	vp.Size = UDim2.fromScale(1.9, 3.9)
 	vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.fromScale(0.5, 1.05)
 	vp.BackgroundTransparency = 1; vp.ZIndex = 15
 	vp.Ambient = Color3.fromRGB(154, 150, 150) -- brighter fill so the stone/wood reads (was too dark)
@@ -699,10 +736,10 @@ local function makeTowerViewport(parent: Instance, def: any): any
 	local model = buildModel(def.id)
 	model.Parent = world
 	local cam = Instance.new("Camera")
-	cam.FieldOfView = 22; cam.Parent = vp
+	cam.FieldOfView = 38; cam.Parent = vp -- wider than the building's tele so a 4.6-stud figure reads with depth
 	vp.CurrentCamera = cam
 	frameCamera(cam, model)
-	addSpinner(model, rad(30))
+	addSpinner(model, rad(20))
 	return { vp = vp, model = model }
 end
 
