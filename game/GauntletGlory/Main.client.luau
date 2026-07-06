@@ -13,7 +13,7 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
 
-local DEBUG = { autoPlay = false, forceBossWave = 0 }
+local DEBUG = { autoPlay = false, forceBossWave = 0, rich = false }
 
 -- ===== Palette (ink base so neon POPS) =====
 local C = {
@@ -32,6 +32,19 @@ local C = {
 	ink0 = Color3.fromRGB(6, 8, 12),
 	core = Color3.fromRGB(90, 240, 200),
 }
+-- grounded diorama additions (kept out of the literal so the element colors above stay obvious)
+C.asphalt    = Color3.fromRGB(74, 76, 86)    -- lit road, reads as a dark path on warm earth
+C.asphaltD   = Color3.fromRGB(50, 52, 60)
+C.roadEdge   = Color3.fromRGB(176, 158, 120)  -- bright warm stone curb (catches dusk light)
+C.lanePaint  = Color3.fromRGB(236, 229, 206)
+C.roadShadow = Color3.fromRGB(12, 12, 16)
+C.groundTop  = Color3.fromRGB(138, 122, 100)  -- warm packed-earth tabletop, LIT
+C.groundBot  = Color3.fromRGB(92, 80, 68)     -- earth near the rim (lifted so the center reads)
+C.pad        = Color3.fromRGB(150, 134, 108)  -- warm stone foundation under a placed tower
+C.groundEdge = Color3.fromRGB(150, 132, 104)  -- warm stone rim of the tabletop
+C.skyTop     = Color3.fromRGB(44, 50, 92)     -- deep dusk indigo (now visible)
+C.skyBot     = Color3.fromRGB(168, 104, 90)   -- warm sunset horizon
+C.silhouette = Color3.fromRGB(36, 36, 54)     -- distant hills/pagodas read against the dusk
 local FONT = Enum.Font.GothamBlack
 local FONT2 = Enum.Font.GothamBold
 
@@ -94,7 +107,7 @@ bgGrad.Parent = root
 for i = 0, 1 do
 	local streak = frame(root, "Streak")
 	streak.BackgroundColor3 = i == 0 and C.cyan or C.magenta
-	streak.BackgroundTransparency = 0.94
+	streak.BackgroundTransparency = 0.985 -- dialed down: dusk sky dominates, not neon hatch
 	streak.Size = UDim2.fromScale(1.4, 0.06)
 	streak.Rotation = -18
 	streak.Position = UDim2.fromScale(-0.2, i == 0 and 0.2 or 0.75)
@@ -115,39 +128,44 @@ local WAYPOINTS = {
 	Vector2.new(0.55, 0.50), Vector2.new(0.22, 0.44), Vector2.new(0.20, 0.68),
 	Vector2.new(0.45, 0.80), Vector2.new(0.72, 0.82), Vector2.new(0.5, 0.94),
 }
+-- ===== dusk environment backdrop (pure Frames, sits BEHIND the board) =====
+local function buildBackdrop()
+	local sky = frame(root, "Sky")
+	sky.AnchorPoint = Vector2.new(0.5, 0.5); sky.Position = UDim2.fromScale(0.5, 0.5)
+	sky.Size = UDim2.fromScale(1, 1); sky.BackgroundColor3 = C.skyBot; sky.ZIndex = 1
+	local sg = Instance.new("UIGradient"); sg.Rotation = 90
+	sg.Color = ColorSequence.new(C.skyTop, C.skyBot); sg.Parent = sky
+	local horizon = 0.66
+	local shapes = {
+		{ x = 0.16, w = 0.30, h = 0.10 }, { x = 0.83, w = 0.34, h = 0.12 },
+		{ x = 0.30, w = 0.05, h = 0.16 }, { x = 0.70, w = 0.045, h = 0.14 },
+		{ x = 0.50, w = 0.22, h = 0.07 },
+	}
+	for _, s in shapes do
+		local hill = frame(sky, "Silhouette"); hill.AnchorPoint = Vector2.new(0.5, 1)
+		hill.Position = UDim2.fromScale(s.x, horizon + s.h * 0.5); hill.Size = UDim2.fromScale(s.w, s.h)
+		hill.BackgroundColor3 = C.silhouette; hill.ZIndex = 1; corner(hill, 10)
+	end
+	for _, x in { 0.30, 0.70 } do
+		local cap = frame(sky, "Cap"); cap.AnchorPoint = Vector2.new(0.5, 1)
+		cap.Position = UDim2.fromScale(x, horizon - 0.06); cap.Size = UDim2.fromScale(0.035, 0.035)
+		cap.BackgroundColor3 = C.silhouette; cap.Rotation = 45; cap.ZIndex = 1
+	end
+end
+buildBackdrop()
+
 local board = frame(root, "Board")
-board.BackgroundTransparency = 1
+board.BackgroundColor3 = C.groundBot
 board.AnchorPoint = Vector2.new(0.5, 0.5)
 board.Position = UDim2.fromScale(0.5, 0.53)
 board.Size = UDim2.fromScale(0.62, 0.88)
 board.ZIndex = 2
--- draw the street as overlapping segment Frames between waypoints
-local function drawTrack()
-	for i = 1, #WAYPOINTS - 1 do
-		local a, b = WAYPOINTS[i], WAYPOINTS[i + 1]
-		local mid = (a + b) / 2
-		local d = b - a
-		local len = d.Magnitude
-		local seg = frame(board, "Seg")
-		seg.AnchorPoint = Vector2.new(0.5, 0.5)
-		seg.Position = UDim2.fromScale(mid.X, mid.Y)
-		seg.Size = UDim2.new(len, 6, 0, 26)
-		seg.BackgroundColor3 = C.ink2
-		seg.Rotation = math.deg(math.atan2(d.Y, d.X))
-		seg.ZIndex = 2
-		corner(seg, 13)
-		stroke(seg, C.cyan, 2, 0.55)
-		local glow = frame(seg, "Glow")
-		glow.BackgroundColor3 = C.cyan
-		glow.BackgroundTransparency = 0.86
-		glow.Size = UDim2.new(1, -6, 0, 4)
-		glow.AnchorPoint = Vector2.new(0.5, 0.5)
-		glow.Position = UDim2.fromScale(0.5, 0.5)
-		glow.ZIndex = 3
-		corner(glow, 2)
-	end
+do
+	local gg = Instance.new("UIGradient"); gg.Rotation = 90
+	gg.Color = ColorSequence.new(C.groundTop, C.groundBot); gg.Parent = board
+	corner(board, 18); stroke(board, C.groundEdge, 4, 0)
 end
-drawTrack()
+-- (the road is drawn as a solid ribbon AFTER pathPos is defined — see drawRoad below)
 -- helper: world (scale) position of progress p in [0,1] along the waypoint path
 local segLens = {}
 local totalLen = 0
@@ -169,13 +187,91 @@ local function pathPos(p: number): Vector2
 	return WAYPOINTS[#WAYPOINTS]
 end
 
+-- ===== solid-ribbon road (capsule chain: gap-free at every bend) =====
+local ROAD = { W = 30 } -- road width in px (constant); lengths stay board-SCALE
+local function ribbonSeg(a: Vector2, b: Vector2, wpx: number, col: Color3, z: number): Frame
+	local mid = (a + b) / 2
+	local d = b - a
+	local seg = frame(board, "RSeg")
+	seg.AnchorPoint = Vector2.new(0.5, 0.5)
+	seg.Position = UDim2.fromScale(mid.X, mid.Y)
+	seg.Size = UDim2.new(d.Magnitude, 0, 0, wpx) -- length SCALE, width PX
+	seg.BackgroundColor3 = col
+	seg.Rotation = math.deg(math.atan2(d.Y, d.X))
+	seg.ZIndex = z
+	return seg
+end
+local function ribbonJoint(p: Vector2, wpx: number, col: Color3, z: number): Frame
+	local j = frame(board, "RJoint")
+	j.AnchorPoint = Vector2.new(0.5, 0.5)
+	j.Position = UDim2.fromScale(p.X, p.Y)
+	j.Size = UDim2.new(0, wpx, 0, wpx)
+	j.BackgroundColor3 = col
+	j.ZIndex = z
+	corner(j, math.floor(wpx / 2)) -- full radius => circle welds the joint
+	return j
+end
+local function chain(wpx: number, col: Color3, z: number, off: number?): { Frame }
+	local pieces = {}
+	local function nudge(inst: Frame)
+		if off then
+			local p = inst.Position
+			inst.Position = UDim2.new(p.X.Scale, off, p.Y.Scale, off)
+		end
+	end
+	for i = 1, #WAYPOINTS - 1 do
+		local s = ribbonSeg(WAYPOINTS[i], WAYPOINTS[i + 1], wpx, col, z); nudge(s); table.insert(pieces, s)
+	end
+	for i = 1, #WAYPOINTS do
+		local j = ribbonJoint(WAYPOINTS[i], wpx, col, z); nudge(j); table.insert(pieces, j)
+	end
+	return pieces
+end
+local function drawRoad()
+	-- LAYER 1 (Z2): drop shadow — wider, darker, nudged down so the road sits on the ground
+	for _, pc in chain(ROAD.W + 8, C.roadShadow, 2, 0.006) do
+		pc.BackgroundTransparency = 0.15
+	end
+	-- LAYER 2+3 (Z3): asphalt body with top-lit gradient + continuous warm curb
+	for _, pc in chain(ROAD.W, C.asphalt, 3) do
+		local g = Instance.new("UIGradient")
+		g.Rotation = 90
+		g.Color = ColorSequence.new(C.asphalt, C.asphaltD)
+		g.Parent = pc
+		stroke(pc, C.roadEdge, 2, 0.15)
+	end
+	-- LAYER 4 (Z5): painted center dashes, sampled by arc length so spacing is even on curves
+	local DASH, GAP = 0.016, 0.026
+	local step = DASH + GAP
+	local t = GAP * 0.5
+	while t < 1 do
+		local a = pathPos(t)
+		local b = pathPos(math.min(1, t + DASH))
+		local d = b - a
+		if d.Magnitude > 0 then
+			local mid = (a + b) / 2
+			local dash = frame(board, "RDash")
+			dash.AnchorPoint = Vector2.new(0.5, 0.5)
+			dash.Position = UDim2.fromScale(mid.X, mid.Y)
+			dash.Size = UDim2.new(d.Magnitude, 0, 0, 3)
+			dash.BackgroundColor3 = C.lanePaint
+			dash.BackgroundTransparency = 0.25
+			dash.Rotation = math.deg(math.atan2(d.Y, d.X))
+			dash.ZIndex = 5
+			corner(dash, 2)
+		end
+		t += step
+	end
+end
+drawRoad()
+
 -- Core at the end of the track
 local coreP = pathPos(1)
 local coreNode = cel(board, C.core, 12)
 coreNode.AnchorPoint = Vector2.new(0.5, 0.5)
 coreNode.Position = UDim2.fromScale(coreP.X, coreP.Y)
 coreNode.Size = UDim2.fromScale(0.12, 0.05)
-coreNode.ZIndex = 5
+coreNode.ZIndex = 7
 text(coreNode, "\u{6838}", 20, C.ink0).Size = UDim2.fromScale(1, 1)
 
 -- ===== fighter defs (element-colored, glyph, one upgrade path for now) =====
@@ -254,6 +350,13 @@ local MAX_LIVE = 44
 
 local function setYen(n: number) state.yen = n; yenT.Text = "\u{00A5} " .. n end
 local function setLives(n: number) state.lives = math.max(0, n); lifeText.Text = string.rep("\u{2665}", state.lives) end
+if DEBUG.rich then -- TEST: own all fighters + big bank so autoPlay fills the board with every model
+	for _, id in { "Ronin", "Onmyoji", "Archer", "Monk" } do
+		RunState.owned[id] = true; RunState.traits[id] = RunState.traits[id] or {}
+		RunState.upgrades[id] = RunState.upgrades[id] or 0; RunState.dmgByType[id] = RunState.dmgByType[id] or 0
+	end
+	state.yen = 900; state.lives = 99
+end
 setYen(state.yen); setLives(state.lives)
 
 local function refreshTray()
@@ -475,16 +578,146 @@ local function damageEnemy(e: any, dmg: number, crit: boolean, id: string)
 	end
 end
 
+-- ===== 3D tower viewports (Parts only, no uploads) =====
+local rad = math.rad
+-- MODELS: id -> { accent, parts = { {shape,size,off, rotY?,tilt?, material,color, neon?,light?}, ... } }
+local MODELS = {
+	Ronin = { accent = C.cyan, parts = {
+		{ "Block", Vector3.new(3.2,0.5,3.2),  Vector3.new(0,0.25,0),  "Slate",  Color3.fromRGB(96,104,112) },
+		{ "Block", Vector3.new(2.9,1.2,2.9),  Vector3.new(0,1.1,0),   "Slate",  Color3.fromRGB(120,126,134) },
+		{ "Block", Vector3.new(2.3,1.3,2.3),  Vector3.new(0,2.35,0),  "Marble", Color3.fromRGB(224,222,214) },
+		{ "Block", Vector3.new(2.4,0.25,2.4), Vector3.new(0,3.1,0),   "Slate",  Color3.fromRGB(70,74,82) },
+		{ "Wedge", Vector3.new(3.4,0.9,1.7),  Vector3.new(0,3.6,0.85),"Slate",  Color3.fromRGB(58,62,70) },
+		{ "Wedge", Vector3.new(3.4,0.9,1.7),  Vector3.new(0,3.6,-0.85),"Slate", Color3.fromRGB(58,62,70), rotY = 180 },
+		{ "Block", Vector3.new(1.4,0.35,3.6), Vector3.new(0,4.05,0),  "Slate",  Color3.fromRGB(48,52,60) },
+		{ "Block", Vector3.new(0.28,0.5,0.28),Vector3.new(0,4.45,0),  "Metal",  Color3.fromRGB(150,140,110) },
+		{ "Ball",  Vector3.new(0.55,0.55,0.55),Vector3.new(0,2.35,1.16),"Neon", C.cyan, neon = true, light = true },
+	}},
+	Onmyoji = { accent = Color3.fromRGB(130,220,235), parts = {
+		{ "Block",    Vector3.new(2.2,0.4,2.2), Vector3.new(0,0.2,0),  "Concrete",  Color3.fromRGB(150,152,150) },
+		{ "Cylinder", Vector3.new(1.5,0.9,1.5), Vector3.new(0,0.85,0), "WoodPlanks",Color3.fromRGB(150,60,54) },
+		{ "Block",    Vector3.new(2.6,0.35,2.6),Vector3.new(0,1.45,0), "Slate",     Color3.fromRGB(72,84,96) },
+		{ "Cylinder", Vector3.new(1.2,0.8,1.2), Vector3.new(0,2.05,0), "WoodPlanks",Color3.fromRGB(150,60,54) },
+		{ "Block",    Vector3.new(2.1,0.32,2.1),Vector3.new(0,2.6,0),  "Slate",     Color3.fromRGB(72,84,96) },
+		{ "Cylinder", Vector3.new(0.95,0.75,0.95),Vector3.new(0,3.15,0),"WoodPlanks",Color3.fromRGB(150,60,54) },
+		{ "Block",    Vector3.new(1.6,0.3,1.6), Vector3.new(0,3.65,0), "Slate",     Color3.fromRGB(72,84,96) },
+		{ "Cylinder", Vector3.new(0.22,1.1,0.22),Vector3.new(0,4.4,0), "Metal",     Color3.fromRGB(170,150,90) },
+		{ "Ball",     Vector3.new(0.4,0.4,0.4), Vector3.new(0,5.05,0), "Neon",      Color3.fromRGB(130,220,235), neon = true, light = true },
+	}},
+	Archer = { accent = C.violet, parts = {
+		{ "Block",    Vector3.new(2.6,0.3,2.6), Vector3.new(0,0.15,0),   "Concrete",  Color3.fromRGB(140,136,128) },
+		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(0.9,1.6,0.9),  "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,-8) },
+		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(-0.9,1.6,0.9), "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,8) },
+		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(0.9,1.6,-0.9), "WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,-8) },
+		{ "Cylinder", Vector3.new(0.3,3.0,0.3), Vector3.new(-0.9,1.6,-0.9),"WoodPlanks",Color3.fromRGB(120,86,52), tilt = Vector3.new(0,0,8) },
+		{ "Block",    Vector3.new(1.9,0.18,1.9),Vector3.new(0,1.7,0),    "WoodPlanks",Color3.fromRGB(138,100,60) },
+		{ "Block",    Vector3.new(2.4,0.35,2.4),Vector3.new(0,3.15,0),   "WoodPlanks",Color3.fromRGB(150,110,66) },
+		{ "Block",    Vector3.new(2.4,0.5,0.12),Vector3.new(0,3.6,1.14), "WoodPlanks",Color3.fromRGB(128,92,54) },
+		{ "Block",    Vector3.new(2.4,0.5,0.12),Vector3.new(0,3.6,-1.14),"WoodPlanks",Color3.fromRGB(128,92,54) },
+		{ "Block",    Vector3.new(0.12,0.5,2.4),Vector3.new(1.14,3.6,0), "WoodPlanks",Color3.fromRGB(128,92,54) },
+		{ "Block",    Vector3.new(0.12,0.5,2.4),Vector3.new(-1.14,3.6,0),"WoodPlanks",Color3.fromRGB(128,92,54) },
+		{ "Wedge",    Vector3.new(2.6,0.7,1.3), Vector3.new(0,4.15,0.65),"WoodPlanks",Color3.fromRGB(96,66,40) },
+		{ "Wedge",    Vector3.new(2.6,0.7,1.3), Vector3.new(0,4.15,-0.65),"WoodPlanks",Color3.fromRGB(96,66,40), rotY = 180 },
+		{ "Ball",     Vector3.new(0.5,0.5,0.5), Vector3.new(0,3.55,0),   "Neon",      C.violet, neon = true, light = true },
+	}},
+	Monk = { accent = C.gold, parts = {
+		{ "Cylinder", Vector3.new(1.8,0.5,1.8), Vector3.new(0,0.25,0), "Slate", Color3.fromRGB(128,126,118) },
+		{ "Cylinder", Vector3.new(0.55,2.0,0.55),Vector3.new(0,1.5,0), "Slate", Color3.fromRGB(150,148,140) },
+		{ "Cylinder", Vector3.new(1.5,0.4,1.5), Vector3.new(0,2.7,0),  "Slate", Color3.fromRGB(134,132,124) },
+		{ "Ball",     Vector3.new(1.1,1.1,1.1), Vector3.new(0,3.35,0), "Neon",  C.gold, neon = true, light = true },
+		{ "Cylinder", Vector3.new(0.9,0.25,0.9),Vector3.new(0,3.95,0), "Slate", Color3.fromRGB(120,118,110) },
+		{ "Wedge",    Vector3.new(2.2,0.7,1.1), Vector3.new(0,4.4,0.55),"Slate", Color3.fromRGB(104,102,96) },
+		{ "Wedge",    Vector3.new(2.2,0.7,1.1), Vector3.new(0,4.4,-0.55),"Slate",Color3.fromRGB(104,102,96), rotY = 180 },
+		{ "Ball",     Vector3.new(0.5,0.6,0.5), Vector3.new(0,4.95,0), "Slate", Color3.fromRGB(112,110,104) },
+	}},
+}
+local function buildModel(id: string): Model
+	local spec = MODELS[id]
+	local m = Instance.new("Model")
+	local trunk
+	for _, pd in spec.parts do
+		local p = Instance.new("Part")
+		p.Shape = (Enum.PartType :: any)[pd[1]]
+		p.Size = pd[2]
+		local cf = CFrame.new(pd[3])
+		if pd.rotY then cf = cf * CFrame.Angles(0, rad(pd.rotY), 0) end
+		if pd.tilt then cf = cf * CFrame.Angles(rad(pd.tilt.X), rad(pd.tilt.Y), rad(pd.tilt.Z)) end
+		p.CFrame = cf
+		p.Color = pd[5]
+		p.Material = (Enum.Material :: any)[pd[4]]
+		p.Anchored = true; p.CanCollide = false; p.CastShadow = false
+		p.Parent = m
+		if pd.light then
+			local pl = Instance.new("PointLight")
+			pl.Color = pd[5]; pl.Brightness = 2; pl.Range = 6; pl.Parent = p
+		end
+		if not trunk and pd[4] ~= "Neon" then trunk = p end
+	end
+	m.PrimaryPart = trunk or m:FindFirstChildOfClass("Part")
+	m:PivotTo(CFrame.new()) -- pivot at origin => clean spin
+	return m
+end
+local function frameCamera(cam: Camera, model: Model)
+	local cframe, size = model:GetBoundingBox()
+	local center = cframe.Position
+	local radius = size.Magnitude * 0.5
+	local halfFov = rad(cam.FieldOfView) * 0.5
+	local dist = (radius / math.sin(halfFov)) * 1.04 -- tighter framing so the tower fills the viewport
+	local az, el = rad(35), rad(20)
+	local dir = Vector3.new(math.cos(el) * math.sin(az), -math.sin(el), math.cos(el) * math.cos(az)).Unit
+	cam.CFrame = CFrame.lookAt(center - dir * dist, center + Vector3.new(0, radius * 0.08, 0))
+end
+-- ONE shared spinner loop for ALL viewports (raw dt: keeps turning during hit-stop)
+local spinModels: { any } = {}
+local function addSpinner(model: Model, speed: number)
+	table.insert(spinModels, { model = model, angle = 0, speed = speed })
+end
+local function removeSpinner(model: Model)
+	for i = #spinModels, 1, -1 do
+		if spinModels[i].model == model then table.remove(spinModels, i) end
+	end
+end
+RunService.RenderStepped:Connect(function(dt)
+	for _, s in spinModels do
+		if s.model.Parent then
+			s.angle += s.speed * dt
+			s.model:PivotTo(CFrame.Angles(0, s.angle, 0))
+		end
+	end
+end)
+local function makeTowerViewport(parent: Instance, def: any): any
+	local vp = Instance.new("ViewportFrame")
+	-- taller than the node: the tower RISES from the node pad instead of being squashed into it
+	vp.Size = UDim2.fromScale(1.7, 3.2)
+	vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.fromScale(0.5, 1.05)
+	vp.BackgroundTransparency = 1; vp.ZIndex = 15
+	vp.Ambient = Color3.fromRGB(154, 150, 150) -- brighter fill so the stone/wood reads (was too dark)
+	vp.LightColor = Color3.fromRGB(255, 244, 214)
+	vp.LightDirection = Vector3.new(-0.6, -1, -0.35).Unit
+	vp.Parent = parent
+	local world = Instance.new("WorldModel"); world.Parent = vp
+	local model = buildModel(def.id)
+	model.Parent = world
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = 22; cam.Parent = vp
+	vp.CurrentCamera = cam
+	frameCamera(cam, model)
+	addSpinner(model, rad(30))
+	return { vp = vp, model = model }
+end
+
 local slots = {}
 local function placeFighter(node: any, id: string)
 	local def = FIGHTERS[id]
 	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return end
 	setYen(state.yen - def.cost)
 	node.plus.Visible = false
-	local t = cel(node.frame, def.color, 10)
-	t.Size = UDim2.fromScale(1, 1); t.ZIndex = 15
-	local g = text(t, def.glyph, 24, C.ink0); g.Font = FONT; g.Size = UDim2.fromScale(1, 1); g.ZIndex = 16
-	local tw = { id = id, node = node, cd = 0, frame = t }
+	-- turn the node panel into a warm stone foundation pad so the tower stands ON the ground
+	node.frame.BackgroundColor3 = C.pad; node.frame.BackgroundTransparency = 0.06
+	-- a real rotating 3D model in a ViewportFrame (replaces the flat cel card + glyph)
+	local vpData = makeTowerViewport(node.frame, def)
+	local t = vpData.vp -- `t` is now the ViewportFrame; the rest of placeFighter uses `t` unchanged
+	local tw = { id = id, node = node, cd = 0, frame = t, model = vpData.model }
 	node.tower = tw; table.insert(state.towers, tw)
 	-- aura ring
 	local aura = frame(t, "Aura"); aura.BackgroundTransparency = 1; aura.Size = UDim2.fromScale(1.3, 1.3)
@@ -507,7 +740,9 @@ local function removeFighter(tw: any)
 	local node = tw.node
 	node.tower = nil
 	node.plus.Visible = true
+	node.frame.BackgroundColor3 = C.panel; node.frame.BackgroundTransparency = 0.25 -- revert pad to empty slot
 	local i = table.find(state.towers, tw); if i then table.remove(state.towers, i) end
+	if tw.model then removeSpinner(tw.model) end -- stop spinning the model we're about to destroy
 	local fx = tw.frame
 	TweenService:Create(fx, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
 		{ Size = UDim2.fromScale(0.01, 0.01), Rotation = 55 }):Play()
@@ -759,9 +994,19 @@ end)
 -- DEBUG auto-place + auto-upgrade
 if DEBUG.autoPlay then
 	task.spawn(function()
+		local order = { "Ronin", "Onmyoji", "Archer", "Monk" }
+		local k = 0
 		while state.running do
 			for _, n in slots do
-				if not n.tower and state.yen >= 18 and not state.drafting then openPicker(n); task.wait(0.1) end
+				if not n.tower and not state.drafting then
+					if DEBUG.rich then -- place all 4 types in rotation (skip the picker menu)
+						k += 1
+						local id = order[((k - 1) % #order) + 1]
+						if state.yen >= FIGHTERS[id].cost then placeFighter(n, id); task.wait(0.15) end
+					elseif state.yen >= 18 then
+						openPicker(n); task.wait(0.1)
+					end
+				end
 			end
 			task.wait(0.7)
 		end
