@@ -189,8 +189,8 @@ buildBackdrop()
 local board = frame(root, "Board")
 board.BackgroundColor3 = C.groundBot
 board.AnchorPoint = Vector2.new(0.5, 0.5)
-board.Position = UDim2.fromScale(0.5, 0.53)
-board.Size = UDim2.fromScale(0.62, 0.88)
+board.Position = UDim2.fromScale(0.5, 0.485)
+board.Size = UDim2.fromScale(0.62, 0.81)
 board.ZIndex = 2
 do
 	local gg = Instance.new("UIGradient"); gg.Rotation = 90
@@ -456,18 +456,18 @@ local function refreshTray()
 	local i = 1
 	for id in RunState.owned do
 		local def = FIGHTERS[id]
-		local chip = UI.IconChip({ parent = tray, glyph = def.glyph, glyphColor = UI.T.color.text, glyphSize = UI.T.tsize.lg,
-			fill = def.color, accent = def.color, size = UDim2.fromOffset(54, 54), radius = UI.T.radius.md, z = 30 })
+		local chip = UI.IconChip({ parent = tray, glyph = def.glyph, glyphColor = UI.T.color.text, glyphSize = UI.T.tsize.xl,
+			fill = def.color, accent = def.color, size = UDim2.fromOffset(80, 80), radius = UI.T.radius.md, z = 30 })
 		chip.LayoutOrder = i
 		local lvl = (RunState.upgrades[id] or 0) + 1
 		if lvl > 1 then
 			local _, bt = UI.Badge(chip, tostring(lvl), "gold")
-			bt.Parent.AnchorPoint = Vector2.new(0.5, 0.5); bt.Parent.Position = UDim2.fromScale(0.92, 0.92); bt.Parent.Size = UDim2.fromOffset(22, 22)
+			bt.Parent.AnchorPoint = Vector2.new(0.5, 0.5); bt.Parent.Position = UDim2.fromScale(0.9, 0.9); bt.Parent.Size = UDim2.fromOffset(26, 26)
 		end
 		-- cost label under the glyph + click-to-place (enters placement mode)
-		local costL = text(chip, "\u{00A5}" .. def.cost, 11, C.gold)
+		local costL = text(chip, "\u{00A5}" .. def.cost, 14, C.gold)
 		costL.Font = FONT; costL.AnchorPoint = Vector2.new(0.5, 1); costL.Position = UDim2.fromScale(0.5, 1)
-		costL.Size = UDim2.fromScale(1, 0.32); costL.ZIndex = chip.ZIndex + 3
+		costL.Size = UDim2.fromScale(1, 0.3); costL.ZIndex = chip.ZIndex + 3
 		button(chip).MouseButton1Click:Connect(function() if beginPlacement then beginPlacement(id) end end)
 		i += 1
 	end
@@ -671,8 +671,8 @@ local function fStats(id: string): any
 	}
 end
 local function pxOf(p: Vector2): (number, number)
-	-- board is 0.62x0.88 of screen centered at (0.5,0.53); convert board-scale to screen-scale
-	return 0.5 + (p.X - 0.5) * 0.62, 0.53 + (p.Y - 0.5) * 0.88
+	-- board is 0.62x0.81 of screen centered at (0.5,0.485); convert board-scale to screen-scale
+	return 0.5 + (p.X - 0.5) * 0.62, 0.485 + (p.Y - 0.5) * 0.81
 end
 
 -- board pixel aspect (H/W); lets range be a TRUE circle instead of a board-scale ellipse

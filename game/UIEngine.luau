@@ -181,9 +181,16 @@ function motion.pop(inst: GuiObject, from: number?) -- spring scale-in
 	motion.tween(inst, T.motion.spring, { Size = target })
 end
 function motion.hoverGrow(btn: GuiObject, by: number?)
-	local base = btn.Size; local grow = by or 6
-	btn.MouseEnter:Connect(function() motion.tween(btn, T.motion.fast, { Size = base + UDim2.fromOffset(grow, grow * 0.66) }) end)
-	btn.MouseLeave:Connect(function() motion.tween(btn, T.motion.fast, { Size = base }) end)
+	-- capture base LAZILY on first hover so a preceding motion.pop (which shrinks then
+	-- springs back) doesn't get captured mid-animation, which would restore to a wrong size
+	local base: UDim2? = nil; local grow = by or 6
+	btn.MouseEnter:Connect(function()
+		if not base then base = btn.Size end
+		motion.tween(btn, T.motion.fast, { Size = base :: UDim2 + UDim2.fromOffset(grow, grow * 0.66) })
+	end)
+	btn.MouseLeave:Connect(function()
+		if base then motion.tween(btn, T.motion.fast, { Size = base :: UDim2 }) end
+	end)
 end
 function motion.pulse(inst: GuiObject, prop: string, a: number, b: number)
 	(inst :: any)[prop] = a; motion.tween(inst, T.motion.pulse, { [prop] = b })
