@@ -126,11 +126,30 @@ local function hitStop(dur: number)
 end
 
 -- ===== track (curving neon battle-street via waypoints) =====
-local WAYPOINTS = {
+-- control points (the coarse path); the actual WAYPOINTS are a smooth Catmull-Rom
+-- resample of these so the lane FLOWS instead of zig-zagging between hard corners
+local CTRL = {
 	Vector2.new(0.5, 0.06), Vector2.new(0.78, 0.16), Vector2.new(0.80, 0.40),
 	Vector2.new(0.55, 0.50), Vector2.new(0.22, 0.44), Vector2.new(0.20, 0.68),
 	Vector2.new(0.45, 0.80), Vector2.new(0.72, 0.82), Vector2.new(0.5, 0.94),
 }
+local function crPoint(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: number): Vector2
+	local t2, t3 = t * t, t * t * t
+	return (p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5
+end
+local WAYPOINTS = {}
+do
+	local SUB = 6 -- subdivisions per control span
+	for i = 1, #CTRL - 1 do
+		local p0 = CTRL[math.max(i - 1, 1)]
+		local p1, p2 = CTRL[i], CTRL[i + 1]
+		local p3 = CTRL[math.min(i + 2, #CTRL)]
+		local lastSpan = (i == #CTRL - 1)
+		for s = 0, (lastSpan and SUB or SUB - 1) do
+			table.insert(WAYPOINTS, crPoint(p0, p1, p2, p3, s / SUB))
+		end
+	end
+end
 -- ===== dusk environment backdrop (pure Frames, sits BEHIND the board) =====
 local function buildBackdrop()
 	local sky = frame(root, "Sky")
@@ -217,7 +236,7 @@ local function pathPos(p: number): Vector2
 end
 
 -- ===== solid-ribbon road (capsule chain: gap-free at every bend) =====
-local ROAD = { W = 30 } -- road width in px (constant); lengths stay board-SCALE
+local ROAD = { W = 34 } -- road width in px (constant); lengths stay board-SCALE
 local function ribbonSeg(a: Vector2, b: Vector2, wpx: number, col: Color3, z: number): Frame
 	local mid = (a + b) / 2
 	local d = b - a
@@ -240,7 +259,7 @@ local function ribbonJoint(p: Vector2, wpx: number, col: Color3, z: number): Fra
 	corner(j, math.floor(wpx / 2)) -- full radius => circle welds the joint
 	return j
 end
-local function chain(wpx: number, col: Color3, z: number, off: number?): { Frame }
+local function chain(wpx: number, col: Color3, z: number, off: number?, skipJoints: boolean?): { Frame }
 	local pieces = {}
 	local function nudge(inst: Frame)
 		if off then
@@ -251,48 +270,47 @@ local function chain(wpx: number, col: Color3, z: number, off: number?): { Frame
 	for i = 1, #WAYPOINTS - 1 do
 		local s = ribbonSeg(WAYPOINTS[i], WAYPOINTS[i + 1], wpx, col, z); nudge(s); table.insert(pieces, s)
 	end
-	for i = 1, #WAYPOINTS do
-		local j = ribbonJoint(WAYPOINTS[i], wpx, col, z); nudge(j); table.insert(pieces, j)
+	if not skipJoints then
+		for i = 1, #WAYPOINTS do
+			local j = ribbonJoint(WAYPOINTS[i], wpx, col, z); nudge(j); table.insert(pieces, j)
+		end
 	end
 	return pieces
 end
+local PATH = {
+	glow = Color3.fromRGB(86, 150, 255), body = Color3.fromRGB(44, 56, 122),
+	rail = Color3.fromRGB(96, 120, 224), core = Color3.fromRGB(176, 216, 255),
+	pulse = Color3.fromRGB(226, 240, 255),
+}
+local flowPulses: { any } = {}
+local gameClock = 0
 local function drawRoad()
-	-- LAYER 1 (Z2): drop shadow — wider, darker, nudged down so the road sits on the ground
-	for _, pc in chain(ROAD.W + 8, C.roadShadow, 2, 0.006) do
-		pc.BackgroundTransparency = 0.15
-	end
-	-- LAYER 2+3 (Z3): asphalt body with top-lit gradient + continuous warm curb
-	for _, pc in chain(ROAD.W, C.asphalt, 3) do
-		local g = Instance.new("UIGradient")
-		g.Rotation = 90
-		g.Color = ColorSequence.new(C.asphalt, C.asphaltD)
-		g.Parent = pc
-		stroke(pc, C.roadEdge, 2, 0.15)
-	end
-	-- LAYER 4 (Z5): painted center dashes, sampled by arc length so spacing is even on curves
-	local DASH, GAP = 0.016, 0.026
-	local step = DASH + GAP
-	local t = GAP * 0.5
-	while t < 1 do
-		local a = pathPos(t)
-		local b = pathPos(math.min(1, t + DASH))
-		local d = b - a
-		if d.Magnitude > 0 then
-			local mid = (a + b) / 2
-			local dash = frame(board, "RDash")
-			dash.AnchorPoint = Vector2.new(0.5, 0.5)
-			dash.Position = UDim2.fromScale(mid.X, mid.Y)
-			dash.Size = UDim2.new(d.Magnitude, 0, 0, 3)
-			dash.BackgroundColor3 = C.lanePaint
-			dash.BackgroundTransparency = 0.25
-			dash.Rotation = math.deg(math.atan2(d.Y, d.X))
-			dash.ZIndex = 5
-			corner(dash, 2)
-		end
-		t += step
+	-- soft wide GLOW halo so the lane reads as flowing energy off the dark board
+	for _, pc in chain(ROAD.W + 24, PATH.glow, 1) do pc.BackgroundTransparency = 0.8 end
+	-- BODY: deep channel (solid, dark enough that tokens + enemies pop off it)
+	for _, pc in chain(ROAD.W, PATH.body, 2) do end
+	-- inner RAIL: a narrower lighter band => a beveled tube read, no per-seg gradients
+	for _, pc in chain(ROAD.W - 13, PATH.rail, 3) do pc.BackgroundTransparency = 0.14 end
+	-- CORE seam: bright thin glowing centerline (segments only, no joint beads)
+	for _, pc in chain(6, PATH.core, 4, nil, true) do pc.BackgroundTransparency = 0.4 end
+	-- FLOW pulses: bright glowing dots gliding toward the Core = directional juice
+	for i = 1, 6 do
+		local pulse = frame(board, "Flow"); pulse.AnchorPoint = Vector2.new(0.5, 0.5)
+		pulse.Size = UDim2.new(0, 14, 0, 14); pulse.BackgroundColor3 = PATH.pulse; pulse.ZIndex = 6
+		corner(pulse, 999); UI.fx.glow(pulse, PATH.core)
+		table.insert(flowPulses, { f = pulse, t = (i - 1) / 6 })
 	end
 end
 drawRoad()
+RunService.Heartbeat:Connect(function(dt)
+	gameClock += dt
+	for _, fp in flowPulses do
+		fp.t += dt * 0.11
+		if fp.t > 1 then fp.t -= 1 end
+		local p = pathPos(fp.t)
+		fp.f.Position = UDim2.fromScale(p.X, p.Y)
+	end
+end)
 
 -- Core at the end of the track
 local coreP = pathPos(1)
@@ -520,22 +538,32 @@ local function banner(s: string, col: Color3)
 	end)
 end
 
--- ===== enemy pool (anime tokens) =====
+-- ===== enemy pool (cute glowing creatures) =====
 local function makeEnemy(): any
-	local body = cel(board, C.magenta, 10, 2)
-	body.AnchorPoint = Vector2.new(0.5, 0.5)
-	body.Size = UDim2.fromScale(0.09, 0.05); body.Visible = false; body.ZIndex = 8
-	-- two glowing eye slits
+	local body = frame(board, "Enemy"); body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Size = UDim2.fromOffset(52, 52); body.BackgroundColor3 = C.magenta; body.Visible = false; body.ZIndex = 9
+	corner(body, 999)
+	local glowFx = UI.fx.glow(body, C.magenta)
+	stroke(body, C.white, 1.5, 0.55) -- subtle rim
+	-- top sheen (shiny orb highlight, independent of body colour)
+	local sheen = frame(body, "Sheen"); sheen.BackgroundColor3 = C.white; sheen.BackgroundTransparency = 0.6
+	sheen.AnchorPoint = Vector2.new(0.5, 0.5); sheen.Position = UDim2.fromScale(0.5, 0.26); sheen.Size = UDim2.fromScale(0.6, 0.3); sheen.ZIndex = 10; corner(sheen, 999)
+	-- big cute eyes (white + dark pupil + shine)
 	for i = 0, 1 do
-		local eye = frame(body, "Eye"); eye.BackgroundColor3 = C.white; eye.Size = UDim2.fromScale(0.16, 0.12)
-		eye.Position = UDim2.fromScale(0.28 + i * 0.34, 0.32); eye.ZIndex = 10; corner(eye, 2)
+		local eye = frame(body, "Eye"); eye.BackgroundColor3 = C.white; eye.AnchorPoint = Vector2.new(0.5, 0.5)
+		eye.Position = UDim2.fromScale(0.35 + i * 0.3, 0.46); eye.Size = UDim2.fromScale(0.26, 0.32); eye.ZIndex = 11; corner(eye, 999)
+		local pupil = frame(eye, "P"); pupil.BackgroundColor3 = Color3.fromRGB(24, 26, 40); pupil.AnchorPoint = Vector2.new(0.5, 0.5)
+		pupil.Position = UDim2.fromScale(0.5, 0.6); pupil.Size = UDim2.fromScale(0.55, 0.55); pupil.ZIndex = 12; corner(pupil, 999)
+		local shine = frame(pupil, "S"); shine.BackgroundColor3 = C.white; shine.AnchorPoint = Vector2.new(0.5, 0.5)
+		shine.Position = UDim2.fromScale(0.34, 0.32); shine.Size = UDim2.fromScale(0.42, 0.42); shine.ZIndex = 13; corner(shine, 999)
 	end
-	local bar = frame(body, "HP"); bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.fromScale(0.5, 1.34)
-	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = C.lime; bar.ZIndex = 11; corner(bar, 2)
-	local barBg = frame(body, "HPbg"); barBg.AnchorPoint = Vector2.new(0.5, 1); barBg.Position = UDim2.fromScale(0.5, 1.34)
-	barBg.Size = UDim2.new(1, 0, 0, 4); barBg.BackgroundColor3 = C.ink0; barBg.ZIndex = 10; corner(barBg, 2)
-	bar.ZIndex = 11
-	return { body = body, bar = bar, hp = 0, maxHp = 0, speed = 0, baseSpeed = 0, slowT = 0,
+	-- HP bar above the head
+	local barBg = frame(body, "HPbg"); barBg.AnchorPoint = Vector2.new(0.5, 1); barBg.Position = UDim2.fromScale(0.5, -0.12)
+	barBg.Size = UDim2.fromScale(1.15, 0.18); barBg.BackgroundColor3 = C.ink0; barBg.BackgroundTransparency = 0.1; barBg.ZIndex = 11; corner(barBg, 999)
+	stroke(barBg, C.ink0, 1, 0.3)
+	local bar = frame(barBg, "HP"); bar.AnchorPoint = Vector2.new(0, 0.5); bar.Position = UDim2.fromScale(0.02, 0.5)
+	bar.Size = UDim2.fromScale(0.96, 0.62); bar.BackgroundColor3 = C.lime; bar.ZIndex = 12; corner(bar, 999)
+	return { body = body, bar = bar, glowFx = glowFx, hp = 0, maxHp = 0, speed = 0, baseSpeed = 0, slowT = 0,
 		progress = 0, active = false, dying = false, boss = false }
 end
 local pool = {}
@@ -578,10 +606,12 @@ local function spawnOne(def: any)
 	e.hp = def.hp; e.maxHp = def.hp; e.speed = def.speed; e.baseSpeed = def.speed
 	e.slowT = 0; e.boss = def.boss or false; e.progress = 0; e.active = true
 	local et = ETYPES[def.etype or "runner"]
-	e.body.BackgroundColor3 = def.boss and C.red or et.color
-	e.body.Size = def.boss and UDim2.fromScale(0.22, 0.13)
-		or UDim2.fromScale(0.09 * et.sizeMul, 0.05 * et.sizeMul)
-	e.bar.Size = UDim2.new(1, 0, 0, 4)
+	local col = def.boss and C.red or et.color
+	e.body.BackgroundColor3 = col
+	if e.glowFx then e.glowFx.Color = col end
+	local sz = def.boss and 104 or math.floor(52 * et.sizeMul)
+	e.body.Size = UDim2.fromOffset(sz, sz)
+	e.bar.Size = UDim2.fromScale(0.96, 0.62)
 	e.body.Visible = true
 	table.insert(state.enemies, e)
 end
@@ -623,7 +653,7 @@ end
 local function damageEnemy(e: any, dmg: number, crit: boolean, id: string)
 	e.hp -= dmg
 	RunState.dmgByType[id] = (RunState.dmgByType[id] or 0) + dmg
-	e.bar.Size = UDim2.new(math.clamp(e.hp / e.maxHp, 0, 1), 0, 0, 4)
+	e.bar.Size = UDim2.fromScale(0.96 * math.clamp(e.hp / e.maxHp, 0, 1), 0.62)
 	local sx, sy = pxOf(Vector2.new(pathPos(e.progress).X, pathPos(e.progress).Y))
 	critNumber(sx, sy, dmg, crit, FIGHTERS[id].color)
 	hitSpark(sx, sy, FIGHTERS[id].color)
@@ -633,8 +663,8 @@ local function damageEnemy(e: any, dmg: number, crit: boolean, id: string)
 		setYen(state.yen + reward)
 		e.active = false; e.dying = true
 		hitSpark(sx, sy, C.white)
-		TweenService:Create(e.body, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromScale(0.01, 0.01) }):Play()
-		task.delay(0.16, function() e.body.Visible = false; e.dying = false; local i = table.find(state.enemies, e); if i then table.remove(state.enemies, i) end end)
+		TweenService:Create(e.body, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 40 }):Play()
+		task.delay(0.18, function() e.body.Visible = false; e.body.Rotation = 0; e.dying = false; local i = table.find(state.enemies, e); if i then table.remove(state.enemies, i) end end)
 		if e.boss then banner("BOSS SLAIN", C.gold); screenFlash(C.gold, 0.4); speedLines() end
 	end
 end
@@ -940,7 +970,8 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 				if state.lives <= 0 then endRun(); return end
 			else
 				local p = pathPos(e.progress)
-				e.body.Position = UDim2.fromScale(p.X, p.Y)
+				local bob = math.sin(gameClock * 7 + e.progress * 34) * 0.007
+				e.body.Position = UDim2.new(p.X, 0, p.Y + bob, 0)
 			end
 		end
 	end
