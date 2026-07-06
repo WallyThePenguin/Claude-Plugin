@@ -9,6 +9,7 @@
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
@@ -235,64 +236,74 @@ local function pathPos(p: number): Vector2
 	return WAYPOINTS[#WAYPOINTS]
 end
 
+-- even arc-length samples along the smoothed path (constant spacing => no bunching)
+local function resamplePath(stepScale: number): { Vector2 }
+	local pts = {}
+	local n = math.max(2, math.ceil(totalLen / stepScale))
+	for i = 0, n do
+		pts[#pts + 1] = pathPos(i / n)
+	end
+	return pts
+end
+
 -- ===== solid-ribbon road (capsule chain: gap-free at every bend) =====
 local ROAD = { W = 34 } -- road width in px (constant); lengths stay board-SCALE
-local function ribbonSeg(a: Vector2, b: Vector2, wpx: number, col: Color3, z: number): Frame
-	local mid = (a + b) / 2
-	local d = b - a
-	local seg = frame(board, "RSeg")
-	seg.AnchorPoint = Vector2.new(0.5, 0.5)
-	seg.Position = UDim2.fromScale(mid.X, mid.Y)
-	seg.Size = UDim2.new(d.Magnitude, 0, 0, wpx) -- length SCALE, width PX
-	seg.BackgroundColor3 = col
-	seg.Rotation = math.deg(math.atan2(d.Y, d.X))
-	seg.ZIndex = z
-	return seg
-end
-local function ribbonJoint(p: Vector2, wpx: number, col: Color3, z: number): Frame
-	local j = frame(board, "RJoint")
-	j.AnchorPoint = Vector2.new(0.5, 0.5)
-	j.Position = UDim2.fromScale(p.X, p.Y)
-	j.Size = UDim2.new(0, wpx, 0, wpx)
-	j.BackgroundColor3 = col
-	j.ZIndex = z
-	corner(j, math.floor(wpx / 2)) -- full radius => circle welds the joint
-	return j
-end
-local function chain(wpx: number, col: Color3, z: number, off: number?, skipJoints: boolean?): { Frame }
+-- dot-brush: overlapping OPAQUE circles at each sample point. Circles are px-square and
+-- rotation-immune, so the tube has NO facet/diamond edge (the artifact rotated rects create at
+-- bends), and opaque discs never alpha-stack, so there is zero bright/dark seam banding.
+local function dotChain(pts: { Vector2 }, wpx: number, col: Color3, z: number, transp: number?): { Frame }
 	local pieces = {}
-	local function nudge(inst: Frame)
-		if off then
-			local p = inst.Position
-			inst.Position = UDim2.new(p.X.Scale, off, p.Y.Scale, off)
-		end
-	end
-	for i = 1, #WAYPOINTS - 1 do
-		local s = ribbonSeg(WAYPOINTS[i], WAYPOINTS[i + 1], wpx, col, z); nudge(s); table.insert(pieces, s)
-	end
-	if not skipJoints then
-		for i = 1, #WAYPOINTS do
-			local j = ribbonJoint(WAYPOINTS[i], wpx, col, z); nudge(j); table.insert(pieces, j)
-		end
+	for _, p in pts do
+		local d = frame(board, "RDot")
+		d.AnchorPoint = Vector2.new(0.5, 0.5)
+		d.Position = UDim2.fromScale(p.X, p.Y)
+		d.Size = UDim2.new(0, wpx, 0, wpx) -- px-square circle
+		d.BackgroundColor3 = col
+		d.BackgroundTransparency = transp or 0
+		d.ZIndex = z
+		corner(d, math.floor(wpx / 2)) -- full-radius => perfect circle
+		pieces[#pieces + 1] = d
 	end
 	return pieces
 end
+-- thin continuous line: rectangles between consecutive points. At small widths there is no
+-- facet artifact, and end-to-end rects leave no beading (used for the bright center seam).
+local function lineChain(pts: { Vector2 }, wpx: number, col: Color3, z: number, transp: number?)
+	for i = 1, #pts - 1 do
+		local a, b = pts[i], pts[i + 1]
+		local mid, d = (a + b) / 2, b - a
+		local seg = frame(board, "RSeg")
+		seg.AnchorPoint = Vector2.new(0.5, 0.5)
+		seg.Position = UDim2.fromScale(mid.X, mid.Y)
+		seg.Size = UDim2.new(d.Magnitude, 0, 0, wpx) -- length board-scale, width px
+		seg.BackgroundColor3 = col
+		seg.BackgroundTransparency = transp or 0
+		seg.Rotation = math.deg(math.atan2(d.Y, d.X))
+		seg.ZIndex = z
+	end
+end
 local PATH = {
-	glow = Color3.fromRGB(86, 150, 255), body = Color3.fromRGB(44, 56, 122),
-	rail = Color3.fromRGB(96, 120, 224), core = Color3.fromRGB(176, 216, 255),
-	pulse = Color3.fromRGB(226, 240, 255),
+	glowRing = Color3.fromRGB(52, 60, 116),  -- dim opaque halo that fades toward the board
+	body     = Color3.fromRGB(82, 104, 200), -- bright glowing lane
+	rail     = Color3.fromRGB(120, 150, 235),-- lighter inner bevel band
+	core     = Color3.fromRGB(205, 230, 255),-- brightest centerline seam
+	pulse    = Color3.fromRGB(232, 244, 255),
 }
 local flowPulses: { any } = {}
 local gameClock = 0
 local function drawRoad()
-	-- soft wide GLOW halo so the lane reads as flowing energy off the dark board
-	for _, pc in chain(ROAD.W + 24, PATH.glow, 1) do pc.BackgroundTransparency = 0.8 end
-	-- BODY: deep channel (solid, dark enough that tokens + enemies pop off it)
-	for _, pc in chain(ROAD.W, PATH.body, 2) do end
-	-- inner RAIL: a narrower lighter band => a beveled tube read, no per-seg gradients
-	for _, pc in chain(ROAD.W - 13, PATH.rail, 3) do pc.BackgroundTransparency = 0.14 end
-	-- CORE seam: bright thin glowing centerline (segments only, no joint beads)
-	for _, pc in chain(6, PATH.core, 4, nil, true) do pc.BackgroundTransparency = 0.4 end
+	local W = ROAD.W
+	-- DENSE even-spaced samples so each disc heavily overlaps the next => a smooth tube (no beading)
+	local main = resamplePath(0.011)
+	-- GLOW RING: wide OPAQUE disc, dim => soft halo, ZERO alpha stacking
+	dotChain(main, W + 20, PATH.glowRing, 1)
+	-- BODY: bright opaque lane
+	dotChain(main, W, PATH.body, 2)
+	-- RAIL: narrower lighter band => beveled-tube read
+	dotChain(main, W - 12, PATH.rail, 3)
+	-- CORE seam: bright thin CONTINUOUS centerline (rects, no beading, no facets at this width)
+	local seam = resamplePath(0.02)
+	lineChain(seam, 5, PATH.core, 4)
 	-- FLOW pulses: bright glowing dots gliding toward the Core = directional juice
 	for i = 1, 6 do
 		local pulse = frame(board, "Flow"); pulse.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -437,6 +448,7 @@ if DEBUG.rich then -- TEST: own all fighters + big bank so autoPlay fills the bo
 end
 setYen(state.yen); setLives(state.lives)
 
+local beginPlacement -- fwd: placement mode (assigned after the board + validators are built)
 local function refreshTray()
 	for _, c in tray:GetChildren() do if c:IsA("Frame") then c:Destroy() end end
 	local i = 1
@@ -450,6 +462,11 @@ local function refreshTray()
 			local _, bt = UI.Badge(chip, tostring(lvl), "gold")
 			bt.Parent.AnchorPoint = Vector2.new(0.5, 0.5); bt.Parent.Position = UDim2.fromScale(0.92, 0.92); bt.Parent.Size = UDim2.fromOffset(22, 22)
 		end
+		-- cost label under the glyph + click-to-place (enters placement mode)
+		local costL = text(chip, "\u{00A5}" .. def.cost, 11, C.gold)
+		costL.Font = FONT; costL.AnchorPoint = Vector2.new(0.5, 1); costL.Position = UDim2.fromScale(0.5, 1)
+		costL.Size = UDim2.fromScale(1, 0.32); costL.ZIndex = chip.ZIndex + 3
+		button(chip).MouseButton1Click:Connect(function() if beginPlacement then beginPlacement(id) end end)
 		i += 1
 	end
 end
@@ -458,21 +475,55 @@ refreshTray()
 -- ===== FX (pooled-ish; capped) =====
 local critCount = 0
 local function critNumber(px: number, py: number, val: number, crit: boolean, col: Color3)
-	if critCount > 26 then return end
+	-- crit spawns 2 labels; keep headroom under the cap
+	if critCount > (crit and 24 or 26) then return end
+	-- color-by-damage tint for normals: bigger hits skew toward gold/orange
+	local baseCol = col
+	if not crit then
+		local t = math.clamp(val / 40, 0, 1)
+		baseCol = col:Lerp(C.gold, t * 0.6)
+	end
 	critCount += 1
-	local l = text(fxLayer, val .. (crit and "!!" or ""), crit and 34 or 22, crit and C.gold or col)
-	l.Font = FONT; l.Rotation = crit and math.random(-12, 12) or -6
-	stroke(l, C.ink0, crit and 3 or 2, 0)
-	l.AnchorPoint = Vector2.new(0.5, 0.5); l.Position = UDim2.fromScale(px, py)
-	l.ZIndex = 45
-	l.TextScaled = true -- so the size-punch actually scales the number
-	-- punch scale via TextSize tween proxy (use Size scale)
-	local endSize = crit and UDim2.fromScale(0.11, 0.05) or UDim2.fromScale(0.07, 0.032)
-	l.Size = UDim2.fromScale(0.02, 0.01)
-	TweenService:Create(l, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = endSize }):Play()
-	TweenService:Create(l, TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.fromScale(px + (math.random() - 0.5) * 0.04, py - 0.06), TextTransparency = 1 }):Play()
-	task.delay(0.45, function() l:Destroy(); critCount -= 1 end)
+	local l = text(fxLayer, tostring(val), crit and 40 or 24, crit and C.gold or baseCol)
+	l.Font = FONT
+	l.Rotation = crit and math.random(-10, 10) or -5
+	l.ZIndex = 46
+	l.TextScaled = true
+	l.AnchorPoint = Vector2.new(0.5, 0.5)
+	l.Position = UDim2.fromScale(px, py)
+	-- crit gets a fatter, hotter double-outline read (ink core + magenta rim via two strokes)
+	stroke(l, C.ink0, crit and 4 or 2, 0)
+	if crit then stroke(l, C.magenta, 6, 0.35) end
+	local peakSize = crit and UDim2.fromScale(0.13, 0.06) or UDim2.fromScale(0.075, 0.035)
+	local restSize = crit and UDim2.fromScale(0.105, 0.048) or UDim2.fromScale(0.062, 0.029)
+	l.Size = UDim2.fromScale(0.01, 0.005)
+	-- phase 1: overshoot punch-in (Back-out) then settle to rest size (pop, not just grow)
+	TweenService:Create(l, TweenInfo.new(0.10, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = peakSize }):Play()
+	task.delay(0.10, function()
+		if l.Parent then TweenService:Create(l, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = restSize }):Play() end
+	end)
+	-- phase 2: gravity arc — quick rise (Quint-out), fade begins after the pop reads
+	local drift = (math.random() - 0.5) * 0.05
+	TweenService:Create(l, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = UDim2.fromScale(px + drift, py - (crit and 0.085 or 0.06)) }):Play()
+	task.delay(0.18, function()
+		if l.Parent then TweenService:Create(l, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play() end
+	end)
+	local life = 0.52
+	if crit then
+		-- stacked "CRIT" flourish above the number: snaps in small, pops, rides up with it
+		critCount += 1
+		local f = text(fxLayer, "CRIT", 20, C.magenta)
+		f.Font = FONT; f.Rotation = -8; f.ZIndex = 47; f.TextScaled = true
+		f.AnchorPoint = Vector2.new(0.5, 0.5); f.Position = UDim2.fromScale(px, py - 0.045)
+		stroke(f, C.ink0, 3, 0)
+		f.Size = UDim2.fromScale(0.005, 0.004)
+		TweenService:Create(f, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.05, 0.024) }):Play()
+		TweenService:Create(f, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.fromScale(px + drift, py - 0.13) }):Play()
+		task.delay(0.24, function() if f.Parent then TweenService:Create(f, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play() end end)
+		task.delay(life, function() f:Destroy(); critCount -= 1 end)
+	end
+	task.delay(life, function() l:Destroy(); critCount -= 1 end)
 end
 local sparkCount = 0
 local function hitSpark(px: number, py: number, col: Color3)
@@ -643,11 +694,34 @@ local function pxOf(p: Vector2): (number, number)
 	return 0.5 + (p.X - 0.5) * 0.62, 0.53 + (p.Y - 0.5) * 0.88
 end
 
-local NODES = {} -- socket positions beside the track
-do
-	local spots = { Vector2.new(0.62, 0.30), Vector2.new(0.40, 0.30), Vector2.new(0.66, 0.55), Vector2.new(0.34, 0.55),
-		Vector2.new(0.60, 0.72), Vector2.new(0.36, 0.72), Vector2.new(0.5, 0.20), Vector2.new(0.5, 0.64) }
-	for _, s in spots do table.insert(NODES, s) end
+-- ===== placement geometry (board-scale everywhere) =====
+local PLACE = {
+	margin   = 0.05,   -- keep the token this far inside the board rim (board-scale)
+	laneMin  = 0.075,  -- min distance a tower must sit from the nearest lane centerline
+	spaceMin = 0.07,   -- min distance between two towers
+	samples  = 60,     -- how finely we sample the path for the lane test
+}
+local function distToPath(p: Vector2): number
+	local best = math.huge
+	for i = 0, PLACE.samples do
+		local d = (pathPos(i / PLACE.samples) - p).Magnitude
+		if d < best then best = d end
+	end
+	return best
+end
+-- returns ok:boolean, reason:string?  (all coords board-scale)
+local function validatePlacement(p: Vector2, ignoreTw: any?): (boolean, string?)
+	if p.X < PLACE.margin or p.X > 1 - PLACE.margin
+		or p.Y < PLACE.margin or p.Y > 1 - PLACE.margin then
+		return false, "bounds"
+	end
+	if distToPath(p) < PLACE.laneMin then return false, "lane" end
+	for _, tw in state.towers do
+		if tw ~= ignoreTw and (tw.pos - p).Magnitude < PLACE.spaceMin then
+			return false, "crowd"
+		end
+	end
+	return true, nil
 end
 
 local function damageEnemy(e: any, dmg: number, crit: boolean, id: string)
@@ -813,34 +887,52 @@ local function makeTowerViewport(parent: Instance, def: any): any
 	return { vp = vp, model = model }
 end
 
-local slots = {}
-local function placeFighter(node: any, id: string)
+-- ===== selection ring (one persistent ring, follows the selected tower) =====
+local selectedTw: any = nil
+local function clearSelection()
+	if selectedTw and selectedTw.ring then selectedTw.ring:Destroy(); selectedTw.ring = nil end
+	selectedTw = nil
+end
+local function ringDiameterScale(id: string): number
+	-- range is a board-scale radius; ring diameter (board-scale) = 2*range, clamped sane
+	local S = fStats(id)
+	return math.clamp(S.range * 2, 0.12, 0.95)
+end
+local function selectTower(tw: any)
+	if selectedTw == tw then clearSelection(); return end
+	clearSelection()
+	local def = FIGHTERS[tw.id]
+	local ring = frame(board, "RangeRing"); ring.BackgroundTransparency = 1
+	ring.AnchorPoint = Vector2.new(0.5, 0.5); ring.Position = UDim2.fromScale(tw.pos.X, tw.pos.Y); ring.ZIndex = 8
+	UI.fx.corner(ring, 999); UI.fx.stroke(ring, def.color, 3, 0.2)
+	local halo = frame(ring, "Halo"); halo.BackgroundColor3 = def.color; halo.BackgroundTransparency = 0.9
+	halo.Size = UDim2.fromScale(1, 1); halo.ZIndex = 7; UI.fx.corner(halo, 999)
+	local d = ringDiameterScale(tw.id)
+	ring.Size = UDim2.fromScale(0.02, 0.02)
+	TweenService:Create(ring, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(d, d) }):Play()
+	tw.ring = ring
+	selectedTw = tw
+end
+
+-- ===== place a fighter at a free board position =====
+local function placeFighterAt(pos: Vector2, id: string): any
 	local def = FIGHTERS[id]
-	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return end
+	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return nil end
 	setYen(state.yen - def.cost)
-	node.plus.Visible = false
-	node.frame.BackgroundTransparency = 1 -- the clean token IS the tower now (no pad card)
-	-- clean premium TOKEN via the engine: class-colored circle chip + kanji glyph + soft glow
-	local chip = UI.IconChip({ parent = node.frame, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.text,
+	local holder = frame(board, "Tower"); holder.BackgroundTransparency = 1
+	holder.AnchorPoint = Vector2.new(0.5, 0.5); holder.Position = UDim2.fromScale(pos.X, pos.Y)
+	holder.Size = UDim2.fromScale(0.11, 0.06); holder.ZIndex = 14
+	local chip = UI.IconChip({ parent = holder, name = "Token", glyph = def.glyph, glyphColor = UI.T.color.text,
 		glyphSize = UI.T.tsize.xl, fill = def.color, accent = def.color, glow = def.color,
 		size = UDim2.fromOffset(76, 76), radius = UI.T.radius.pill, anchor = Vector2.new(0.5, 0.5), pos = UDim2.fromScale(0.5, 0.5), z = 15 })
 	local _, badgeT = UI.Badge(chip, tostring((RunState.upgrades[id] or 0) + 1), "gold")
 	badgeT.Parent.AnchorPoint = Vector2.new(0.5, 0.5); badgeT.Parent.Position = UDim2.fromScale(0.9, 0.92); badgeT.Parent.ZIndex = 22
-	local tw = { id = id, node = node, cd = 0, frame = chip, badge = badgeT }
-	node.tower = tw; table.insert(state.towers, tw)
-	button(chip).MouseButton1Click:Connect(function()
-		-- inspect: expand a range ring
-		local S = fStats(id)
-		local ring = frame(node.frame, "Ring"); ring.BackgroundTransparency = 1; ring.AnchorPoint = Vector2.new(0.5, 0.5)
-		ring.Position = UDim2.fromScale(0.5, 0.5); ring.Size = UDim2.fromScale(0.6, 0.6); ring.ZIndex = 9
-		UI.fx.corner(ring, 999); local rst = UI.fx.stroke(ring, def.color, 3, 0.2)
-		local r = math.clamp(S.range * 20, 3.5, 9)
-		TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale(r, r) }):Play()
-		TweenService:Create(rst, TweenInfo.new(0.45), { Transparency = 1 }):Play()
-		task.delay(0.5, function() ring:Destroy() end)
-	end)
+	local tw = { id = id, pos = pos, cd = 0, frame = holder, chip = chip, badge = badgeT, ring = nil }
+	table.insert(state.towers, tw)
+	button(chip).MouseButton1Click:Connect(function() selectTower(tw) end)
 	UI.motion.pop(chip)
-	hitSpark(select(1, pxOf(node.pos)), select(2, pxOf(node.pos)), def.color)
+	hitSpark(select(1, pxOf(pos)), select(2, pxOf(pos)), def.color)
+	return tw
 end
 -- keep the level badges in sync when a fighter's tier changes (drafted trait)
 local function updateTowerBadges()
@@ -849,14 +941,10 @@ local function updateTowerBadges()
 	end
 end
 
--- a boss can SMASH a placed fighter: free the node, shatter the frame, re-summon later
+-- a boss can SMASH a placed fighter: shatter the holder + deselect if selected
 local function removeFighter(tw: any)
-	local node = tw.node
-	node.tower = nil
-	node.plus.Visible = true
-	node.frame.BackgroundColor3 = C.panel; node.frame.BackgroundTransparency = 0.25 -- revert pad to empty slot
 	local i = table.find(state.towers, tw); if i then table.remove(state.towers, i) end
-	if tw.model then removeSpinner(tw.model) end -- stop spinning the model we're about to destroy
+	if selectedTw == tw then clearSelection() end
 	if tw.pocket then local p = tw.pocket; TweenService:Create(p, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play(); task.delay(0.2, function() p:Destroy() end) end
 	local fx = tw.frame
 	TweenService:Create(fx, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
@@ -864,46 +952,77 @@ local function removeFighter(tw: any)
 	task.delay(0.2, function() fx:Destroy() end)
 end
 
-local pickerOpen = false
-local function openPicker(node: any)
-	if node.tower or not state.running or pickerOpen then return end
-	local owned = {}
-	for id in RunState.owned do table.insert(owned, id) end
-	if #owned == 1 then placeFighter(node, owned[1]); return end
-	pickerOpen = true
-	local menu = frame(root, "Picker"); menu.AnchorPoint = Vector2.new(0.5, 0.5)
-	local nx, ny = pxOf(node.pos)
-	menu.Position = UDim2.fromScale(nx, ny); menu.Size = UDim2.fromScale(0.16, 0.055 * #owned)
-	menu.BackgroundColor3 = C.panel; menu.ZIndex = 50; corner(menu, 10); stroke(menu, C.cyan, 2, 0.2)
-	local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0, 4); ll.Parent = menu
-	local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0, 4); pad.PaddingBottom = UDim.new(0, 4); pad.PaddingLeft = UDim.new(0, 4); pad.PaddingRight = UDim.new(0, 4); pad.Parent = menu
-	local function close() pickerOpen = false; menu:Destroy() end
-	for _, id in owned do
-		local def = FIGHTERS[id]
-		local row = cel(menu, def.color, 8); row.Size = UDim2.new(1, 0, 0, 34); row.ZIndex = 51
-		local lbl = text(row, def.glyph .. "  " .. def.name .. "  \u{00A5}" .. def.cost, 13, C.ink0); lbl.Font = FONT; lbl.Size = UDim2.fromScale(1, 1); lbl.ZIndex = 52
-		button(row).MouseButton1Click:Connect(function() close(); placeFighter(node, id) end)
-	end
-	task.delay(4, function() if menu.Parent then close() end end)
+-- ===== placement mode (ghost token + live range ring following the cursor) =====
+local placing: any = nil
+local lastBoardCursor = Vector2.new(0.5, 0.5)
+local function endPlacement()
+	if not placing then return end
+	placing.ghost:Destroy(); placing.ring:Destroy(); placing = nil
+end
+local function updateGhost()
+	if not placing then return end
+	local p = lastBoardCursor
+	placing.ghost.Position = UDim2.fromScale(p.X, p.Y)
+	placing.ring.Position = UDim2.fromScale(p.X, p.Y)
+	local ok = select(1, validatePlacement(p))
+	placing.ringStroke.Color = ok and placing.color or C.red
+	placing.chip.BackgroundColor3 = ok and placing.color or Color3.fromRGB(120, 40, 46)
+end
+function beginPlacement(id: string)
+	if not state.running or state.drafting then return end
+	local def = FIGHTERS[id]
+	if state.yen < def.cost then banner("NEED \u{00A5}", C.red); return end
+	endPlacement(); clearSelection()
+	local ghost = frame(board, "Ghost"); ghost.BackgroundTransparency = 1
+	ghost.AnchorPoint = Vector2.new(0.5, 0.5); ghost.Size = UDim2.fromScale(0.11, 0.06); ghost.ZIndex = 18
+	local chip = UI.IconChip({ parent = ghost, glyph = def.glyph, glyphColor = UI.T.color.text, glyphSize = UI.T.tsize.xl,
+		fill = def.color, accent = def.color, size = UDim2.fromOffset(76, 76), radius = UI.T.radius.pill,
+		anchor = Vector2.new(0.5, 0.5), pos = UDim2.fromScale(0.5, 0.5), z = 19 })
+	chip.BackgroundTransparency = 0.35
+	local ring = frame(board, "GRing"); ring.BackgroundTransparency = 1; ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.ZIndex = 17; UI.fx.corner(ring, 999)
+	local rst = UI.fx.stroke(ring, def.color, 3, 0.15)
+	local d = ringDiameterScale(id)
+	ring.Size = UDim2.fromScale(d, d)
+	placing = { id = id, ghost = ghost, chip = chip, ring = ring, ringStroke = rst, color = def.color }
+	updateGhost()
 end
 
-for _, p in NODES do
-	local node = frame(board, "Node")
-	node.AnchorPoint = Vector2.new(0.5, 0.5); node.Position = UDim2.fromScale(p.X, p.Y)
-	node.Size = UDim2.fromScale(0.11, 0.06); node.BackgroundColor3 = C.panel; node.BackgroundTransparency = 0.25
-	node.ZIndex = 6; corner(node, 10); stroke(node, C.panelHi, 2, 0.4)
-	local plus = text(node, "+", 22, C.dim); plus.Font = FONT; plus.Size = UDim2.fromScale(1, 1)
-	local n = { frame = node, pos = p, tower = nil, plus = plus }
-	button(node).MouseButton1Click:Connect(function() openPicker(n) end)
-	table.insert(slots, n)
-end
+-- board-wide click overlay UNDER the tokens: commits a placement or deselects
+local placeCatcher = button(board)
+placeCatcher.Name = "PlaceCatcher"; placeCatcher.ZIndex = 13
+placeCatcher.MouseMoved:Connect(function(x: number, y: number)
+	local ap, asz = board.AbsolutePosition, board.AbsoluteSize
+	lastBoardCursor = Vector2.new((x - ap.X) / asz.X, (y - ap.Y) / asz.Y)
+	updateGhost()
+end)
+placeCatcher.MouseButton1Click:Connect(function()
+	if placing then
+		local p = lastBoardCursor
+		local ok, reason = validatePlacement(p)
+		if ok then
+			local id = placing.id; endPlacement(); placeFighterAt(p, id)
+		else
+			if reason == "crowd" then banner("TOO CLOSE", C.red)
+			elseif reason == "lane" then banner("OFF THE LANE", C.red)
+			else banner("OUT OF BOUNDS", C.red) end
+			screenShake(3, 2)
+		end
+	else
+		clearSelection()
+	end
+end)
+UserInputService.InputBegan:Connect(function(io: InputObject)
+	if io.KeyCode == Enum.KeyCode.Escape then endPlacement()
+	elseif io.UserInputType == Enum.UserInputType.MouseButton2 then endPlacement() end
+end)
 
 -- ===== fire =====
 local function fire(tw: any, e: any)
 	local def = FIGHTERS[tw.id]
 	local S = fStats(tw.id)
 	local ex, ey = pxOf(pathPos(e.progress))
-	local nx, ny = pxOf(tw.node.pos)
+	local nx, ny = pxOf(tw.pos)
 	local dmg = S.dmg
 	local crit = math.random() < S.crit
 	if crit then dmg = math.floor(dmg * S.critMul) end
@@ -945,12 +1064,12 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 					local bp = pathPos(e.progress)
 					local victim, vd = nil, 0.17 * 0.17
 					for _, tw in state.towers do
-						local dx = bp.X - tw.node.pos.X; local dy = bp.Y - tw.node.pos.Y
+						local dx = bp.X - tw.pos.X; local dy = bp.Y - tw.pos.Y
 						local d2 = dx * dx + dy * dy
 						if d2 <= vd then victim, vd = tw, d2 end
 					end
 					if victim then
-						local vx, vy = pxOf(victim.node.pos)
+						local vx, vy = pxOf(victim.pos)
 						removeFighter(victim)
 						banner("FIGHTER SMASHED", C.red); screenShake(9, 5); screenFlash(C.red, 0.45); hitStop(0.08)
 						hitSpark(vx, vy, C.red); slashFlash(vx, vy, C.red)
@@ -982,8 +1101,8 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 			local best, bp = nil, -1
 			for _, e in state.enemies do
 				if e.active then
-					local dx = pathPos(e.progress).X - tw.node.pos.X
-					local dy = pathPos(e.progress).Y - tw.node.pos.Y
+					local dx = pathPos(e.progress).X - tw.pos.X
+					local dy = pathPos(e.progress).Y - tw.pos.Y
 					if (dx * dx + dy * dy) <= S.range * S.range and e.progress > bp then best, bp = e, e.progress end
 				end
 			end
@@ -1058,8 +1177,14 @@ local function showDraft()
 		local tp = Instance.new("TextLabel"); tp.BackgroundTransparency = 1; tp.Font = UI.T.font.med; tp.Text = c.tip
 		tp.TextSize = UI.T.tsize.sm; tp.TextColor3 = UI.T.color.textMid; tp.Size = UDim2.new(1, 0, 0, 40); tp.TextWrapped = true
 		tp.LayoutOrder = 3; tp.ZIndex = UI.T.z.modal + 3; tp.Parent = card.body
-		local btn = UI.Button({ parent = card.footer, text = "CHOOSE", accent = accent, size = UDim2.new(1, 0, 0, 42), z = UI.T.z.modal + 3 })
+		local btn = UI.Button({ parent = card.footer, text = "CHOOSE", accent = accent, textColor = UI.T.color.text,
+			size = UDim2.new(1, 0, 0, 42), z = UI.T.z.modal + 3 })
 		btn.MouseButton1Click:Connect(function() choose(c) end)
+		-- entire card is clickable (transparent overlay draws nothing, so chip/text still show)
+		local hit = button(card.root); hit.Name = "CardHit"; hit.BackgroundTransparency = 1
+		hit.ZIndex = card.root.ZIndex + 6
+		hit.MouseButton1Click:Connect(function() choose(c) end)
+		UI.motion.hoverGrow(card.root, 10) -- hover feedback: the card lifts/grows
 	end
 	if DEBUG.autoPlay then task.delay(1.0, function() if not done then choose(drawn[1]) end end) end
 end
@@ -1126,18 +1251,19 @@ if DEBUG.autoPlay then
 	task.spawn(function()
 		local order = { "Ronin", "Onmyoji", "Archer", "Monk" }
 		local k = 0
+		local lastTw = nil
 		while state.running do
-			for _, n in slots do
-				if not n.tower and not state.drafting then
-					if DEBUG.rich then -- place all 4 types in rotation (skip the picker menu)
-						k += 1
-						local id = order[((k - 1) % #order) + 1]
-						if state.yen >= FIGHTERS[id].cost then placeFighter(n, id); task.wait(0.15) end
-					elseif state.yen >= 18 then
-						openPicker(n); task.wait(0.1)
+			if not state.drafting and #state.towers < 8 then
+				k += 1
+				local id = DEBUG.rich and order[((k - 1) % #order) + 1] or "Ronin"
+				if RunState.owned[id] and state.yen >= FIGHTERS[id].cost then
+					for _ = 1, 14 do -- find a valid free spot (off-lane, spaced, in-bounds)
+						local pos = Vector2.new(0.16 + math.random() * 0.68, 0.14 + math.random() * 0.7)
+						if select(1, validatePlacement(pos)) then lastTw = placeFighterAt(pos, id); break end
 					end
 				end
 			end
+			if lastTw then selectTower(lastTw); lastTw = nil end -- show a range ring for capture
 			task.wait(0.7)
 		end
 	end)
