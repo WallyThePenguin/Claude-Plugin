@@ -151,6 +151,14 @@ local function buildBackdrop()
 		cap.Position = UDim2.fromScale(x, horizon - 0.06); cap.Size = UDim2.fromScale(0.035, 0.035)
 		cap.BackgroundColor3 = C.silhouette; cap.Rotation = 45; cap.ZIndex = 1
 	end
+	-- atmospheric FOG BAND at the horizon (warm haze fading up over the hills) = diorama depth cue
+	local fog = frame(sky, "Fog"); fog.AnchorPoint = Vector2.new(0.5, 1)
+	fog.Position = UDim2.fromScale(0.5, horizon + 0.03); fog.Size = UDim2.fromScale(1, 0.3); fog.ZIndex = 1
+	fog.BackgroundColor3 = Color3.fromRGB(184, 122, 98)
+	local fgr = Instance.new("UIGradient"); fgr.Rotation = 90
+	fgr.Color = ColorSequence.new(Color3.fromRGB(206, 146, 116), Color3.fromRGB(150, 96, 86))
+	fgr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.4) })
+	fgr.Parent = fog
 end
 buildBackdrop()
 
@@ -165,6 +173,11 @@ do
 	gg.Color = ColorSequence.new(C.groundTop, C.groundBot); gg.Parent = board
 	corner(board, 18); stroke(board, C.groundEdge, 4, 0)
 end
+-- warm FOCAL LIGHT POOL at the board center: brightens the action, funnels the eye (focal hierarchy)
+local pool = frame(board, "FocalPool"); pool.AnchorPoint = Vector2.new(0.5, 0.5)
+pool.Position = UDim2.fromScale(0.5, 0.44); pool.Size = UDim2.fromScale(0.78, 0.66)
+pool.BackgroundColor3 = Color3.fromRGB(168, 146, 112); pool.BackgroundTransparency = 0.8; pool.ZIndex = 1
+corner(pool, 999)
 -- foreground VIGNETTE: darken the top/bottom edges to funnel the eye inward (cheap cinematic depth).
 -- A plain Frame (not Active, not a button) does not intercept clicks to the nodes below it.
 local vign = frame(root, "Vignette"); vign.Size = UDim2.fromScale(1, 1)
@@ -286,6 +299,13 @@ coreNode.Position = UDim2.fromScale(coreP.X, coreP.Y)
 coreNode.Size = UDim2.fromScale(0.12, 0.05)
 coreNode.ZIndex = 7
 text(coreNode, "\u{6838}", 20, C.ink0).Size = UDim2.fromScale(1, 1)
+-- core focal pulse: a breathing glow so the thing you defend reads as the stakes (focal hierarchy)
+local coreGlow = frame(board, "CoreGlow"); coreGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+coreGlow.Position = UDim2.fromScale(coreP.X, coreP.Y); coreGlow.Size = UDim2.fromScale(0.17, 0.1)
+coreGlow.BackgroundColor3 = C.core; coreGlow.BackgroundTransparency = 0.58; coreGlow.ZIndex = 6
+corner(coreGlow, 999)
+TweenService:Create(coreGlow, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+	{ BackgroundTransparency = 0.86, Size = UDim2.fromScale(0.22, 0.13) }):Play()
 
 -- ===== fighter defs (element-colored, glyph, one upgrade path for now) =====
 type Def = { id: string, name: string, color: Color3, glyph: string, element: string,
@@ -334,17 +354,45 @@ local TRAITS: { [string]: { any } } = {
 	},
 }
 
+-- glassy translucent panel: warm-dark fill + top-lit gradient + a light "glass lip" rim + drop shadow
+local function glass(parent: Instance, name: string): Frame
+	local sh = frame(parent, name .. "Shadow")
+	sh.BackgroundColor3 = Color3.new(0, 0, 0); sh.BackgroundTransparency = 0.55; sh.ZIndex = 30
+	corner(sh, 12)
+	local g = frame(parent, name)
+	g.BackgroundColor3 = Color3.fromRGB(24, 26, 36); g.BackgroundTransparency = 0.1; g.ZIndex = 31
+	corner(g, 11); stroke(g, Color3.fromRGB(126, 138, 170), 1, 0.45)
+	local grad = Instance.new("UIGradient"); grad.Rotation = 90
+	grad.Color = ColorSequence.new(Color3.fromRGB(54, 58, 78), Color3.fromRGB(18, 20, 28)); grad.Parent = g
+	-- keep the shadow glued 3px below/behind the panel
+	local function sync()
+		sh.Size = g.Size + UDim2.fromOffset(2, 2)
+		sh.AnchorPoint = g.AnchorPoint
+		sh.Position = g.Position + UDim2.fromOffset(0, 3)
+	end
+	g:GetPropertyChangedSignal("Size"):Connect(sync); g:GetPropertyChangedSignal("Position"):Connect(sync); sync()
+	return g
+end
+
 -- ===== HUD =====
-local hud = frame(root, "HUD"); hud.BackgroundTransparency = 1; hud.Size = UDim2.new(1, 0, 0, 64); hud.ZIndex = 30
-local waveT = shout(hud, "WAVE 1", 26, C.cyan)
-waveT.AnchorPoint = Vector2.new(0.5, 0); waveT.Position = UDim2.fromScale(0.5, 0.15); waveT.Size = UDim2.fromScale(0.5, 0.7)
-waveT.ZIndex = 31
-local yenT = text(hud, "\u{00A5} 40", 22, C.gold)
-yenT.Font = FONT; yenT.AnchorPoint = Vector2.new(1, 0); yenT.Position = UDim2.new(1, -24, 0, 16); yenT.Size = UDim2.fromScale(0.2, 0.5)
-yenT.TextXAlignment = Enum.TextXAlignment.Right; yenT.ZIndex = 31
--- core lives (hearts)
-local lifeBox = frame(hud, "Lives"); lifeBox.BackgroundTransparency = 1; lifeBox.Position = UDim2.fromScale(0.02, 0.2); lifeBox.Size = UDim2.fromScale(0.2, 0.5); lifeBox.ZIndex = 31
-local lifeText = text(lifeBox, "", 22, C.red); lifeText.Font = FONT; lifeText.Size = UDim2.fromScale(1, 1); lifeText.TextXAlignment = Enum.TextXAlignment.Left
+local hud = frame(root, "HUD"); hud.BackgroundTransparency = 1; hud.Size = UDim2.new(1, 0, 0, 76); hud.ZIndex = 30
+hud.Position = UDim2.fromOffset(0, 30) -- clear the top inset / Studio playtest bar
+-- centered wave banner
+local waveChip = glass(hud, "WaveChip"); waveChip.AnchorPoint = Vector2.new(0.5, 0)
+waveChip.Position = UDim2.fromScale(0.5, 0.16); waveChip.Size = UDim2.fromOffset(210, 44); waveChip.ZIndex = 31
+local waveT = shout(waveChip, "WAVE 1", 23, C.cyan); waveT.Size = UDim2.fromScale(1, 1); waveT.ZIndex = 32
+-- top-left lives chip (heart glyph + count — not a 99-heart row)
+local lifeChip = glass(hud, "LifeChip"); lifeChip.Position = UDim2.fromOffset(22, 16); lifeChip.Size = UDim2.fromOffset(96, 42); lifeChip.ZIndex = 31
+local heart = text(lifeChip, "\u{2665}", 20, C.red); heart.Font = FONT; heart.AnchorPoint = Vector2.new(0, 0.5)
+heart.Position = UDim2.new(0, 13, 0.5, 0); heart.Size = UDim2.fromScale(0.32, 0.7); heart.TextXAlignment = Enum.TextXAlignment.Left; heart.ZIndex = 32
+local lifeText = text(lifeChip, "5", 22, C.white); lifeText.Font = FONT; lifeText.AnchorPoint = Vector2.new(1, 0.5)
+lifeText.Position = UDim2.new(1, -15, 0.5, 0); lifeText.Size = UDim2.fromScale(0.5, 0.7); lifeText.TextXAlignment = Enum.TextXAlignment.Right; lifeText.ZIndex = 32
+-- top-right currency chip
+local yenChip = glass(hud, "YenChip"); yenChip.AnchorPoint = Vector2.new(1, 0); yenChip.Position = UDim2.new(1, -22, 0, 16); yenChip.Size = UDim2.fromOffset(116, 42); yenChip.ZIndex = 31
+local yenIcon = text(yenChip, "\u{00A5}", 20, C.gold); yenIcon.Font = FONT; yenIcon.AnchorPoint = Vector2.new(0, 0.5)
+yenIcon.Position = UDim2.new(0, 13, 0.5, 0); yenIcon.Size = UDim2.fromScale(0.28, 0.7); yenIcon.TextXAlignment = Enum.TextXAlignment.Left; yenIcon.ZIndex = 32
+local yenT = text(yenChip, "40", 22, C.gold); yenT.Font = FONT; yenT.AnchorPoint = Vector2.new(1, 0.5)
+yenT.Position = UDim2.new(1, -15, 0.5, 0); yenT.Size = UDim2.fromScale(0.62, 0.7); yenT.TextXAlignment = Enum.TextXAlignment.Right; yenT.ZIndex = 32
 
 -- class tray (your roster) down the left
 local tray = frame(root, "Tray"); tray.BackgroundTransparency = 1; tray.AnchorPoint = Vector2.new(0, 0.5)
@@ -361,8 +409,8 @@ local state = { wave = 0, yen = 40, lives = 5, running = true, drafting = false,
 	enemies = {} :: { any }, queue = {} :: { any }, towers = {} :: { any } }
 local MAX_LIVE = 44
 
-local function setYen(n: number) state.yen = n; yenT.Text = "\u{00A5} " .. n end
-local function setLives(n: number) state.lives = math.max(0, n); lifeText.Text = string.rep("\u{2665}", state.lives) end
+local function setYen(n: number) state.yen = n; yenT.Text = tostring(n) end
+local function setLives(n: number) state.lives = math.max(0, n); lifeText.Text = tostring(state.lives) end
 if DEBUG.rich then -- TEST: own all fighters + big bank so autoPlay fills the board with every model
 	for _, id in { "Ronin", "Onmyoji", "Archer", "Monk" } do
 		RunState.owned[id] = true; RunState.traits[id] = RunState.traits[id] or {}
