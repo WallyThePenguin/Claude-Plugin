@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
@@ -423,11 +424,12 @@ local yenChip, yenT = UI.Pill({ name = "YenChip", parent = hud, anchor = Vector2
 	icon = "\u{00A5}", iconColor = UI.T.color.gold, value = "40", valueColor = UI.T.color.gold, accent = "gold", z = 101 })
 
 -- class tray (your roster) down the left
-local tray = frame(root, "Tray"); tray.BackgroundTransparency = 1; tray.AnchorPoint = Vector2.new(0, 0.5)
-tray.Position = UDim2.fromScale(0.015, 0.55); tray.Size = UDim2.fromScale(0.1, 0.6); tray.ZIndex = 30
-local tl = Instance.new("UIListLayout"); tl.Padding = UDim.new(0, 8); tl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+-- SHOP: a horizontal bar docked at the bottom-CENTER (the path/core bottom out higher up)
+local tray = frame(root, "Tray"); tray.BackgroundTransparency = 1; tray.AnchorPoint = Vector2.new(0.5, 1)
+tray.Position = UDim2.fromScale(0.5, 0.995); tray.Size = UDim2.fromScale(0.6, 0.11); tray.ZIndex = 30
+local tl = Instance.new("UIListLayout"); tl.Padding = UDim.new(0, 12); tl.FillDirection = Enum.FillDirection.Horizontal
+tl.HorizontalAlignment = Enum.HorizontalAlignment.Center; tl.VerticalAlignment = Enum.VerticalAlignment.Bottom
 tl.SortOrder = Enum.SortOrder.LayoutOrder; tl.Parent = tray
-local trayTitle = text(tray, "CLASS", 13, C.dim); trayTitle.Size = UDim2.new(1, 0, 0, 16); trayTitle.LayoutOrder = 0
 
 -- ===== state =====
 -- owned = summoned fighters; traits = the acquired upgrade keys per fighter (the "class");
@@ -475,55 +477,34 @@ refreshTray()
 -- ===== FX (pooled-ish; capped) =====
 local critCount = 0
 local function critNumber(px: number, py: number, val: number, crit: boolean, col: Color3)
-	-- crit spawns 2 labels; keep headroom under the cap
-	if critCount > (crit and 24 or 26) then return end
-	-- color-by-damage tint for normals: bigger hits skew toward gold/orange
-	local baseCol = col
-	if not crit then
-		local t = math.clamp(val / 40, 0, 1)
-		baseCol = col:Lerp(C.gold, t * 0.6)
-	end
+	if critCount > 28 then return end
 	critCount += 1
-	local l = text(fxLayer, tostring(val), crit and 40 or 24, crit and C.gold or baseCol)
+	-- crit is just a DIFFERENT COLOUR (hot gold) + bigger — no box, no flourish label
+	local color = crit and C.gold or C.white
+	local l = text(fxLayer, tostring(val), crit and 40 or 24, color)
 	l.Font = FONT
-	l.Rotation = crit and math.random(-10, 10) or -5
+	l.Rotation = crit and math.random(-8, 8) or -4
 	l.ZIndex = 46
 	l.TextScaled = true
 	l.AnchorPoint = Vector2.new(0.5, 0.5)
 	l.Position = UDim2.fromScale(px, py)
-	-- crit gets a fatter, hotter double-outline read (ink core + magenta rim via two strokes)
-	stroke(l, C.ink0, crit and 4 or 2, 0)
-	if crit then stroke(l, C.magenta, 6, 0.35) end
-	local peakSize = crit and UDim2.fromScale(0.13, 0.06) or UDim2.fromScale(0.075, 0.035)
-	local restSize = crit and UDim2.fromScale(0.105, 0.048) or UDim2.fromScale(0.062, 0.029)
+	stroke(l, C.ink0, crit and 4 or 2, 0) -- single clean dark outline (no box)
+	local peakSize = crit and UDim2.fromScale(0.125, 0.058) or UDim2.fromScale(0.072, 0.034)
+	local restSize = crit and UDim2.fromScale(0.10, 0.046) or UDim2.fromScale(0.06, 0.028)
 	l.Size = UDim2.fromScale(0.01, 0.005)
-	-- phase 1: overshoot punch-in (Back-out) then settle to rest size (pop, not just grow)
+	-- overshoot punch-in then settle (pop, not just grow)
 	TweenService:Create(l, TweenInfo.new(0.10, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = peakSize }):Play()
 	task.delay(0.10, function()
 		if l.Parent then TweenService:Create(l, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = restSize }):Play() end
 	end)
-	-- phase 2: gravity arc — quick rise (Quint-out), fade begins after the pop reads
+	-- gravity arc rise + fade
 	local drift = (math.random() - 0.5) * 0.05
 	TweenService:Create(l, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 		Position = UDim2.fromScale(px + drift, py - (crit and 0.085 or 0.06)) }):Play()
 	task.delay(0.18, function()
 		if l.Parent then TweenService:Create(l, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play() end
 	end)
-	local life = 0.52
-	if crit then
-		-- stacked "CRIT" flourish above the number: snaps in small, pops, rides up with it
-		critCount += 1
-		local f = text(fxLayer, "CRIT", 20, C.magenta)
-		f.Font = FONT; f.Rotation = -8; f.ZIndex = 47; f.TextScaled = true
-		f.AnchorPoint = Vector2.new(0.5, 0.5); f.Position = UDim2.fromScale(px, py - 0.045)
-		stroke(f, C.ink0, 3, 0)
-		f.Size = UDim2.fromScale(0.005, 0.004)
-		TweenService:Create(f, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.05, 0.024) }):Play()
-		TweenService:Create(f, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.fromScale(px + drift, py - 0.13) }):Play()
-		task.delay(0.24, function() if f.Parent then TweenService:Create(f, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play() end end)
-		task.delay(life, function() f:Destroy(); critCount -= 1 end)
-	end
-	task.delay(life, function() l:Destroy(); critCount -= 1 end)
+	task.delay(0.52, function() l:Destroy(); critCount -= 1 end)
 end
 local sparkCount = 0
 local function hitSpark(px: number, py: number, col: Color3)
@@ -692,6 +673,12 @@ end
 local function pxOf(p: Vector2): (number, number)
 	-- board is 0.62x0.88 of screen centered at (0.5,0.53); convert board-scale to screen-scale
 	return 0.5 + (p.X - 0.5) * 0.62, 0.53 + (p.Y - 0.5) * 0.88
+end
+
+-- board pixel aspect (H/W); lets range be a TRUE circle instead of a board-scale ellipse
+local function boardAspect(): number
+	local sz = board.AbsoluteSize
+	return (sz.X > 0) and (sz.Y / sz.X) or 0.8
 end
 
 -- ===== placement geometry (board-scale everywhere) =====
@@ -893,10 +880,12 @@ local function clearSelection()
 	if selectedTw and selectedTw.ring then selectedTw.ring:Destroy(); selectedTw.ring = nil end
 	selectedTw = nil
 end
-local function ringDiameterScale(id: string): number
-	-- range is a board-scale radius; ring diameter (board-scale) = 2*range, clamped sane
+local function ringDiamPx(id: string): number
+	-- S.range is a radius in board-WIDTH fractions; a TRUE circle = a square px diameter
 	local S = fStats(id)
-	return math.clamp(S.range * 2, 0.12, 0.95)
+	local w = board.AbsoluteSize.X
+	if w <= 0 then w = 900 end
+	return 2 * S.range * w
 end
 local function selectTower(tw: any)
 	if selectedTw == tw then clearSelection(); return end
@@ -907,9 +896,9 @@ local function selectTower(tw: any)
 	UI.fx.corner(ring, 999); UI.fx.stroke(ring, def.color, 3, 0.2)
 	local halo = frame(ring, "Halo"); halo.BackgroundColor3 = def.color; halo.BackgroundTransparency = 0.9
 	halo.Size = UDim2.fromScale(1, 1); halo.ZIndex = 7; UI.fx.corner(halo, 999)
-	local d = ringDiameterScale(tw.id)
-	ring.Size = UDim2.fromScale(0.02, 0.02)
-	TweenService:Create(ring, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromScale(d, d) }):Play()
+	local d = ringDiamPx(tw.id)
+	ring.Size = UDim2.fromOffset(8, 8)
+	TweenService:Create(ring, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(d, d) }):Play()
 	tw.ring = ring
 	selectedTw = tw
 end
@@ -982,8 +971,8 @@ function beginPlacement(id: string)
 	local ring = frame(board, "GRing"); ring.BackgroundTransparency = 1; ring.AnchorPoint = Vector2.new(0.5, 0.5)
 	ring.ZIndex = 17; UI.fx.corner(ring, 999)
 	local rst = UI.fx.stroke(ring, def.color, 3, 0.15)
-	local d = ringDiameterScale(id)
-	ring.Size = UDim2.fromScale(d, d)
+	local d = ringDiamPx(id)
+	ring.Size = UDim2.fromOffset(d, d)
 	placing = { id = id, ghost = ghost, chip = chip, ring = ring, ringStroke = rst, color = def.color }
 	updateGhost()
 end
@@ -993,7 +982,8 @@ local placeCatcher = button(board)
 placeCatcher.Name = "PlaceCatcher"; placeCatcher.ZIndex = 13
 placeCatcher.MouseMoved:Connect(function(x: number, y: number)
 	local ap, asz = board.AbsolutePosition, board.AbsoluteSize
-	lastBoardCursor = Vector2.new((x - ap.X) / asz.X, (y - ap.Y) / asz.Y)
+	local inset = GuiService:GetGuiInset() -- correct the top-bar offset so the ghost sits ON the cursor
+	lastBoardCursor = Vector2.new((x - inset.X - ap.X) / asz.X, (y - inset.Y - ap.Y) / asz.Y)
 	updateGhost()
 end)
 placeCatcher.MouseButton1Click:Connect(function()
@@ -1099,10 +1089,12 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 		if tw.cd <= 0 then
 			local S = fStats(tw.id)
 			local best, bp = nil, -1
+			local asp = boardAspect()
 			for _, e in state.enemies do
 				if e.active then
-					local dx = pathPos(e.progress).X - tw.pos.X
-					local dy = pathPos(e.progress).Y - tw.pos.Y
+					local ep = pathPos(e.progress)
+					local dx = ep.X - tw.pos.X
+					local dy = (ep.Y - tw.pos.Y) * asp -- Y in board-width units => circular range
 					if (dx * dx + dy * dy) <= S.range * S.range and e.progress > bp then best, bp = e, e.progress end
 				end
 			end
