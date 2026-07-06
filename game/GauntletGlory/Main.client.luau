@@ -1033,7 +1033,12 @@ end
 local function aimAngleTo(pos: Vector2, boardPt: Vector2): number
 	local ox, oy = pxOf(pos)
 	local tx, ty = pxOf(boardPt)
-	return math.deg(math.atan2(ty - oy, tx - ox))
+	-- pxOf returns screen-SCALE (0..1); .Rotation is applied in PIXEL space, so convert the
+	-- scale deltas to pixels (× viewport size) before atan2, else a non-square screen skews the aim
+	local vp = root.AbsoluteSize
+	local w = (vp.X > 0) and vp.X or 1920
+	local h = (vp.Y > 0) and vp.Y or 1080
+	return math.deg(math.atan2((ty - oy) * h, (tx - ox) * w))
 end
 
 -- ===== place a fighter at a free board position =====
@@ -1239,11 +1244,14 @@ hbConn = RunService.Heartbeat:Connect(function(raw)
 			targetAngle = math.sin(gameClock * 1.3 + tw.pos.X * 20) * 22 -- idle sweep
 		end
 		local diff = (targetAngle - tw.aimAngle + 180) % 360 - 180 -- shortest signed arc
-		tw.aimAngle += diff * math.clamp(dt * 14, 0, 1)            -- framerate-independent slew
+		tw.aimAngle += diff * math.clamp(dt * 20, 0, 1)            -- framerate-independent slew (tight)
 		if tw.aimer then tw.aimer.Rotation = tw.aimAngle end
 		-- (B) FIRE GATE — unchanged cadence, plus the recoil kick
 		tw.cd -= dt
 		if tw.cd <= 0 and best then
+			-- snap EXACTLY onto the target at the instant of the shot so the weapon points at it
+			tw.aimAngle = targetAngle
+			if tw.aimer then tw.aimer.Rotation = targetAngle end
 			fire(tw, best); tw.cd = S.rate
 			if tw.recoil then tw.recoil() end
 		end
