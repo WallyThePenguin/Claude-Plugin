@@ -91,12 +91,13 @@ def _writer(store):
     return write
 
 
-def _runner(loop, bridge, store, curriculum=CURRICULUM):
+def _runner(loop, bridge, store, curriculum=CURRICULUM, tooling_path=None):
     d = tempfile.mkdtemp()
     path = os.path.join(d, "curriculum.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(curriculum, fh)
-    return factory.FactoryRunner(loop, bridge, path, _writer(store), sleep=lambda s: None)
+    return factory.FactoryRunner(loop, bridge, path, _writer(store), sleep=lambda s: None,
+                                 tooling_path=tooling_path)
 
 
 def _wait(runner, timeout=5.0):
@@ -352,6 +353,56 @@ def main():
                         "symbolic-only" in block and "NEVER cite" in block)
     finally:
         factory.LEARNINGS_DIR = old_dir
+
+    # --- stochastic capture audit (SP2b): deterministic 1-in-5, keyed on the run token ---
+    picks = [factory._audit_pick(f"tok-{i}") for i in range(200)]
+    fails += _check("audit pick deterministic", picks == [factory._audit_pick(f"tok-{i}") for i in range(200)])
+    rate = sum(picks)
+    fails += _check("audit pick ~1-in-5", 20 <= rate <= 60)
+    audit_tok = next(f"aud-{i}" for i in range(100) if factory._audit_pick(f"aud-{i}"))
+    plain_tok = next(f"aud-{i}" for i in range(100) if not factory._audit_pick(f"aud-{i}"))
+
+    # audit run: verify prompt gains AUDIT MODE + oracleAudit schema; disagreements are filed
+    d = tempfile.mkdtemp()
+    tooling = os.path.join(d, "tooling-issues.json")
+    audit_verdict = {
+        "status": "PASSED",
+        "evidence": {"summary": "grip 0.0 studs / 0.3 deg; sweep 96.8 deg; damage 20 exact"},
+        "reasons": [],
+        "oracleAudit": {"disagreements": [
+            {"check": "grip_sane", "suiteSaid": "PASS 0.3 deg", "captureShowed": "blade points into forearm"},
+        ]},
+    }
+    loop = FakeLoop([
+        {"state": "done", "result": build_line()},
+        {"state": "done", "result": "FACTORY_VERIFY_JSON: " + json.dumps(audit_verdict)},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    r = _runner(loop, bridge, store, tooling_path=tooling)
+    r.start("weapon-spear", staging_id=audit_tok)
+    st = _wait(r)
+    fails += _check("audit run flagged in status", st.get("audit") is True)
+    fails += _check("audit prompt has AUDIT MODE", "AUDIT MODE" in loop.prompts[1])
+    fails += _check("audit prompt extends the JSON schema", "oracleAudit" in loop.prompts[1])
+    fails += _check("audit flag rides the staging entry", store[("staging", audit_tok)].get("audit") is True)
+    filed = json.load(open(tooling))
+    titles = [i.get("title", "") for i in filed.get("issues", [])]
+    fails += _check("disagreement filed as ORACLE BUG", any(t.startswith("ORACLE BUG:") and "grip_sane" in t for t in titles))
+
+    # non-audit run: no AUDIT MODE, nothing filed
+    loop = FakeLoop([
+        {"state": "done", "result": build_line()},
+        {"state": "done", "result": verify_line("PASSED")},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    tooling2 = os.path.join(tempfile.mkdtemp(), "tooling-issues.json")
+    r = _runner(loop, bridge, store, tooling_path=tooling2)
+    r.start("weapon-spear", staging_id=plain_tok)
+    st = _wait(r)
+    fails += _check("plain run not audited", st.get("audit") is not True and "AUDIT MODE" not in loop.prompts[1])
+    fails += _check("plain run files nothing", not os.path.exists(tooling2))
 
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
     sys.exit(1 if fails else 0)

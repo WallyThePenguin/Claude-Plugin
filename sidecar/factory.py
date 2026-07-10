@@ -24,6 +24,7 @@ import os
 import re
 import threading
 import time
+import zlib
 
 BUILD_JSON_RE = re.compile(r"FACTORY_BUILD_JSON:\s*(\{.*\})", re.DOTALL)
 VERIFY_JSON_RE = re.compile(r"FACTORY_VERIFY_JSON:\s*(\{.*\})", re.DOTALL)
@@ -119,6 +120,15 @@ def append_tooling_issues(issues, path):
         json.dump(data, fh, indent=1)
 
 
+AUDIT_EVERY = 5
+
+
+def _audit_pick(token) -> bool:
+    """Deterministic 1-in-AUDIT_EVERY selection keyed on the run token (spec §3: the stochastic
+    capture audit must be reproducible, not random)."""
+    return zlib.crc32(str(token).encode("utf-8")) % AUDIT_EVERY == 0
+
+
 # Reserved symbols that block extraction (kept in sync with the workflow's GATE).
 RESERVED_PREFIX = "StudioAgentTest_"
 DENYLIST = ["TestAutoKill"]
@@ -188,12 +198,14 @@ return "GATE_HITS:" .. table.concat(hits, ";")
 
 
 class FactoryRunner:
-    def __init__(self, loop_runner, bridge, curriculum_path, store_writer, sleep=time.sleep):
+    def __init__(self, loop_runner, bridge, curriculum_path, store_writer, sleep=time.sleep,
+                 tooling_path=None):
         self._loop = loop_runner
         self._bridge = bridge
         self._curriculum_path = curriculum_path
         self._write_store = store_writer
         self._sleep = sleep
+        self._tooling_path = tooling_path or TOOLING_PATH
         self._lock = threading.Lock()
         self._busy = False
         self._counter = 0
@@ -343,8 +355,12 @@ class FactoryRunner:
             )
 
         # ---- VERIFY ----
-        self._set(stage="verify")
-        self._narrate(f"VERIFY {rung_id}: gathering edit-first evidence, then the verdict")
+        audit = _audit_pick(staging_id or f"{rung_id}#{run_id}")
+        self._set(stage="verify", audit=audit)
+        self._narrate(
+            f"VERIFY {rung_id}{' [AUDIT MODE: full capture cross-check]' if audit else ''}: "
+            "gathering edit-first evidence, then the verdict"
+        )
         # A runtime playbook drives a playtest of the LIVE game  -  sandbox it first so the game's
         # own mobs/round loop don't chase and kill the tester mid-measure ("clear" also removes
         # stray enemy rigs; "keep" leaves the rung's own test enemy alone).
@@ -353,7 +369,7 @@ class FactoryRunner:
             self._verify_sandbox(True, clear=(sandbox == "clear"))
         try:
             ok, text, err = self._wait_loop(
-                _verify_prompt(rung, build, playbook), max_iterations=36, stage="verify"
+                _verify_prompt(rung, build, playbook, audit), max_iterations=36, stage="verify"
             )
         finally:
             if sandbox:
@@ -382,6 +398,28 @@ class FactoryRunner:
                 reasons.append("no FACTORY_VERIFY_JSON; transcript tail: " + tail)
             verify = {"status": "UNVERIFIED", "reasons": reasons}
         result["verify"] = verify
+        if audit:
+            result["audit"] = True
+            oa = verify.get("oracleAudit")
+            dis = (oa.get("disagreements") if isinstance(oa, dict) else None) or []
+            bugs = []
+            for item in dis[:8]:
+                if not isinstance(item, dict) or not item.get("check"):
+                    continue
+                bugs.append({
+                    "title": f"ORACLE BUG: {str(item.get('check'))[:60]} - suite vs capture disagree ({rung_id})",
+                    "symptom": f"suite said: {str(item.get('suiteSaid') or '?')[:200]} | capture showed: "
+                               f"{str(item.get('captureShowed') or '?')[:200]}",
+                    "suspectFiles": ["src/Tools/OracleChecks.luau", "src/Tools/Oracle.luau"],
+                    "repro": f"oracle_suite on {build.get('artifactPath')} vs a full capture review "
+                             f"(audit run, rung {rung_id})",
+                })
+            if bugs:
+                try:
+                    append_tooling_issues(bugs, self._tooling_path)
+                    self._narrate(f"AUDIT: {len(bugs)} suite-vs-capture disagreement(s) filed as ORACLE BUGs", warn=True)
+                except OSError:
+                    pass  # filing is best-effort; never fails the run
         status = verify["status"]
         ev = verify.get("evidence")
         ev_summary = str((ev or {}).get("summary") or "") if isinstance(ev, dict) else ""
@@ -420,6 +458,7 @@ class FactoryRunner:
             "recipe": {"provisional": True, "text": build.get("notes", "")},
             "stagedAt": time.time(),
             "headless": True,
+            "audit": audit,
         }
         try:
             self._write_store("staging", staging_id, entry)
@@ -866,13 +905,24 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
     )
 
 
-def _verify_prompt(rung, build, playbook: dict) -> str:
+def _verify_prompt(rung, build, playbook: dict, audit: bool = False) -> str:
+    audit_block = (
+        "AUDIT MODE (this run was deterministically selected, 1-in-5): even if the oracle suite "
+        "is fully GREEN, ALSO run the FULL capture review (every angle/filmstrip the procedure "
+        "names) and CROSS-CHECK each suite verdict against what the captures show. Report any "
+        "disagreement in the verdict JSON's \"oracleAudit\" field (empty disagreements list when "
+        "they agree). A disagreement does NOT change your verdict rules - it files an oracle bug "
+        "for the mechanic (gap-mining).\n\n"
+        if audit
+        else ""
+    )
     return (
         f"You are the headless factory VERIFY stage for rung '{rung['id']}'  -  a SKEPTIC whose job "
         f"is to find reasons to FAIL. Artifact: {build.get('artifactPath')} "
         f"(kind: {build.get('artifactKind', '?')}). Config: {json.dumps(build.get('config'))}.\n"
         f"ORACLE: {rung.get('oracle', '')}\n\n"
         + _learned_block(rung.get("family"))
+        + audit_block
         + "EDIT-MODE FIRST (standing rule): before ANY playtest_start, enumerate the edit-mode "
         "routes to each oracle item - captures, filmstrips, rig scrubbing (grip_tool + "
         "capture_animation), run_luau probes and direct invocation, RunService:Run() server-sim - "
@@ -892,5 +942,8 @@ def _verify_prompt(rung, build, playbook: dict) -> str:
         "message BEFORE it. Keep evidence.summary to ONE sentence (<200 chars) and each reason "
         "short. No code fence:\n"
         'FACTORY_VERIFY_JSON: {"status":"PASSED|FAILED|UNVERIFIED","evidence":{"summary":'
-        '"<one-sentence probe output or capture-vs-reference finding>"},"reasons":["..."]}'
+        '"<one-sentence probe output or capture-vs-reference finding>"},"reasons":["..."]'
+        + (',"oracleAudit":{"disagreements":[{"check":"<name>","suiteSaid":"<verdict + magnitude>",'
+           '"captureShowed":"<what the frames show>"}]}' if audit else "")
+        + "}"
     )
