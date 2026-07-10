@@ -9,7 +9,8 @@
 -- MECHANISM (live-verified 2026-07-01): the edit-DM plugin KEEPS RUNNING during an
 -- ExecutePlayModeAsync test — so these handlers simply drive the existing sidecar /play channel
 -- (POST /play {cmd,arg} -> poll /play/result?id=), the exact pipeline studio-agent.ps1 uses. The
--- edit-side PlayBridge loop handles `start`; the injected in-test server script handles the rest
+-- edit-side PlayBridge loop handles `start` (arg="run" boots ExecuteRunModeAsync instead — server
+-- sim only, no player; SP2d); the injected in-test server script handles the rest
 -- (act/seval/slog2/sdiag/capture via its client relay). No new transport.
 --
 -- This is a Tools/ submodule; CaptureCore (image fetch) via script.Parent.CaptureCore.
@@ -118,8 +119,13 @@ end
 
 -- ---- playtest_start ----
 
-local function runStart(_input: any, context: any): (Content, boolean)
-	local ack, ackErr = playCommand(context, "start", nil, 15)
+local function runStart(input: any, context: any): (Content, boolean)
+	local args = if type(input) == "table" then input else {}
+	local mode = tostring(args.mode or "play")
+	if mode ~= "play" and mode ~= "run" then
+		return "playtest_start: unknown mode '" .. mode .. "' (use play|run)", true
+	end
+	local ack, ackErr = playCommand(context, "start", mode, 15)
 	if ackErr then
 		if string.find(ack, "unknown play cmd", 1, true) ~= nil then
 			return "playtest_start: a playtest is already running (stop it first with playtest_stop)",
@@ -127,20 +133,32 @@ local function runStart(_input: any, context: any): (Content, boolean)
 		end
 		return "playtest_start: " .. ack, true
 	end
-	-- The ack comes before the test boots. Poll in-test readiness (the injected server's sdiag)
-	-- so the caller gets a RUNNING test with a spawned, Motor6D-converted character.
+	-- The ack comes before the test boots. Poll in-test readiness (the injected server's sdiag):
+	-- PLAY is ready once a spawned, Motor6D-converted character reports; RUN is ready as soon as
+	-- the injected server poller answers at all (no player ever spawns).
 	local deadline = os.clock() + START_READY_TIMEOUT
 	local lastErr = "(no sdiag response yet)"
 	while os.clock() < deadline do
 		task.wait(2)
 		local diag, diagErr = playCommand(context, "sdiag", nil, 8)
-		if not diagErr and string.find(diag, "char=", 1, true) ~= nil then
-			return "playtest RUNNING — " .. diag .. "\nDrive it with playtest_act / playtest_eval "
-				.. "/ playtest_logs / playtest_capture; ALWAYS playtest_stop when done.", false
+		if not diagErr then
+			if mode == "run" then
+				return "playtest RUNNING in RUN mode (" .. diag .. ") — server simulation only: "
+					.. "real physics + Animators, NO player character; all edits revert on stop."
+					.. "\nDrive it with playtest_eval / playtest_logs (playtest_act/playtest_capture "
+					.. "need PLAY mode); ALWAYS playtest_stop when done.", false
+			end
+			if string.find(diag, "char=", 1, true) ~= nil then
+				return "playtest RUNNING in PLAY mode — " .. diag .. "\nDrive it with playtest_act "
+					.. "/ playtest_eval / playtest_logs / playtest_capture; ALWAYS playtest_stop "
+					.. "when done.", false
+			end
 		end
 		lastErr = diag
 	end
-	return "playtest_start: test acked but the character never reported ready ("
+	return "playtest_start: test acked but "
+		.. (if mode == "run" then "the run-mode server poller" else "the character")
+		.. " never reported ready ("
 		.. lastErr
 		.. ") — playtest_stop and retry, or check playtest_logs", true
 end
@@ -252,11 +270,25 @@ end
 Playtest.descriptors = {
 	{
 		name = "playtest_start",
-		description = "Start a REAL Play Solo playtest (no F5) and wait until the player character "
-			.. "has spawned (auto-converted to a Motor6D rig, clean default avatar). The game's own "
-			.. "scripts run for real. Drive it with playtest_act/playtest_eval/playtest_logs/"
-			.. "playtest_capture, then ALWAYS playtest_stop. Requires the vision sidecar.",
-		inputSchema = { type = "object", properties = {} },
+		description = "Start a REAL test session (no F5). mode='play' (default): full Play Solo — "
+			.. "waits until the player character has spawned (auto-converted to a Motor6D rig, clean "
+			.. "default avatar); drive it with playtest_act/playtest_eval/playtest_logs/"
+			.. "playtest_capture. mode='run': RUN mode (ExecuteRunModeAsync) — the server simulation "
+			.. "runs with real physics + Animators but NO player spawns; use it to observe rig-only "
+			.. "animation/physics via playtest_eval/playtest_logs (act/capture are unavailable). The "
+			.. "game's own scripts run for real in both; all in-test changes revert on stop. ALWAYS "
+			.. "playtest_stop when done. Requires the vision sidecar.",
+		inputSchema = {
+			type = "object",
+			properties = {
+				mode = {
+					type = "string",
+					enum = { "play", "run" },
+					description = "play (default) = Play Solo with a player character; "
+						.. "run = server-only RUN mode (no player).",
+				},
+			},
+		},
 		destructive = true,
 		run = runStart,
 	},

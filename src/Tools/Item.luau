@@ -7,6 +7,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 
 local ToolFactory = require(script.Parent.Parent.ToolFactory)
+local RigWorkbench = require(script.Parent.Parent.RigWorkbench)
 local Path = require(script.Parent.Path)
 local CaptureCore = require(script.Parent.CaptureCore)
 
@@ -111,6 +112,13 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	local theRig = rig :: Model
 	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool, theRig) else nil
 	local grip = if frameGrip ~= nil then frameGrip else ToolFactory.gripCFrame(args.offset, args.rot)
+	-- T-pose-first (SP2c): frame auto-alignment must fit against the canonical NEUTRAL pose —
+	-- C0/C1 frozen on a posed rig would offset every authored clip by the pose delta.
+	local poseReset = false
+	if frameGrip ~= nil then
+		local _, resetOk = RigWorkbench.resetPose(theRig)
+		poseReset = resetOk
+	end
 	local function doEquipGrip()
 		ToolFactory.equip(tool, theRig)
 		ToolFactory.applyGrip(tool, grip)
@@ -129,6 +137,7 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		tool.Name,
 		theRig.Name
 	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "")
+		.. (if poseReset then " (rig pose reset to neutral first)" else "")
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
 	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)

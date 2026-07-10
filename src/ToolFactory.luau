@@ -6,6 +6,18 @@
 
 local ToolFactory = {}
 
+-- Rest cant: tip the blade FORWARD off the hand-up axis at the neutral pose. Pure fist-up
+-- parallels a hanging forearm and embeds the blade ~1.5 studs in the arm (measured 2026-07-10);
+-- classic Roblox tools cant forward via the RightGripAttachment C0 rotation. Must stay under
+-- grip_sane's 35-degree blade_up_angle bound. Sign/axis tuned live: negative about hand X =
+-- toward -Z = character forward.
+ToolFactory.REST_CANT_DEG = 18
+-- Forward seat: the grip point rests this far forward of the palm center (hand -Z). Required,
+-- not cosmetic: the block-rig arm is 1.0 stud thick and sits directly over the palm, so a cant
+-- alone can't clear it inside the 35-degree bound (escape needs >50deg — measured 2026-07-10);
+-- must stay under grip_sane's 0.6-stud grip_offset bound.
+ToolFactory.REST_FORWARD_STUDS = 0.4
+
 export type Vec3ish = { x: number?, y: number?, z: number? }
 export type Rotish = { rx: number?, ry: number?, rz: number? }
 
@@ -131,12 +143,14 @@ function ToolFactory.resolveRig(rigInst: Instance?): (Model?, string?)
 	return nil, "no rig found — spawn one first with spawn_rig"
 end
 
--- Equip: parent the Tool to the rig AND weld the Handle to the RightHand. In EDIT mode the engine
+-- Equip: parent the Tool to the rig AND joint the Handle to the RightHand. In EDIT mode the engine
 -- creates NO grip weld (that only happens at runtime via Humanoid:EquipTool), so without this the
--- tool just sits wherever it was — inside the rig, not following the hand (observed live). The weld
--- mirrors the runtime RightGrip convention (C0 = RightGripAttachment offset, C1 = Tool.Grip), so
--- the edit preview renders the hold exactly as a running game would. Idempotent: re-grip replaces
--- the prior weld. Un-grip = destroy the "AgentEditGrip" weld + reparent the tool out.
+-- tool just sits wherever it was — inside the rig, not following the hand (observed live). The joint
+-- is a Motor6D (SP2c): C0/C1 mirror the runtime RightGrip convention (C0 = RightGripAttachment
+-- offset, C1 = Tool.Grip) so the edit preview renders the hold exactly as a running game would,
+-- and because the Animator matches poses by CONNECTED PART NAMES (RightHand -> Handle), the Handle
+-- becomes an animatable channel in edit. Idempotent: re-grip replaces the prior joint. Un-grip =
+-- destroy the "AgentEditGrip" instance (name is playbook API surface) + reparent the tool out.
 function ToolFactory.equip(tool: Tool, rig: Model)
 	tool.Parent = rig
 	local hand = rig:FindFirstChild("RightHand")
@@ -154,7 +168,7 @@ function ToolFactory.equip(tool: Tool, rig: Model)
 		stale:Destroy()
 	end
 	local att = hand:FindFirstChild("RightGripAttachment")
-	local weld = Instance.new("Weld")
+	local weld = Instance.new("Motor6D")
 	weld.Name = "AgentEditGrip"
 	weld.Part0 = hand
 	weld.Part1 = handle
@@ -163,14 +177,15 @@ function ToolFactory.equip(tool: Tool, rig: Model)
 	weld.Parent = hand
 end
 
--- Set the live grip CFrame; keeps the edit-mode grip weld's C1 in sync so the Handle re-positions.
+-- Set the live grip CFrame; keeps the edit-mode grip joint's C1 in sync so the Handle re-positions.
+-- JointInstance covers both the Motor6D and any stale pre-SP2c Weld still on a rig.
 function ToolFactory.applyGrip(tool: Tool, grip: CFrame)
 	tool.Grip = grip
 	local rig = tool.Parent
 	if rig ~= nil and rig:IsA("Model") then
 		local hand = rig:FindFirstChild("RightHand")
 		local weld = if hand ~= nil then hand:FindFirstChild("AgentEditGrip") else nil
-		if weld ~= nil and weld:IsA("Weld") then
+		if weld ~= nil and weld:IsA("JointInstance") then
 			weld.C1 = grip
 		end
 	end
@@ -222,15 +237,26 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 		return nil
 	end
 	blade = blade.Unit
-	local v = Vector3.yAxis
+	-- Rest cant + forward seat (hand space): rotate the target axis off pure fist-up about the
+	-- hand's X so the blade tips FORWARD (-Z) instead of paralleling the hanging forearm, and
+	-- seat the grip point forward of the palm center (blade-in-arm fix, both tuned live).
+	local canted = CFrame.fromAxisAngle(Vector3.xAxis, math.rad(-ToolFactory.REST_CANT_DEG))
+		* Vector3.yAxis
+	local seat = Vector3.new(0, 0, -ToolFactory.REST_FORWARD_STUDS)
+	local v = canted
+	local s = seat
 	if rig ~= nil then
 		local hand = rig:FindFirstChild("RightHand", true)
 		local gripAtt = if hand ~= nil then hand:FindFirstChild("RightGripAttachment") else nil
 		if gripAtt ~= nil and gripAtt:IsA("Attachment") then
-			v = gripAtt.CFrame:VectorToObjectSpace(Vector3.yAxis)
+			v = gripAtt.CFrame:VectorToObjectSpace(canted)
+			s = gripAtt.CFrame:VectorToObjectSpace(seat)
 		end
 	end
-	return CFrame.new(att.Position) * rotFromTo(v, blade)
+	-- Grip = T * R with T chosen so the declared grip point lands at palm + seat (grip_sane's
+	-- gripWorld = hand * C0 * s when T = att.Position - R*s).
+	local rot = rotFromTo(v, blade)
+	return CFrame.new(att.Position - rot:VectorToWorldSpace(s)) * rot
 end
 
 return ToolFactory

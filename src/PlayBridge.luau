@@ -9,6 +9,14 @@
 -- calls EndTest. A `playing` flag keeps the edit loop from competing while a test runs. Lifecycle-aware
 -- (hot-reloads with Main). See docs/superpowers/specs/2026-06-26-play-mode-bridge-design.md.
 --
+-- RUN MODE (SP2d): `start` with arg="run" boots StudioTestService:ExecuteRunModeAsync instead — the
+-- server simulation runs (real physics + Animators, the place's server scripts execute) but NO player
+-- ever spawns, so ALL character plumbing is skipped: StarterPlayer.LoadCharacterAppearance untouched,
+-- no client LocalScript/RemoteEvent injected, no Motor6D character conversion hooks. The injected
+-- SERVER poller still runs (ServerScriptService scripts execute in Run mode), so slog2/sdiag/seval and
+-- `stop` (the same EndTest path) work; client-relay verbs (capture/act) report unavailable. Teardown is
+-- the SAME continuation as play mode: the Execute*Async pcall returns -> cleanup + config restore.
+--
 -- AVATAR-RIG FIX (the solved blocker): under the Avatar Joint Upgrade (default-on May 2026) an R15
 -- character spawns physically simulated -- AnimationConstraints + BallSocketConstraints, ZERO Motor6Ds --
 -- and that physics IGNORES the classic Motor6D animation channel our KeyframeSequence/Pose clips drive, so
@@ -41,7 +49,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StudioTestService = game:GetService("StudioTestService")
 local Players = game:GetService("Players")
 local base = "__BASE__"
-local relay = ReplicatedStorage:WaitForChild("StudioAgentPlayRelay", 10)
+-- "play" = Play Solo (player + client relay); "run" = ExecuteRunModeAsync (server sim only, no
+-- Players, no client) — skip the relay wait so the poller answers immediately.
+local mode = "__MODE__"
+local relay = nil
+if mode ~= "run" then
+	relay = ReplicatedStorage:WaitForChild("StudioAgentPlayRelay", 10)
+end
 
 local responses = {}
 if relay then
@@ -53,6 +67,9 @@ local reqCounter = 0
 -- Relay an action to the client and wait (up to 8s) for its response.
 local function client(action, arg)
 	if relay == nil then
+		if mode == "run" then
+			return "unavailable in RUN mode (no play client — use playtest_eval/playtest_logs)"
+		end
 		return "no relay"
 	end
 	reqCounter = reqCounter + 1
@@ -207,7 +224,7 @@ end
 local function serverDiag()
 	local plr = firstPlayer()
 	if not plr then
-		return "no player"
+		return "mode=" .. mode .. " no player"
 	end
 	local char = plr.Character
 	if not char then
@@ -464,7 +481,8 @@ local function fixCharacter(char)
 		convertToMotor6D(char)
 	end)
 end
-do
+-- RUN mode never spawns players, so the character auto-convert hooks are play-only.
+if mode ~= "run" then
 	local plr = firstPlayer()
 	if plr then
 		if plr.Character then
@@ -702,26 +720,30 @@ function PlayBridge.restoreStarterPlayer()
 end
 
 -- Inject the relay + server + client scripts into the place (idempotent: remove any prior copies first).
-local function injectTestScripts(base: string)
+-- mode "run" injects ONLY the server poller: no player spawns, so the avatar force, the RemoteEvent and
+-- the client LocalScript would all be dead weight (and LoadCharacterAppearance must stay untouched).
+local function injectTestScripts(base: string, mode: string)
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local ServerScriptService = game:GetService("ServerScriptService")
 	local StarterPlayer = game:GetService("StarterPlayer")
 	local starterScripts = StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts")
 	PlayBridge.cleanupTestScripts()
-	-- Force the clean default avatar for the test (saved/restored around the test).
-	if savedAppearance == nil then
-		savedAppearance = StarterPlayer.LoadCharacterAppearance
+	if mode ~= "run" then
+		-- Force the clean default avatar for the test (saved/restored around the test).
+		if savedAppearance == nil then
+			savedAppearance = StarterPlayer.LoadCharacterAppearance
+		end
+		StarterPlayer.LoadCharacterAppearance = false
+		local relay = Instance.new("RemoteEvent")
+		relay.Name = RELAY_NAME
+		relay.Parent = ReplicatedStorage
 	end
-	StarterPlayer.LoadCharacterAppearance = false
-	local relay = Instance.new("RemoteEvent")
-	relay.Name = RELAY_NAME
-	relay.Parent = ReplicatedStorage
 	local server = Instance.new("Script")
 	server.Name = SERVER_NAME
-	server.Source = string.gsub(SERVER_SRC, "__BASE__", base)
+	server.Source = string.gsub(string.gsub(SERVER_SRC, "__BASE__", base), "__MODE__", mode)
 	server:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	server.Parent = ServerScriptService
-	if starterScripts ~= nil then
+	if mode ~= "run" and starterScripts ~= nil then
 		local client = Instance.new("LocalScript")
 		client.Name = CLIENT_NAME
 		client.Source = CLIENT_SRC
@@ -799,27 +821,38 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 				if type(cmd) == "table" and (cmd :: any).cmd ~= nil then
 					local c = cmd :: any
 					if c.cmd == "start" then
+						-- arg selects the session kind: "run" = ExecuteRunModeAsync (server sim, no
+						-- player); anything else = full Play Solo.
+						local mode = if c.arg == "run" then "run" else "play"
 						playing = true
-						injectTestScripts(base)
-						-- POST the ack BEFORE the spawn: ExecutePlayModeAsync yields the whole edit DM, so
+						injectTestScripts(base, mode)
+						-- POST the ack BEFORE the spawn: Execute*ModeAsync yields the whole edit DM, so
 						-- a post after it would not flush until the test ends.
 						httpPostJson(
 							base .. "/play/result",
 							{
 								id = c.id,
 								ok = true,
-								result = "play starting (ExecutePlayModeAsync)",
+								result = if mode == "run"
+									then "run starting (ExecuteRunModeAsync)"
+									else "play starting (ExecutePlayModeAsync)",
 							}
 						)
 						task.spawn(function()
 							local StudioTestService = game:GetService("StudioTestService")
 							local okRun, result = pcall(function()
+								if mode == "run" then
+									-- PluginSecurity; yields until the run session ends (EndTest /
+									-- RunService:Stop()), then the shared teardown below runs.
+									return (StudioTestService :: any):ExecuteRunModeAsync()
+								end
 								return (StudioTestService :: any):ExecutePlayModeAsync({
 									studioAgentPlay = true,
 								})
 							end)
 							playing = false
 							PlayBridge.cleanupTestScripts()
+							-- No-op for run mode (savedAppearance stays nil — never forced).
 							PlayBridge.restoreStarterPlayer()
 							httpPostJson(base .. "/play/result", {
 								id = c.id,
