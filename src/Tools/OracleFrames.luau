@@ -112,6 +112,26 @@ function M.stamp(target: Instance, frame: any): (any, boolean)
 			end
 		end
 	end
+	-- Reject unknown fields (typo guard): input keys outside the family schema are errors.
+	if type(frame.points) == "table" then
+		for k in frame.points :: { [string]: any } do
+			if table.find(schema.points, tostring(k)) == nil then
+				table.insert(errors, "unknown point: " .. tostring(k))
+			end
+		end
+	end
+	if type(frame.dirs) == "table" then
+		for k in frame.dirs :: { [string]: any } do
+			if table.find(schema.dirs, tostring(k)) == nil then
+				table.insert(errors, "unknown dir: " .. tostring(k))
+			end
+		end
+	end
+	for k in frame :: { [string]: any } do
+		if k ~= "family" and k ~= "points" and k ~= "dirs" and k ~= "roles" then
+			table.insert(errors, "unknown field: " .. tostring(k))
+		end
+	end
 	handle:SetAttribute(M.ATTR, HttpService:JSONEncode({ family = frame.family, dirs = dirs }))
 	return { stamped = stamped, errors = errors }, #errors == 0
 end
@@ -135,7 +155,13 @@ function M.read(target: Instance): (any, string?)
 	end
 	local family = if decoded ~= nil then decoded.family else nil
 	local schema = if family ~= nil then M.SCHEMAS[family] else nil
-	local frame = { family = family, points = {}, dirs = {}, roleParts = {}, missing = {} }
+	local frame = {
+		family = family,
+		points = {} :: { [string]: Vector3 },
+		dirs = {} :: { [string]: Vector3 },
+		roleParts = {} :: { [string]: { BasePart } },
+		missing = {} :: { string },
+	}
 	for _, child in handle:GetChildren() do
 		if child:IsA("Attachment") and child.Name:sub(1, #M.TAG_PREFIX) == M.TAG_PREFIX then
 			frame.points[child.Name:sub(#M.TAG_PREFIX + 1)] = child.Position

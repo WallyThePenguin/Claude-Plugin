@@ -57,7 +57,11 @@ end
 
 local function resolveParts(pathOrInst: any): ({ BasePart }?, string?)
 	if typeof(pathOrInst) == "Instance" then
-		return collectParts(pathOrInst), nil
+		local parts = collectParts(pathOrInst)
+		if #parts == 0 then
+			return nil, "no BaseParts under target"
+		end
+		return parts, nil
 	end
 	local inst, err = Path.resolve(tostring(pathOrInst))
 	if inst == nil then
@@ -89,8 +93,8 @@ M.pass, M.fail, M.unknown = pass, fail, unknown
 
 M.checks = {} :: { [string]: any }
 
-local function register(name: string, validity: string, description: string, fn: (any) -> any)
-	M.checks[name] = { validity = validity, context = "edit", description = description, fn = fn }
+local function register(name: string, validity: string, description: string, fn: (any) -> any, budget_ms: number?)
+	M.checks[name] = { validity = validity, context = "edit", description = description, fn = fn, budget_ms = budget_ms or 2000 }
 end
 M.register = register
 
@@ -157,7 +161,11 @@ register("alignment", "EDIT_OK", "Angle between a frame dir of {target} (e.g. {d
 	local worldDir = handle.CFrame:VectorToWorldSpace(localDir).Unit
 	local ref: Vector3
 	if type(args.against) == "table" then
-		ref = Vector3.new(tonumber(args.against.x) or 0, tonumber(args.against.y) or 0, tonumber(args.against.z) or 0).Unit
+		local rawRef = Vector3.new(tonumber(args.against.x) or 0, tonumber(args.against.y) or 0, tonumber(args.against.z) or 0)
+		if rawRef.Magnitude < 1e-4 then
+			return unknown("zero reference vector")
+		end
+		ref = rawRef.Unit
 	else
 		ref = Vector3.new(0, 1, 0) -- world_up default
 	end
@@ -461,6 +469,9 @@ register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematical
 	if root == nil then
 		return unknown("rig has no root part")
 	end
+	if not tool:IsDescendantOf(rig) then
+		return unknown("tool is not equipped on the rig — grip_tool first")
+	end
 	local positions = {}
 	local errMsg = scrubClip(rig :: Model, tostring(args.clip or "SwordSwing"), tonumber(args.samples) or 12, function(_t)
 		table.insert(positions, (tipAtt :: Attachment).WorldPosition)
@@ -478,16 +489,20 @@ register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematical
 	local sweep = 0
 	local rootPos = (root :: BasePart).Position
 	for i = 1, #positions do
-		for j = i + 1, #positions do
-			local a = (positions[i] - rootPos).Unit
-			local b = (positions[j] - rootPos).Unit
-			sweep = math.max(sweep, math.deg(math.acos(math.clamp(a:Dot(b), -1, 1))))
+		if (positions[i] - rootPos).Magnitude >= 1e-3 then
+			for j = i + 1, #positions do
+				if (positions[j] - rootPos).Magnitude >= 1e-3 then
+					local a = (positions[i] - rootPos).Unit
+					local b = (positions[j] - rootPos).Unit
+					sweep = math.max(sweep, math.deg(math.acos(math.clamp(a:Dot(b), -1, 1))))
+				end
+			end
 		end
 	end
 	local minSweep = tonumber(args.min_sweep) or 60
 	local mag = { sweep_deg = sweep, path_studs = pathLen, max_reach_studs = maxReach, samples = #positions }
 	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
-end)
+end, 20000)
 
 register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at each pose, blade-tagged parts of {tool} vs the rig's torso/head: penetration beyond {max_depth (default 0.2)} studs FAILs with the offending time.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
@@ -530,7 +545,22 @@ register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at
 	end
 	local mag = { intersections = hits, max_allowed_depth = maxDepth }
 	return if #hits == 0 then pass(mag) else fail(#hits .. " blade-through-body sample(s), first at t=" .. string.format("%.2f", hits[1].t), mag)
-end)
+end, 20000)
+
+-- ---- declaration stubs (phase 2+): registered so suites/manifests can reference them;
+-- each returns UNKNOWN until implemented. PLAY_ONLY stubs need a runtime twin. ----
+local function declStub(name: string, validity: string)
+	register(name, validity, "Declared; implemented in phase 2+.", function(_args)
+		return unknown("declared; implemented in phase 2+")
+	end)
+end
+declStub("played_arc_of", "PLAY_ONLY")
+declStub("track_priority_audit", "PLAY_ONLY")
+declStub("impulse_effective", "PLAY_ONLY")
+declStub("stable_over", "PLAY_ONLY")
+declStub("load_scale_probe", "PLAY_ONLY")
+declStub("rig_uniform", "EDIT_OK")
+declStub("clip_joint_mask", "EDIT_OK")
 
 -- run(name, args) -> result (adds validity/context/cost_ms; never throws)
 function M.run(name: string, args: any): any
@@ -541,7 +571,15 @@ function M.run(name: string, args: any): any
 			table.insert(names, n)
 		end
 		table.sort(names)
-		return { verdict = "UNKNOWN", reason = "unknown check: " .. tostring(name) .. " (available: " .. table.concat(names, ", ") .. ")", magnitudes = {} }
+		return {
+			verdict = "UNKNOWN",
+			reason = "unknown check: " .. tostring(name) .. " (available: " .. table.concat(names, ", ") .. ")",
+			magnitudes = {},
+			check = name,
+			validity = "N/A",
+			context = "edit",
+			cost_ms = 0,
+		}
 	end
 	local t0 = os.clock()
 	local ok, result = pcall(entry.fn, if type(args) == "table" then args else {})
@@ -552,6 +590,12 @@ function M.run(name: string, args: any): any
 	result.validity = entry.validity
 	result.context = entry.context
 	result.cost_ms = math.floor((os.clock() - t0) * 1000 + 0.5)
+	-- soft per-check time budget: an over-budget result degrades to UNKNOWN (magnitudes kept).
+	local budget = entry.budget_ms or 2000
+	if result.cost_ms > budget then
+		result.reason = "timeout: took " .. result.cost_ms .. "ms (budget " .. budget .. "ms)"
+		result.verdict = "UNKNOWN"
+	end
 	return result
 end
 

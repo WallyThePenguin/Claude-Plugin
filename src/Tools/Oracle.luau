@@ -27,26 +27,29 @@ end
 -- Per-family suites: ordered checks (args templated on {target, rig}) + the NOT-asserted list.
 local SUITES = {
 	["melee-weapon"] = {
-		checks = function(target: string, rig: string?)
+		checks = function(target: string, rig: string?, clip: string?)
 			return {
 				{ check = "frame_consistent", args = { target = target } },
 				{ check = "anchored_ok", args = { target = target } },
 				{ check = "scale_ratio", args = { target = target, expected = 4.5, tolerance_frac = 0.6 } },
 				{ check = "grip_sane", args = { tool = target, rig = rig } },
 				{ check = "joint_census", args = { rig = rig } },
-				{ check = "clip_arc_of", args = { rig = rig, tool = target } },
-				{ check = "clip_self_intersect", args = { rig = rig, tool = target } },
+				{ check = "rig_channel_check", args = { rig = rig, clip = clip } },
+				{ check = "clip_arc_of", args = { rig = rig, tool = target, clip = clip } },
+				{ check = "clip_self_intersect", args = { rig = rig, tool = target, clip = clip } },
 			}
 		end,
 		notAsserted = {
 			"material/texture quality", "silhouette aesthetics vs references", "color palette",
 			"swing FEEL (weight/anticipation)", "damage numbers at runtime (playtest twin)",
 			"animation under the runtime Animator with locomotion blending (PLAY_ONLY twin)",
+			"edge_dir orientation (declared, not cross-validated)",
+			"clip channel coverage when rig_channel_check is UNKNOWN",
 		},
 	},
 }
 
-local function runSuite(family: string, target: string, rig: string?): any
+local function runSuite(family: string, target: string, rig: string?, clip: string?): any
 	local suite = SUITES[family]
 	if suite == nil then
 		local names = {}
@@ -56,25 +59,36 @@ local function runSuite(family: string, target: string, rig: string?): any
 		return { ok = false, error = "unknown suite family: " .. family .. " (available: " .. table.concat(names, ", ") .. ")" }
 	end
 	local results = {}
-	local counts = { PASS = 0, FAIL = 0, UNKNOWN = 0 }
-	for _, spec in suite.checks(target, rig) do
+	local counts = { PASS = 0, FAIL = 0, UNKNOWN = 0 } :: { [string]: number }
+	local twin_pending: { string } = {}
+	for _, spec in suite.checks(target, rig, clip) do
 		local r = OracleChecks.run(spec.check, spec.args)
 		table.insert(results, r)
 		counts[r.verdict] = (counts[r.verdict] or 0) + 1
+		-- EDIT_MISLEADS passes are only provisionally green: they need a runtime twin.
+		if r.validity == "EDIT_MISLEADS" and r.verdict == "PASS" then
+			table.insert(twin_pending, r.check)
+		end
 	end
-	local frame = nil
+	local frameMissing: { string }
 	local inst = select(1, Path.resolve(target))
-	if inst ~= nil then
-		frame = select(1, OracleFrames.read(inst))
+	if inst == nil then
+		frameMissing = { "target unresolved" }
+	else
+		local frame, ferr = OracleFrames.read(inst)
+		frameMissing = if frame ~= nil then frame.missing else { "no frame: " .. tostring(ferr) }
 	end
 	return {
 		ok = true,
 		family = family,
 		counts = counts,
 		results = results,
-		frameMissing = if frame ~= nil then frame.missing else { "target unresolved" },
+		twin_pending = twin_pending,
+		green = counts.FAIL == 0 and counts.UNKNOWN == 0 and #twin_pending == 0,
+		frameMissing = frameMissing,
 		blindspots = suite.notAsserted,
-		note = "UNKNOWN never satisfies; blindspots list what was NOT asserted — a green suite is not 'done'.",
+		note = "UNKNOWN never satisfies; blindspots list what was NOT asserted — a green suite is not 'done'. "
+			.. "green=false while twin_pending is non-empty (EDIT_MISLEADS passes need their runtime twin).",
 	}
 end
 
@@ -138,6 +152,18 @@ local function selftest(): any
 	return { ok = failures == 0, failures = failures, results = results }
 end
 
+-- Register the selftest as a first-class check so it runs through OracleChecks.run (with the
+-- standard validity/context/cost_ms envelope). selftest() returns {ok, failures, results},
+-- so wrap it into the {verdict, reason, magnitudes} result shape the registry expects.
+OracleChecks.register("__selftest", "EDIT_OK", "Builds fixtures and asserts expected verdicts; cleans up.", function(_args)
+	local r = selftest()
+	return {
+		verdict = if r.ok then "PASS" else "FAIL",
+		reason = if r.ok then nil else (r.failures .. " selftest rows failed"),
+		magnitudes = r,
+	}
+end)
+
 Oracle.descriptors = {
 	{
 		name = "oracle_check",
@@ -159,12 +185,9 @@ Oracle.descriptors = {
 		destructive = false,
 		run = function(input, _context)
 			local args = if type(input) == "table" then input else {}
-			if tostring(args.check) == "__selftest" then
-				local r = selftest()
-				return encode(r), not r.ok
-			end
+			-- __selftest is now a registered check; a non-PASS verdict (incl. unknown-check) is the tool error.
 			local r = OracleChecks.run(tostring(args.check), args.args)
-			return encode(r), r.verdict == "UNKNOWN" and r.reason ~= nil and r.reason:find("unknown check") ~= nil
+			return encode(r), r.verdict ~= "PASS"
 		end,
 	},
 	{
@@ -178,13 +201,14 @@ Oracle.descriptors = {
 				family = { type = "string" },
 				target = { type = "string", description = "dot-path to the Tool/Model under test" },
 				rig = { type = "string", description = "optional dot-path to the rig (default workspace.AgentRig)" },
+				clip = { type = "string", description = "clip name for the animation checks (default SwordSwing)" },
 			},
 			required = { "family", "target" },
 		},
 		destructive = false,
 		run = function(input, _context)
 			local args = if type(input) == "table" then input else {}
-			local r = runSuite(tostring(args.family), tostring(args.target), if args.rig ~= nil then tostring(args.rig) else nil)
+			local r = runSuite(tostring(args.family), tostring(args.target), if args.rig ~= nil then tostring(args.rig) else nil, if args.clip ~= nil then tostring(args.clip) else nil)
 			return encode(r), r.ok ~= true
 		end,
 	},
