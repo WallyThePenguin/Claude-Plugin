@@ -152,3 +152,7 @@ if __name__ == "__main__":
 # (g) NEW WATCH ITEM: model used native ToolSearch to DISCOVER the mcp__studio__ tool (deferred schemas).
 #     Production sdk_loop passes tools=["WebSearch","WebFetch"], which may strip ToolSearch — if the first
 #     SDK factory run stalls unable to find studio tools, add "ToolSearch" to the tools allowlist.
+# FINDINGS CORRECTION 2026-07-10 (T2 live): R1 was REAL, one layer down — string system_prompt
+# rides CLI ARGV; Windows caps the command line at 32,767 chars; the real 45KB instructions
+# blew it (WinError 206 -> errno 2 -> spurious CLINotFoundError). This spike's ~30KB probe
+# slid under the cap. Fix: system_prompt={"type":"file","path":...} (--system-prompt-file).

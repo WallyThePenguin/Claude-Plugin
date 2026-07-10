@@ -15,6 +15,7 @@ import asyncio
 import copy
 import json
 import os
+import tempfile
 import threading
 import time
 
@@ -361,8 +362,16 @@ def _sdk_session_factory(spec):
         "\n\nNOTE: your tools are exposed with an mcp__studio__ prefix — e.g. the tool called "
         "`capture` in these instructions is invoked as `mcp__studio__capture`."
     )
+    # T2 live find: a string system_prompt rides the CLI ARGV (--system-prompt), and Windows
+    # CreateProcess caps the command line at 32,767 chars — the real describe instructions
+    # (~45KB) blow it and the spawn dies as a spurious CLINotFoundError (WinError 206 maps to
+    # errno 2). Route it through --system-prompt-file instead; one file per sidecar process is
+    # safe because loops are single-flight.
+    sp_path = os.path.join(tempfile.gettempdir(), f"studio-agent-sysprompt-{os.getpid()}.md")
+    with open(sp_path, "w", encoding="utf-8") as fh:
+        fh.write(system_prompt)
     options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
+        system_prompt={"type": "file", "path": sp_path},
         mcp_servers=mcp_servers,
         # tools= is the POSITIVE availability list (CLI --tools): the native surface is exactly
         # WebSearch+WebFetch; every other built-in (incl. future/renamed ones) is unavailable —
