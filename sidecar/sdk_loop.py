@@ -14,6 +14,7 @@ the SDK. Spec: docs/superpowers/specs/2026-07-10-sp1-agent-sdk-loop-swap-design.
 import asyncio
 import copy
 import json
+import os
 import threading
 import time
 
@@ -267,5 +268,84 @@ def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
     return defs
 
 
+def _child_env(base_env):
+    """Subscription-only env for the SDK subprocess: OAuth token required, API key scrubbed
+    (an ANTHROPIC_API_KEY silently overrides subscription auth and bills per-token).
+    T0 spike (sidecar/_spike_sdk.py FINDINGS): CLI keychain auth does NOT reach standalone
+    SDK subprocesses on this machine, so the token is a hard requirement."""
+    env = dict(base_env)
+    env.pop("ANTHROPIC_API_KEY", None)
+    if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        raise agent_loop.LoopError(
+            "CLAUDE_CODE_OAUTH_TOKEN is not set — run `claude setup-token` and put it in the "
+            "sidecar environment (see HANDOFF.md)"
+        )
+    base_url = env.get("STUDIO_AGENT_SDK_BASE_URL")  # break-glass proxy fallback
+    if base_url:
+        env["ANTHROPIC_BASE_URL"] = base_url
+    return env
+
+
 def _sdk_session_factory(spec):
-    raise NotImplementedError  # Task 6
+    """The only SDK-touching code. Maps our tool defs + spec into a query() stream and
+    normalizes SDK messages to the event dicts _consume expects. Failure behavior per the
+    T0 spike: the SDK RAISES out of query() iteration and a terminal ResultMessage is not
+    guaranteed — exceptions must propagate to the runner's classifier, never be swallowed."""
+    from claude_agent_sdk import (  # imported lazily: unit tests never need the SDK
+        AssistantMessage,
+        ClaudeAgentOptions,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+        create_sdk_mcp_server,
+        query,
+        tool,
+    )
+
+    sdk_tools = []
+    for d in spec["tool_defs"]:
+        sdk_tools.append(tool(d["name"], d["description"] or d["name"], d["input_schema"])(d["handler"]))
+    server = create_sdk_mcp_server(name="studio", version="1.0.0", tools=sdk_tools)
+    mcp_servers = {"studio": server}
+    if spec.get("mechanic"):
+        extra = os.environ.get("STUDIO_AGENT_MECHANIC_MCP")  # e.g. memtrace config JSON
+        if extra:
+            try:
+                mcp_servers.update(json.loads(extra))
+            except ValueError:
+                pass  # bad JSON must not kill a run; surfaced by absence of the extra tools
+    allowed = ["mcp__studio__" + d["name"] for d in spec["tool_defs"]] + ["WebSearch", "WebFetch"]
+    system_prompt = spec["system_prompt"] + (
+        "\n\nNOTE: your tools are exposed with an mcp__studio__ prefix — e.g. the tool called "
+        "`capture` in these instructions is invoked as `mcp__studio__capture`."
+    )
+    options = ClaudeAgentOptions(
+        system_prompt=system_prompt,
+        mcp_servers=mcp_servers,
+        allowed_tools=allowed,
+        disallowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep", "NotebookEdit", "Agent", "Task"],
+        permission_mode="bypassPermissions",
+        max_turns=int(spec["max_turns"]),
+        model=spec.get("model"),
+        env=_child_env(os.environ),
+        setting_sources=[],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+
+    async def stream():
+        async for msg in query(prompt=spec["prompt"], options=options):
+            if isinstance(msg, AssistantMessage):
+                texts = [b.text for b in msg.content if isinstance(b, TextBlock)]
+                uses = [{"name": b.name, "input": b.input} for b in msg.content if isinstance(b, ToolUseBlock)]
+                yield {"kind": "assistant", "text": "\n".join(texts), "tool_uses": uses}
+            elif isinstance(msg, ResultMessage):
+                yield {
+                    "kind": "result",
+                    "subtype": getattr(msg, "subtype", None),
+                    "result": getattr(msg, "result", None),
+                    "usage": getattr(msg, "usage", None),
+                    "total_cost_usd": getattr(msg, "total_cost_usd", None),
+                    "is_error": bool(getattr(msg, "is_error", False)),
+                }
+
+    return stream()

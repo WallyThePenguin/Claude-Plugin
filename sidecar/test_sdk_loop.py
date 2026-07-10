@@ -325,6 +325,19 @@ def main():
     fails += _check("transcript has start/assistant_text/done shape",
                     "start" in events and "assistant_text" in events and ("done" in events or "error" in events))
 
+    # --- child env hygiene ---
+    base = {"PATH": "p", "ANTHROPIC_API_KEY": "sk-oops", "CLAUDE_CODE_OAUTH_TOKEN": "tok"}
+    env = sdk_loop._child_env(base)
+    fails += _check("API key scrubbed", "ANTHROPIC_API_KEY" not in env)
+    fails += _check("oauth token kept", env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok")
+    fails += _check("PATH kept", env["PATH"] == "p")
+    try:
+        sdk_loop._child_env({"PATH": "p"})
+        raised = False
+    except sdk_loop.agent_loop.LoopError:
+        raised = True
+    fails += _check("missing oauth token raises LoopError", raised)
+
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
 
