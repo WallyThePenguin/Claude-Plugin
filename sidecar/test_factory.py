@@ -480,6 +480,18 @@ def main():
     fails += _check("animation verify is oracle-first", "oracle_suite" in factory.PLAYBOOKS["animation"]["verify"])
     fails += _check("animation build census-checks the rig", "joint_census" in factory.PLAYBOOKS["animation"]["build"])
 
+    # --- oracle-first BUILD budget (SP2b live find: the first cycle capped one step short) ---
+    fails += _check("melee build budget raised", factory._build_iterations(factory.PLAYBOOKS["melee-weapon"]) == 70)
+    fails += _check("default build budget unchanged", factory._build_iterations(factory.PLAYBOOKS["_default"]) == 45)
+    melee_bp = factory._build_prompt(
+        {"id": "weapon-spear", "family": "melee-weapon", "brief": "b", "oracle": "o"},
+        False, factory.PLAYBOOKS["melee-weapon"])
+    default_bp = factory._build_prompt(
+        {"id": "house-cottage", "family": "building", "brief": "b", "oracle": "o"},
+        False, factory.PLAYBOOKS["building"])
+    fails += _check("melee emit line tracks the budget", "well before iteration 65" in melee_bp)
+    fails += _check("default emit line unchanged", "well before iteration 40" in default_bp)
+
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
     sys.exit(1 if fails else 0)
 

@@ -316,7 +316,9 @@ class FactoryRunner:
         # ---- BUILD ----
         self._set(stage="build")
         ok, text, err = self._wait_loop(
-            _build_prompt(rung, sabotage, playbook, variant_hint), max_iterations=45, stage="build"
+            _build_prompt(rung, sabotage, playbook, variant_hint),
+            max_iterations=_build_iterations(playbook),
+            stage="build",
         )
         if not ok:
             self._narrate(f"BUILD blocked: {err}", warn=True)
@@ -751,6 +753,9 @@ PLAYBOOKS = {
         "kind": "runtime",
         "sandbox": "clear",
         "oracleFamily": "melee-weapon",
+        # The oracle-first procedure adds measured steps (stamp_frame, suite self-check, fix
+        # rows) — the first live SP2b cycle capped out at the old default one step short.
+        "buildIterations": 70,
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"reach":<n>}',
         "build": (
             "(1) park any Tools in StarterPack into ServerStorage and report their new paths in "
@@ -823,6 +828,7 @@ PLAYBOOKS = {
     "animation": {
         "kind": "visual",
         "oracleFamily": "animation",
+        "buildIterations": 60,
         "config": '{"clipName":"<name>","keyframeCount":<n>,"priority":"<Action|Movement|...>"}',
         "build": (
             "(1) use an existing rig or spawn_rig; FIRST run oracle_check {check:'joint_census', "
@@ -940,6 +946,11 @@ def _playbook(rung) -> dict:
     return PLAYBOOKS["_default"]
 
 
+def _build_iterations(playbook: dict) -> int:
+    """BUILD loop budget: oracle-first playbooks carry their own (bigger) budget."""
+    return int(playbook.get("buildIterations") or 45)
+
+
 def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> str:
     sabotage_line = (
         "SABOTAGE RUN: deliberately break the ONE thing the ORACLE checks (for a weapon skip the "
@@ -971,8 +982,8 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         + f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
         "The MOMENT the core artifact is complete, your VERY NEXT message must be ONLY the JSON "
-        "line (emit it well before iteration 40, no polish first). End that message with EXACTLY "
-        "ONE line, no code fence:\n"
+        f"line (emit it well before iteration {_build_iterations(playbook) - 5}, no polish "
+        "first). End that message with EXACTLY ONE line, no code fence:\n"
         'FACTORY_BUILD_JSON: {"ok":true,"artifactPath":"<full instance path, e.g. '
         'game.Workspace.Barn or game.StarterPack.Spear>","artifactKind":"<Tool|Model|ScreenGui|'
         'KeyframeSequence|Script|Folder>","config":' + playbook["config"] + ','
