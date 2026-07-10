@@ -80,6 +80,45 @@ def _learned_block(family) -> str:
         "then [playtest-confirmed] carry increasing weight. Untagged lessons predate tiers.\n\n"
     )
 
+
+MAX_TOOLING_ISSUES = 40
+TOOLING_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "factory", "tooling-issues.json"
+)
+
+
+def append_tooling_issues(issues, path):
+    """Append tooling defects to the mechanic's backlog file, deduped by title (shared by
+    forever's RETRO stage and the factory's capture-audit oracle-bug filing)."""
+    if not issues:
+        return
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        data = {"issues": []}
+    bucket = data.setdefault("issues", [])
+    by_title = {i.get("title"): i for i in bucket if isinstance(i, dict)}
+    for issue in issues:
+        title = str(issue.get("title"))[:200]
+        if title in by_title:
+            by_title[title]["seenCount"] = int(by_title[title].get("seenCount") or 1) + 1
+            by_title[title]["lastSeenAt"] = int(time.time())
+            continue
+        bucket.append({
+            "title": title,
+            "symptom": str(issue.get("symptom") or "")[:600],
+            "suspectFiles": issue.get("suspectFiles") or [],
+            "repro": str(issue.get("repro") or "")[:600],
+            "seenCount": 1,
+            "lastSeenAt": int(time.time()),
+        })
+    del bucket[:-MAX_TOOLING_ISSUES]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1)
+
+
 # Reserved symbols that block extraction (kept in sync with the workflow's GATE).
 RESERVED_PREFIX = "StudioAgentTest_"
 DENYLIST = ["TestAutoKill"]

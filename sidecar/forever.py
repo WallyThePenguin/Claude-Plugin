@@ -32,7 +32,7 @@ AUTHOR_MAX_ITER = 6
 RETRO_MAX_ITER = 5
 MECHANIC_MAX_ITER = 30
 MAX_METHOD_LESSONS = 40
-MAX_TOOLING_ISSUES = 40
+MAX_TOOLING_ISSUES = factory_mod.MAX_TOOLING_ISSUES
 _BAD_STATUSES = ("FAILED", "UNVERIFIED", "BLOCKED", "error")
 # Wait generously ABOVE each sub-runner's OWN internal cap, so a healthy long run is never
 # mis-timed-out and its thread never orphaned. A factory iteration = BUILD loop + VERIFY loop
@@ -500,34 +500,8 @@ class ForeverRunner:
         return added
 
     def _append_tooling_issues(self, issues):
-        """Append tooling defects to the mechanic's backlog file, deduped by title."""
-        if not issues:
-            return
-        try:
-            with open(self._tooling_path, encoding="utf-8") as fh:
-                data = json.load(fh)
-        except (OSError, ValueError):
-            data = {"issues": []}
-        bucket = data.setdefault("issues", [])
-        by_title = {i.get("title"): i for i in bucket if isinstance(i, dict)}
-        for issue in issues:
-            title = str(issue.get("title"))[:200]
-            if title in by_title:
-                by_title[title]["seenCount"] = int(by_title[title].get("seenCount") or 1) + 1
-                by_title[title]["lastSeenAt"] = int(time.time())
-                continue
-            bucket.append({
-                "title": title,
-                "symptom": str(issue.get("symptom") or "")[:600],
-                "suspectFiles": issue.get("suspectFiles") or [],
-                "repro": str(issue.get("repro") or "")[:600],
-                "seenCount": 1,
-                "lastSeenAt": int(time.time()),
-            })
-        del bucket[:-MAX_TOOLING_ISSUES]
-        os.makedirs(os.path.dirname(self._tooling_path), exist_ok=True)
-        with open(self._tooling_path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=1)
+        """Append tooling defects to the mechanic's backlog file (shared impl in factory.py)."""
+        factory_mod.append_tooling_issues(issues, self._tooling_path)
 
     def _run_mechanic(self, issues) -> bool:
         """One self-repair run (charter 2026-07-04: FULL autonomy + auto-revert). The mechanic
