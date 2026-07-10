@@ -255,7 +255,9 @@ function HotReload.startSupervisor(pluginScript: Instance, config: any, runtime:
 						.. (if ok then "OK" else "FAILED — " .. tostring(err))
 				)
 			end
-			task.wait(config:getDevBridgePollInterval())
+			-- Supervisor cadence (>= 1.5s), NOT the fast command-pull tick: a reload request is a
+			-- rare shell event, and this loop's GET counts against the shared HttpService budget.
+			task.wait(config:getSupervisorPollInterval())
 		end
 	end)
 end

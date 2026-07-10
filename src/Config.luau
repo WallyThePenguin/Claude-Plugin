@@ -58,7 +58,12 @@ local DEFAULTS = {
 	-- Dev bridge (DevBridge.luau): lets Claude Code drive the plugin from the shell via the sidecar.
 	-- EDIT-only + localhost-only, so default-on (nothing to toggle); set false to disable.
 	devBridge = true,
-	devBridgePollInterval = 0.25, -- seconds between bridge poll ticks (0.25 = snappy tool round-trips; was 1.5)
+	-- Seconds between DevBridge COMMAND-PULL ticks only (0.25 = snappy tool round-trips; was 1.5).
+	-- The hot-reload/play supervisor loops poll at getSupervisorPollInterval() instead: three loops
+	-- all at 0.25s would idle-burn ~960 HttpService requests/min against Studio's ~500/min budget —
+	-- shared with the Claude-proxy model calls, capture uploads, and web fetches — and RequestAsync
+	-- throws for the rest of the minute once it exhausts (silent bridge lag inside the pcalls).
+	devBridgePollInterval = 0.25,
 }
 
 -- Allowed models. Never Haiku.
@@ -387,6 +392,15 @@ end
 
 function Config.getDevBridgePollInterval(self: Config): number
 	return self:get("devBridgePollInterval") :: number
+end
+
+-- Cadence for the SUPERVISOR loops (HotReload reload-pull, PlayBridge play-pull). They gate RARE
+-- shell events — a reload request, a play start — so they never need the fast command-pull tick;
+-- polling them at 0.25s too is what blew the HttpService budget (see devBridgePollInterval).
+-- Derived, not a stored key: floored at the pre-SP2b 1.5s, and it tracks a user-RAISED
+-- devBridgePollInterval so slowing the bridge slows everything.
+function Config.getSupervisorPollInterval(self: Config): number
+	return math.max(self:getDevBridgePollInterval(), 1.5)
 end
 
 function Config.getRetryMaxAttempts(self: Config): number

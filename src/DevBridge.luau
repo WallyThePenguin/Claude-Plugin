@@ -1,6 +1,7 @@
 --!strict
 -- DevBridge: lets Claude Code (the shell) drive the plugin over the localhost sidecar instead of
--- computer-use. EDIT-only poll loop: each tick pushes recent Output logs and pulls one queued command —
+-- computer-use. EDIT-only poll loop: each tick pushes recent Output logs (only when NEW lines arrived —
+-- an unconditional push would double the tick's HttpService spend) and pulls one queued command —
 -- `tool` (Tools.dispatch), `luau` (the run_luau tool), or `prompt` (AgentLoop.send on the shared
 -- conversation). Pure helpers (serialize/accumulate) are unit-tested in DevBridgeSpec; the loop + HTTP
 -- are live-verified. See the dev-bridge design spec. Localhost-only, plugin-only, never in a shipped game.
@@ -116,16 +117,18 @@ local function httpGetJson(url: string): (any?, string?)
 	return payload, nil
 end
 
--- POST a JSON body to the sidecar. Best-effort; returns nothing (failures are swallowed).
-local function httpPostJson(url: string, body: any)
-	pcall(function()
-		HttpService:RequestAsync({
+-- POST a JSON body to the sidecar. Best-effort; failures are swallowed. Returns true only when the
+-- request went through (2xx) so callers that gate re-sends (the log push) can retry next tick.
+local function httpPostJson(url: string, body: any): boolean
+	local ok, res = pcall(function()
+		return HttpService:RequestAsync({
 			Url = url,
 			Method = "POST",
 			Headers = { ["Content-Type"] = "application/json" },
 			Body = HttpService:JSONEncode(body),
 		})
 	end)
+	return ok and (res :: any).Success == true
 end
 
 local function toolContext(deps: any): any
@@ -266,9 +269,18 @@ local function handleCommand(deps: any, cmd: any)
 	end
 end
 
--- One tick: push recent logs, then pull + run a queued command (if any).
+-- One tick: push recent logs ONLY when new lines arrived since the last successful push, then pull +
+-- run a queued command (if any). The unconditional every-tick POST was half the loop's HttpService
+-- spend at the 0.25s cadence — the shared ~500 requests/min Studio budget cannot afford idle traffic.
+-- -1 forces one initial push so the sidecar gets a snapshot even before the first new line.
+local lastPushedLogTotal = -1
 local function tick(deps: any)
-	httpPostJson(sidecarUrl(deps) .. "/logs", { lines = Logs.recent(80) })
+	local logTotal = Logs.total()
+	if logTotal ~= lastPushedLogTotal then
+		if httpPostJson(sidecarUrl(deps) .. "/logs", { lines = Logs.recent(80) }) then
+			lastPushedLogTotal = logTotal
+		end
+	end
 	local pending = httpGetJson(sidecarUrl(deps) .. "/agent/pending")
 	if type(pending) == "table" and type(pending.id) == "number" then
 		handleCommand(deps, pending)

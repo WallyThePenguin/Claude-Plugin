@@ -839,7 +839,9 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 					end
 				end
 			end
-			task.wait(deps.config:getDevBridgePollInterval())
+			-- Supervisor cadence (>= 1.5s), NOT the fast command-pull tick: a play start is a rare
+			-- shell event, and this loop's GET counts against the shared HttpService budget.
+			task.wait(deps.config:getSupervisorPollInterval())
 		end
 	end)
 end

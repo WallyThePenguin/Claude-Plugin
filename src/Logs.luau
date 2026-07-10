@@ -12,6 +12,9 @@ export type Entry = { kind: string, text: string }
 
 local MAX = 400
 local buffer: { Entry } = {}
+-- Monotonic count of every line EVER captured (never decremented by ring-buffer eviction) — a cheap
+-- change signal so pollers (DevBridge's log push) can skip re-sending when nothing new arrived.
+local total = 0
 
 local function kindOf(messageType: Enum.MessageType): string
 	if messageType == Enum.MessageType.MessageError then
@@ -26,10 +29,16 @@ end
 
 LogService.MessageOut:Connect(function(message: string, messageType: Enum.MessageType)
 	table.insert(buffer, { kind = kindOf(messageType), text = message })
+	total += 1
 	if #buffer > MAX then
 		table.remove(buffer, 1)
 	end
 end)
+
+-- Monotonic lines-ever-captured counter. Unequal across two reads = new output arrived between them.
+function Logs.total(): number
+	return total
+end
 
 -- Most-recent-last list of up to `limit` entries (default 50), optionally only warnings/errors.
 function Logs.recent(limit: number?, errorsOnly: boolean?): { Entry }
@@ -49,6 +58,8 @@ end
 
 function Logs.clear()
 	table.clear(buffer)
+	-- A clear IS a change: bump the counter so change-signal pollers push the emptied snapshot too.
+	total += 1
 end
 
 return Logs
