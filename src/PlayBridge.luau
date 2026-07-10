@@ -498,6 +498,159 @@ if mode ~= "run" then
 	end)
 end
 
+-- ---- oracle runtime twins (SP2d follow-up): PLAY_ONLY checks measured in THIS (run/play) DM ----
+-- The edit DM is FROZEN while Execute*ModeAsync runs, so oracle_suite cannot execute these itself;
+-- `play oracle '{"check":...,"args":{...}}'` runs them here and returns the VERBATIM JSON envelope
+-- that oracle_suite accepts back as twin_results[] to discharge twin_pending. Twins MEASURE
+-- (magnitudes ride every result) — a bare "no error" never discharges anything.
+local function resolvePath(path)
+	local cur = game
+	for token in string.gmatch(tostring(path), "[^%.]+") do
+		if token == "game" then
+			cur = game
+		elseif token == "workspace" or token == "Workspace" then
+			cur = workspace
+		else
+			local nxt = cur:FindFirstChild(token)
+			if nxt == nil and cur == game then
+				local okS, svc = pcall(game.GetService, game, token)
+				if okS then
+					nxt = svc
+				end
+			end
+			if nxt == nil then
+				return nil, "not found: " .. token .. " (in " .. tostring(path) .. ")"
+			end
+			cur = nxt
+		end
+	end
+	return cur, nil
+end
+
+local ORACLE_TWINS = {}
+-- Twin of anchored_ok (EDIT_MISLEADS: scripts can re-anchor at runtime). Census under LIVE physics.
+ORACLE_TWINS.anchored_weld_census = function(args)
+	local inst, rerr = resolvePath(args.target)
+	if inst == nil then
+		return { verdict = "UNKNOWN", reason = rerr, magnitudes = {} }
+	end
+	local parts, anchored, motors, welds, weldcons = 0, 0, 0, 0, 0
+	local anchoredNames = {}
+	local pool = inst:GetDescendants()
+	table.insert(pool, inst)
+	for _, d in pool do
+		if d:IsA("BasePart") then
+			parts = parts + 1
+			if d.Anchored then
+				anchored = anchored + 1
+				if #anchoredNames < 5 then
+					table.insert(anchoredNames, d.Name)
+				end
+			end
+		elseif d:IsA("Motor6D") then
+			motors = motors + 1
+		elseif d:IsA("Weld") then
+			welds = welds + 1
+		elseif d:IsA("WeldConstraint") then
+			weldcons = weldcons + 1
+		end
+	end
+	local mag = { parts = parts, anchored = anchored, motor6d = motors, welds = welds, weld_constraints = weldcons, anchored_names = anchoredNames }
+	if parts == 0 then
+		return { verdict = "UNKNOWN", reason = "no BaseParts under target", magnitudes = mag }
+	end
+	if anchored > 0 then
+		return {
+			verdict = "FAIL",
+			reason = anchored .. "/" .. parts .. " parts ANCHORED under live physics (first: " .. table.concat(anchoredNames, ",") .. ")",
+			magnitudes = mag,
+		}
+	end
+	return { verdict = "PASS", magnitudes = mag }
+end
+-- stable_over: target holds position under live physics for {seconds} (default 2, cap 8);
+-- FAIL when drift exceeds {max_drift} studs (default 0.5) or the tracked part is destroyed.
+ORACLE_TWINS.stable_over = function(args)
+	local inst, rerr = resolvePath(args.target)
+	if inst == nil then
+		return { verdict = "UNKNOWN", reason = rerr, magnitudes = {} }
+	end
+	local ref = nil
+	if inst:IsA("BasePart") then
+		ref = inst
+	elseif inst:IsA("Model") then
+		ref = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+	else
+		ref = inst:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if ref == nil then
+		return { verdict = "UNKNOWN", reason = "no BasePart to track under target", magnitudes = {} }
+	end
+	local seconds = math.clamp(tonumber(args.seconds) or 2, 0.5, 8)
+	local maxDrift = tonumber(args.max_drift) or 0.5
+	local p0 = ref.Position
+	local worst = 0
+	local t0 = os.clock()
+	while os.clock() - t0 < seconds do
+		task.wait(0.2)
+		if ref.Parent == nil then
+			return {
+				verdict = "FAIL",
+				reason = "tracked part destroyed mid-run after " .. string.format("%.1f", os.clock() - t0) .. "s",
+				magnitudes = { drift_studs = worst, seconds = os.clock() - t0, tracked = tostring(args.target) },
+			}
+		end
+		local d = (ref.Position - p0).Magnitude
+		if d > worst then
+			worst = d
+		end
+	end
+	local mag = { drift_studs = worst, seconds = seconds, max_allowed = maxDrift, tracked = ref:GetFullName() }
+	if worst > maxDrift then
+		return {
+			verdict = "FAIL",
+			reason = string.format("%.2f", worst) .. " studs drift over " .. seconds .. "s (max " .. maxDrift .. ")",
+			magnitudes = mag,
+		}
+	end
+	return { verdict = "PASS", magnitudes = mag }
+end
+
+-- NOTE: a long twin (stable_over up to 8s) blocks this single-threaded poller — `stop` queues
+-- behind it. Acceptable: the CLI result deadline is 150s and twins are capped at 8s.
+local function serverOracle(arg)
+	local spec = nil
+	pcall(function()
+		spec = HttpService:JSONDecode(tostring(arg))
+	end)
+	if type(spec) ~= "table" or spec.check == nil then
+		return 'oracle: bad arg -- expected JSON {"check":"name","args":{...}} (got ' .. tostring(arg) .. ")"
+	end
+	local fn = ORACLE_TWINS[tostring(spec.check)]
+	if fn == nil then
+		local names = {}
+		for n in ORACLE_TWINS do
+			table.insert(names, n)
+		end
+		table.sort(names)
+		return "oracle: unknown twin '" .. tostring(spec.check) .. "' (available: " .. table.concat(names, ", ") .. ")"
+	end
+	local t0 = os.clock()
+	local okT, r = pcall(fn, if type(spec.args) == "table" then spec.args else {})
+	if not okT or type(r) ~= "table" then
+		r = { verdict = "UNKNOWN", reason = "twin threw: " .. tostring(r), magnitudes = {} }
+	end
+	r.check = tostring(spec.check)
+	r.validity = "PLAY_ONLY"
+	r.context = "run"
+	r.cost_ms = math.floor((os.clock() - t0) * 1000 + 0.5)
+	pushLog("twin", r.check .. " " .. tostring(r.verdict) .. (if r.reason ~= nil then " (" .. tostring(r.reason) .. ")" else ""))
+	local okJ, s = pcall(function()
+		return HttpService:JSONEncode(r)
+	end)
+	return if okJ then s else "oracle: encode failed"
+end
+
 while true do
 	local ok, res = pcall(function()
 		return HttpService:RequestAsync({ Url = base .. "/play/pending", Method = "GET" })
@@ -535,6 +688,8 @@ while true do
 					post(cmd.id, true, serverFix())
 				elseif cmd.cmd == "seval" then
 					post(cmd.id, true, serverEval(cmd.arg))
+				elseif cmd.cmd == "oracle" then
+					post(cmd.id, true, serverOracle(cmd.arg))
 				elseif cmd.cmd == "slog2" then
 					post(cmd.id, true, serverLogs(cmd.arg))
 				elseif cmd.cmd == "shit" then

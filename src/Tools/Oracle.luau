@@ -66,7 +66,37 @@ local SUITES = {
 	},
 }
 
-local function runSuite(family: string, target: string, rig: string?, clip: string?): any
+-- Merge run-mode twin envelopes (verbatim JSON from `play oracle`) into the pending-twin ledger.
+-- Anti-Goodhart: an envelope only DISCHARGES a pending entry when it is the mapped twin name for
+-- that check, ran with context="run", PASSed, AND quoted non-empty magnitudes; a twin FAIL is a
+-- suite failure outright; UNKNOWN (and edit-context or magnitude-free results) discharge nothing.
+local function mergeTwins(twin_pending: { string }, twinResults: { any }): ({ string }, { [string]: any }, { any })
+	local discharged: { [string]: any } = {}
+	local failures: { any } = {}
+	for _, tr in twinResults do
+		if type(tr) == "table" then
+			for _, pending in twin_pending do
+				local want = (OracleChecks :: any).twinOf[pending]
+				if want ~= nil and tr.check == want then
+					if tr.verdict == "FAIL" then
+						table.insert(failures, tr)
+					elseif tr.verdict == "PASS" and tr.context == "run" and type(tr.magnitudes) == "table" and next(tr.magnitudes) ~= nil then
+						discharged[pending] = tr
+					end
+				end
+			end
+		end
+	end
+	local still: { string } = {}
+	for _, pending in twin_pending do
+		if discharged[pending] == nil then
+			table.insert(still, pending)
+		end
+	end
+	return still, discharged, failures
+end
+
+local function runSuite(family: string, target: string, rig: string?, clip: string?, twinResults: { any }?): any
 	local clipName = clip or "SwordSwing"
 	local suite = SUITES[family]
 	if suite == nil then
@@ -79,6 +109,7 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 	local results = {}
 	local counts = { PASS = 0, FAIL = 0, UNKNOWN = 0 } :: { [string]: number }
 	local twin_pending: { string } = {}
+	local twin_plan: { any } = {}
 	for _, spec in suite.checks(target, rig, clipName) do
 		local r = OracleChecks.run(spec.check, spec.args)
 		table.insert(results, r)
@@ -86,6 +117,25 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 		-- EDIT_MISLEADS passes are only provisionally green: they need a runtime twin.
 		if r.validity == "EDIT_MISLEADS" and r.verdict == "PASS" then
 			table.insert(twin_pending, r.check)
+			local twin = (OracleChecks :: any).twinOf[r.check]
+			if twin ~= nil then
+				table.insert(twin_plan, {
+					check = r.check,
+					twin = twin,
+					cmd = 'play oracle {"check":"' .. twin .. '","args":{"target":"' .. target .. '"}}',
+				})
+			end
+		end
+	end
+	-- SP2d follow-up: merge run-mode twin envelopes. A twin FAIL joins results and counts.FAIL.
+	local twin_evidence: { [string]: any }? = nil
+	if twinResults ~= nil then
+		local still, discharged, failures = mergeTwins(twin_pending, twinResults)
+		twin_pending = still
+		twin_evidence = discharged
+		for _, f in failures do
+			counts.FAIL += 1
+			table.insert(results, f)
 		end
 	end
 	local frameMissing: { string }
@@ -102,11 +152,16 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 		counts = counts,
 		results = results,
 		twin_pending = twin_pending,
+		twin_plan = twin_plan,
+		twin_evidence = twin_evidence,
 		green = counts.FAIL == 0 and counts.UNKNOWN == 0 and #twin_pending == 0,
 		frameMissing = frameMissing,
 		blindspots = suite.notAsserted,
 		note = "UNKNOWN never satisfies; blindspots list what was NOT asserted — a green suite is not 'done'. "
-			.. "green=false while twin_pending is non-empty (EDIT_MISLEADS passes need their runtime twin).",
+			.. "green=false while twin_pending is non-empty (EDIT_MISLEADS passes need their runtime twin). "
+			.. "To discharge: playtest_start {mode:'run'}, run each twin_plan[].cmd over the play channel, "
+			.. "playtest_stop, then re-run oracle_suite passing the VERBATIM returned JSON as twin_results[] "
+			.. "(quote the play-channel output as evidence; a twin FAIL fails the suite).",
 	}
 end
 
@@ -172,6 +227,23 @@ local function selftest(): any
 	OracleFrames.stamp(model, { family = "melee-weapon", dirs = { blade_dir = { x = 1, y = 0, z = 0 } } })
 	expect("lying blade_dir is caught", "FAIL", OracleChecks.run("frame_consistent", { target = model }))
 	expect("unknown check reports UNKNOWN", "UNKNOWN", OracleChecks.run("no_such_check", {}))
+	-- twin-merge logic (pure; the twin IMPLEMENTATIONS live in the run-mode server and are
+	-- exercised live via `play oracle` — see liveVerify in the SP2 spec):
+	do
+		local pending = { "anchored_ok" }
+		local runPass = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = { anchored = 0, parts = 3 } }
+		local still1, disc1 = mergeTwins(pending, { runPass })
+		table.insert(results, { name = "run-context PASS twin discharges pending", expected = 0, got = #still1, ok = #still1 == 0 and disc1.anchored_ok ~= nil })
+		local editPass = { check = "anchored_weld_census", verdict = "PASS", context = "edit", magnitudes = { anchored = 0 } }
+		local still2 = mergeTwins(pending, { editPass })
+		table.insert(results, { name = "edit-context twin does NOT discharge", expected = 1, got = #still2, ok = #still2 == 1 })
+		local noMag = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = {} }
+		local still3 = mergeTwins(pending, { noMag })
+		table.insert(results, { name = "magnitude-free twin does NOT discharge", expected = 1, got = #still3, ok = #still3 == 1 })
+		local runFail = { check = "anchored_weld_census", verdict = "FAIL", context = "run", magnitudes = { anchored = 2, parts = 3 } }
+		local still4, _, fails4 = mergeTwins(pending, { runFail })
+		table.insert(results, { name = "twin FAIL is a suite failure and does not discharge", expected = 1, got = #fails4, ok = #fails4 == 1 and #still4 == 1 })
+	end
 	folder:Destroy()
 	local failures = 0
 	for _, r in results do
@@ -233,13 +305,25 @@ Oracle.descriptors = {
 				target = { type = "string", description = "dot-path to the Tool/Model under test" },
 				rig = { type = "string", description = "optional dot-path to the rig (default workspace.AgentRig)" },
 				clip = { type = "string", description = "clip name for the animation checks (default SwordSwing)" },
+				twin_results = {
+					type = "array",
+					description = "run-mode twin envelopes: the VERBATIM JSON objects `play oracle` returned "
+						.. "(from a playtest_start {mode:'run'} session). Discharges matching twin_pending entries; "
+						.. "a twin FAIL fails the suite. Only run-context PASSes with magnitudes discharge.",
+				},
 			},
 			required = { "family", "target" },
 		},
 		destructive = false,
 		run = function(input, _context)
 			local args = if type(input) == "table" then input else {}
-			local r = runSuite(tostring(args.family), tostring(args.target), if args.rig ~= nil then tostring(args.rig) else nil, if args.clip ~= nil then tostring(args.clip) else nil)
+			local r = runSuite(
+				tostring(args.family),
+				tostring(args.target),
+				if args.rig ~= nil then tostring(args.rig) else nil,
+				if args.clip ~= nil then tostring(args.clip) else nil,
+				if type(args.twin_results) == "table" then args.twin_results else nil
+			)
 			return encode(r), r.ok ~= true
 		end,
 	},

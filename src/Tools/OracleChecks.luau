@@ -674,10 +674,37 @@ end
 declStub("played_arc_of", "PLAY_ONLY")
 declStub("track_priority_audit", "PLAY_ONLY")
 declStub("impulse_effective", "PLAY_ONLY")
-declStub("stable_over", "PLAY_ONLY")
 declStub("load_scale_probe", "PLAY_ONLY")
 declStub("rig_uniform", "EDIT_OK")
 declStub("clip_joint_mask", "EDIT_OK")
+
+-- ---- runtime twins (SP2d follow-up) ----
+-- twinOf maps an EDIT_MISLEADS check to the PLAY_ONLY twin that discharges its provisional pass.
+-- Twin IMPLEMENTATIONS live in the injected run-mode server (PlayBridge SERVER_SRC, `play oracle`
+-- verb) because the edit DM is frozen while Execute*ModeAsync runs — the plugin cannot execute
+-- them itself. Registered here as pointers so oracle_check answers with the run-mode recipe.
+M.twinOf = {
+	anchored_ok = "anchored_weld_census",
+} :: { [string]: string }
+
+local RUN_TWIN_HINT = " Runs INSIDE run mode: playtest_start {mode:'run'}, then shell `play oracle "
+	.. '\'{"check":"<name>","args":{"target":"..."}}\'` — feed the returned JSON back to oracle_suite as twin_results[].'
+register(
+	"anchored_weld_census",
+	"PLAY_ONLY",
+	"Runtime twin of anchored_ok: anchored/Motor6D/Weld census for {target} under LIVE physics." .. RUN_TWIN_HINT,
+	function(_args)
+		return unknown("PLAY_ONLY twin — execute via `play oracle` in run mode, not in edit")
+	end
+)
+register(
+	"stable_over",
+	"PLAY_ONLY",
+	"{target} holds position under live physics for {seconds} (default 2, cap 8); FAIL when drift > {max_drift} studs (default 0.5)." .. RUN_TWIN_HINT,
+	function(_args)
+		return unknown("PLAY_ONLY twin — execute via `play oracle` in run mode, not in edit")
+	end
+)
 
 -- run(name, args) -> result (adds validity/context/cost_ms; never throws)
 function M.run(name: string, args: any): any
