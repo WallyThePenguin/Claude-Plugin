@@ -142,3 +142,13 @@ if __name__ == "__main__":
 #     and NOT assume a ResultMessage arrives on failure. The plan script itself exits non-zero with a
 #     traceback on this box purely because of (a) — its logic is otherwise correct and would print all
 #     PASS/FAIL lines on an authenticated machine.
+# FINDINGS LIVE RERUN 2026-07-10 (CLAUDE_CODE_OAUTH_TOKEN set, subscription/max):
+# (a) auth: PASS on token env var (401 without — keychain finding stands).
+# (b) R1: PASS — ~19KB system prompt accepted; prompt caching active (37k cache-read).
+# (c) R3: assistants=4 vs num_turns=3 — max_turns counts API turns, not assistant msgs; budgets OK.
+# (d) R4: PASS — sentinel verbatim in BOTH last-assistant-text AND ResultMessage.result (paths agree).
+# (e) is_error tool shape accepted live; image tool round-trip CONFIRMED (model described the pixel).
+# (f) usage dict shape confirmed (output_tokens/cache_*/iterations[]); total_cost_usd informational on OAuth.
+# (g) NEW WATCH ITEM: model used native ToolSearch to DISCOVER the mcp__studio__ tool (deferred schemas).
+#     Production sdk_loop passes tools=["WebSearch","WebFetch"], which may strip ToolSearch — if the first
+#     SDK factory run stalls unable to find studio tools, add "ToolSearch" to the tools allowlist.
