@@ -111,6 +111,22 @@ local SCOPE_PRESETS: { [string]: { string } } = {
 	},
 }
 
+-- The WEAPON channel (SP2c): child-part names driven by the edit grip joint(s) — Motor6Ds named
+-- "AgentEditGrip" (ToolFactory.equip's playbook-API name, Part0=RightHand, Part1=Handle). The Animator
+-- matches poses by CONNECTED PART NAMES, so a Pose named after Part1 ("Handle") nested under the
+-- "RightHand" Pose animates the weapon itself. Full-body snapshots already include these (adjacency
+-- walks ALL rig-descendant Motor6Ds); scoped snapshots need them appended explicitly. Returns {} when
+-- no grip joint exists (not equipped / pre-SP2c Weld grip).
+function AnimationClip.weaponChildNames(rig: Instance): { string }
+	local names: { string } = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") and d.Name == "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
+			table.insert(names, (d.Part1 :: Instance).Name)
+		end
+	end
+	return names
+end
+
 function AnimationClip.scopedJointSet(preset: string): ({ string }?, string?)
 	local names = SCOPE_PRESETS[preset]
 	if names == nil then

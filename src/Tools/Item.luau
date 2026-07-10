@@ -119,9 +119,24 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		local _, resetOk = RigWorkbench.resetPose(theRig)
 		poseReset = resetOk
 	end
+	-- Off-hand IK (SP2c item 6): offhand=true stamps/reuses a Semantic_OffHand attachment on the
+	-- Handle + creates a LeftUpperArm->LeftHand IKControl targeting it; offhand=false removes it.
+	local offhandNote = ""
+	local offhandPos: Vector3? = nil
+	if type(args.offhandOffset) == "table" then
+		offhandPos = Vector3.new(
+			tonumber(args.offhandOffset.x) or 0,
+			tonumber(args.offhandOffset.y) or 0,
+			tonumber(args.offhandOffset.z) or 0
+		)
+	end
 	local function doEquipGrip()
 		ToolFactory.equip(tool, theRig)
 		ToolFactory.applyGrip(tool, grip)
+		if type(args.offhand) == "boolean" then
+			local otext, _ook = ToolFactory.setOffHand(tool, theRig, args.offhand, offhandPos)
+			offhandNote = " " .. otext
+		end
 	end
 	if RunService:IsEdit() then
 		local rid = ChangeHistoryService:TryBeginRecording("grip_tool")
@@ -138,6 +153,7 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		theRig.Name
 	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "")
 		.. (if poseReset then " (rig pose reset to neutral first)" else "")
+		.. offhandNote
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
 	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)
@@ -215,7 +231,9 @@ Item.descriptors = {
 			.. "item and screenshots it. LOOK at the result and RE-CALL with adjusted offset/rot until the item "
 			.. "sits right in the fist (e.g. a sword's blade pointing out, gripped near the hilt). Inputs: tool "
 			.. "(required path, from make_tool), rig? (path; else the first workspace rig — spawn_rig first if "
-			.. "none), offset?, rot?. Requires the vision sidecar + a focused Studio. When the tool carries a "
+			.. "none), offset?, rot?, offhand? (true = two-handed: IK the LeftHand to a Semantic_OffHand "
+			.. "attachment on the Handle; offhandOffset {x,y,z} moves that attachment in Handle-local studs), "
+			.. "Requires the vision sidecar + a focused Studio. When the tool carries a "
 			.. "Semantic_Grip frame (stamp_frame) and no offset/rot is given, the grip AUTO-ALIGNS to the "
 			.. "declared frame.",
 		inputSchema = {
@@ -228,6 +246,13 @@ Item.descriptors = {
 				},
 				offset = VEC3_SCHEMA,
 				rot = ROT_SCHEMA,
+				offhand = {
+					type = "boolean",
+					description = "true = two-handed hold: stamp/reuse a Semantic_OffHand attachment "
+						.. "on the Handle and IK the LeftHand to it (IKControl under the Humanoid). "
+						.. "false = remove the off-hand IK.",
+				},
+				offhandOffset = VEC3_SCHEMA,
 			},
 			required = { "tool" },
 		},

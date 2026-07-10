@@ -259,4 +259,70 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 	return CFrame.new(att.Position - rot:VectorToWorldSpace(s)) * rot
 end
 
+-- Off-hand IK grip (SP2c item 6): stamp/reuse a Semantic_OffHand Attachment on the Handle and aim a
+-- LeftUpperArm->LeftHand IKControl at it (IKControl.Target accepts an Attachment — Roblox Weapons Kit
+-- prior art; IKControl must live under a Humanoid that has an Animator). Type=Position: the hand
+-- REACHES the point without inheriting the attachment's orientation (a wrong wrist roll is worse than
+-- none; Transform mode is a follow-up). `localPos` (optional, Handle-local studs) moves the attachment;
+-- default = the Semantic_Grip position (both hands on the grip — move the attachment to refine).
+-- enabled=false removes the control. Idempotent: re-call replaces the prior control. Returns (note, ok).
+local OFFHAND_ATT = "Semantic_OffHand"
+local OFFHAND_IK = "AgentOffHandIK"
+
+function ToolFactory.setOffHand(
+	tool: Tool,
+	rig: Model,
+	enabled: boolean,
+	localPos: Vector3?
+): (string, boolean)
+	local humanoid = rig:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil then
+		return "no Humanoid on " .. rig.Name .. " — off-hand IK needs a Humanoid rig.", false
+	end
+	local stale = humanoid:FindFirstChild(OFFHAND_IK)
+	if stale ~= nil then
+		stale:Destroy()
+	end
+	if not enabled then
+		return "off-hand IK removed.", true
+	end
+	local handle = tool:FindFirstChild("Handle")
+	if handle == nil or not handle:IsA("BasePart") then
+		return "tool '" .. tool.Name .. "' has no Handle part.", false
+	end
+	local chainRoot = rig:FindFirstChild("LeftUpperArm")
+	local endEffector = rig:FindFirstChild("LeftHand")
+	if chainRoot == nil or endEffector == nil then
+		return "rig has no LeftUpperArm/LeftHand (off-hand IK needs an R15 rig).", false
+	end
+	if humanoid:FindFirstChildOfClass("Animator") == nil then
+		local animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local att = handle:FindFirstChild(OFFHAND_ATT)
+	if att == nil or not att:IsA("Attachment") then
+		local na = Instance.new("Attachment")
+		na.Name = OFFHAND_ATT
+		local gripAtt = handle:FindFirstChild("Semantic_Grip")
+		na.Position = if gripAtt ~= nil and gripAtt:IsA("Attachment")
+			then gripAtt.Position
+			else Vector3.zero
+		na.Parent = handle
+		att = na
+	end
+	local theAtt = att :: Attachment
+	if localPos ~= nil then
+		theAtt.Position = localPos
+	end
+	local ik = Instance.new("IKControl")
+	ik.Name = OFFHAND_IK
+	ik.Type = Enum.IKControlType.Position
+	ik.ChainRoot = chainRoot
+	ik.EndEffector = endEffector
+	ik.Target = theAtt
+	ik.Parent = humanoid
+	return "off-hand IK: LeftHand reaches " .. theAtt:GetFullName() .. " (IKControl '" .. OFFHAND_IK .. "' under the Humanoid).",
+		true
+end
+
 return ToolFactory

@@ -108,6 +108,33 @@ local function runAdd(input: any, _context: any): (string, boolean)
 	if scopeErr ~= nil then
 		return "add_keyframe: " .. scopeErr, true
 	end
+	-- WEAPON channel (SP2c): weapon=true keys the equipped tool's Handle too (Pose named after the
+	-- AgentEditGrip joint's Part1, nested under RightHand — the Animator matches by connected-part
+	-- names). Full-body snapshots already include it; a scope must have it appended explicitly.
+	if args.weapon == true then
+		local wnames = AnimationClip.weaponChildNames(rig :: Instance)
+		if #wnames == 0 then
+			return "add_keyframe: weapon=true but no AgentEditGrip Motor6D under "
+				.. (rig :: Instance).Name
+				.. " — equip a Tool with grip_tool first (the grip joint IS the weapon channel).",
+				true
+		end
+		if scopeNames ~= nil then
+			local have: { [string]: boolean } = {}
+			for _, n in scopeNames do
+				have[n] = true
+			end
+			for _, n in wnames do
+				if not have[n] then
+					table.insert(scopeNames, n)
+				end
+			end
+		end
+		local wNote = "weapon channel: " .. table.concat(wnames, ", ") .. (if scopeNames ~= nil
+			then " added to scope."
+			else " (full-body snapshot keys it already).")
+		scopeNote = if scopeNote ~= "" then scopeNote .. " " .. wNote else wNote
+	end
 	local time = if type(args.time) == "number"
 		then args.time
 		else AnimationClip.appendTime(rig, clip)
@@ -204,7 +231,10 @@ Animate.descriptors = {
 			.. "(default 'AgentClip'), time (seconds; omit to append after the last keyframe), scope "
 			.. "(optional — keys only a subset of joints: 'rightArm' for an item swing/use clip so the "
 			.. "legs/torso keep their own animation, 'upperBody', or an array of joint child-part names; "
-			.. "omit for a full-body clip). Re-snapshots replace any keyframe already at that time. Then "
+			.. "omit for a full-body clip), weapon (optional boolean — ALSO key the equipped Tool's "
+			.. "Handle so the clip moves the WEAPON itself: pose the grip joint via pose_joint "
+			.. "{joint='AgentEditGrip'}, then add_keyframe {weapon=true, scope='rightArm'}). "
+			.. "Re-snapshots replace any keyframe already at that time. Then "
 			.. "use capture_animation to SEE it.",
 		inputSchema = {
 			type = "object",
@@ -219,6 +249,11 @@ Animate.descriptors = {
 					description = "Joint scope: 'rightArm' (key only the right-arm chain — use for "
 						.. "item swing/use clips so the legs/torso keep their own animation), 'upperBody', "
 						.. "or an array of joint child-part names. Omit to key ALL joints (full-body).",
+				},
+				weapon = {
+					type = "boolean",
+					description = "true = ALSO key the equipped Tool's Handle (the AgentEditGrip weapon "
+						.. "channel) so the clip animates the weapon itself.",
 				},
 			},
 		},

@@ -172,6 +172,34 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("weaponChildNames finds AgentEditGrip Part1 names only", function()
+		local rig = branchedRig()
+		-- no grip joint yet -> empty
+		if #AnimationClip.weaponChildNames(rig) ~= 0 then
+			return false, "expected no weapon names on a bare rig"
+		end
+		-- an AgentEditGrip Motor6D (RightLowerArm stands in for RightHand) -> its Part1 name
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Parent = rig
+		local hand = rig:FindFirstChild("RightLowerArm") :: BasePart
+		local grip = Instance.new("Motor6D")
+		grip.Name = "AgentEditGrip"
+		grip.Part0 = hand
+		grip.Part1 = handle
+		grip.Parent = hand
+		local names = AnimationClip.weaponChildNames(rig)
+		if #names ~= 1 or names[1] ~= "Handle" then
+			return false, "expected {Handle}, got " .. tostring(names[1]) .. " (n=" .. #names .. ")"
+		end
+		-- a same-named joint with a nil Part1 is skipped
+		grip.Part1 = nil
+		if #AnimationClip.weaponChildNames(rig) ~= 0 then
+			return false, "nil-Part1 grip joint should be skipped"
+		end
+		return true
+	end)
+
 	add(
 		"buildScopedPoses includes the scoped chain + ancestor carriers, pruning siblings",
 		function()
