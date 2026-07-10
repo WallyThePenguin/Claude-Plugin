@@ -269,22 +269,99 @@ local function handleCommand(deps: any, cmd: any)
 	end
 end
 
+-- Pull + run one queued command, if any. Shared by the poll tick and the SP2e stream nudge.
+-- Single-flight: with the stream enabled a nudge can arrive while a pulled command (e.g. a 170s
+-- prompt) is still running — a concurrent second pull would break the bridge's serialized-command
+-- contract, so it is skipped; the sidecar re-nudges every 0.5s while a command waits, and the
+-- backstop poll covers the rest. Never throws (errors were already swallowed by the loop's pcall).
+local pullInFlight = false
+local function pullCommand(deps: any)
+	if pullInFlight then
+		return
+	end
+	pullInFlight = true
+	pcall(function()
+		local pending = httpGetJson(sidecarUrl(deps) .. "/agent/pending")
+		if type(pending) == "table" and type(pending.id) == "number" then
+			handleCommand(deps, pending)
+		end
+	end)
+	pullInFlight = false
+end
+
 -- One tick: push recent logs ONLY when new lines arrived since the last successful push, then pull +
 -- run a queued command (if any). The unconditional every-tick POST was half the loop's HttpService
 -- spend at the 0.25s cadence — the shared ~500 requests/min Studio budget cannot afford idle traffic.
 -- -1 forces one initial push so the sidecar gets a snapshot even before the first new line.
+-- When the SP2e stream owns command delivery (streamActive), the fast pull is demoted to a SLOW
+-- backstop at the supervisor cadence: the WebStream event surface is undocumented, so a stream that
+-- dies without firing Error/Closed must not strand the bridge.
 local lastPushedLogTotal = -1
-local function tick(deps: any)
+local lastBackstopPull = 0
+local function tick(deps: any, streamActive: boolean)
 	local logTotal = Logs.total()
 	if logTotal ~= lastPushedLogTotal then
 		if httpPostJson(sidecarUrl(deps) .. "/logs", { lines = Logs.recent(80) }) then
 			lastPushedLogTotal = logTotal
 		end
 	end
-	local pending = httpGetJson(sidecarUrl(deps) .. "/agent/pending")
-	if type(pending) == "table" and type(pending.id) == "number" then
-		handleCommand(deps, pending)
+	if streamActive then
+		if os.clock() - lastBackstopPull >= deps.config:getSupervisorPollInterval() then
+			lastBackstopPull = os.clock()
+			pullCommand(deps)
+		end
+		return
 	end
+	pullCommand(deps)
+end
+
+-- ---- SP2e stream push channel (PROTOTYPE, behind devBridgeStream = false) ----
+
+-- Try to open an SSE stream to the sidecar so command arrival is PUSHED instead of polled.
+-- CreateWebStreamClient is callable from edit-mode plugin context (live-probed 2026-07-10) but the
+-- requestOptions shape is undocumented — try {Url=...} then {url=...}. Every step is pcall'd: any
+-- failure returns nil and the caller stays on the poll loop, so the bridge is never lost. Stream
+-- events carry no payload; the plugin still pulls via /agent/pending (single consumer), so a lost
+-- or duplicated nudge costs latency at worst, never a command.
+local function tryOpenStream(deps: any, onNudge: () -> (), onDead: (string) -> ()): any?
+	local url = sidecarUrl(deps) .. "/bridge/stream"
+	local client: any = nil
+	for _, options in { { Url = url }, { url = url } } do
+		local ok, created = pcall(function()
+			return (HttpService :: any):CreateWebStreamClient(
+				(Enum :: any).WebStreamClientType.SSE,
+				options
+			)
+		end)
+		if ok and created ~= nil then
+			client = created
+			break
+		end
+	end
+	if client == nil then
+		return nil
+	end
+	local okWire = pcall(function()
+		client.MessageReceived:Connect(function()
+			onNudge()
+		end)
+	end)
+	if not okWire then
+		pcall(function()
+			client:Destroy()
+		end)
+		return nil
+	end
+	-- Best-effort death detection: these event names are unverified, so a failure here is fine —
+	-- the tick's slow backstop pull still covers a stream that dies without firing either.
+	for _, eventName in { "Error", "Closed" } do
+		pcall(function()
+			client[eventName]:Connect(function()
+				onDead(eventName)
+			end)
+		end)
+	end
+	return client
 end
 
 -- Start the bridge. No-op unless EDIT mode AND config.devBridge. Localhost-only, plugin-only. The loop
@@ -297,11 +374,43 @@ function DevBridge.start(deps: any, lifecycle: any)
 	if not deps.config:getDevBridge() then
 		return
 	end
+	-- SP2e push channel: with the default-off flag, streamActive stays false and the loop below is
+	-- byte-identical to the pure poll bridge. On any stream death we warn ONCE and fall back.
+	local streamActive = false
+	local streamClient: any = nil
+	if deps.config:getDevBridgeStream() then
+		streamClient = tryOpenStream(deps, function()
+			if lifecycle.cancelled or not streamActive then
+				return
+			end
+			task.spawn(pullCommand, deps)
+		end, function(why: string)
+			if streamActive then
+				streamActive = false
+				warn("[StudioAgent] bridge stream " .. why .. " — falling back to command polling")
+			end
+		end)
+		streamActive = streamClient ~= nil
+		if streamActive then
+			print("[StudioAgent] dev bridge stream open (SSE push; command poll demoted to backstop)")
+		else
+			warn("[StudioAgent] devBridgeStream is on but the stream failed to open — polling as usual")
+		end
+	end
 	task.spawn(function()
 		print("[StudioAgent] dev bridge active (sidecar " .. sidecarUrl(deps) .. ")")
 		while not lifecycle.cancelled do
-			pcall(tick, deps)
+			pcall(tick, deps, streamActive)
 			task.wait(deps.config:getDevBridgePollInterval())
+		end
+		if streamClient ~= nil then
+			-- Generation teardown: silence the dead generation's stream so a hot-reload never
+			-- leaves two clients nudging. Destroy is unverified on this instance — pcall'd.
+			streamActive = false
+			pcall(function()
+				local c: any = streamClient
+				c:Destroy()
+			end)
 		end
 		print("[StudioAgent] dev bridge loop stopped (generation reloaded)")
 	end)

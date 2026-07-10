@@ -29,6 +29,9 @@ GET  /factory/status                                      -> the current/last fa
 POST /forever {"cycles"?:int, "families"?:[str]}          -> {"id":N}  (endless curriculum loop; 409 if busy)
 POST /forever/stop                                        -> {"ok":true}  (graceful stop after the current cycle)
 GET  /forever/status                                      -> the current/last forever run's status
+GET  /docs/search?q=<q>&count=N                           -> {"results":[{path,line,snippet}...]}  (creator-docs grounding; shallow-clones on first use)
+GET  /docs/apidiff                                        -> {"unknownClasses":[...],"dumpVersion":str}  (PropertyCatalog classes vs the live Studio API dump)
+GET  /bridge/stream                                       -> SSE (text/event-stream): "event: command" nudges while a bridge command waits + 15s keepalives
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
 """
@@ -37,6 +40,7 @@ import base64
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -146,6 +150,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._exemplars(qs)
         if parsed.path == "/agent/pending":
             return self._json(200, STORE.take_pending() or {})
+        if parsed.path == "/bridge/stream":
+            return self._bridge_stream()
         if parsed.path == "/agent/result":
             try:
                 cid = int(qs.get("id", ["0"])[0])
@@ -210,6 +216,23 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
+        if parsed.path == "/docs/search":
+            try:
+                import docsindex
+
+                query = qs.get("q", [""])[0]
+                count = int(qs.get("count", ["5"])[0])
+                return self._json(200, {"results": docsindex.search(query, count)})
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
+        if parsed.path == "/docs/apidiff":
+            try:
+                import docsindex
+
+                return self._json(200, docsindex.api_diff())
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
         if parsed.path == "/loop/status":
             return self._json(200, LOOP.status())
         if parsed.path == "/factory/status":
@@ -217,6 +240,36 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/forever/status":
             return self._json(200, FOREVER.status())
         return self._json(404, {"error": "not found"})
+
+    def _bridge_stream(self):
+        """SSE push channel (SP2e prototype): nudge the plugin the moment a bridge command is
+        queued so it can stop fast-polling /agent/pending. Events are contentless pings — the
+        plugin still PULLS via /agent/pending (the single consumer), so a lost event costs
+        latency, never a command. The 0.05s poll is sidecar-local (free); a waiting command is
+        re-nudged every 0.5s until claimed (covers a nudge the plugin missed mid-command);
+        keepalive comment every 15s. Holds one ThreadingHTTPServer thread per client."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        last_event = 0.0
+        last_keepalive = time.monotonic()
+        try:
+            while True:
+                now = time.monotonic()
+                # Peek WITHOUT taking (Store has no public peek; the slot-reference read is
+                # atomic) — /agent/pending stays the queue's only consumer.
+                if STORE._pending is not None and now - last_event >= 0.5:
+                    self.wfile.write(b"event: command\ndata: ping\n\n")
+                    self.wfile.flush()
+                    last_event = now
+                if now - last_keepalive >= 15.0:
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+                    last_keepalive = now
+                time.sleep(0.05)
+        except (OSError, ValueError):
+            return  # client disconnected (broken pipe / closed wfile) — normal teardown
 
     def _store_parts(self, path: str):
         """Split /store/<kind>[/<id>] -> (kind, id|None)."""

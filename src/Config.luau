@@ -64,6 +64,11 @@ local DEFAULTS = {
 	-- shared with the Claude-proxy model calls, capture uploads, and web fetches — and RequestAsync
 	-- throws for the rest of the minute once it exhausts (silent bridge lag inside the pcalls).
 	devBridgePollInterval = 0.25,
+	-- SP2e stream push channel (PROTOTYPE): when true, DevBridge also opens an SSE stream to the
+	-- sidecar (/bridge/stream) and pushed nudges replace the fast command-pull poll. The
+	-- CreateWebStreamClient surface is undocumented, so this stays default-off — false means the
+	-- bridge behaves exactly as before.
+	devBridgeStream = false,
 }
 
 -- Allowed models. Never Haiku.
@@ -276,6 +281,10 @@ function Config.set(self: Config, key: string, value: ConfigValue): (boolean, st
 		if type(value) ~= "number" or value ~= value or value < 0.25 then
 			return false, "devBridgePollInterval must be a number >= 0.25"
 		end
+	elseif key == "devBridgeStream" then
+		if type(value) ~= "boolean" then
+			return false, "devBridgeStream must be a boolean"
+		end
 	end
 
 	self._plugin:SetSetting(KEY_PREFIX .. key, value)
@@ -392,6 +401,10 @@ end
 
 function Config.getDevBridgePollInterval(self: Config): number
 	return self:get("devBridgePollInterval") :: number
+end
+
+function Config.getDevBridgeStream(self: Config): boolean
+	return self:get("devBridgeStream") :: boolean
 end
 
 -- Cadence for the SUPERVISOR loops (HotReload reload-pull, PlayBridge play-pull). They gate RARE
