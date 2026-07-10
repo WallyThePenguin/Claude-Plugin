@@ -420,8 +420,11 @@ class FactoryRunner:
                 try:
                     append_tooling_issues(bugs, self._tooling_path)
                     self._narrate(f"AUDIT: {len(bugs)} suite-vs-capture disagreement(s) filed as ORACLE BUGs", warn=True)
-                except OSError:
-                    pass  # filing is best-effort; never fails the run
+                except Exception:  # noqa: BLE001 — filing is best-effort; a wrong-shape
+                    # tooling-issues.json (hand-edited, git-tracked) raises AttributeError/
+                    # TypeError/ValueError, not just OSError, and must never abort the run
+                    # between verify and STAGE (same convention as forever.py's RETRO).
+                    pass
         status = verify["status"]
         ev = verify.get("evidence")
         ev_summary = str((ev or {}).get("summary") or "") if isinstance(ev, dict) else ""

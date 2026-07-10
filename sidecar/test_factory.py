@@ -410,6 +410,25 @@ def main():
     fails += _check("malformed disagreements still stages", ("staging", audit_tok) in store)
     fails += _check("malformed disagreements files nothing", not os.path.exists(tooling3))
 
+    # audit run where the PRE-EXISTING tooling file has a wrong SHAPE (valid JSON, top-level
+    # array — the file is git-tracked and hand-edited, so this is a realistic input): the
+    # non-OSError raised inside append_tooling_issues must not abort the run between verify
+    # and STAGE — the PASSED artifact still stages and the run still ends done
+    loop = FakeLoop([
+        {"state": "done", "result": build_line()},
+        {"state": "done", "result": "FACTORY_VERIFY_JSON: " + json.dumps(audit_verdict)},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    tooling4 = os.path.join(tempfile.mkdtemp(), "tooling-issues.json")
+    with open(tooling4, "w", encoding="utf-8") as fh:
+        json.dump([], fh)
+    r = _runner(loop, bridge, store, tooling_path=tooling4)
+    r.start("weapon-spear", staging_id=audit_tok)
+    st = _wait(r)
+    fails += _check("wrong-shape tooling file never fails the run", st.get("state") == "done" and st.get("status") == "PASSED")
+    fails += _check("wrong-shape tooling file still stages", ("staging", audit_tok) in store)
+
     # non-audit run: no AUDIT MODE, nothing filed
     loop = FakeLoop([
         {"state": "done", "result": build_line()},
