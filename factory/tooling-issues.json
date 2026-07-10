@@ -1,9 +1,22 @@
 {
  "issues": [
   {
+   "title": "ORACLE BUG: grip_sane blind to blade-vs-arm penetration (human-caught suite-vs-eyes disagreement)",
+   "symptom": "grip_sane PASS 0 studs / 0 deg while the capture (user screenshot, 2026-07-10) shows the blade embedded in the forearm at the hold pose - blade-role vs arm-part clearance is asserted nowhere and was not even a DECLARED blindspot",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau"
+   ],
+   "repro": "stamp_frame + make_tool + grip_tool(no args) a sword onto workspace.AgentRig with the elbow bent, run oracle_check grip_sane: PASS despite the blade visibly inside RightLowerArm",
+   "seenCount": 1,
+   "lastSeenAt": 1783693693,
+   "resolution": "SP2b demo follow-up: grip_sane gains blade_arm_penetration_studs magnitude (blade-role parts vs RightUpperArm/RightLowerArm oriented AABBs at the computed grip pose) with a FAIL bound - sword-in-arm becomes a number, not an eyeball call"
+  },
+  {
    "title": "ORACLE CATCH #1: joint_census flagged spawn_rig's fixture as a MIXED rig (15 Motor6D + 15 AnimationConstraint)",
    "symptom": "oracle_check joint_census on workspace.AgentRig -> FAIL 'MIXED rig: 15 Motor6D + 15 AnimationConstraint (animations will half-play)' - the Avatar Joint Upgrade ships AnimationConstraints that NativeRig.buildJoints never stripped",
-   "suspectFiles": ["src/NativeRig.luau"],
+   "suspectFiles": [
+    "src/NativeRig.luau"
+   ],
    "repro": "spawn_rig, then oracle_check {check:'joint_census', args:{rig:'game.Workspace.AgentRig'}} on a pre-fix build",
    "seenCount": 1,
    "lastSeenAt": 1783688978,

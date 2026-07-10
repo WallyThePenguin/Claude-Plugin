@@ -273,7 +273,7 @@ register("frame_consistent", "EDIT_OK", "Anti-lie layer (spec §2.6): declared f
 	return pass(mag)
 end)
 
-register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace.AgentRig)}: the grip aligns Semantic_Grip to the hand and blade_dir points out of the fist. Magnitudes: grip_offset_studs, blade_up_angle_deg, hand_in_blade.", function(args)
+register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace.AgentRig)}: the grip aligns Semantic_Grip to the hand, blade_dir points out of the fist, and the declared blade centerline stays clear of the arm. Magnitudes: grip_offset_studs, blade_up_angle_deg, hand_in_blade, blade_in_arm_studs.", function(args)
 	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
 	if tool == nil or not tool:IsA("Tool") then
 		return unknown("tool not found / not a Tool")
@@ -315,9 +315,40 @@ register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace
 			end
 		end
 	end
+	-- blade-vs-arm clearance at the COMPUTED grip pose (human-caught gap 2026-07-10: a grip can
+	-- measure 0 studs / 0 deg and still run the blade straight through the forearm at the hold
+	-- pose). Sample the DECLARED centerline (Grip -> BladeTip) and count samples inside the arm
+	-- parts' oriented boxes; the magnitude is embedded LENGTH in studs. Fist region excluded.
+	local bladeInArm = 0
+	local tipPoint = frame.points.BladeTip
+	if tipPoint ~= nil then
+		local armParts = {}
+		for _, armName in { "RightUpperArm", "RightLowerArm" } do
+			local ap = rig:FindFirstChild(armName, true)
+			if ap ~= nil and ap:IsA("BasePart") then
+				table.insert(armParts, ap)
+			end
+		end
+		local samples = 12
+		local inside = 0
+		for i = 1, samples do
+			local t = 0.15 + 0.85 * (i - 1) / (samples - 1)
+			local world = handleWorld:PointToWorldSpace((frame.points.Grip :: Vector3):Lerp(tipPoint, t))
+			for _, ap in armParts do
+				local lp = ap.CFrame:PointToObjectSpace(world)
+				local half = ap.Size / 2
+				if math.abs(lp.X) <= half.X and math.abs(lp.Y) <= half.Y and math.abs(lp.Z) <= half.Z then
+					inside += 1
+					break
+				end
+			end
+		end
+		bladeInArm = (inside / samples) * (tipPoint - frame.points.Grip).Magnitude * 0.85
+	end
 	local maxOffset = tonumber(args.max_grip_offset) or 0.6
 	local maxAngle = tonumber(args.max_blade_angle) or 35
-	local mag = { grip_offset_studs = gripOffset, blade_up_angle_deg = upAngle, hand_in_blade = handIn }
+	local maxInArm = tonumber(args.max_blade_in_arm) or 1.0
+	local mag = { grip_offset_studs = gripOffset, blade_up_angle_deg = upAngle, hand_in_blade = handIn, blade_in_arm_studs = bladeInArm }
 	if gripOffset > maxOffset then
 		return fail("Semantic_Grip sits " .. string.format("%.2f", gripOffset) .. " studs from the palm (max " .. maxOffset .. ")", mag)
 	end
@@ -326,6 +357,9 @@ register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace
 	end
 	if handIn then
 		return fail("the hand is inside blade geometry", mag)
+	end
+	if bladeInArm > maxInArm then
+		return fail(string.format("%.2f", bladeInArm) .. " studs of blade centerline run INSIDE the arm (max " .. maxInArm .. ")", mag)
 	end
 	return pass(mag)
 end)
