@@ -630,6 +630,50 @@ _WEAPON_VERIFY = (
     "playtest_stop IMMEDIATELY. Never linger in play mode; the visual evidence is already banked "
     "from EDIT."
 )
+# Oracle-first melee verify (SP2b): the suite measures, captures diagnose flagged rows plus one
+# aesthetic sign-off. Steps 3-4 are verbatim from _WEAPON_VERIFY - the damage twin and dummy
+# discipline are unchanged. ranged-weapon keeps _WEAPON_VERIFY until its suite family exists.
+_MELEE_ORACLE_VERIFY = (
+    "The game's round/wave/spawner scripts are auto-disabled and stray mobs cleared for this "
+    "verify (a CALM sandbox). This verify is ORACLE-FIRST - measure with the suite, look only "
+    "where it points, then sign off aesthetics:\n"
+    "(1) ORACLE SUITE BEFORE ANY CAPTURE: record Tool.Grip and Tool.Parent via run_luau, "
+    "grip_tool the weapon onto workspace.AgentRig (spawn_rig if missing) with NO offset/rot args "
+    "(frame alignment), then run oracle_suite {family:'melee-weapon', target:<the Tool's path "
+    "UNDER the rig>, rig:'game.Workspace.AgentRig', clip:'SwordSwing'}. Read EVERY row. Your "
+    "evidence MUST QUOTE the magnitudes as NUMBERS with units - grip_offset_studs, "
+    "blade_up_angle_deg, sweep_deg, max_reach_studs, penetration depths - adjectives ('aligned', "
+    "'smooth', 'looks right') are NOT evidence. UNKNOWN rows never count as pass; say why each "
+    "UNKNOWN is unknown.\n"
+    "(2) CAPTURES ONLY WHERE THE SUITE POINTS + ONE SIGN-OFF: (a) for each FAILED or UNKNOWN row, "
+    "capture exactly what is needed to diagnose it (a flagged grip -> capture the held pose; a "
+    "flagged clip -> capture_animation that clip); (b) then ONE final aesthetic sign-off - "
+    "capture_angles the Tool (count 3-4, neutralLight=true) and capture_animation the swing at "
+    "least TWICE, once with angle front, once with angle right or iso (frames 5-6 each) - the "
+    "suite's blindspot manifest lists exactly what was NOT asserted (silhouette, materials, swing "
+    "FEEL) and that is what your eyes are for. If a strip is UNREADABLE (silhouette/occlusion), "
+    "re-shoot before judging. FAIL if any suite FAIL row stands unexplained, or the sign-off "
+    "shows the weapon not READING as the brief's weapon. Afterward RESTORE via run_luau: destroy "
+    "the 'AgentEditGrip' weld under the rig's RightHand, set Grip back, and reparent the Tool to "
+    "its recorded parent.\n"
+    "(3) EDIT - THE DUMMY: locate workspace.TrainingDummy with run_luau and print BOTH its "
+    "Position AND the SpawnLocation's Position (it may be BESIDE spawn - compute the offset so you "
+    "know exactly which way and how far to walk; do NOT assume 'straight ahead'). If MISSING, "
+    "create it: clone ServerStorage.VerifyDummy (or EnemyTemplate, deleting its scripts), name it "
+    "'TrainingDummy', SetAttribute('StudioAgentGenerated', nil), add a Script that on "
+    "Humanoid.HealthChanged prints '[TrainingDummy] HIT damage=<n> hitcount=<n>' then resets "
+    "Health=MaxHealth, MaxHealth=10000, anchor every BasePart, PivotTo ~5 studs from the "
+    "SpawnLocation on OPEN floor. PERMANENT fixture: NEVER destroy or move it.\n"
+    "(4) PLAYTEST - DAMAGE ONLY, IN AND OUT: playtest_start; playtest_act record (the echo ends "
+    "[tool=<name> w=<x> a=<y> c=<z>] - FAIL if the tool name or echoed config does not match the "
+    "build's config); walk to the dummy along the measured offset, face it, swing 2-3 times; "
+    "playtest_logs and read the '[TrainingDummy] HIT damage=' lines - FAIL unless a hit's damage "
+    "EXACTLY equals the configured damage (a broken or sabotaged weapon prints NO hit line), and "
+    "FAIL on any error mentioning the artifact. The MOMENT the damage lines are read - or after "
+    "~3 failed approach attempts (note the mobility trouble, judge on the evidence you have) - "
+    "playtest_stop IMMEDIATELY. Never linger in play mode; the measured evidence is already "
+    "banked from EDIT."
+)
 _ENEMY_VERIFY = (
     "The PLAYER is the enemy's target. Give the player GOD MODE that LOGS each hit, so the readout "
     "needs NO playtest_eval/loadstring (which is usually disabled - eval will fail):\n"
@@ -666,6 +710,18 @@ _VISION_BUILD = (
     "move the subject to clear ground) - NEVER judge or pass unreadable frames, and never "
     "describe what you INTENDED to build as if you saw it."
 )
+# Oracle-first build discipline (SP2b): injected into the BUILD prompt of every playbook that
+# names an oracle suite family (oracleFamily) - semantics are declared at build time so the
+# suite can measure them, never inferred at verify time.
+_ORACLE_BUILD = (
+    "SEMANTIC FRAME DISCIPLINE (oracle-first): declare semantics at BUILD time, never leave them "
+    "to be inferred at verify time - stamp_frame the family schema BEFORE make_tool (read_frame "
+    "shows what is still missing), grip via FRAME ALIGNMENT (grip_tool with NO offset/rot args - "
+    "it aligns Semantic_Grip to the hand and stamps the resulting grip back), and BEFORE emitting "
+    "FACTORY_BUILD_JSON run oracle_suite {family:'%s', target:<artifact>} as a self-check: fix "
+    "every FAIL row and quote at least one magnitude as a NUMBER in notes (e.g. grip 0.0 studs / "
+    "0.3 deg)."
+)
 
 _VISUAL_VERIFY = (
     "This is judged VISUALLY, not by a runtime probe: (1) get_references for what the brief "
@@ -694,32 +750,37 @@ PLAYBOOKS = {
     "melee-weapon": {
         "kind": "runtime",
         "sandbox": "clear",
+        "oracleFamily": "melee-weapon",
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"reach":<n>}',
         "build": (
             "(1) park any Tools in StarterPack into ServerStorage and report their new paths in "
             "'parked' so STAGE restores them; (2) build a SHAPED above-primitive visual (prefer "
             "generate_mesh + save_mesh) with a profile distinct to this weapon, reference-matched "
-            "per the VISION discipline above; (3) make_tool with the grip as Handle; "
+            "per the VISION discipline above; "
+            "(3) stamp_frame the melee-weapon frame on the assembled model BEFORE make_tool: "
+            "points Grip + BladeTip, dirs blade_dir + edge_dir, roles hilt + blade (Handle-local "
+            "coords - the stamp_frame description documents the schema); then make_tool with the "
+            "grip part as Handle; "
             "(4) ANIMATE THE SWING in EDIT (no playtest): on workspace.AgentRig (spawn_rig if "
-            "missing) author a 3-keypose right-arm swing clip (add_keyframe scope rightArm: windup "
-            "back, strike through, recover; total ~0.6-0.9s per the brief's speed), then "
-            "bind_animation {tool, event='use', clip} so the weapon ACTUALLY ANIMATES when used; "
-            "(5) PREVIEW ON THE RIG in EDIT: record Tool.Grip via run_luau, grip_tool the weapon "
-            "onto the rig (its capture shows the held pose - vision-check it), then "
-            "capture_animation the bound clip (animation = the Tool's Anims.use path - NOTE the "
-            "Tool now lives UNDER the rig) from at least TWO angles - one call with angle front, "
-            "another with angle right or iso (frames 5-6 each) - clipping through the body, a "
-            "detached weapon, or a broken arc hides from a single viewpoint. JUDGE FROM THE "
-            "FRAMES, not your intent: state which way the BLADE points relative to the fist and "
-            "one detail per strip you could not have predicted; if the blade is not clearly "
-            "visible in most frames the strip is UNREADABLE - re-shoot, and if the blade points "
-            "down/into the body FIX the Grip and re-film (one refine round); then RESTORE via run_luau: "
-            "destroy the 'AgentEditGrip' weld under the rig's RightHand, set Grip back, and "
-            "reparent the Tool out of the rig; "
+            "missing) author a 3-keypose right-arm swing clip NAMED 'SwordSwing' (the oracle "
+            "suite's default clip name) - add_keyframe scope rightArm: windup back, strike "
+            "through, recover; total ~0.6-0.9s per the brief's speed - then bind_animation "
+            "{tool, event='use', clip} so the weapon ACTUALLY ANIMATES when used; "
+            "(5) MEASURE, THEN PREVIEW: record Tool.Grip and Tool.Parent via run_luau, grip_tool "
+            "the weapon onto the rig with NO offset/rot args (frame alignment - a stamped frame "
+            "makes mis-grips impossible), run oracle_suite {family:'melee-weapon', target:<the "
+            "Tool under the rig>, rig:'game.Workspace.AgentRig', clip:'SwordSwing'} and FIX every "
+            "FAIL row (grip_sane's blade_up_angle_deg and clip_arc_of's sweep_deg are your "
+            "numbers - quote one in notes); then ONE aesthetic capture_animation pass from TWO "
+            "angles (front, then right or iso, frames 5-6 each) for what numbers cannot see - "
+            "readability, silhouette, the blade visibly out of the fist; if the strip is "
+            "unreadable re-shoot once; then RESTORE via run_luau: destroy the 'AgentEditGrip' "
+            "weld under the rig's RightHand, set Grip back, and reparent the Tool out of the "
+            "rig; "
             "(6) move the Tool into StarterPack; (7) bind_behavior with windup/active/cooldown per "
             "the brief's speed; (8) bind_hitbox with reach + damage + cooldown per the brief."
         ),
-        "verify": _WEAPON_VERIFY,
+        "verify": _MELEE_ORACLE_VERIFY,
     },
     "ranged-weapon": {
         "kind": "runtime",
@@ -761,23 +822,33 @@ PLAYBOOKS = {
     },
     "animation": {
         "kind": "visual",
+        "oracleFamily": "animation",
         "config": '{"clipName":"<name>","keyframeCount":<n>,"priority":"<Action|Movement|...>"}',
         "build": (
-            "(1) use an existing rig or spawn_rig; (2) author the clip as KEYPOSES: pose_joint / "
-            "ik_reach into each keypose then add_keyframe to snapshot it, repeated per pose, with "
-            "KeyframeMarkers if the brief needs contact/cancel points; (3) the artifact is the clip/"
-            "KeyframeSequence. Author with NO preview running; review with capture_animation from "
-            "at least TWO angles (front, then right or iso) - imperfections hide from one angle."
+            "(1) use an existing rig or spawn_rig; FIRST run oracle_check {check:'joint_census', "
+            "args:{rig:<rig>}} - a MIXED Motor6D/AnimationConstraint rig will silently T-pose "
+            "your clip; fix the rig before authoring; (2) author the clip as KEYPOSES: pose_joint "
+            "/ ik_reach into each keypose then add_keyframe to snapshot it, repeated per pose, "
+            "with KeyframeMarkers if the brief needs contact/cancel points; (3) after authoring, "
+            "oracle_check {check:'rig_channel_check', args:{rig:<rig>, clip:<clipName>}} - "
+            "unmapped pose names are silently-dead channels; fix them before filming; (4) the "
+            "artifact is the clip/KeyframeSequence. Author with NO preview running; review with "
+            "capture_animation from at least TWO angles (front, then right or iso) - "
+            "imperfections hide from one angle."
         ),
         "verify": (
-            "This is judged VISUALLY: (1) capture_animation filmstrips from at least TWO angles - "
-            "one call with angle front, another with angle right or iso (frames 5-6 each), judging "
-            "each as it arrives (foot-slide, clipping, and broken arcs hide from a single "
-            "viewpoint); (2) get_references for the motion and check the arc/timing/weight; (3) "
-            "grade against the animation rubric  -  the motion must READ as the intended action "
-            "from EVERY angle (correct arc, torso lead, no foot-slide, no limb clipping, clean "
-            "start/end); PASS only if it clearly reads right; FAILED with what's off; "
-            "UNVERIFIED if you cannot render the filmstrip."
+            "ORACLE-FIRST: (1) run oracle_suite {family:'animation', target:<the rig>, rig:<the "
+            "rig>, clip:<the config's clipName>} BEFORE any filmstrip - quote its magnitudes as "
+            "NUMBERS (motor6d/constraint counts, unmapped channel names) in your evidence; a "
+            "MIXED rig or dead channel FAILs regardless of how the filmstrip looks. (2) "
+            "capture_animation filmstrips from at least TWO angles - one call with angle front, "
+            "another with angle right or iso (frames 5-6 each), judging each as it arrives "
+            "(foot-slide, clipping, and broken arcs are suite BLINDSPOTS - the manifest says so; "
+            "they are exactly what the filmstrips are for); (3) get_references for the motion and "
+            "check the arc/timing/weight; (4) grade against the animation rubric - the motion "
+            "must READ as the intended action from EVERY angle (correct arc, torso lead, no "
+            "foot-slide, no limb clipping, clean start/end); PASS only if it clearly reads right; "
+            "FAILED with what's off; UNVERIFIED if you cannot render the filmstrip."
         ),
     },
     "building": {
@@ -896,6 +967,7 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
         + _learned_block(rung.get("family"))
         + (f"{_VISION_BUILD}\n\n" if playbook.get("vision", True) else "")
+        + (_ORACLE_BUILD % playbook["oracleFamily"] + "\n\n" if playbook.get("oracleFamily") else "")
         + f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
         "The MOMENT the core artifact is complete, your VERY NEXT message must be ONLY the JSON "
@@ -921,12 +993,25 @@ def _verify_prompt(rung, build, playbook: dict, audit: bool = False) -> str:
         if audit
         else ""
     )
+    oracle_fam = playbook.get("oracleFamily")
+    oracle_block = (
+        f"ORACLE-FIRST (standing rule): your FIRST evidence action is oracle_suite "
+        f"{{family:'{oracle_fam}', target:'{build.get('artifactPath')}'}} with the rig/clip args "
+        "the approach below names. The suite is the MEASUREMENT layer; captures are reserved for "
+        "rows the suite FLAGGED plus ONE final aesthetic sign-off (its blindspot manifest lists "
+        "exactly what was NOT asserted - that is what your eyes are for). Your evidence MUST "
+        "QUOTE suite magnitudes as NUMBERS with units - adjectives are not evidence. A green "
+        "suite alone is never 'done'.\n\n"
+        if oracle_fam
+        else ""
+    )
     return (
         f"You are the headless factory VERIFY stage for rung '{rung['id']}'  -  a SKEPTIC whose job "
         f"is to find reasons to FAIL. Artifact: {build.get('artifactPath')} "
         f"(kind: {build.get('artifactKind', '?')}). Config: {json.dumps(build.get('config'))}.\n"
         f"ORACLE: {rung.get('oracle', '')}\n\n"
         + _learned_block(rung.get("family"))
+        + oracle_block
         + audit_block
         + "EDIT-MODE FIRST (standing rule): before ANY playtest_start, enumerate the edit-mode "
         "routes to each oracle item - captures, filmstrips, rig scrubbing (grip_tool + "

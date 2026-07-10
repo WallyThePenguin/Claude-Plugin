@@ -118,6 +118,12 @@ DESTROY_OK = {"ok": True, "result": '{"returns":["DESTROYED"]}'}
 def main():
     fails = 0
 
+    # Live learnings (sidecar/store/learnings) must never leak into the prompt-content
+    # assertions below: the forever loop appends lessons between runs, so any tool name a
+    # lesson happens to mention would flake index/absence checks. Isolate to an empty dir;
+    # blocks that need specific learnings set (and restore) their own dir.
+    factory.LEARNINGS_DIR = tempfile.mkdtemp()
+
     # --- happy path: PASSED, artifact staged, entry written ---
     loop = FakeLoop([{"state": "done", "result": build_line()}, {"state": "done", "result": verify_line("PASSED")}])
     bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
@@ -442,6 +448,37 @@ def main():
     st = _wait(r)
     fails += _check("plain run not audited", st.get("audit") is not True and "AUDIT MODE" not in loop.prompts[1])
     fails += _check("plain run files nothing", not os.path.exists(tooling2))
+
+    # --- oracle-first playbooks (SP2b): stamp_frame in build, oracle_suite-first verify ---
+    loop = FakeLoop([{"state": "done", "result": build_line()}, {"state": "done", "result": verify_line("PASSED")}])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    r = _runner(loop, bridge, store)
+    r.start("weapon-spear")
+    _wait(r)
+    bp, vp = loop.prompts[0], loop.prompts[1]
+    fails += _check("melee build stamps the frame before make_tool", "stamp_frame" in bp and bp.index("stamp_frame") < bp.index("make_tool"))
+    fails += _check("melee build grips via frame alignment", "NO offset/rot" in bp)
+    fails += _check("melee build self-checks with the suite", "oracle_suite" in bp)
+    fails += _check("melee build names the clip SwordSwing", "SwordSwing" in bp)
+    fails += _check("melee verify is oracle-first", "ORACLE-FIRST" in vp and vp.index("oracle_suite") < vp.index("capture_angles"))
+    fails += _check("melee verify demands magnitude quotes", "MUST QUOTE" in vp and "adjectives" in vp)
+    fails += _check("melee verify scopes captures to flagged + sign-off", "FLAGGED" in vp and "sign-off" in vp)
+    fails += _check("melee verify keeps the damage twin", "TrainingDummy" in vp and "DAMAGE ONLY" in vp)
+    # legacy visual family untouched by the oracle blocks
+    loop = FakeLoop([{"state": "done", "result": build_line(artifactPath="game.Workspace.Cottage", artifactKind="Model")},
+                     {"state": "done", "result": verify_line("PASSED")}])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    r = _runner(loop, bridge, {})
+    r.start("house-cottage")
+    _wait(r)
+    fails += _check("non-oracle family build has no frame block", "stamp_frame" not in loop.prompts[0])
+    fails += _check("non-oracle family verify has no oracle block", "ORACLE-FIRST" not in loop.prompts[1])
+    # animation family is oracle-first too
+    fails += _check("animation playbook flags its suite family",
+                    factory.PLAYBOOKS["animation"].get("oracleFamily") == "animation")
+    fails += _check("animation verify is oracle-first", "oracle_suite" in factory.PLAYBOOKS["animation"]["verify"])
+    fails += _check("animation build census-checks the rig", "joint_census" in factory.PLAYBOOKS["animation"]["build"])
 
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
     sys.exit(1 if fails else 0)
