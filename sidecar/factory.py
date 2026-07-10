@@ -996,8 +996,10 @@ def _verify_prompt(rung, build, playbook: dict, audit: bool = False) -> str:
     oracle_fam = playbook.get("oracleFamily")
     oracle_block = (
         f"ORACLE-FIRST (standing rule): your FIRST evidence action is oracle_suite "
-        f"{{family:'{oracle_fam}', target:'{build.get('artifactPath')}'}} with the rig/clip args "
-        "the approach below names. The suite is the MEASUREMENT layer; captures are reserved for "
+        f"{{family:'{oracle_fam}'}} with the target/rig/clip args the approach below names - the "
+        f"artifact was built at {build.get('artifactPath')}, but pass its CURRENT path: a gripped "
+        "Tool lives UNDER the rig at suite time, and the animation suite targets the RIG, not the "
+        "KeyframeSequence. The suite is the MEASUREMENT layer; captures are reserved for "
         "rows the suite FLAGGED plus ONE final aesthetic sign-off (its blindspot manifest lists "
         "exactly what was NOT asserted - that is what your eyes are for). Your evidence MUST "
         "QUOTE suite magnitudes as NUMBERS with units - adjectives are not evidence. A green "
