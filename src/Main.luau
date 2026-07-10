@@ -67,6 +67,14 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 		cameraRig = CameraRig.new(config),
 	}
 
+	-- Boot self-heal: a prior session's camera-debug gizmos persist in the PLACE (the folder is a
+	-- real Workspace instance) and the cameraRigDebug setting persists in plugin settings — so a
+	-- crash/reload while focused leaves orbs on screen forever (user-reported 2026-07-10). Sweep
+	-- stale gizmos whenever debug is off at boot.
+	if not config:getCameraRigDebug() then
+		deps.cameraRig:removeGizmos()
+	end
+
 	-- Client-view relay (edit: none; serverplay: host; clientplay: relay-aware anthropic).
 	local relayMode = Relay.mode()
 	if relayMode == "serverplay" then
