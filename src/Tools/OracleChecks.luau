@@ -318,6 +318,209 @@ register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace
 	return pass(mag)
 end)
 
+-- ---- rig + clip checks (kinematic; EDIT_OK via the Animator scrub used by capture_animation) ----
+
+local AnimationClip = require(script.Parent.Parent.AnimationClip)
+
+register("joint_census", "EDIT_OK", "Joint inventory for rig {rig}: Motor6D vs AnimationConstraint vs Weld counts (the T-pose trap detector).", function(args)
+	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+	if rig == nil then
+		return unknown("rig not found")
+	end
+	local motors, constraints, welds = {}, {}, {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") then
+			table.insert(motors, d.Name)
+		elseif d:IsA("AnimationConstraint") then
+			table.insert(constraints, d.Name)
+		elseif d:IsA("Weld") or d:IsA("WeldConstraint") then
+			table.insert(welds, d.Name)
+		end
+	end
+	local mag = { motor6d = #motors, animation_constraints = #constraints, welds = #welds, motor_names = motors, constraint_names = constraints }
+	if #motors > 0 and #constraints > 0 then
+		return fail("MIXED rig: " .. #motors .. " Motor6D + " .. #constraints .. " AnimationConstraint (animations will half-play)", mag)
+	end
+	if #motors == 0 and #constraints == 0 then
+		return fail("no animatable joints at all", mag)
+	end
+	return pass(mag)
+end)
+
+register("rig_channel_check", "EDIT_OK", "Clip {clip} joint names vs rig {rig} Motor6D channels: unmapped pose names = silently-dead animation channels.", function(args)
+	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+	if rig == nil then
+		return unknown("rig not found")
+	end
+	local saves = rig:FindFirstChild("AnimSaves")
+	local ks = if saves ~= nil then saves:FindFirstChild(tostring(args.clip or "AgentClip")) else nil
+	if ks == nil or not ks:IsA("KeyframeSequence") then
+		return unknown("clip not found under rig/AnimSaves: " .. tostring(args.clip))
+	end
+	local channels = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") and d.Part1 ~= nil then
+			channels[d.Part1.Name] = true
+		end
+	end
+	local unmapped = {}
+	for _, kf in ks:GetKeyframes() do
+		for _, pose in (kf :: Keyframe):GetDescendants() do
+			if pose:IsA("Pose") and pose.Name ~= "HumanoidRootPart" and channels[pose.Name] == nil and pose.CFrame ~= CFrame.new() then
+				if table.find(unmapped, pose.Name) == nil then
+					table.insert(unmapped, pose.Name)
+				end
+			end
+		end
+	end
+	local mag = { unmapped_poses = unmapped, channel_count = 0 }
+	for _ in channels do
+		mag.channel_count += 1
+	end
+	return if #unmapped == 0 then pass(mag) else fail("clip animates joints the rig lacks: " .. table.concat(unmapped, ", "), mag)
+end)
+
+-- Kinematic scrub shared by the clip checks: registers the clip, drives an Animator
+-- through N sample times with StepAnimations(0), calls visit(t) per sample, and ALWAYS
+-- restores Motor6D transforms (the capture_animation pattern, without screenshots).
+local function scrubClip(rig: Model, clipName: string, samples: number, visit: (number) -> ()): string?
+	local saves = rig:FindFirstChild("AnimSaves")
+	local ks = if saves ~= nil then saves:FindFirstChild(clipName) else nil
+	if ks == nil or not ks:IsA("KeyframeSequence") then
+		return "clip not found under rig/AnimSaves: " .. clipName
+	end
+	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
+	local animator = if humanoid ~= nil then humanoid:FindFirstChildWhichIsA("Animator") else rig:FindFirstChildWhichIsA("Animator", true)
+	if animator == nil and humanoid ~= nil then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	if animator == nil then
+		return "rig has no Humanoid/Animator"
+	end
+	local saved = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") then
+			saved[d] = d.Transform
+		end
+	end
+	local id = AnimationClip.register(ks)
+	local anim = Instance.new("Animation")
+	anim.AnimationId = id
+	local track = animator:LoadAnimation(anim)
+	track:Play(0)
+	local deadline = os.clock() + 3
+	while track.Length <= 0 and os.clock() < deadline do
+		task.wait(0.05)
+	end
+	local err: string? = nil
+	if track.Length <= 0 then
+		err = "clip failed to load (Length 0)"
+	else
+		for i = 0, samples - 1 do
+			local t = (i / math.max(1, samples - 1)) * track.Length
+			track.TimePosition = t
+			animator:StepAnimations(0)
+			visit(t)
+		end
+	end
+	track:Stop(0)
+	animator:Destroy()
+	for motor, transform in saved do
+		motor.Transform = transform
+	end
+	return err
+end
+
+register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematically and traces the DECLARED Semantic_BladeTip of {tool}. Magnitudes: sweep_deg, path_studs, max_reach. PASS if sweep >= {min_sweep (default 60)}.", function(args)
+	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
+	if rig == nil then
+		return unknown("rig not found")
+	end
+	if tool == nil then
+		return unknown("tool not found (the Tool must be equipped/welded on the rig for arc tracing)")
+	end
+	local handle = OracleFrames.handleOf(tool)
+	local tipAtt = if handle ~= nil then handle:FindFirstChild("Semantic_BladeTip") else nil
+	if tipAtt == nil or not tipAtt:IsA("Attachment") then
+		return unknown("no Semantic_BladeTip attachment — stamp_frame first")
+	end
+	local root = rig:FindFirstChild("HumanoidRootPart") or rig.PrimaryPart
+	if root == nil then
+		return unknown("rig has no root part")
+	end
+	local positions = {}
+	local errMsg = scrubClip(rig :: Model, tostring(args.clip or "SwordSwing"), tonumber(args.samples) or 12, function(_t)
+		table.insert(positions, (tipAtt :: Attachment).WorldPosition)
+	end)
+	if errMsg ~= nil then
+		return unknown(errMsg)
+	end
+	local pathLen, maxReach = 0, 0
+	for i, p in positions do
+		if i > 1 then
+			pathLen += (p - positions[i - 1]).Magnitude
+		end
+		maxReach = math.max(maxReach, (p - (root :: BasePart).Position).Magnitude)
+	end
+	local sweep = 0
+	local rootPos = (root :: BasePart).Position
+	for i = 1, #positions do
+		for j = i + 1, #positions do
+			local a = (positions[i] - rootPos).Unit
+			local b = (positions[j] - rootPos).Unit
+			sweep = math.max(sweep, math.deg(math.acos(math.clamp(a:Dot(b), -1, 1))))
+		end
+	end
+	local minSweep = tonumber(args.min_sweep) or 60
+	local mag = { sweep_deg = sweep, path_studs = pathLen, max_reach_studs = maxReach, samples = #positions }
+	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
+end)
+
+register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at each pose, blade-tagged parts of {tool} vs the rig's torso/head: penetration beyond {max_depth (default 0.2)} studs FAILs with the offending time.", function(args)
+	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
+	if rig == nil or tool == nil then
+		return unknown("rig/tool not found")
+	end
+	local frame = select(1, OracleFrames.read(tool))
+	if frame == nil or frame.roleParts.blade == nil then
+		return unknown("no blade-tagged parts — stamp_frame first")
+	end
+	local bodyNames = { "UpperTorso", "LowerTorso", "Head", "Torso" }
+	local body = {}
+	for _, n in bodyNames do
+		local p = rig:FindFirstChild(n, true)
+		if p ~= nil and p:IsA("BasePart") then
+			table.insert(body, p)
+		end
+	end
+	if #body == 0 then
+		return unknown("rig has no torso/head parts")
+	end
+	local hits = {}
+	local maxDepth = tonumber(args.max_depth) or 0.2
+	local errMsg = scrubClip(rig :: Model, tostring(args.clip or "SwordSwing"), tonumber(args.samples) or 12, function(t)
+		for _, bp in frame.roleParts.blade do
+			local mnA, mxA = partAABB(bp)
+			for _, rp in body do
+				local mnB, mxB = partAABB(rp)
+				local ov = axisOverlaps(mnA, mxA, mnB, mxB)
+				local depth = math.min(ov.X, ov.Y, ov.Z)
+				if depth > maxDepth then
+					table.insert(hits, { t = t, blade = bp.Name, body = rp.Name, depth = depth })
+				end
+			end
+		end
+	end)
+	if errMsg ~= nil then
+		return unknown(errMsg)
+	end
+	local mag = { intersections = hits, max_allowed_depth = maxDepth }
+	return if #hits == 0 then pass(mag) else fail(#hits .. " blade-through-body sample(s), first at t=" .. string.format("%.2f", hits[1].t), mag)
+end)
+
 -- run(name, args) -> result (adds validity/context/cost_ms; never throws)
 function M.run(name: string, args: any): any
 	local entry = M.checks[name]
