@@ -256,6 +256,75 @@ def main():
     fails += _check("clean local error path sets is_error",
                     out7.get("is_error") is True and out7["content"] == [{"type": "text", "text": "warned"}])
 
+    # --- wall clock: hanging stream -> error, never wedged ---
+    def hanging_factory(spec):
+        async def stream():
+            await asyncio.sleep(3600)
+            yield {"kind": "result", "subtype": "success", "result": "x", "usage": None, "total_cost_usd": None}
+
+        return stream()
+
+    saved_cap = sdk_loop.agent_loop.WALL_CLOCK_CAP
+    sdk_loop.agent_loop.WALL_CLOCK_CAP = 0.2
+    try:
+        r5 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=hanging_factory, loops_dir=tmp, sleep=lambda s: None)
+        r5.start("hang")
+        st = _wait_done(r5, timeout=5.0)
+        fails += _check("wall clock kills a hung session", st["state"] == "error" and "wall-clock" in st["error"])
+    finally:
+        sdk_loop.agent_loop.WALL_CLOCK_CAP = saved_cap
+
+    # --- max-turns termination gets the legacy suffix ---
+    factory6 = fake_session([
+        {"kind": "assistant", "text": "partial work", "tool_uses": []},
+        {"kind": "result", "subtype": "error_max_turns", "result": None, "usage": None,
+         "total_cost_usd": None, "is_error": True},
+    ])
+    r6 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=factory6, loops_dir=tmp, sleep=lambda s: None)
+    r6.start("big job", max_iterations=1)
+    st = _wait_done(r6)
+    fails += _check("capped run is done (not error) with suffix",
+                    st["state"] == "done" and st["result"].startswith("partial work")
+                    and "iteration cap reached" in st["result"])
+
+    # --- error result subtype -> error state ---
+    factory7 = fake_session([
+        {"kind": "result", "subtype": "error_during_execution", "result": "boom", "usage": None,
+         "total_cost_usd": None, "is_error": True},
+    ])
+    r7 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=factory7, loops_dir=tmp, sleep=lambda s: None)
+    r7.start("job")
+    st = _wait_done(r7)
+    fails += _check("error subtype -> error state", st["state"] == "error" and "error_during_execution" in st["error"])
+
+    # --- rate-limit session error -> model fallback retry (fresh session) ---
+    attempts = []
+
+    def flaky_factory(spec):
+        attempts.append(spec["model"])
+        if len(attempts) == 1:
+            raise RuntimeError("HTTP 429 rate limit exceeded")
+
+        async def stream():
+            yield {"kind": "assistant", "text": "recovered", "tool_uses": []}
+            yield {"kind": "result", "subtype": "success", "result": None, "usage": None, "total_cost_usd": None}
+
+        return stream()
+
+    r8 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=flaky_factory, loops_dir=tmp, sleep=lambda s: None)
+    r8.start("job")
+    st = _wait_done(r8)
+    fails += _check("rate-limit falls back to next model",
+                    st["state"] == "done" and attempts == ["claude-test", "claude-opus-4-8"])
+
+    # --- transcript JSONL: same event names as legacy ---
+    files = sorted(os.listdir(tmp))
+    fails += _check("transcripts written", len(files) >= 1)
+    with open(os.path.join(tmp, files[0]), encoding="utf-8") as fh:
+        events = [__import__("json").loads(line)["event"] for line in fh if line.strip()]
+    fails += _check("transcript has start/assistant_text/done shape",
+                    "start" in events and "assistant_text" in events and ("done" in events or "error" in events))
+
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
 
