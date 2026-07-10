@@ -183,11 +183,13 @@ async def _aclose_quietly(stream):
 
 
 def select_loop_runner(bridge, env=None):
-    """STUDIO_AGENT_LOOP=sdk|legacy (default legacy until T2 signs off)."""
+    """STUDIO_AGENT_LOOP=sdk|legacy. Default flipped to sdk 2026-07-10 after the T2 live A/B
+    (legacy baseline FAILED-honest vs SDK PASSED on weapon-sword; sentinels/staging/charter
+    parity; prompt-cached economics). Legacy remains one env var away as the rollback."""
     env = os.environ if env is None else env
-    if str(env.get("STUDIO_AGENT_LOOP", "legacy")).strip().lower() == "sdk":
-        return SdkLoopRunner(bridge)
-    return agent_loop.LoopRunner(bridge)
+    if str(env.get("STUDIO_AGENT_LOOP", "sdk")).strip().lower() == "legacy":
+        return agent_loop.LoopRunner(bridge)
+    return SdkLoopRunner(bridge)
 
 
 def _looks_rate_limited(text):

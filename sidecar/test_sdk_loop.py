@@ -380,7 +380,7 @@ def main():
     r_default = sdk_loop.select_loop_runner(b, {})
     fails += _check("legacy flag -> LoopRunner", type(r_legacy) is sdk_loop.agent_loop.LoopRunner)
     fails += _check("sdk flag -> SdkLoopRunner", type(r_sdk) is sdk_loop.SdkLoopRunner)
-    fails += _check("default is legacy until T2 passes", type(r_default) is sdk_loop.agent_loop.LoopRunner)
+    fails += _check("default is sdk (T2 A/B passed 2026-07-10)", type(r_default) is sdk_loop.SdkLoopRunner)
 
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
