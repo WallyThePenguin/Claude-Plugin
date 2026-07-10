@@ -465,6 +465,11 @@ def main():
     fails += _check("melee verify demands magnitude quotes", "MUST QUOTE" in vp and "adjectives" in vp)
     fails += _check("melee verify scopes captures to flagged + sign-off", "FLAGGED" in vp and "sign-off" in vp)
     fails += _check("melee verify keeps the damage twin", "TrainingDummy" in vp and "DAMAGE ONLY" in vp)
+    # SP2b live-deadlock fix: the convention escape valve + fitted-grip preservation
+    fails += _check("melee build allows the forward-cant escape valve", "forward cant" in bp and "rx:-15 to -25" in bp)
+    fails += _check("melee build fixes the artifact, never the check", "never by arguing with the check" in bp)
+    fails += _check("melee build keeps the fitted grip on release", "KEEP the fitted Tool.Grip" in bp)
+    fails += _check("melee verify restores the build's fitted grip", "RESTORE the recorded Grip" in vp and "ERASE" in vp)
     # legacy visual family untouched by the oracle blocks
     loop = FakeLoop([{"state": "done", "result": build_line(artifactPath="game.Workspace.Cottage", artifactKind="Model")},
                      {"state": "done", "result": verify_line("PASSED")}])
