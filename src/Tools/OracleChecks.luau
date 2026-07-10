@@ -538,7 +538,7 @@ register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematical
 	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
 end, 20000)
 
-register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at each pose, blade-tagged parts of {tool} vs the rig's torso/head: penetration beyond {max_depth (default 0.2)} studs FAILs with the offending time.", function(args)
+register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at each pose, blade-tagged parts of {tool} vs the rig's torso/head (penetration beyond {max_depth (default 0.2)} studs) AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default 1.0)} studs) FAIL with the offending time.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
 	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
 	if rig == nil or tool == nil then
@@ -559,8 +559,22 @@ register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at
 	if #body == 0 then
 		return unknown("rig has no torso/head parts")
 	end
+	-- arms are checked by the DECLARED centerline (exact point-in-OBB, like grip_sane's static
+	-- check — AABBs on rotated limbs over-trigger for the wielding arm), the torso/head by AABB
+	-- depth as before. Human-caught gap 2026-07-10: a swing can drive the blade through an arm.
+	local handle = OracleFrames.handleOf(tool)
+	local armParts = {}
+	for _, n in { "RightUpperArm", "RightLowerArm", "LeftUpperArm", "LeftLowerArm", "Right Arm", "Left Arm" } do
+		local p = rig:FindFirstChild(n, true)
+		if p ~= nil and p:IsA("BasePart") then
+			table.insert(armParts, p)
+		end
+	end
+	local gripPt, tipPt = frame.points.Grip, frame.points.BladeTip
 	local hits = {}
 	local maxDepth = tonumber(args.max_depth) or 0.2
+	local maxInArm = tonumber(args.max_blade_in_arm) or 1.0
+	local armWorst = { studs = 0, t = 0, part = "" }
 	local errMsg = scrubClip(rig :: Model, tostring(args.clip or "SwordSwing"), tonumber(args.samples) or 12, function(t)
 		for _, bp in frame.roleParts.blade do
 			local mnA, mxA = partAABB(bp)
@@ -573,12 +587,45 @@ register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at
 				end
 			end
 		end
+		if handle ~= nil and gripPt ~= nil and tipPt ~= nil and #armParts > 0 then
+			local samples = 12
+			local inside, insidePart = 0, ""
+			for i = 1, samples do
+				local frac = 0.15 + 0.85 * (i - 1) / (samples - 1)
+				local world = handle.CFrame:PointToWorldSpace((gripPt :: Vector3):Lerp(tipPt :: Vector3, frac))
+				for _, ap in armParts do
+					local lp = ap.CFrame:PointToObjectSpace(world)
+					local half = ap.Size / 2
+					if math.abs(lp.X) <= half.X and math.abs(lp.Y) <= half.Y and math.abs(lp.Z) <= half.Z then
+						inside += 1
+						insidePart = ap.Name
+						break
+					end
+				end
+			end
+			local embedded = (inside / samples) * ((tipPt :: Vector3) - (gripPt :: Vector3)).Magnitude * 0.85
+			if embedded > armWorst.studs then
+				armWorst = { studs = embedded, t = t, part = insidePart }
+			end
+		end
 	end)
 	if errMsg ~= nil then
 		return unknown(errMsg)
 	end
-	local mag = { intersections = hits, max_allowed_depth = maxDepth }
-	return if #hits == 0 then pass(mag) else fail(#hits .. " blade-through-body sample(s), first at t=" .. string.format("%.2f", hits[1].t), mag)
+	local mag = {
+		intersections = hits,
+		max_allowed_depth = maxDepth,
+		blade_in_arm_max_studs = armWorst.studs,
+		blade_in_arm_at = armWorst.t,
+		blade_in_arm_part = armWorst.part,
+	}
+	if #hits > 0 then
+		return fail(#hits .. " blade-through-body sample(s), first at t=" .. string.format("%.2f", hits[1].t), mag)
+	end
+	if armWorst.studs > maxInArm then
+		return fail(string.format("%.2f", armWorst.studs) .. " studs of blade centerline INSIDE " .. armWorst.part .. " at t=" .. string.format("%.2f", armWorst.t) .. " (max " .. maxInArm .. ")", mag)
+	end
+	return pass(mag)
 end, 20000)
 
 -- ---- declaration stubs (phase 2+): registered so suites/manifests can reference them;
