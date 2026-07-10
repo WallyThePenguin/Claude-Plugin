@@ -844,7 +844,10 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 								if mode == "run" then
 									-- PluginSecurity; yields until the run session ends (EndTest /
 									-- RunService:Stop()), then the shared teardown below runs.
-									return (StudioTestService :: any):ExecuteRunModeAsync()
+									-- The args Variant is REQUIRED (live: nil -> "Argument 1 missing or nil").
+									return (StudioTestService :: any):ExecuteRunModeAsync({
+										studioAgentRun = true,
+									})
 								end
 								return (StudioTestService :: any):ExecutePlayModeAsync({
 									studioAgentPlay = true,
