@@ -97,7 +97,8 @@ class SdkLoopRunner(agent_loop.LoopRunner):
         if outcome["state"] == "error":
             return fail(outcome["error"])
         self._set(state="done", result=outcome["result"], usage=outcome.get("usage"))
-        emit("done", {"iterations": outcome["iterations"], "capped": outcome.get("capped", False)})
+        # usage rides the transcript so per-stage economics survive the next start() (T2 A/B, spec R2)
+        emit("done", {"iterations": outcome["iterations"], "capped": outcome.get("capped", False), "usage": outcome.get("usage")})
 
     async def _consume(self, spec, emit, deadline):
         """Drive one SDK session to completion under the wall clock. Returns

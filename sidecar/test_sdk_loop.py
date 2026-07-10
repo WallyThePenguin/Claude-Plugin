@@ -321,9 +321,13 @@ def main():
     files = sorted(os.listdir(tmp))
     fails += _check("transcripts written", len(files) >= 1)
     with open(os.path.join(tmp, files[0]), encoding="utf-8") as fh:
-        events = [__import__("json").loads(line)["event"] for line in fh if line.strip()]
+        parsed = [__import__("json").loads(line) for line in fh if line.strip()]
+    events = [p["event"] for p in parsed]
     fails += _check("transcript has start/assistant_text/done shape",
                     "start" in events and "assistant_text" in events and ("done" in events or "error" in events))
+    done_usages = [p["data"].get("usage") for p in parsed if p["event"] == "done" and isinstance(p["data"], dict)]
+    fails += _check("done event carries durable usage",
+                    any(isinstance(u, dict) and u.get("output_tokens") == 5 for u in done_usages))
 
     # --- child env hygiene ---
     base = {"PATH": "p", "ANTHROPIC_API_KEY": "sk-oops", "CLAUDE_CODE_OAUTH_TOKEN": "tok"}
