@@ -120,7 +120,9 @@ def append_tooling_issues(issues, path):
         json.dump(data, fh, indent=1)
 
 
-AUDIT_EVERY = 5
+# Spec default 5; STUDIO_AGENT_AUDIT_EVERY overrides for the young-vocabulary period, where a
+# hotter audit rate mines suite-vs-capture gaps faster (each disagreement becomes a new check).
+AUDIT_EVERY = max(1, int(os.environ.get("STUDIO_AGENT_AUDIT_EVERY", "5") or 5))
 
 
 def _audit_pick(token) -> bool:
