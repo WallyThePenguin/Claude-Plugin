@@ -328,7 +328,10 @@ def main():
     # --- child env hygiene ---
     base = {"PATH": "p", "ANTHROPIC_API_KEY": "sk-oops", "CLAUDE_CODE_OAUTH_TOKEN": "tok"}
     env = sdk_loop._child_env(base)
-    fails += _check("API key scrubbed", "ANTHROPIC_API_KEY" not in env)
+    fails += _check("API key overridden to empty (SDK merges env over os.environ)",
+                    env.get("ANTHROPIC_API_KEY") == "")
+    merged = {**base, **env}  # simulate the SDK's {**os.environ, **options.env} child-env merge
+    fails += _check("key neutralized after SDK-style merge", merged["ANTHROPIC_API_KEY"] == "")
     fails += _check("oauth token kept", env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok")
     fails += _check("PATH kept", env["PATH"] == "p")
     try:
@@ -337,6 +340,17 @@ def main():
     except sdk_loop.agent_loop.LoopError:
         raised = True
     fails += _check("missing oauth token raises LoopError", raised)
+    env2 = sdk_loop._child_env({"PATH": "p", "CLAUDE_CODE_OAUTH_TOKEN": "tok",
+                                "STUDIO_AGENT_SDK_BASE_URL": "http://proxy:1"})
+    fails += _check("break-glass base url mapped", env2.get("ANTHROPIC_BASE_URL") == "http://proxy:1")
+
+    # --- schema normalization: no top-level "properties" would trip the SDK's _build_schema
+    # verbatim-pass gate (needs "type" AND "properties") and get mangled as a {param: type} map ---
+    bare = [{"name": "bare_tool", "description": "d", "input_schema": {"type": "object"}}]
+    defs9 = sdk_loop.build_tool_defs(bare, FakeBridge(), None, lambda n, i: None)
+    fails += _check("schema without properties normalized",
+                    defs9[0]["input_schema"].get("properties") == {}
+                    and defs9[0]["input_schema"].get("type") == "object")
 
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails

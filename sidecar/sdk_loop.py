@@ -127,6 +127,8 @@ class SdkLoopRunner(agent_loop.LoopRunner):
                         emit("assistant_text", final_text)
                         await self._narrate(final_text)
                 elif ev["kind"] == "result":
+                    # T2 must verify ResultMessage.result matches the last assistant text on
+                    # live runs (sentinel contract).
                     usage = dict(ev.get("usage") or {})
                     usage["total_cost_usd"] = ev.get("total_cost_usd")
                     if str(ev.get("subtype") or "") not in ("success",):
@@ -237,6 +239,16 @@ def _local_tool_handler(dispatch, name, on_tool):
     return handler
 
 
+def _normalized_schema(raw):
+    """Guarantee top-level "properties": the SDK's _build_schema passes a dict through verbatim
+    ONLY if it has top-level "type" AND "properties"; otherwise it mangles it as a {param: type}
+    mapping."""
+    schema = raw or {"type": "object", "properties": {}}
+    if isinstance(schema, dict) and "properties" not in schema:
+        schema = {**schema, "properties": {}}
+    return schema
+
+
 def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
     """Generate SDK tool definitions from the describe handshake + mechanic local tools.
     Each def: {name, description, input_schema, handler(async args -> MCP result)}."""
@@ -252,7 +264,7 @@ def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
         defs.append({
             "name": name,
             "description": str(t.get("description") or ""),
-            "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
+            "input_schema": _normalized_schema(t.get("input_schema")),
             "handler": _bridge_tool_handler(bridge, name, on_tool, bridge_lock),
         })
     local = local_tools or {}
@@ -262,19 +274,24 @@ def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
             defs.append({
                 "name": name,
                 "description": str(t.get("description") or ""),
-                "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
+                "input_schema": _normalized_schema(t.get("input_schema")),
                 "handler": _local_tool_handler(local["dispatch"], name, on_tool),
             })
     return defs
 
 
 def _child_env(base_env):
-    """Subscription-only env for the SDK subprocess: OAuth token required, API key scrubbed
+    """Subscription-only env for the SDK subprocess: OAuth token required, API key neutralized
     (an ANTHROPIC_API_KEY silently overrides subscription auth and bills per-token).
-    T0 spike (sidecar/_spike_sdk.py FINDINGS): CLI keychain auth does NOT reach standalone
-    SDK subprocesses on this machine, so the token is a hard requirement."""
+    The SDK builds the child env as {**os.environ-inherited, ..., **options.env, ...} — a MERGE
+    over the full parent env (subprocess_cli.py:430-436 on 0.2.82) — so REMOVING the key from
+    options.env is inert: it re-enters from the inherited env. It must be OVERRIDDEN with an
+    empty string, which wins the merge. T0 spike (sidecar/_spike_sdk.py FINDINGS): CLI keychain
+    auth does NOT reach standalone SDK subprocesses on this machine, so the token is a hard
+    requirement."""
     env = dict(base_env)
-    env.pop("ANTHROPIC_API_KEY", None)
+    # T2 must confirm the CLI treats empty-string ANTHROPIC_API_KEY as unset (no per-token billing).
+    env["ANTHROPIC_API_KEY"] = ""
     if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
         raise agent_loop.LoopError(
             "CLAUDE_CODE_OAUTH_TOKEN is not set — run `claude setup-token` and put it in the "
@@ -311,8 +328,10 @@ def _sdk_session_factory(spec):
         extra = os.environ.get("STUDIO_AGENT_MECHANIC_MCP")  # e.g. memtrace config JSON
         if extra:
             try:
-                mcp_servers.update(json.loads(extra))
-            except ValueError:
+                parsed = json.loads(extra)
+                if isinstance(parsed, dict):
+                    mcp_servers.update(parsed)
+            except (ValueError, TypeError):
                 pass  # bad JSON must not kill a run; surfaced by absence of the extra tools
     allowed = ["mcp__studio__" + d["name"] for d in spec["tool_defs"]] + ["WebSearch", "WebFetch"]
     system_prompt = spec["system_prompt"] + (
@@ -322,6 +341,12 @@ def _sdk_session_factory(spec):
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         mcp_servers=mcp_servers,
+        # tools= is the POSITIVE availability list (CLI --tools): the native surface is exactly
+        # WebSearch+WebFetch; every other built-in (incl. future/renamed ones) is unavailable —
+        # critical under bypassPermissions, where anything available auto-runs. mcp__studio__*
+        # tools arrive via mcp_servers independently of this list. disallowed_tools stays as
+        # defense-in-depth; allowed_tools remains the permission auto-approve list.
+        tools=["WebSearch", "WebFetch"],
         allowed_tools=allowed,
         disallowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep", "NotebookEdit", "Agent", "Task"],
         permission_mode="bypassPermissions",
