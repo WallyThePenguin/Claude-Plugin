@@ -348,12 +348,13 @@ local function tryOpenStream(deps: any, onNudge: () -> (), onDead: (string) -> (
 	end)
 	if not okWire then
 		pcall(function()
-			client:Destroy()
+			client:Close()
 		end)
 		return nil
 	end
-	-- Best-effort death detection: these event names are unverified, so a failure here is fine —
-	-- the tick's slow backstop pull still covers a stream that dies without firing either.
+	-- Death detection: Error and Closed verified live 2026-07-10 as RBXScriptSignals on the SSE
+	-- client (alongside MessageReceived and Opened) — still pcall'd, and the tick's slow backstop
+	-- pull still covers a stream that dies without firing either.
 	for _, eventName in { "Error", "Closed" } do
 		pcall(function()
 			client[eventName]:Connect(function()
@@ -405,11 +406,15 @@ function DevBridge.start(deps: any, lifecycle: any)
 		end
 		if streamClient ~= nil then
 			-- Generation teardown: silence the dead generation's stream so a hot-reload never
-			-- leaves two clients nudging. Destroy is unverified on this instance — pcall'd.
+			-- leaves two clients nudging. MUST be Close(), not Destroy(): live-probed 2026-07-10,
+			-- WebStreamClient is a non-Instance Object whose ONLY close method is Close() —
+			-- Destroy is not a member, so the old pcall'd Destroy silently failed and leaked one
+			-- TCP connection + one sidecar handler thread per hot-reload. Close() verifiably
+			-- drops the connection (netstat 2 -> 1 on the live probe client).
 			streamActive = false
 			pcall(function()
 				local c: any = streamClient
-				c:Destroy()
+				c:Close()
 			end)
 		end
 		print("[StudioAgent] dev bridge loop stopped (generation reloaded)")
