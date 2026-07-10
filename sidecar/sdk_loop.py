@@ -12,7 +12,9 @@ event dicts; the real factory (_sdk_session_factory) is the only place that impo
 the SDK. Spec: docs/superpowers/specs/2026-07-10-sp1-agent-sdk-loop-swap-design.md
 """
 import asyncio
+import copy
 import json
+import threading
 import time
 
 import agent_loop
@@ -193,13 +195,21 @@ def _to_mcp_blocks(content):
     return out
 
 
-def _bridge_tool_handler(bridge, name, on_tool):
+def _bridge_tool_handler(bridge, name, on_tool, lock):
     async def handler(args):
         on_tool(name, args)
-        bridge_result = await asyncio.to_thread(
-            bridge.call, {"kind": "tool", "tool": name, "input": args or {}, "raw": True},
-            agent_loop.TOOL_TIMEOUT,
-        )
+
+        def locked_call():
+            # single-slot bridge discipline (spec contract #7): the SDK may dispatch tools
+            # concurrently; Store.submit overwrites the pending slot, so bridge calls must
+            # serialize.
+            with lock:
+                return bridge.call(
+                    {"kind": "tool", "tool": name, "input": args or {}, "raw": True},
+                    agent_loop.TOOL_TIMEOUT,
+                )
+
+        bridge_result = await asyncio.to_thread(locked_call)
         # Reuse the legacy converter for banner/timeout-guidance/empty-Luau semantics,
         # then reshape its content for MCP.
         block = agent_loop._tool_result_block("x", bridge_result)
@@ -229,7 +239,10 @@ def _local_tool_handler(dispatch, name, on_tool):
 def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
     """Generate SDK tool definitions from the describe handshake + mechanic local tools.
     Each def: {name, description, input_schema, handler(async args -> MCP result)}."""
-    tools = agent_loop.fix_luau_empty_objects([dict(t) for t in describe_tools if isinstance(t, dict)])
+    # threading.Lock, NOT asyncio.Lock: the fallback-retry loop creates a fresh event loop
+    # per attempt via repeated asyncio.run, and asyncio primitives must not span loops.
+    bridge_lock = threading.Lock()
+    tools = agent_loop.fix_luau_empty_objects(copy.deepcopy([t for t in describe_tools if isinstance(t, dict)]))
     defs = []
     for t in tools:
         name = str(t.get("name"))
@@ -239,11 +252,11 @@ def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
             "name": name,
             "description": str(t.get("description") or ""),
             "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
-            "handler": _bridge_tool_handler(bridge, name, on_tool),
+            "handler": _bridge_tool_handler(bridge, name, on_tool, bridge_lock),
         })
     local = local_tools or {}
     if isinstance(local.get("schemas"), list) and local.get("dispatch"):
-        for t in agent_loop.fix_luau_empty_objects([dict(s) for s in local["schemas"] if isinstance(s, dict)]):
+        for t in agent_loop.fix_luau_empty_objects(copy.deepcopy([s for s in local["schemas"] if isinstance(s, dict)])):
             name = str(t.get("name"))
             defs.append({
                 "name": name,

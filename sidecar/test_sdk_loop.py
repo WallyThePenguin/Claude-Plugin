@@ -201,6 +201,61 @@ def main():
     fails += _check("local crash -> is_error, loop survives",
                     out4["is_error"] is True and "crashed" in out4["content"][0]["text"])
 
+    # --- concurrent handlers serialize on the bridge (single-slot discipline) ---
+    class SlowBridge(FakeBridge):
+        def __init__(self):
+            super().__init__()
+            self.active = 0
+            self.max_active = 0
+
+        def call(self, command, timeout):
+            if command["kind"] == "tool":
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+                time.sleep(0.05)
+                self.active -= 1
+                self.tool_calls.append(command)
+                return {"ok": True, "isError": False, "banner": "", "content": "done"}
+            return super().call(command, timeout)
+
+    sb = SlowBridge()
+    two_tools = [
+        {"name": "tool_a", "description": "d", "input_schema": {"type": "object"}},
+        {"name": "tool_b", "description": "d", "input_schema": {"type": "object"}},
+    ]
+    defs5 = sdk_loop.build_tool_defs(two_tools, sb, None, lambda n, i: None)
+
+    async def both():
+        await asyncio.gather(defs5[0]["handler"]({}), defs5[1]["handler"]({}))
+
+    asyncio.run(both())
+    fails += _check("concurrent bridge handlers serialized", sb.max_active == 1 and len(sb.tool_calls) == 2)
+
+    # --- content-shape coverage: plain string, error-with-content, deepcopy, clean local error ---
+    bridge3 = FakeBridge(tool_results=[{"ok": True, "isError": False, "banner": "", "content": "plain"}])
+    defs6 = sdk_loop.build_tool_defs(two_tools[:1], bridge3, None, lambda n, i: None)
+    out5 = asyncio.run(defs6[0]["handler"]({}))
+    fails += _check("plain-string content -> text block", out5["content"] == [{"type": "text", "text": "plain"}])
+
+    bridge4 = FakeBridge(tool_results=[{"ok": False, "banner": "", "content": "bad thing"}])
+    defs7 = sdk_loop.build_tool_defs(two_tools[:1], bridge4, None, lambda n, i: None)
+    out6 = asyncio.run(defs7[0]["handler"]({}))
+    fails += _check("non-timeout error propagates is_error",
+                    out6.get("is_error") is True and out6["content"][0]["text"] == "bad thing")
+
+    pristine = [{"name": "tool_a", "description": "d", "input_schema": {"type": "object", "properties": []}}]
+    sdk_loop.build_tool_defs(pristine, FakeBridge(), None, lambda n, i: None)
+    fails += _check("caller schema not mutated (deepcopy)", pristine[0]["input_schema"]["properties"] == [])
+
+    local_warn = {
+        "schemas": [{"name": "warn_tool", "description": "d", "input_schema": {"type": "object"}}],
+        "dispatch": lambda name, args: ("warned", True),
+    }
+    defs8 = sdk_loop.build_tool_defs([], FakeBridge(), local_warn, lambda n, i: None)
+    out7 = asyncio.run(defs8[0]["handler"]({}))
+    fails += _check("clean local error path sets is_error",
+                    out7.get("is_error") is True and out7["content"] == [{"type": "text", "text": "warned"}])
+
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
 
