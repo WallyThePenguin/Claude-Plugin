@@ -40,8 +40,11 @@ Middle rung of the doctrine: edit scrub → run-mode twin → full playtest.
 ## SP2e — SSE PUSH CHANNEL (transport verified)
 `HttpService:CreateWebStreamClient` (RawStream | SSE; Opened/MessageReceived/Error/Closed + Send)
 is the real engine API — the pasted `ConnectAsync` WebSocket API does NOT exist (doc-verified).
-Down = SSE command stream (kills the 0.25s poll); up = existing POSTs. Step 1 = a plugin-context
-pcall probe (docs are silent on plugin/edit availability + beta flags).
+LIVE PROBE (2026-07-10, edit-mode plugin context): `CreateWebStreamClient` is a callable function
+and `Enum.WebStreamClientType` = **SSE, RawStream, WebSocket** — a WebSocket mode NEWER than the
+docs page. Full-duplex may be possible on the real class; next step = an actual localhost
+connection test (could still be flag-gated at call time). Down = pushed command stream (kills the
+0.25s poll); up = existing POSTs or the same socket.
 
 ## Ops/infra follow-ups
 - **Docs-grounding channel**: clone Roblox/creator-docs + machine-readable API-dump diff vs
