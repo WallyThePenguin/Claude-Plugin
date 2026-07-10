@@ -191,6 +191,42 @@ register("scale_ratio", "EDIT_OK", "Longest world extent of {target} vs {expecte
 	return if ratio >= (1 - tol) and ratio <= (1 + tol) then pass(mag) else fail("scale off: " .. string.format("%.2f", longest) .. " studs vs expected " .. expected, mag)
 end)
 
+register("mesh_persisted", "EDIT_OK", "Every MeshPart under {target} must be renderable in PLAY: a non-empty MeshId, OR the save_mesh local-persist path (SALocalMesh attribute + MeshData child + a deployed ServerScriptService.SAMeshRebuildRuntime). Closes the audit-caught gap where an 8/8 suite green-lit an invisible weapon (RETRO-proposed 2026-07-10).", function(args)
+	local parts, err = resolveParts(args.target)
+	if parts == nil then
+		return unknown(err or "unresolved")
+	end
+	local meshParts, uploaded, localRebuild = 0, 0, 0
+	local firstNaked: string? = nil
+	for _, p in parts do
+		if p:IsA("MeshPart") then
+			meshParts += 1
+			if p.MeshId ~= "" then
+				uploaded += 1
+			elseif p:GetAttribute("SALocalMesh") == true and p:FindFirstChild("MeshData") ~= nil then
+				localRebuild += 1
+			elseif firstNaked == nil then
+				firstNaked = p.Name
+			end
+		end
+	end
+	local runtime = game:GetService("ServerScriptService"):FindFirstChild("SAMeshRebuildRuntime")
+	local mag = {
+		mesh_parts = meshParts,
+		uploaded = uploaded,
+		local_rebuild = localRebuild,
+		naked = meshParts - uploaded - localRebuild,
+		rebuild_runtime_deployed = runtime ~= nil,
+	}
+	if firstNaked ~= nil then
+		return fail("MeshPart '" .. firstNaked .. "' has an empty MeshId and no local-rebuild data — INVISIBLE in Play", mag)
+	end
+	if localRebuild > 0 and runtime == nil then
+		return fail(localRebuild .. " local-persisted mesh(es) but ServerScriptService.SAMeshRebuildRuntime is NOT deployed — invisible in Play", mag)
+	end
+	return pass(mag)
+end)
+
 register("anchored_ok", "EDIT_MISLEADS", "For a Tool {target}: no anchored parts (anchored parts break welds at runtime). EDIT_MISLEADS: scripts can re-anchor at runtime.", function(args)
 	local parts, err = resolveParts(args.target)
 	if parts == nil then

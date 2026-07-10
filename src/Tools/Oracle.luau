@@ -32,6 +32,7 @@ local SUITES = {
 				{ check = "frame_consistent", args = { target = target } },
 				{ check = "anchored_ok", args = { target = target } },
 				{ check = "scale_ratio", args = { target = target, expected = 4.5, tolerance_frac = 0.6 } },
+				{ check = "mesh_persisted", args = { target = target } },
 				{ check = "grip_sane", args = { tool = target, rig = rig } },
 				{ check = "joint_census", args = { rig = rig } },
 				{ check = "rig_channel_check", args = { rig = rig, clip = clip } },
@@ -140,6 +141,18 @@ local function selftest(): any
 	expect("boxes intersect (overlapping)", "PASS", OracleChecks.run("intersects", { a = grip, b = box("Overlap", Vector3.new(1, 1, 1), origin) }))
 	expect("gap within limit", "PASS", OracleChecks.run("gap_between", { a = grip, b = blade, max_gap = 1.5 }))
 	expect("far boxes fail gap", "FAIL", OracleChecks.run("gap_between", { a = grip, b = box("Far", Vector3.new(1, 1, 1), origin * CFrame.new(20, 0, 0)), max_gap = 0.5 }))
+	-- mesh persistence: a naked MeshPart (empty MeshId, no local-rebuild data) FAILs; parts-only PASSes
+	do
+		local nakedHolder = Instance.new("Model")
+		nakedHolder.Name = "NakedMeshHolder"
+		nakedHolder.Parent = folder
+		local mp = Instance.new("MeshPart")
+		mp.Name = "NakedMesh"
+		mp.Anchored = true
+		mp.Parent = nakedHolder
+		expect("naked MeshPart fails persistence", "FAIL", OracleChecks.run("mesh_persisted", { target = nakedHolder }))
+		expect("parts-only target passes persistence", "PASS", OracleChecks.run("mesh_persisted", { target = grip }))
+	end
 	-- frame roundtrip on the toy sword (grip as the "handle": stamp on a Model wrapper)
 	local model = Instance.new("Model")
 	model.Name = "ToySword"
@@ -187,6 +200,7 @@ Oracle.descriptors = {
 		description = "Run ONE named oracle check (deterministic measurement, ~50-token result with raw magnitudes). "
 			.. "Checks: intersects{a,b}, penetration_depth{a,b,max_depth}, gap_between{a,b,max_gap}, "
 			.. "alignment{target,dir,against,max_deg,length}, scale_ratio{target,expected,tolerance_frac}, "
+			.. "mesh_persisted{target}, "
 			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, joint_census{rig}, "
 			.. "rig_channel_check{rig,clip}, clip_arc_of{rig,tool,clip,samples,min_sweep}, "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth}, __selftest{}. "
