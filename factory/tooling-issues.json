@@ -1,6 +1,17 @@
 {
  "issues": [
   {
+   "title": "DEFAULT GRIP CONVENTION DEFECT: frame alignment (blade along fist-up) embeds 1.49 studs of a straight blade INSIDE the hanging R15 arm",
+   "symptom": "grip_sane on a frame-aligned DemoSword at NEUTRAL pose: grip_offset 0 studs / blade_up 0 deg but blade_in_arm_studs=1.49 (max 1.0) - the fist-up axis parallels the forearm bone on a hanging arm, so the resting blade rides inside the limb (the user-screenshot defect, now measured)",
+   "suspectFiles": [
+    "src/ToolFactory.luau"
+   ],
+   "repro": "stamp_frame + make_tool + grip_tool(no args) any straight >3-stud blade onto workspace.AgentRig; oracle_check grip_sane -> FAIL 1.49 studs embedded at 0 deg",
+   "seenCount": 1,
+   "lastSeenAt": 1783698565,
+   "resolution": "PENDING - weapon-joint sub-project decides the rest-orientation convention (classic Roblox tools cant the blade FORWARD out of the fist via the RightGripAttachment C0 rotation; a 15-25 deg forward cant clears the arm while staying under grip_sane 35-deg bound). Interim: builders clear it with grip_tool rot args guided by the blade_in_arm_studs number."
+  },
+  {
    "title": "MECHANIC commit hygiene: sweeps untracked/dirty files into its commit + double [mechanic] prefix",
    "symptom": "mechanic commit 4f3c5f4a included sidecar/_repro_verify.py, all staging entries, and learnings files alongside its actual fix (src/Tools/Mesh.luau); subject reads [mechanic] [mechanic]",
    "suspectFiles": [
