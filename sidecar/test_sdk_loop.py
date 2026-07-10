@@ -297,6 +297,21 @@ def main():
     st = _wait_done(r7)
     fails += _check("error subtype -> error state", st["state"] == "error" and "error_during_execution" in st["error"])
 
+    # --- SDK max-turns RAISE (not a result event) -> capped-done with partial text ---
+    def raising_cap_factory(spec):
+        async def stream():
+            yield {"kind": "assistant", "text": "partial verdict\nFACTORY_VERIFY_JSON: {\"status\": \"FAILED\"}", "tool_uses": []}
+            raise Exception("Claude Code returned an error result: Reached maximum number of turns (36)")
+
+        return stream()
+
+    r9 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=raising_cap_factory, loops_dir=tmp, sleep=lambda s: None)
+    r9.start("verify")
+    st = _wait_done(r9)
+    fails += _check("max-turns raise -> capped done, partial text kept",
+                    st["state"] == "done" and "FACTORY_VERIFY_JSON" in st["result"]
+                    and "iteration cap reached" in st["result"])
+
     # --- rate-limit session error -> model fallback retry (fresh session) ---
     attempts = []
 

@@ -118,6 +118,17 @@ class SdkLoopRunner(agent_loop.LoopRunner):
                     ev = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
                 except StopAsyncIteration:
                     break
+                except Exception as exc:  # noqa: BLE001
+                    # T2 live find: at max_turns the SDK RAISES ("error result: Reached
+                    # maximum number of turns (N)") instead of yielding a result event —
+                    # treat it as a capped-done so the partial final text (possibly a full
+                    # FACTORY_*_JSON verdict) still reaches the orchestrators.
+                    if isinstance(exc, asyncio.TimeoutError):
+                        raise
+                    if "maximum number of turns" in str(exc).lower():
+                        capped = True
+                        break
+                    raise
                 if ev["kind"] == "assistant":
                     iterations += 1
                     self._set(iteration=iterations, model=spec["model"])
