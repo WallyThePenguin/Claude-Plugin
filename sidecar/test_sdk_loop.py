@@ -143,6 +143,64 @@ def main():
     st = _wait_done(r4)
     fails += _check("factory crash -> error state", st["state"] == "error")
 
+    # --- tool defs: exclusion, schema fix, handlers ---
+    raw_tools = [
+        {"name": "make_part", "description": "d", "input_schema": {"type": "object", "properties": []}},
+        {"name": "web_search", "type": "web_search_20250305"},
+        {"name": "web_fetch", "type": "web_fetch_20250910"},
+    ]
+    bridge = FakeBridge(tool_results=[{
+        "ok": True, "isError": False, "banner": "ctx",
+        "content": [
+            {"type": "text", "text": "made it"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}},
+        ],
+    }])
+    tool_events = []
+    defs = sdk_loop.build_tool_defs(raw_tools, bridge, None, lambda n, i: tool_events.append(n))
+    fails += _check("web tools excluded", [d["name"] for d in defs] == ["make_part"])
+    fails += _check("[] properties fixed to {}", defs[0]["input_schema"]["properties"] == {})
+
+    out = asyncio.run(defs[0]["handler"]({"size": 4}))
+    fails += _check("bridge got raw-mode tool call",
+                    bridge.tool_calls[-1] == {"kind": "tool", "tool": "make_part", "input": {"size": 4}, "raw": True})
+    fails += _check("on_tool fired", tool_events == ["make_part"])
+    blocks = out["content"]
+    fails += _check("banner text block first", blocks[0] == {"type": "text", "text": "ctx"})
+    fails += _check("text block passthrough", blocks[1] == {"type": "text", "text": "made it"})
+    fails += _check("image converted to MCP shape",
+                    blocks[2] == {"type": "image", "data": "AA==", "mimeType": "image/png"})
+    fails += _check("no error flag on success", "is_error" not in out)
+
+    # --- bridge timeout -> guidance text + is_error ---
+    bridge2 = FakeBridge(tool_results=[])  # empty -> FakeBridge returns None (timeout)
+    defs2 = sdk_loop.build_tool_defs(raw_tools[:1], bridge2, None, lambda n, i: None)
+    out2 = asyncio.run(defs2[0]["handler"]({}))
+    fails += _check("timeout guidance ridden through",
+                    out2["is_error"] is True and "bridge timeout" in out2["content"][0]["text"])
+
+    # --- local tools dispatch sidecar-side ---
+    local_calls = []
+    local = {
+        "schemas": [{"name": "read_source", "description": "d", "input_schema": {"type": "object"}}],
+        "dispatch": lambda name, args: (local_calls.append((name, args)) or ("file body", False)),
+    }
+    defs3 = sdk_loop.build_tool_defs(raw_tools[:1], FakeBridge(), local, lambda n, i: None)
+    names = [d["name"] for d in defs3]
+    fails += _check("local schema merged", "read_source" in names and "make_part" in names)
+    local_def = next(d for d in defs3 if d["name"] == "read_source")
+    out3 = asyncio.run(local_def["handler"]({"path": "x.py"}))
+    fails += _check("local dispatched sidecar-side", local_calls == [("read_source", {"path": "x.py"})])
+    fails += _check("local text result", out3["content"] == [{"type": "text", "text": "file body"}])
+
+    def _boom(name, args):
+        raise RuntimeError("nope")
+
+    defs4 = sdk_loop.build_tool_defs([], FakeBridge(), {"schemas": local["schemas"], "dispatch": _boom}, lambda n, i: None)
+    out4 = asyncio.run(defs4[0]["handler"]({}))
+    fails += _check("local crash -> is_error, loop survives",
+                    out4["is_error"] is True and "crashed" in out4["content"][0]["text"])
+
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
 

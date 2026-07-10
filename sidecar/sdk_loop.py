@@ -12,6 +12,7 @@ event dicts; the real factory (_sdk_session_factory) is the only place that impo
 the SDK. Spec: docs/superpowers/specs/2026-07-10-sp1-agent-sdk-loop-swap-design.md
 """
 import asyncio
+import json
 import time
 
 import agent_loop
@@ -173,15 +174,84 @@ def _looks_rate_limited(text):
     return "429" in low or "rate limit" in low or "rate_limit" in low or "cooling down" in low or "quota" in low
 
 
+def _to_mcp_blocks(content):
+    """Anthropic tool_result content (str or block list) -> MCP content block list.
+    Text passes through; base64 image sources become {type:'image', data, mimeType}."""
+    if not isinstance(content, list):
+        return [{"type": "text", "text": str(content)}]
+    out = []
+    for block in content:
+        if not isinstance(block, dict):
+            out.append({"type": "text", "text": str(block)})
+        elif block.get("type") == "image" and isinstance(block.get("source"), dict):
+            src = block["source"]
+            out.append({"type": "image", "data": src.get("data"), "mimeType": src.get("media_type")})
+        elif block.get("type") == "text":
+            out.append({"type": "text", "text": str(block.get("text") or "")})
+        else:
+            out.append({"type": "text", "text": json.dumps(block)})
+    return out
+
+
+def _bridge_tool_handler(bridge, name, on_tool):
+    async def handler(args):
+        on_tool(name, args)
+        bridge_result = await asyncio.to_thread(
+            bridge.call, {"kind": "tool", "tool": name, "input": args or {}, "raw": True},
+            agent_loop.TOOL_TIMEOUT,
+        )
+        # Reuse the legacy converter for banner/timeout-guidance/empty-Luau semantics,
+        # then reshape its content for MCP.
+        block = agent_loop._tool_result_block("x", bridge_result)
+        out = {"content": _to_mcp_blocks(block["content"])}
+        if block.get("is_error"):
+            out["is_error"] = True
+        return out
+
+    return handler
+
+
+def _local_tool_handler(dispatch, name, on_tool):
+    async def handler(args):
+        on_tool(name, args)
+        try:
+            text, is_err = await asyncio.to_thread(dispatch, name, args or {})
+        except Exception as exc:  # noqa: BLE001 — a local tool must never kill the loop
+            text, is_err = f"{name}: local tool crashed: {exc!r}", True
+        out = {"content": [{"type": "text", "text": str(text)}]}
+        if is_err:
+            out["is_error"] = True
+        return out
+
+    return handler
+
+
 def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
-    """Minimal placeholder shape until Task 3: name/description/schema only."""
-    return [
-        {"name": str(t.get("name")), "description": str(t.get("description") or ""),
-         "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
-         "handler": None}
-        for t in describe_tools
-        if isinstance(t, dict) and str(t.get("name")) not in ("web_search", "web_fetch")
-    ]
+    """Generate SDK tool definitions from the describe handshake + mechanic local tools.
+    Each def: {name, description, input_schema, handler(async args -> MCP result)}."""
+    tools = agent_loop.fix_luau_empty_objects([dict(t) for t in describe_tools if isinstance(t, dict)])
+    defs = []
+    for t in tools:
+        name = str(t.get("name"))
+        if name in ("web_search", "web_fetch"):  # Claude Code natives replace these
+            continue
+        defs.append({
+            "name": name,
+            "description": str(t.get("description") or ""),
+            "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
+            "handler": _bridge_tool_handler(bridge, name, on_tool),
+        })
+    local = local_tools or {}
+    if isinstance(local.get("schemas"), list) and local.get("dispatch"):
+        for t in agent_loop.fix_luau_empty_objects([dict(s) for s in local["schemas"] if isinstance(s, dict)]):
+            name = str(t.get("name"))
+            defs.append({
+                "name": name,
+                "description": str(t.get("description") or ""),
+                "input_schema": t.get("input_schema") or {"type": "object", "properties": {}},
+                "handler": _local_tool_handler(local["dispatch"], name, on_tool),
+            })
+    return defs
 
 
 def _sdk_session_factory(spec):
