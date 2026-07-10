@@ -1,6 +1,16 @@
 {
  "issues": [
   {
+   "title": "MECHANIC commit hygiene: sweeps untracked/dirty files into its commit + double [mechanic] prefix",
+   "symptom": "mechanic commit 4f3c5f4a included sidecar/_repro_verify.py, all staging entries, and learnings files alongside its actual fix (src/Tools/Mesh.luau); subject reads [mechanic] [mechanic]",
+   "suspectFiles": [
+    "sidecar/mechanic.py"
+   ],
+   "repro": "let a forever-cycle MECHANIC stage commit while the tree has untracked files; inspect git show --stat of the [mechanic] commit",
+   "seenCount": 1,
+   "lastSeenAt": 1783698394
+  },
+  {
    "title": "add_keyframe wedged by a stuck ChangeHistory recording (stale recording open across the whole session)",
    "symptom": "factory BUILD (weapon-sword, 2026-07-10) reported add_keyframe unusable - worked around via manual KeyframeSequence build; every bridge luau call warns [no undo recording: a stale recording is stuck open; changes applied unrecorded]",
    "suspectFiles": [

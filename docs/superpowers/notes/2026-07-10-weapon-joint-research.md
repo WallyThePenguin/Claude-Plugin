@@ -1,0 +1,2290 @@
+# Weapon-joint animation research (deep-research, 2026-07-10)
+
+> 101-agent verified sweep; feeds the SP2c weapon-joint sub-project (user proposal: sword as its own joint).
+
+## Summary
+
+Community consensus and official docs converge on the "weapon as its own joint" technique: Roblox Tools natively get only a static RightGrip Weld (no animation channel), so experienced developers create a Motor6D inside the character model with Part0 = hand/arm part and Part1 = the tool's Handle/root, which the Animator discovers anywhere under its ancestor Model and matches to KeyframeSequence poses purely by connected-part names (Pose named after the Handle nested under a "RightHand" Pose) — giving the weapon a first-class animation channel for flourishes and spins. The architecture cleanly separates channels: C0/C1 is the static grip-placement channel (applies immediately, replicates, and MUST exactly match the values present when animations were authored — the formal basis for a T-pose-first placement doctrine where the weapon is positioned on a neutral rig BEFORE the joint is created and its C0/C1 frozen), while Motor6D.Transform is the Animator-driven channel (overwritten every frame, Hidden + NotReplicated — so weapon motion replicates only via per-peer animation playback, and the joint swap must be done server-side). For two-handed grips, IKControl is the official procedural mechanism (child of Humanoid with an Animator; Target explicitly accepts any Attachment, so off-hand IK to a weapon-mounted Semantic_Grip attachment is a documented pattern usable in edit mode, playtests, and runtime Luau). The critical 2026 wrinkle is the Avatar Joint Upgrade: AnimationConstraint has officially replaced Motor6D in R15 player rigs (Phase 2 live since May 2026, forced migration targeted end of 2026), with IsKinematic toggling perfect kinematic tracking vs force-limited physical behavior (ragdoll weapon drops), so the recommended migration is a dual-path weapon joint (Motor6D on classic rigs, AnimationConstraint-aware on upgraded rigs) with stamped C0/C1 attributes, server-side equip creation, and IKControl off-hand grips targeting our existing Semantic_Grip attachments — which Roblox's own Weapons Kit (TipAttachment/HandleAttachment) validates as first-party prior art.
+
+## Verified findings
+
+### [high] The weapon-joint technique is settled community practice: Roblox has no native support for animating Tool handles (Tool equip creates a static RightGrip Weld with no animation channel), and the standard workaround — taught in the canonical 2,168-like DevForum tutorial and packaged in modules like Tool 6D and GripModule — is a Motor6D living inside the character model with Part0 = the character body part (RightHand / Right Arm / Torso) and Part1 = the tool's Handle or root part ('BodyAttach'), created when the Tool is added to the character; once that Motor6D exists, the Animation Editor (and Moon Animator) picks up the handle as its own animatable keyframe channel. Within the tool itself, only sub-parts that must move (magazine, bolt) get Motor6Ds; all remaining geometry is rigidly welded to the root part.
+
+Evidence: Official Motor6D docs: 'Motor6D joins two BaseParts (Part0 and Part1) together in an animatable way... can be set manually using RunService.PreSimulation or through an Animator.' Tool 6D thread: 'Roblox does not natively support the ability to animate Tool handles of any kind, and the only way... is to manually create animations and use a script to delete the Tool grip and attach Motors'; 'the Animation Editor should now be able to animate the Handle part with keyframes.' Headstackk tutorial: Motor6D 'ToolGrip' under char.Torso, Part1 = tool BodyAttach on ChildAdded; 'For parts that needs to be ANIMATED (such as weapon magazine, bolt etc.), click New Motor6D... For EVERY remaining parts, click New Weld.' A long-standing engine feature request ('Make Tool create Motor6D and not a Weld for RightGrip') exists precisely because this swap is the standard workaround. Merges confirmed claims 7, 13, 14, 15, 16, 18 (all 3-0).
+
+Sources: https://create.roblox.com/docs/reference/engine/classes/Motor6D, https://devforum.roblox.com/t/how-to-animate-tool-parts-guns-knifes-etc/359484, https://devforum.roblox.com/t/tool-6d-tool-animation-compatibility-layer/2079783, https://devforum.roblox.com/t/how-to-replace-rightgrip-with-a-motor6d/2060194, https://devforum.roblox.com/t/12229
+Vote: 3-0 (merged from 6 unanimous claims)
+
+### [high] Animator pickup requires no rig membership and is driven entirely by part names: the Animator searches for animatable joints (Motor6D, legacy Motor, Bone) in ALL descendants of its ancestor Model — so a RightHand→Handle Motor6D inside an equipped Tool is in scope — and matches joints to KeyframeSequence poses by the names of the CONNECTED PARTS (Part0.Name = parent pose name, Pose.Parent.Name; Part1.Name = child pose name, Pose.Name), ignoring the joint's own name. A weapon-channel KeyframeSequence must therefore nest a Pose named after the Handle part under a Pose named 'RightHand'; naming the Motor6D 'WeaponJoint' has no effect, and the Handle part's name becomes load-bearing API surface.
+
+Evidence: Verbatim from Roblox's avatar-evolution Animator docs: 'Animator searches for animatable joints (including Motor6Ds, legacy Motors, and Bones) in descendants of it's ancestor Model'; 'Animator matches animatable joints to poses... based on the names of the parts the joint is connected to. The Animator ignores the names of the joints themselves... For a Motor6D, Part0.Name is the "parent" name, and Part1.Name is the "child" name.' Corroborated by the entire Tool-6D/tool-animation tutorial ecosystem, which depends on Animators driving Motor6Ds inside equipped Tools. Merges claims 0 and 1 (both 3-0). Caveat: the explicit matching paragraph lives on the avatar-evolution docs site; the current create.roblox.com Animator page omits (does not contradict) it.
+
+Sources: https://roblox.github.io/avatar-evolution/api/class/Animator, https://devforum.roblox.com/t/how-to-animate-your-tool-using-motor6d/3026706, https://devforum.roblox.com/t/tool-6d-tool-animation-compatibility-layer/2079783
+Vote: 3-0 (merged from 2 unanimous claims)
+
+### [high] Channel separation is official doctrine: C0/C1 is the static-placement channel (applies immediately, serializes, replicates) and Transform is the animation channel — Roblox explicitly recommends animating via Transform rather than C0/C1, and when an Animator exists it overwrites Motor6D.Transform every frame (after RunService.PreAnimation, before PreSimulation, applied as a deferred batch immediately before physics). Consequences: manual Luau posing of the weapon joint gets stomped unless written in the correct frame window (community consensus: bind to Stepped/PreSimulation), while edit-mode grip alignment belongs in C0/C1.
+
+Evidence: Motor6D docs verbatim: 'It is recommended to use this property [Transform] for custom animations rather than C0 and C1'; 'Motor6D.Transform will usually be overwritten every frame by the Animator after RunService.PreAnimation and before RunService.PreSimulation'; 'transforms are not applied immediately, unlike updating C0 and C1, but rather as a batch in a parallel job after RunService.PreSimulation, immediately before physics steps.' A staff-acknowledged engine-bug thread shows the Animator overrides Transform even with NO animation playing, strengthening the 'stomp' risk. Merges claims 9 and 10 (both 3-0).
+
+Sources: https://create.roblox.com/docs/reference/engine/classes/Motor6D, https://devforum.roblox.com/t/2444010, https://devforum.roblox.com/t/2156012
+Vote: 3-0 (merged from 2 unanimous claims)
+
+### [high] Replication is the top migration risk and has two hard rules: (1) Motor6D.Transform is tagged Hidden + NotReplicated, so the weapon joint's animated pose never crosses the network as a property — weapon motion replicates only by playing the animation on each peer (Animator playback replication) or by replicating C0/C1; (2) the weld-to-Motor6D swap must be performed SERVER-SIDE — a LocalScript swap fails in live play (no Motor6D appears under the arm, the tool floats detached), empirically confirmed in-thread when moving the swap to a server Script fixed it, and consistent with client→server instance-replication rules.
+
+Evidence: Motor6D docs tag Transform [Hidden, NotReplicated]. Engine-bug thread 'Motor6D Movement Does Not Replicate From Server To Client' and replication Q&A threads confirm Transform never replicates; recommended channels are per-peer playback or RemoteEvents/C0-C1. The RightGrip-swap thread OP: 'no motor6d named rightgrip and the tool is floating in the air... WAIT. Its cuz im doing it client sided' — with in-thread confirmation that a server Script resolved it. (Client-side Motor6Ds remain legitimate for local-only FPS viewmodels — a different use case.) Merges claims 8 and 19 (both 3-0).
+
+Sources: https://create.roblox.com/docs/reference/engine/classes/Motor6D, https://devforum.roblox.com/t/how-to-replace-rightgrip-with-a-motor6d/2060194, https://devforum.roblox.com/t/178374, https://devforum.roblox.com/t/2156012
+Vote: 3-0 (merged from 2 unanimous claims)
+
+### [high] The Avatar Joint Upgrade makes AnimationConstraint mandatory design surface: AnimationConstraint is the official REPLACEMENT for Motor6D in R15 player rigs — with AvatarJointUpgrade enabled (default for new experiences, and per the May 2026 Phase 2 announcement now auto-applied to ALL games left at 'Default', with Phase 3 forced migration targeted end of 2026) player characters spawn with AnimationConstraints (plus BallSocketConstraints) instead of Motor6Ds. IsKinematic is the physics switch: true = connected parts follow the animated Transform perfectly with no physics participation (Motor6D-equivalent); false = parts follow the animated trajectory via forces/torques capped by MaxForce/MaxTorque (the documented mechanism for ragdoll and 'arm strength' physical weapon behavior), further tunable since June 2026 via Angular/LinearStrength and Damping. Any weapon-joint architecture on live R15 characters must account for AnimationConstraint rigs, not just Motor6D.
+
+Evidence: API docs verbatim: 'AnimationConstraint is the replacement for Motor6D in R15 player character rigs. When AvatarJointUpgrade is enabled (the default for new experiences), player characters spawn with AnimationConstraints instead of Motor6Ds'; IsKinematic: 'When true, the connected parts follow the Transform perfectly without participating in physics simulation. When false, the connected parts follow the trajectory using forces and torques limited by MaxForce and MaxTorque.' Official AJU Phase 2 announcement (May 27, 2026) confirms Default now maps to Enabled for all games. Motor6D docs now carry a 'Superseded by AnimationConstraint' notice. Known quirks: kinematic-mode replication bug reports (devforum 4524824, 4509683). Merges claims 5 and 6 (both 3-0).
+
+Sources: https://create.roblox.com/docs/reference/engine/classes/AnimationConstraint#IsKinematic, https://devforum.roblox.com/t/4656414, https://robloxapi.github.io/ref/class/AnimationConstraint.html
+Vote: 3-0 (merged from 2 unanimous claims)
+
+### [high] IKControl is the official, fully Luau-drivable path for two-handed grips and arm-follows-weapon posing: it procedurally adds IK outside the Animation Editor, MUST be a child of a Humanoid or AnimationController that has an Animator, and requires four properties — Type, EndEffector, Target, ChainRoot. EndEffector is a BasePart/Bone in the rig (must be a descendant of ChainRoot, e.g. LeftHand under ChainRoot LeftUpperArm); Target can be ANYTHING with a world position — BasePart, Attachment, Bone, or Motor6D are explicitly enumerated — so an off-hand IKControl targeting a weapon-mounted Semantic_Grip Attachment is a documented first-party pattern, not a hack. IKControls can be created and edited programmatically, via the Explorer, and live during a Play test (the docs' own quick-test recipe uses an Attachment target in a playtest), supporting both edit-mode grip preview and runtime adjustment.
+
+Evidence: Guide verbatim: 'You can use an IKControl to procedurally add IK to your character rigs outside of the Animation Editor'; 'You can add and edit IKControl programmatically or directly through the Explorer. You can even add and make changes to IKControl during a Play test.' API reference verbatim: 'IKControls must be a child of a Humanoid or AnimationController with an Animator'; Target 'can be anything that has a position in the world, such as BasePart, Attachment, Bone, or Motor6D'; EndEffector 'must be a descendant of ChainRoot.' The official class code sample creates an IKControl at runtime from Luau with an Attachment target. Merges claims 2, 3, 4 (all 3-0).
+
+Sources: https://create.roblox.com/docs/animation/inverse-kinematics, https://create.roblox.com/docs/reference/engine/classes/IKControl
+Vote: 3-0 (merged from 3 unanimous claims)
+
+### [high] The C0/C1 authoring invariant is the formal core of a T-pose-first doctrine: the weapon joint's C0/C1 at runtime must EXACTLY match the C0/C1 that were on the rig when the animations were authored, or the tool plays back mis-oriented ('slanted or messed up') — because Animator-driven Transform is relative to the joint's rest configuration, any runtime C0/C1 delta offsets every played pose by exactly that delta. Tool 6D operationalizes this by persisting C0_Offset/C1_Offset CFrame attributes on a per-motor Configuration so the runtime joint is reconstructed with authoring-time values — direct prior art for stamping frozen grip CFrames as attributes on the asset.
+
+Evidence: Tool 6D verbatim: 'If you edited the C0 and/or C1 values on the Motor6D when you made the original Animations, you'll need to set the C0_Offset and C1_Offset attributes to the same values on the Motor Configuration' — otherwise 'the Tool Grip might appear slanted or messed up.' Mechanically entailed by official Motor6D docs (Animator writes Transform each frame; C0/C1 define the rest frame the animation is relative to) and corroborated by multiple independent mis-oriented-tool-animation threads. Claim 17, 3-0. The 'T-pose-first' label is our interpretive synthesis of this invariant (the sources never say 'T-pose'), but the invariant itself is what a fixed neutral reference frame buys you.
+
+Sources: https://devforum.roblox.com/t/tool-6d-tool-animation-compatibility-layer/2079783, https://create.roblox.com/docs/reference/engine/classes/Motor6D, https://devforum.roblox.com/t/2392566, https://devforum.roblox.com/t/1237756
+Vote: 3-0
+
+### [medium] Placement precedes joint creation in the standard edit-mode authoring workflow: the weapon is first manually positioned/oriented against the limb on a neutral-posed rig, and THEN the animatable joint (Motor6D via Easy Weld's 'animatable' option / RigEdit) is created from the Handle to that limb — mechanically necessary because edit-mode weld plugins derive the new joint's C0/C1 from the parts' CURRENT relative CFrames, capturing the alignment at creation time. This is placement-first practice consistent with (but not explicitly named as) a T-pose-first doctrine.
+
+Evidence: Manual captions of the Moon Animator gun-rigging tutorial: 'insert the gun model into one of their limbs after you move and rotate it accordingly. Rig the handle to the limb afterwards' (with Easy Weld's animatable option = Motor6D). Corroborated by parallel weld-to-rig tutorials and by how Easy Weld/RigEdit compute C0/C1 from current relative CFrames. Vote 2-1; primary source is a small-channel YouTube tutorial, so graded medium despite mechanical corroboration — the 'doctrine' generalization rests on the body of Easy Weld/Moon Animator practice, not this single video.
+
+Sources: https://www.youtube.com/watch?v=FeGai6CiPLQ, https://devforum.roblox.com/t/how-to-animate-tool-parts-guns-knifes-etc/359484
+Vote: 2-1
+
+### [high] First-party prior art exists for semantic Attachment annotation of weapon geometry: Roblox's official Weapons Kit encodes weapon semantic points as named Attachment instances on the weapon's BaseParts — TipAttachment marks the projectile origin and HandleAttachment marks where the tool's handle is welded (alongside MuzzleFlash0/1, CasingEjectPoint, BoltMotorStart) — validating the pattern of stamping Semantic_Grip/Semantic_BladeTip Attachments and role tags on assets. However, NO prior art surfaced anywhere in the verified corpus for a programmatic validation/rejection layer (forbidden orientations, edge-direction checks, an object-level error handler that rejects invalid placement); that portion of our oracle design appears to be novel territory.
+
+Evidence: Docs verbatim: 'TipAttachment — Attachment whose position on the parent BasePart determines where bullets/projectiles come out. ... HandleAttachment — Attachment whose position on the parent BasePart determines where the tool's handle is welded.' Official, current (2026 footer), first-party. Claim 11, 3-0. Note: prior art covers the annotation PATTERN, not the kit's runtime script quality (community threads report script bugs), and the absence-of-prior-art observation for placement validation is a negative result from this research pass, not a verified claim.
+
+Sources: https://create.roblox.com/docs/resources/weapons-kit
+Vote: 3-0
+
+### [medium] RECOMMENDATION (synthesis, not a sourced claim): migrate the static-weld grip to a weapon-joint architecture in four moves. (1) Placement-first authoring: keep the existing Semantic_Grip frame alignment to place the weapon on a neutral/T-posed R15 rig in edit mode, THEN create the joint RightHand(Part0)→Handle(Part1) so C0/C1 capture the aligned grip; immediately stamp those C0/C1 as CFrame attributes on the asset (Tool 6D's C0_Offset/C1_Offset pattern) — this is the T-pose-first invariant that guarantees authored KeyframeSequences replay correctly. (2) KeyframeSequence channel: author weapon poses as a Pose named exactly after the Handle part nested under a Pose named 'RightHand'; treat the Handle's name as frozen API surface (Animator matches by part names, joint name irrelevant). (3) Runtime equip path: on the SERVER, on equip, construct the weapon joint from the stamped C0/C1 and neutralize the default RightGrip weld — but the exact RightGrip-handling recipe (RequiresHandle=false vs delete-in-Equipped vs copy-swap) must be empirically verified in our harness, because every specific recipe claim was refuted in adversarial verification; rely on Animator playback replication for motion (Transform is NotReplicated). (4) AJU dual-path: detect AnimationConstraint rigs (now Default-enabled for all games, forced by end of 2026) and either verify a plain Motor6D tool joint is still Animator-driven on an upgraded character or use an AnimationConstraint weapon joint (IsKinematic=true for held state; IsKinematic=false with MaxForce/MaxTorque for ragdoll drops/knockback). Layer IKControl on top for two-handed grips: EndEffector=LeftHand, ChainRoot=LeftUpperArm, Target=off-hand Semantic_Grip Attachment — valid in edit-mode preview, playtests, and runtime Luau. Top risks, in order: AnimationConstraint channel pickup for a non-rig weapon joint (unverified, and our own 2026-06-26 constraint-rig T-pose failure is a warning sign), RightGrip conflict handling (recipes refuted), C0/C1 drift breaking every authored animation, and Transform non-replication if any path bypasses Animator playback.
+
+Evidence: Derived by composing findings 1-9 above; every load-bearing mechanism (joint discovery scope, part-name pose matching, C0/C1 vs Transform channel split, NotReplicated Transform, server-side joint creation, AnimationConstraint replacement + IsKinematic, IKControl Attachment targets, C0/C1 authoring invariant, Weapons Kit attachment precedent) is individually 3-0 verified against primary sources. Confidence is medium because the composition itself — especially step 3's RightGrip handling and step 4's mixed-rig Animator pickup — includes steps whose specific recipes did not survive verification and require live-harness testing.
+
+Sources: https://create.roblox.com/docs/reference/engine/classes/Motor6D, https://roblox.github.io/avatar-evolution/api/class/Animator, https://create.roblox.com/docs/reference/engine/classes/AnimationConstraint#IsKinematic, https://create.roblox.com/docs/animation/inverse-kinematics, https://devforum.roblox.com/t/tool-6d-tool-animation-compatibility-layer/2079783, https://devforum.roblox.com/t/how-to-animate-tool-parts-guns-knifes-etc/359484, https://create.roblox.com/docs/resources/weapons-kit
+Vote: synthesis (composed from 3-0 findings; two steps flagged unverified)
+
+## Caveats
+
+- R
+- e
+- f
+- u
+- t
+- e
+- d
+- -
+- c
+- l
+- a
+- i
+- m
+-  
+- m
+- i
+- n
+- e
+- f
+- i
+- e
+- l
+- d
+- :
+-  
+- f
+- i
+- v
+- e
+-  
+- o
+- p
+- e
+- r
+- a
+- t
+- i
+- o
+- n
+- a
+- l
+- l
+- y
+-  
+- t
+- e
+- m
+- p
+- t
+- i
+- n
+- g
+-  
+- d
+- e
+- t
+- a
+- i
+- l
+- s
+-  
+- F
+- A
+- I
+- L
+- E
+- D
+-  
+- 3
+- -
+- v
+- o
+- t
+- e
+-  
+- v
+- e
+- r
+- i
+- f
+- i
+- c
+- a
+- t
+- i
+- o
+- n
+-  
+- a
+- n
+- d
+-  
+- m
+- u
+- s
+- t
+-  
+- n
+- o
+- t
+-  
+- b
+- e
+-  
+- b
+- u
+- i
+- l
+- t
+-  
+- o
+- n
+-  
+- w
+- i
+- t
+- h
+- o
+- u
+- t
+-  
+- l
+- i
+- v
+- e
+-  
+- t
+- e
+- s
+- t
+- i
+- n
+- g
+-  
+- —
+-  
+- (
+- a
+- )
+-  
+- t
+- h
+- e
+-  
+- s
+- t
+- a
+- n
+- d
+- a
+- r
+- d
+-  
+- c
+- h
+- a
+- r
+- a
+- c
+- t
+- e
+- r
+-  
+- a
+- n
+- i
+- m
+- a
+- t
+- i
+- o
+- n
+- -
+- r
+- e
+- p
+- l
+- i
+- c
+- a
+- t
+- i
+- o
+- n
+-  
+- r
+- u
+- l
+- e
+-  
+- +
+-  
+- 1
+- 0
+- -
+- t
+- r
+- a
+- c
+- k
+-  
+- c
+- a
+- p
+-  
+- a
+- s
+-  
+- a
+- p
+- p
+- l
+- i
+- e
+- d
+-  
+- t
+- o
+-  
+- w
+- e
+- a
+- p
+- o
+- n
+-  
+- j
+- o
+- i
+- n
+- t
+- s
+-  
+- (
+- 0
+- -
+- 3
+- )
+- ;
+-  
+- (
+- b
+- )
+-  
+- t
+- h
+- e
+-  
+- c
+- l
+- a
+- i
+- m
+-  
+- t
+- h
+- a
+- t
+-  
+- E
+- a
+- s
+- y
+-  
+- W
+- e
+- l
+- d
+-  
+- a
+- n
+- i
+- m
+- a
+- t
+- a
+- b
+- l
+- e
+-  
+- r
+- e
+- -
+- r
+- i
+- g
+- g
+- i
+- n
+- g
+-  
+- o
+- f
+-  
+- s
+- u
+- b
+- -
+- p
+- a
+- r
+- t
+- s
+-  
+- i
+- s
+-  
+- r
+- e
+- q
+- u
+- i
+- r
+- e
+- d
+-  
+- (
+- 1
+- -
+- 2
+- )
+- ;
+-  
+- (
+- c
+- )
+-  
+- t
+- h
+- e
+-  
+- R
+- e
+- q
+- u
+- i
+- r
+- e
+- s
+- H
+- a
+- n
+- d
+- l
+- e
+- =
+- f
+- a
+- l
+- s
+- e
+-  
+- r
+- e
+- q
+- u
+- i
+- r
+- e
+- m
+- e
+- n
+- t
+-  
+- t
+- o
+-  
+- a
+- v
+- o
+- i
+- d
+-  
+- R
+- i
+- g
+- h
+- t
+- G
+- r
+- i
+- p
+-  
+- c
+- o
+- n
+- f
+- l
+- i
+- c
+- t
+- s
+-  
+- (
+- 0
+- -
+- 3
+- )
+- ;
+-  
+- (
+- d
+- )
+-  
+- t
+- h
+- e
+-  
+- '
+- a
+- l
+- w
+- a
+- y
+- s
+- -
+- p
+- l
+- a
+- y
+- i
+- n
+- g
+-  
+- i
+- d
+- l
+- e
+-  
+- n
+- e
+- e
+- d
+- e
+- d
+-  
+- t
+- o
+-  
+- h
+- o
+- l
+- d
+-  
+- c
+- a
+- r
+- r
+- y
+-  
+- p
+- o
+- s
+- e
+-  
+- /
+-  
+- a
+- n
+- i
+- m
+- a
+- t
+- e
+- d
+-  
+- p
+- a
+- r
+- t
+-  
+- c
+- a
+- n
+- n
+- o
+- t
+-  
+- b
+- e
+-  
+- n
+- a
+- m
+- e
+- d
+-  
+- H
+- a
+- n
+- d
+- l
+- e
+-  
+- /
+-  
+- p
+- r
+- i
+- o
+- r
+- i
+- t
+- y
+- -
+- l
+- a
+- y
+- e
+- r
+- i
+- n
+- g
+- '
+-  
+- r
+- e
+- c
+- i
+- p
+- e
+-  
+- (
+- 0
+- -
+- 3
+- )
+- ;
+-  
+- (
+- e
+- )
+-  
+- t
+- h
+- e
+-  
+- '
+- c
+- o
+- p
+- y
+-  
+- e
+- x
+- a
+- c
+- t
+-  
+- P
+- a
+- r
+- t
+- 0
+- /
+- P
+- a
+- r
+- t
+- 1
+- /
+- C
+- 0
+- /
+- C
+- 1
+- ,
+-  
+- k
+- e
+- e
+- p
+-  
+- t
+- h
+- e
+-  
+- n
+- a
+- m
+- e
+-  
+- R
+- i
+- g
+- h
+- t
+- G
+- r
+- i
+- p
+- ,
+-  
+- p
+- a
+- r
+- e
+- n
+- t
+-  
+- u
+- n
+- d
+- e
+- r
+-  
+- t
+- h
+- e
+-  
+- a
+- r
+- m
+- ,
+-  
+- i
+- n
+- s
+- i
+- d
+- e
+-  
+- E
+- q
+- u
+- i
+- p
+- p
+- e
+- d
+- '
+-  
+- s
+- w
+- a
+- p
+-  
+- r
+- e
+- c
+- i
+- p
+- e
+-  
+- (
+- 1
+- -
+- 2
+- )
+- .
+-  
+- T
+- h
+- e
+-  
+- w
+- e
+- a
+- p
+- o
+- n
+- -
+- j
+- o
+- i
+- n
+- t
+-  
+- T
+- E
+- C
+- H
+- N
+- I
+- Q
+- U
+- E
+-  
+- i
+- s
+-  
+- u
+- n
+- a
+- n
+- i
+- m
+- o
+- u
+- s
+- ;
+-  
+- t
+- h
+- e
+-  
+- e
+- q
+- u
+- i
+- p
+- -
+- l
+- i
+- f
+- e
+- c
+- y
+- c
+- l
+- e
+-  
+- D
+- E
+- T
+- A
+- I
+- L
+- S
+-  
+- a
+- r
+- e
+-  
+- n
+- o
+- t
+- ,
+-  
+- a
+- n
+- d
+-  
+- o
+- u
+- r
+-  
+- r
+- u
+- n
+- t
+- i
+- m
+- e
+-  
+- p
+- a
+- t
+- h
+-  
+- m
+- u
+- s
+- t
+-  
+- b
+- e
+-  
+- v
+- e
+- r
+- i
+- f
+- i
+- e
+- d
+-  
+- e
+- m
+- p
+- i
+- r
+- i
+- c
+- a
+- l
+- l
+- y
+- .
+-  
+- T
+- i
+- m
+- e
+- -
+- s
+- e
+- n
+- s
+- i
+- t
+- i
+- v
+- i
+- t
+- y
+-  
+- i
+- s
+-  
+- a
+- c
+- u
+- t
+- e
+- :
+-  
+- t
+- h
+- e
+-  
+- A
+- v
+- a
+- t
+- a
+- r
+-  
+- J
+- o
+- i
+- n
+- t
+-  
+- U
+- p
+- g
+- r
+- a
+- d
+- e
+-  
+- P
+- h
+- a
+- s
+- e
+-  
+- 2
+-  
+- (
+- M
+- a
+- y
+-  
+- 2
+- 0
+- 2
+- 6
+- )
+-  
+- a
+- l
+- r
+- e
+- a
+- d
+- y
+-  
+- f
+- l
+- i
+- p
+- p
+- e
+- d
+-  
+- '
+- D
+- e
+- f
+- a
+- u
+- l
+- t
+- '
+-  
+- t
+- o
+-  
+- e
+- n
+- a
+- b
+- l
+- e
+- d
+-  
+- f
+- o
+- r
+-  
+- A
+- L
+- L
+-  
+- g
+- a
+- m
+- e
+- s
+-  
+- a
+- n
+- d
+-  
+- P
+- h
+- a
+- s
+- e
+-  
+- 3
+-  
+- f
+- o
+- r
+- c
+- e
+- s
+-  
+- m
+- i
+- g
+- r
+- a
+- t
+- i
+- o
+- n
+-  
+- a
+- r
+- o
+- u
+- n
+- d
+-  
+- e
+- n
+- d
+-  
+- o
+- f
+-  
+- 2
+- 0
+- 2
+- 6
+- ,
+-  
+- w
+- h
+- i
+- l
+- e
+-  
+- M
+- o
+- t
+- o
+- r
+- 6
+- D
+-  
+- i
+- s
+-  
+- f
+- o
+- r
+- m
+- a
+- l
+- l
+- y
+-  
+- '
+- S
+- u
+- p
+- e
+- r
+- s
+- e
+- d
+- e
+- d
+-  
+- b
+- y
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- i
+- o
+- n
+- C
+- o
+- n
+- s
+- t
+- r
+- a
+- i
+- n
+- t
+- '
+-  
+- —
+-  
+- e
+- v
+- e
+- r
+- y
+-  
+- f
+- o
+- r
+- u
+- m
+-  
+- t
+- u
+- t
+- o
+- r
+- i
+- a
+- l
+-  
+- c
+- i
+- t
+- e
+- d
+-  
+- (
+- 2
+- 0
+- 1
+- 9
+- -
+- 2
+- 0
+- 2
+- 5
+- )
+-  
+- p
+- r
+- e
+- d
+- a
+- t
+- e
+- s
+-  
+- t
+- h
+- i
+- s
+-  
+- a
+- n
+- d
+-  
+- d
+- e
+- s
+- c
+- r
+- i
+- b
+- e
+- s
+-  
+- M
+- o
+- t
+- o
+- r
+- 6
+- D
+- -
+- e
+- r
+- a
+-  
+- b
+- e
+- h
+- a
+- v
+- i
+- o
+- r
+- ;
+-  
+- a
+- d
+- d
+- i
+- t
+- i
+- o
+- n
+- a
+- l
+- l
+- y
+-  
+- t
+- h
+- e
+-  
+- J
+- u
+- n
+- e
+-  
+- 2
+- 0
+- 2
+- 6
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- i
+- o
+- n
+- C
+- o
+- n
+- s
+- t
+- r
+- a
+- i
+- n
+- t
+-  
+- c
+- o
+- n
+- t
+- r
+- o
+- l
+- l
+- e
+- r
+-  
+- r
+- e
+- w
+- r
+- i
+- t
+- e
+-  
+- (
+- s
+- o
+- f
+- t
+- -
+- c
+- o
+- n
+- s
+- t
+- r
+- a
+- i
+- n
+- t
+-  
+- S
+- t
+- r
+- e
+- n
+- g
+- t
+- h
+- /
+- D
+- a
+- m
+- p
+- i
+- n
+- g
+-  
+- m
+- o
+- d
+- e
+- l
+- )
+-  
+- c
+- h
+- a
+- n
+- g
+- e
+- d
+-  
+- n
+- o
+- n
+- -
+- k
+- i
+- n
+- e
+- m
+- a
+- t
+- i
+- c
+-  
+- t
+- u
+- n
+- i
+- n
+- g
+- .
+-  
+- S
+- o
+- u
+- r
+- c
+- e
+- -
+- s
+- t
+- r
+- e
+- n
+- g
+- t
+- h
+-  
+- g
+- r
+- a
+- d
+- i
+- e
+- n
+- t
+- :
+-  
+- o
+- f
+- f
+- i
+- c
+- i
+- a
+- l
+-  
+- e
+- n
+- g
+- i
+- n
+- e
+-  
+- d
+- o
+- c
+- s
+-  
+- b
+- a
+- c
+- k
+-  
+- a
+- l
+- l
+-  
+- m
+- e
+- c
+- h
+- a
+- n
+- i
+- s
+- m
+-  
+- c
+- l
+- a
+- i
+- m
+- s
+-  
+- (
+- h
+- i
+- g
+- h
+- )
+- ,
+-  
+- b
+- u
+- t
+-  
+- c
+- o
+- m
+- m
+- u
+- n
+- i
+- t
+- y
+- -
+- p
+- r
+- a
+- c
+- t
+- i
+- c
+- e
+-  
+- c
+- l
+- a
+- i
+- m
+- s
+-  
+- r
+- e
+- s
+- t
+-  
+- o
+- n
+-  
+- D
+- e
+- v
+- F
+- o
+- r
+- u
+- m
+-  
+- t
+- h
+- r
+- e
+- a
+- d
+- s
+-  
+- (
+- a
+- p
+- p
+- r
+- o
+- p
+- r
+- i
+- a
+- t
+- e
+-  
+- f
+- o
+- r
+-  
+- p
+- r
+- a
+- c
+- t
+- i
+- c
+- e
+- ,
+-  
+- s
+- t
+- i
+- l
+- l
+-  
+- s
+- e
+- c
+- o
+- n
+- d
+- a
+- r
+- y
+- )
+- ,
+-  
+- t
+- h
+- e
+-  
+- p
+- l
+- a
+- c
+- e
+- m
+- e
+- n
+- t
+- -
+- f
+- i
+- r
+- s
+- t
+-  
+- w
+- o
+- r
+- k
+- f
+- l
+- o
+- w
+-  
+- r
+- e
+- s
+- t
+- s
+-  
+- o
+- n
+-  
+- o
+- n
+- e
+-  
+- s
+- m
+- a
+- l
+- l
+-  
+- Y
+- o
+- u
+- T
+- u
+- b
+- e
+-  
+- t
+- u
+- t
+- o
+- r
+- i
+- a
+- l
+-  
+- (
+- 2
+- -
+- 1
+-  
+- v
+- o
+- t
+- e
+- )
+- ,
+-  
+- a
+- n
+- d
+-  
+- t
+- h
+- e
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- o
+- r
+-  
+- p
+- a
+- r
+- t
+- -
+- n
+- a
+- m
+- e
+-  
+- m
+- a
+- t
+- c
+- h
+- i
+- n
+- g
+-  
+- p
+- a
+- r
+- a
+- g
+- r
+- a
+- p
+- h
+-  
+- a
+- p
+- p
+- e
+- a
+- r
+- s
+-  
+- o
+- n
+-  
+- t
+- h
+- e
+-  
+- a
+- v
+- a
+- t
+- a
+- r
+- -
+- e
+- v
+- o
+- l
+- u
+- t
+- i
+- o
+- n
+-  
+- d
+- o
+- c
+- s
+-  
+- s
+- i
+- t
+- e
+-  
+- r
+- a
+- t
+- h
+- e
+- r
+-  
+- t
+- h
+- a
+- n
+-  
+- t
+- h
+- e
+-  
+- c
+- u
+- r
+- r
+- e
+- n
+- t
+-  
+- c
+- r
+- e
+- a
+- t
+- e
+- .
+- r
+- o
+- b
+- l
+- o
+- x
+- .
+- c
+- o
+- m
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- o
+- r
+-  
+- p
+- a
+- g
+- e
+- .
+-  
+- K
+- n
+- o
+- w
+- n
+-  
+- e
+- n
+- g
+- i
+- n
+- e
+-  
+- q
+- u
+- i
+- r
+- k
+- s
+-  
+- t
+- h
+- a
+- t
+-  
+- c
+- o
+- u
+- l
+- d
+-  
+- b
+- i
+- t
+- e
+-  
+- t
+- h
+- e
+-  
+- m
+- i
+- g
+- r
+- a
+- t
+- i
+- o
+- n
+- :
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- i
+- o
+- n
+- C
+- o
+- n
+- s
+- t
+- r
+- a
+- i
+- n
+- t
+-  
+- k
+- i
+- n
+- e
+- m
+- a
+- t
+- i
+- c
+- -
+- m
+- o
+- d
+- e
+-  
+- r
+- e
+- p
+- l
+- i
+- c
+- a
+- t
+- i
+- o
+- n
+-  
+- b
+- u
+- g
+- s
+-  
+- (
+- d
+- e
+- v
+- f
+- o
+- r
+- u
+- m
+-  
+- 4
+- 5
+- 2
+- 4
+- 8
+- 2
+- 4
+- ,
+-  
+- 4
+- 5
+- 0
+- 9
+- 6
+- 8
+- 3
+- )
+- ,
+-  
+- s
+- e
+- r
+- v
+- e
+- r
+- -
+- s
+- i
+- d
+- e
+-  
+- C
+- 0
+- /
+- C
+- 1
+-  
+- e
+- d
+- i
+- t
+- s
+-  
+- o
+- c
+- c
+- a
+- s
+- i
+- o
+- n
+- a
+- l
+- l
+- y
+-  
+- n
+- o
+- t
+-  
+- r
+- e
+- p
+- l
+- i
+- c
+- a
+- t
+- i
+- n
+- g
+-  
+- v
+- i
+- s
+- u
+- a
+- l
+- l
+- y
+-  
+- (
+- d
+- e
+- v
+- f
+- o
+- r
+- u
+- m
+-  
+- 1
+- 4
+- 1
+- 2
+- 1
+- 6
+- 7
+- )
+- ,
+-  
+- a
+- n
+- d
+-  
+- t
+- h
+- e
+-  
+- A
+- n
+- i
+- m
+- a
+- t
+- o
+- r
+-  
+- o
+- v
+- e
+- r
+- w
+- r
+- i
+- t
+- i
+- n
+- g
+-  
+- M
+- o
+- t
+- o
+- r
+- 6
+- D
+- .
+- T
+- r
+- a
+- n
+- s
+- f
+- o
+- r
+- m
+-  
+- e
+- v
+- e
+- n
+-  
+- w
+- i
+- t
+- h
+-  
+- n
+- o
+-  
+- a
+- n
+- i
+- m
+- a
+- t
+- i
+- o
+- n
+-  
+- p
+- l
+- a
+- y
+- i
+- n
+- g
+-  
+- (
+- d
+- e
+- v
+- f
+- o
+- r
+- u
+- m
+-  
+- 2
+- 4
+- 4
+- 4
+- 0
+- 1
+- 0
+- ,
+-  
+- s
+- t
+- a
+- f
+- f
+- -
+- a
+- c
+- k
+- n
+- o
+- w
+- l
+- e
+- d
+- g
+- e
+- d
+- )
+- .
+-  
+- F
+- i
+- n
+- a
+- l
+- l
+- y
+- ,
+-  
+- '
+- T
+- -
+- p
+- o
+- s
+- e
+- -
+- f
+- i
+- r
+- s
+- t
+- '
+-  
+- a
+- s
+-  
+- a
+-  
+- n
+- a
+- m
+- e
+- d
+-  
+- p
+- r
+- o
+- f
+- e
+- s
+- s
+- i
+- o
+- n
+- a
+- l
+-  
+- d
+- o
+- c
+- t
+- r
+- i
+- n
+- e
+-  
+- w
+- a
+- s
+-  
+- n
+- e
+- v
+- e
+- r
+-  
+- f
+- o
+- u
+- n
+- d
+-  
+- v
+- e
+- r
+- b
+- a
+- t
+- i
+- m
+-  
+- i
+- n
+-  
+- a
+- n
+- y
+-  
+- s
+- o
+- u
+- r
+- c
+- e
+-  
+- —
+-  
+- i
+- t
+-  
+- i
+- s
+-  
+- o
+- u
+- r
+-  
+- i
+- n
+- t
+- e
+- r
+- p
+- r
+- e
+- t
+- i
+- v
+- e
+-  
+- l
+- a
+- b
+- e
+- l
+-  
+- f
+- o
+- r
+-  
+- t
+- h
+- e
+-  
+- w
+- e
+- l
+- l
+- -
+- v
+- e
+- r
+- i
+- f
+- i
+- e
+- d
+-  
+- C
+- 0
+- /
+- C
+- 1
+-  
+- a
+- u
+- t
+- h
+- o
+- r
+- i
+- n
+- g
+- -
+- t
+- i
+- m
+- e
+-  
+- i
+- n
+- v
+- a
+- r
+- i
+- a
+- n
+- t
+-  
+- p
+- l
+- u
+- s
+-  
+- p
+- l
+- a
+- c
+- e
+- m
+- e
+- n
+- t
+- -
+- b
+- e
+- f
+- o
+- r
+- e
+- -
+- j
+- o
+- i
+- n
+- t
+-  
+- p
+- r
+- a
+- c
+- t
+- i
+- c
+- e
+- .
+
+## Open questions
+
+- Does the Animator on an Avatar-Joint-Upgrade (AnimationConstraint) character still drive a plain Motor6D added for a weapon joint (mixed-rig pickup), or must the weapon joint itself be an AnimationConstraint — and does our 2026-06-26 observed Motor6D-channel T-pose failure on constraint rigs extend to Tool-internal joints?
+- What is the correct, verified handling of the default RightGrip weld in the runtime equip path (RequiresHandle=false so no weld forms, vs destroying it in Equipped, vs a copy-swap) — every specific recipe was refuted in adversarial verification, so which one actually survives live-game replication and re-equip cycles?
+- How exactly does animation-playback replication behave for a weapon joint created server-side inside an equipped Tool (which peer's Animator owns playback, does the standard character-descendant replication rule apply, and is there a replicated-track cap) — the specific replication-rule claim failed verification 0-3?
+- Do KeyframeSequences authored against a Motor6D weapon joint play back identically on an AnimationConstraint weapon joint with the same Part0/Part1 part names (is pose matching joint-class-agnostic), and does IsKinematic=false during playback distort authored weapon flourishes?
+
+## Refuted claims
+
+- {"claim": "Animation replication for a weapon joint follows the standard character rule: animations started by a player replicate to other clients only if the Animator is a descendant of that player's Character; animations started from LocalScripts on other Animators play locally only, and there is a cap of 10 unique replicated playing animations at once.", "vote": "0-3", "source": "https://roblox.github.io/avatar-evolution/api/class/Animator"}
+- {"claim": "Movable weapon sub-parts (bolt, magazine, bullets) must have their static welds deleted and be re-rigged to the Handle with the Easy Weld plugin's 'animatable' option enabled, which is what gives each moving part its own animatable channel in Moon Animator \u2014 static welds do not animate.", "vote": "1-2", "source": "https://www.youtube.com/watch?v=FeGai6CiPLQ"}
+- {"claim": "The technique requires disabling the Tool's default handle behavior (RequiresHandle off) so the engine's automatic RightGrip weld does not conflict with the custom Motor6D controlling the weapon.", "vote": "0-3", "source": "https://devforum.roblox.com/t/how-to-animate-tool-parts-guns-knifes-etc/359484"}
+- {"claim": "Once the grip weld is replaced by a Motor6D, an always-playing idle animation is required to hold the weapon's carry pose \u2014 otherwise the Motor6D returns the tool part to its origin C0/C1 \u2014 and tool animations must be layered by priority (idle at Action, swings at Action2+); additionally the Tool must have RequiresHandle disabled and the animated part cannot be named 'Handle'.", "vote": "0-3", "source": "https://devforum.roblox.com/t/tool-6d-tool-animation-compatibility-layer/2079783"}
+- {"claim": "The community-standard technique for making a held Tool animatable is to swap the auto-generated RightGrip Weld for a Motor6D that copies the weld's exact Part0/Part1/C0/C1, keeps the name \"RightGrip\", is parented under the character's arm (the hand-side limb, not the tool), and destroys the original weld \u2014 done inside the tool.Equipped handler.", "vote": "1-2", "source": "https://devforum.roblox.com/t/how-to-replace-rightgrip-with-a-motor6d/2060194"}
