@@ -46,13 +46,14 @@ import exemplars
 import factory as factory_mod
 import forever as forever_mod
 import game as gamesync
+import sdk_loop
 import store as filestore
 from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
 _BRIDGE = agent_loop.BridgeCaller(STORE)
-LOOP = agent_loop.LoopRunner(_BRIDGE)
+LOOP = sdk_loop.select_loop_runner(_BRIDGE)  # STUDIO_AGENT_LOOP=sdk|legacy (default legacy)
 _CURRICULUM = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "factory", "curriculum.json"
 )

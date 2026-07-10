@@ -169,6 +169,14 @@ async def _aclose_quietly(stream):
         pass
 
 
+def select_loop_runner(bridge, env=None):
+    """STUDIO_AGENT_LOOP=sdk|legacy (default legacy until T2 signs off)."""
+    env = os.environ if env is None else env
+    if str(env.get("STUDIO_AGENT_LOOP", "legacy")).strip().lower() == "sdk":
+        return SdkLoopRunner(bridge)
+    return agent_loop.LoopRunner(bridge)
+
+
 def _looks_rate_limited(text):
     low = str(text).lower()
     if "out of extra usage" in low:

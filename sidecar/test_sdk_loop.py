@@ -352,6 +352,15 @@ def main():
                     defs9[0]["input_schema"].get("properties") == {}
                     and defs9[0]["input_schema"].get("type") == "object")
 
+    # --- runner selection flag ---
+    b = FakeBridge()
+    r_legacy = sdk_loop.select_loop_runner(b, {"STUDIO_AGENT_LOOP": "legacy"})
+    r_sdk = sdk_loop.select_loop_runner(b, {"STUDIO_AGENT_LOOP": "sdk"})
+    r_default = sdk_loop.select_loop_runner(b, {})
+    fails += _check("legacy flag -> LoopRunner", type(r_legacy) is sdk_loop.agent_loop.LoopRunner)
+    fails += _check("sdk flag -> SdkLoopRunner", type(r_sdk) is sdk_loop.SdkLoopRunner)
+    fails += _check("default is legacy until T2 passes", type(r_default) is sdk_loop.agent_loop.LoopRunner)
+
     print(("FAILURES: %d" % fails) if fails else "ALL PASS")
     return fails
 
