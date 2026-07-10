@@ -1,0 +1,34 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Rapier",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 22,
+   "reach": 7
+  },
+  "steps": [
+   "Parked StarterPack tools (none present); pulled rapier references (long thin blade, swept-hilt cage guard, long grip, rounded pommel)",
+   "generate_mesh rapier (~4-stud hand-weapon scale) -> capture_angles front/iso/top confirmed thin tapering blade + cage guard + pommel -> save_mesh (durable asset 135523287562740)",
+   "make_tool 'Rapier' with the MeshPart as Handle",
+   "Authored 3-keypose right-arm swing clip 'RapierUse' on AgentRig (windup 0s cocked back, thrust 0.28s extended forward, recover 0.7s) -> bind_animation use",
+   "grip_tool onto AgentRig (offset z1.4, rot rx-90) verified blade points forward out of fist; capture_animation front+iso confirmed clean arc, blade always away from body; restored Grip + reparented Tool",
+   "Moved Tool to StarterPack; bind_behavior 0.12/0.15/0.35; bind_hitbox damage 22 reach 7 cooldown 0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Rapier melee sword, distinct from staged scimitars/daggers/spears. Cube mesh (durable-saved, survives Play) with signature swept-hilt cage guard + thin thrusting blade at ~4-stud scale. Fast forward-thrust use clip bound (0.7s), grip+swing vision-verified from two angles (blade points forward, no body clip). Fast-swing state machine windup0.12/active0.15/cooldown0.35; short-reach(7)/moderate-damage(22) server-authoritative hitbox with 0.35s cooldown. Only skeleton-gizmo warnings in output (hidden after); no script errors."
+ },
+ "stagedAt": 1783237942.2411091,
+ "headless": true
+}

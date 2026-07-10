@@ -1,0 +1,38 @@
+{
+ "rung": "anim-idle-breathe",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Two-angle filmstrips + run_luau probe: 0-deg loop seam (frame6==frame1), subtle 3-6deg head-bow/torso-breathe/arm-sway, feet planted no slide, no clipping."
+ },
+ "reasons": [
+  "Loop seam numerically 0 deg: last keypose exactly re-snaps the first, filmstrip frame at 5.60s identical to 0.00s from both angles",
+  "Motion confined to a natural 3-6 deg breathing/weight-shift band across 16 posed joints, no foot-slide (feet counter-rotated 3 deg, no lateral base drift)",
+  "Reads as a gentle contemplative idle from front AND right angles: head bow + torso breathe + slight arm sway, no limb clipping",
+  "5 keyframes, loop=true, priority=Movement per config; all verified edit-mode without needing a playtest"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.AgentRig.AnimSaves.ContemplativeIdle",
+  "config": {
+   "clipName": "ContemplativeIdle",
+   "keyframeCount": 5,
+   "priority": "Movement"
+  },
+  "steps": [
+   "spawn_rig block R15, reset_pose",
+   "Keypose0 t=0: subtle grounded rest (Waist x-1, Neck x1, hips/ankles ±1 counter-rotated, shoulders ±4) — key all 8 breathing joints",
+   "Keypose1 t=1.4: inhale peak + weight shift left (Waist x-3 z2 chest rise, head lift, hips z3, ankles z-3 counter, shoulders ±6 sway)",
+   "Keypose2 t=2.8: exhale settled on left hip (Waist x1 z3, Neck x4 gaze down, hips z4, ankles z-4, shoulders ±3)",
+   "Keypose3 t=4.2: second inhale drifting back to center (Waist x-3, Neck x2, hips z2, ankles z-2, shoulders ±5)",
+   "Keypose4 t=5.6: re-snapshot exact keypose0 for seamless loop seam",
+   "Set Loop=true, Priority=Movement; capture_animation front+right — feet planted, gentle arc, frame1==last"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Contemplative breathing idle authored purely via Motor6D pose_joint rotations in a ~1-7 degree band. Two breath cycles with a slow weight-shift onto the left hip and a downward gaze at the settle, arms swaying subtly with the breath. Hips and ankles counter-rotated at every keypose to keep both feet planted (verified no foot-slide from front and side filmstrips). Loop closed by re-snapshotting the exact first keypose as the final keyframe at t=5.6 (=t=0), giving a seamless seam. All 8 animated joints keyed at every keyframe. Loop=true, Priority=Movement."
+ },
+ "stagedAt": 1783239155.714605,
+ "headless": true
+}

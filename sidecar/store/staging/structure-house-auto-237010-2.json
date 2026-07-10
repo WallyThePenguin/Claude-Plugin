@@ -1,0 +1,37 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "capture_angles (front/back/left/right/iso) read as a coherent Irish stone cottage: stone walls, mossy pitched gable roof w/ridge+overhang, red door+white trim, 3 white mullion windows, gable chimney+clay pot, human-scale door (6.9 studs)"
+ },
+ "reasons": [
+  "All brief-required parts present and legible from every angle: segmented stone walls, green thatch pitched roof with ridge cap and eave overhang, gable-end chimney with terracotta pot",
+  "Openings read correctly: red wood door with white trim framed by protruding trim, 3 white crossed-mullion multi-pane windows",
+  "Proportions match references and the 5-stud character (door ~6.9 studs, single-storey, roof ~equal to walls); gables render as clean triangles not fins",
+  "Material/colour coherence is strong (slate walls, moss-green roof, red door) and clears the above-generic building bar"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneCottage",
+  "config": {
+   "footprintStuds": 20,
+   "heightStuds": 13,
+   "style": "Irish-style stone cottage: slate masonry walls, mossy-thatch pitched gable roof with ridge cap + overhang, red wood door with white trim, white multi-pane crossed-mullion windows (3), gable-end chimney with clay pot"
+  },
+  "steps": [
+   "get_references('stone cottage with thatched roof') and noted signature features: rough stone walls, white multi-pane windows, red door, chimney, mossy pitched roof with rounded ridge",
+   "Built shell from Anchored primitives: 20x15 floor, front wall assembled as 9 segments around a 4x7 door gap + two 3.5x3.5 window gaps, solid back wall w/ 1 window, two full-height side walls",
+   "Built pitched roof: two angled slabs (~29deg) meeting at a ridge along X with 1.5-stud overhang, plus a ridge cap",
+   "Filled the two X-end gable triangles with paired WedgeParts (vertical face flush at wall, apex to ridge) after correcting wedge yaw via multi-angle capture (fins->clean gable)",
+   "Added details: red WoodPlanks door + white frame + knob, three glass windows with protruding white frames and crossed mullions, gable-end chimney with cap + clay pot",
+   "capture_angles front/back/left/iso vs reference each round: fixed misplaced gables and rebuilt door/window/chimney detail (initial detail pass rolled back on a Shape=nil error)"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Model of 52 anchored Parts/WedgeParts, PrimaryPart=Floor. Palette: stone 120/108/96 Slate, trim 240/238/232, red door 155/42/38, mossy roof 96/104/80 Grass. Doorway 3.6x6.9 fits the 5-stud char; single-story cottage silhouette matches Achill Island reference. Capture WORKED (not degraded) - verified all 4 sides + a focused 3/4 view; only caveat is a cool blue lighting cast from the scene atmosphere, geometry/materials all read clearly. Note for future: an error late in a build script rolls back the whole undo recording, so a stray Shape=nil wiped the first detail pass - split risky ops or verify children count after."
+ },
+ "stagedAt": 1783238709.3535218,
+ "headless": true
+}

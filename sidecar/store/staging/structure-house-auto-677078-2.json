@@ -1,0 +1,36 @@
+{
+ "rung": "structure-house",
+ "sabotage": false,
+ "status": "PASSED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "5-angle capture reads as a coherent whitewashed English stone cottage: cobblestone walls, terracotta gable roof, gable-end stone chimney with two flue pots, eave-side door w/lintel, windows present."
+ },
+ "reasons": [
+  "All brief-required parts present and correctly placed: rough-stone walls, steep terracotta gable roof, gable-end stone chimney with 2 flue pots, eave-side door with lintel hood, framed windows",
+  "Gables read as clean triangles with no protruding wedge fins; orientation correct from all sides",
+  "Proportion reads as a house at 5-stud character scale; textured materials + chimney pots + door hood clear the above-generic bar",
+  "Only minor weakness: eave windows read as thin slots and gable window as a plain opening, but do not break the cottage read"
+ ],
+ "artifactTrace": {
+  "path": "game.Workspace.StoneCottage",
+  "config": {
+   "footprintStuds": 24,
+   "heightStuds": 24,
+   "style": "Whitewashed English stone cottage: rough-cobblestone walls, steep terracotta gable roof, gable-end stone chimney with flue pots, dark-framed windows, 7-stud eave-side door"
+  },
+  "steps": [
+   "get_references('english stone cottage') and listed signature features: whitewash rough stone, steep terracotta pitched roof, gable-end chimney above ridge, small dark windows, eave-side door with hood",
+   "Built floor + 4 walls (Cobblestone, whitewash color) from primitives; front wall segmented (FrontLeft/Right/Lintel) to leave a real 4x7 door opening",
+   "Added two-plane pitched terracotta roof (Slate, tilted ~33.7deg) with overhang, plus mirrored WedgePart halves filling each gable end",
+   "Added stone gable-end chimney with cap + two flue pots, dark-framed multi-pane windows on long walls and gable ends, wooden door + hood + handle",
+   "capture_angles front/iso/left/right: caught inverted gable wedges reading as eave fins, swapped each half's yaw so full-height edge lands at ridge center, re-captured to confirm clean triangular gables"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Distinct concept vs prior houses: whitewashed cobblestone cottage with terracotta gable roof and a prominent end-gable stone chimney. Ridge runs along the 24-stud X axis; gable triangles built from mirrored WedgeParts (thin in X) tucked under a 27-stud overhanging roof. Front eave wall carries a genuine 4w x 7h door hole (character fits) via segmented panels + lintel; windows are dark-framed inset panes with stone sills. Materials: Cobblestone walls (whitewash), Slate roof (terracotta), stone chimney. Only rebuild needed was the gable wedge orientation (swap yaw so the full-height edge sits at the ridge)."
+ },
+ "stagedAt": 1783678826.0493603,
+ "headless": true
+}

@@ -1,0 +1,39 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Cutlass Handle is a MeshPart with empty MeshId and no mesh children; CreateEditableMesh fails and no weapon renders at its position — the blade never persisted, so it is invisible."
+ },
+ "reasons": [
+  "Handle.MeshId is empty and it has zero mesh children — the weapon renders no geometry (invisible) from every angle, failing 'must READ as the brief's weapon'",
+  "Wide edit-mode capture shows the rig on the spawn pad but NO weapon at Handle position (0,7.7,-8); the generated mesh was not save_mesh-persisted so it evaporated in the verify session",
+  "Blade orientation in-hand is impossible to judge because there is no visible blade — the required visual evidence is absent, not merely imperfect",
+  "Note: the Anims/use swing clip exists (4 keyframes), but an invisible weapon fails the visual-reading oracle regardless of animation or damage"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Cutlass",
+  "config": {
+   "windup": 0.15,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 22,
+   "reach": 6
+  },
+  "steps": [
+   "get_references('cutlass sword') → curved belly blade, brass knuckle-bow guard, ribbed grip, round pommel",
+   "generate_mesh Cube 'naval cutlass' at 4 studs; capture_angles front/left/right/iso — silhouette matches ref feature-by-feature",
+   "make_tool (single MeshPart Handle at hilt)",
+   "authored 4-keypose right-arm swing KeyframeSequence 'CutlassSwing' (windup→strike→follow→recover, 0.75s) directly via run_luau (add_keyframe blocked by a wedged ChangeHistory recording from save_mesh's error)",
+   "grip_tool onto AgentRig: offset y=-1.3, rot rx=180 → hilt in fist, blade up-and-out; capture_animation front+iso confirmed clean cross-body chop, blade never clips torso; restored rig, kept fitted grip, moved Tool to StarterPack",
+   "bind_animation use=CutlassSwing; bind_behavior 0.15/0.15/0.35; bind_hitbox damage=22 reach=6 cooldown=0.35"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Cutlass generated via Cube (3.1x4.0x0.9 studs, good hand scale), reference-verified from 4 angles. Toolified with hilt-as-Handle; grip fitted in a posed lab (rx=180, y=-1.3). Swing authored as a 4-pose right-arm KeyframeSequence (torso/legs free) and previewed in-hand from 2 angles — reads as a diagonal cross-body slash. Behavior: windup0.15/active0.15/cooldown0.35 (fast); hitbox: 22 dmg, 6-stud reach, 0.35 anti-spam cooldown. CAVEAT: save_mesh failed (tool's restore-stash exceeds a 200k-char engine limit; EditableMesh handle already consumed so manual re-persist impossible) — Handle is a session mesh that renders blank in Play, but the MeshPart instance persists so Handle/hitbox/behavior all function for VERIFY. add_keyframe was also blocked by a wedged recording left open by save_mesh's error, so the clip was built via run_luau instead."
+ },
+ "stagedAt": 1783677969.3806045,
+ "headless": true
+}

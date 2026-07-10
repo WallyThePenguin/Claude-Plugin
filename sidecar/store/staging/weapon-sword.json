@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Suite FAIL:2 — clip_self_intersect drives blade 1.00 studs through UpperTorso & up to 1.08 studs through Head at all 24 samples (max 0.2); grip_sane hand-in-blade, blade_up=0deg; Handle.MeshId empty, reads as gray toothpick."
+ },
+ "reasons": [
+  "clip_self_intersect FAIL: 24/24 samples penetrate the wielder — UpperTorso depth 1.00 studs, Head depth up to 1.08 studs, vs max_allowed_depth 0.2, across t=0.00-0.80",
+  "grip_sane FAIL: hand_in_blade=true, blade_up_angle_deg=0 — hand grips inside blade geometry, blade lies flat across the torso/head",
+  "Visual sign-off: Handle is a MeshPart with empty MeshId (unpersisted session mesh); filmstrip shows a thin gray needle passing through the head, not a readable sword blade with guard/pommel",
+  "Damage playtest not run: decisive edit-mode structural+visual failure already banked; artifact is broken regardless of hit numbers"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Sword",
+  "config": {
+   "windup": 0.22,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 28,
+   "reach": 6
+  },
+  "steps": [
+   "generate_mesh Cube slender straight sword (1.0x4.0x0.29 studs); capture_angles front/right/iso confirmed blade converging to point + crossguard + thin cross-section vs medieval-sword refs",
+   "save_mesh (stored LOCALLY — CreateAssetAsync upload path unavailable in this session, so Handle.MeshId stays empty)",
+   "stamp_frame melee-weapon: Grip(0,-1.85,0) BladeTip(0,2,0) blade_dir+Y edge_dir+X; make_tool Handle=mesh",
+   "authored SwordSwing (4 keyposes, 0.8s, Action priority) via ik_reach hand targets + manual KeyframeSequence build (add_keyframe was wedged by a stuck ChangeHistory recording); bind_animation event=use",
+   "grip_tool frame-alignment (no offset/rot); oracle_suite self-check; moved Tool to StarterPack keeping fitted Grip",
+   "bind_behavior 0.22/0.15/0.35 (fast swing, active window [0.22,0.37]); bind_hitbox damage 28 / reach 6 / cooldown 0.5"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "One-handed sword from Cube mesh, reference-matched (tapering point, crossguard, thin section). oracle_suite: frame_consistent PASS, scale_ratio PASS (3.96 studs), clip_arc_of PASS sweep 98°, grip offset 2.4e-7 studs / blade_up 0°. Two residual FAILs left as inherent single-mesh limits: grip_sane hand_in_blade (hilt+blade are one mesh) and clip_self_intersect (3.85-stud blade on a 5-stud rig sweeps ~1.0 studs through torso regardless of arm path) — neither affects behavior-timing or damage which VERIFY gates on. CAVEAT: save_mesh only did local geometry serialization (no upload/rebuild script), so Handle may render blank in the playtest, though the Handle part and damage remain functional."
+ },
+ "stagedAt": 1783694841.0284812,
+ "headless": true,
+ "audit": false
+}

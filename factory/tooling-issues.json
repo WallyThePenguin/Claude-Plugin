@@ -1,6 +1,17 @@
 {
  "issues": [
   {
+   "title": "add_keyframe wedged by a stuck ChangeHistory recording (stale recording open across the whole session)",
+   "symptom": "factory BUILD (weapon-sword, 2026-07-10) reported add_keyframe unusable - worked around via manual KeyframeSequence build; every bridge luau call warns [no undo recording: a stale recording is stuck open; changes applied unrecorded]",
+   "suspectFiles": [
+    "src/Tools/Animation.luau",
+    "src/DevBridge.luau"
+   ],
+   "repro": "leave a ChangeHistoryService recording open (e.g. a tool interrupted mid-recording), then call add_keyframe - it wedges; bridge luau shows the stale-recording warning on every call",
+   "seenCount": 1,
+   "lastSeenAt": 1783694930
+  },
+  {
    "title": "ORACLE BUG: grip_sane blind to blade-vs-arm penetration (human-caught suite-vs-eyes disagreement)",
    "symptom": "grip_sane PASS 0 studs / 0 deg while the capture (user screenshot, 2026-07-10) shows the blade embedded in the forearm at the hold pose - blade-role vs arm-part clearance is asserted nowhere and was not even a DECLARED blindspot",
    "suspectFiles": [
@@ -133,6 +144,38 @@
    "repro": "In EDIT mode, trigger a save_mesh failure (see above), then call add_keyframe on any rig \u2014 it fails because the prior recording was never closed.",
    "seenCount": 1,
    "lastSeenAt": 1783677988
+  },
+  {
+   "title": "ORACLE BUG: scale_ratio - suite vs capture disagree (weapon-sword)",
+   "symptom": "suite said: PASS longest_studs=3.600 (real blade geometry) | capture showed: Play renders a featureless bar, not a sculpted blade \u2014 mesh not persisted (MeshId empty); suite has no MeshId-non-empty/persistence check so it green-lit a non-persisted mesh",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau",
+    "src/Tools/Oracle.luau"
+   ],
+   "repro": "oracle_suite on game.StarterPack.Sword vs a full capture review (audit run, rung weapon-sword)",
+   "seenCount": 1,
+   "lastSeenAt": 1783696528
+  },
+  {
+   "title": "ORACLE BUG: grip_sane - suite vs capture disagree (weapon-sword)",
+   "symptom": "suite said: PASS blade_up_angle_deg=0 grip_offset_studs=0 on edit-session mesh | capture showed: in-Play the held item is a plain bar; grip geometry judged against a mesh that does not exist at runtime",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau",
+    "src/Tools/Oracle.luau"
+   ],
+   "repro": "oracle_suite on game.StarterPack.Sword vs a full capture review (audit run, rung weapon-sword)",
+   "seenCount": 1,
+   "lastSeenAt": 1783696528
+  },
+  {
+   "title": "save_mesh local-serialize path leaves Handle.MeshId empty",
+   "symptom": "Handle MeshPart MeshId=\"\" in edit \u2014 session-only EditableMesh never truly persisted; equipped tool renders as only a floating red marker with zero blade geometry in play",
+   "suspectFiles": [
+    "src/tools/save_mesh"
+   ],
+   "repro": "generate_mesh a prop, save_mesh it, then get_properties on the resulting MeshPart and observe MeshId is empty rather than an rbxassetid; equip in a playtest to see it render invisible",
+   "seenCount": 1,
+   "lastSeenAt": 1783697825
   }
  ]
 }

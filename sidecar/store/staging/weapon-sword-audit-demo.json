@@ -1,0 +1,42 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Timing oracle exact (echo [tool=Sword w=0.15 a=0.15 c=0.35]), but Handle.MeshId is blank so the blade renders as a featureless white bar in Play, not a sword."
+ },
+ "reasons": [
+  "Handle is a MeshPart with empty MeshId and no runtime re-apply script; in playtest_capture (front+profile) the blade renders as a plain featureless white/translucent bar (~3.6 studs) with only a pommel+BladeTip marker — the sculpted blade exists only in the edit EditableMesh session (save_mesh never persisted it), failing the visual brief.",
+  "Timing behavior PASSED: record echo names tool=Sword w=0.15 a=0.15 c=0.35 with states idle->windup(0.05)->active(0.21)->cooldown(0.31)->idle(0.68), windup ~0.16s / cooldown ~0.37s.",
+  "Oracle suite FAIL=0 PASS=6 UNKNOWN=2: scale_ratio 3.600 studs (ratio 0.80), grip_sane offset 0 studs, clip_arc sweep 67.4deg/path 4.85 studs; UNKNOWNs (frame_consistent, clip_self_intersect) both from un-stamped role:hilt+role:blade.",
+  "Damage UNVERIFIED not failed: dummy at (0,3.5,7) stayed outside reach 6 from spawn, no [TrainingDummy] HIT lines, and playtest_eval was unavailable (LoadStringEnabled off) so the character could not be repositioned to land a swing."
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Sword",
+  "config": {
+   "windup": 0.15,
+   "active": 0.15,
+   "cooldown": 0.35,
+   "damage": 25,
+   "reach": 6
+  },
+  "steps": [
+   "generate_mesh a slender arming sword (0.8x3.6x0.3), capture_angles front/right/iso vs reference [3] — round pommel, wrapped grip, straight quillons, tapering blade all present",
+   "save_mesh (local MeshContent+MeshData persist)",
+   "stamp_frame melee-weapon: Grip(0,1.3,0), BladeTip(0,-1.8,0), blade_dir(0,-1,0), edge_dir(1,0,0)",
+   "make_tool with body_geom as Handle",
+   "author 3-keypose right-arm SwordSwing clip (windup up-back / strike down-forward / recover, 0.65s), bind_animation event=use",
+   "grip_tool frame-aligned (no offset) then oracle_suite: fixed clip_arc_of by widening the arc to 67deg",
+   "restore: destroy edit welds, keep fitted Grip, move Tool to StarterPack",
+   "bind_behavior 0.15/0.15/0.35, bind_hitbox 25dmg/6-reach/0.4-cooldown"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "One-handed arming sword. Cube-generated slender blade mesh (3.6 studs, thin cross-section) persisted via save_mesh; MeshContent Opaque + MeshData rebuild (MeshId empty by design of local-persist, renders in edit). Semantic frame stamped before make_tool; grip_tool frame-alignment gave grip_offset 0.0 studs / blade_up 0.0deg. SwordSwing swing sweeps 67.4deg (>60 min) after widening windup elbow. Behavior fast-swing 0.15/0.15/0.35 (active window 0.15-0.30s); hitbox 25 dmg, 6-stud reach, 0.4s server cooldown. Note: an errant ChangeHistory flush (Cancel) undid the first tool build — rebuilt cleanly and avoided re-running it."
+ },
+ "stagedAt": 1783696529.9872224,
+ "headless": true,
+ "audit": true
+}

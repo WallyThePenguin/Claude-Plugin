@@ -1,0 +1,40 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "FAILED",
+ "gate": "clean",
+ "evidence": {
+  "summary": "Handle.MeshId is empty in edit (unpersisted session mesh); two play captures show equipped Gladius as only a floating red marker, no blade visible."
+ },
+ "reasons": [
+  "VISUAL FAIL: Handle MeshPart MeshId=\"\" in edit — session-only EditableMesh never save_mesh'd, so weapon renders invisible in play (2 play-client captures show equipped tool as just a floating red marker, zero blade geometry).",
+  "Oracle suite was 8/8 PASS (grip_offset 2.7e-7 studs, blade_up 0deg, blade_axis_dot 1.0, longest 4 studs, sweep 130.9deg, self-intersect []) and edit silhouette read as a proper ~4-stud tapering sword, so geometry/mechanics are sound — the defect is mesh persistence.",
+  "Timing oracle PASSED: record echo idle->windup(0.05)->active(0.16)->cooldown(0.33)->idle(0.59), spans ~0.11/0.17/0.26s consistent with config, [tool=Gladius w=0.12 a=0.15 c=0.3] matching build exactly.",
+  "Damage oracle not confirmable in-session (play-server loadstring/eval disabled + edit run_luau cannot reach the play character to position it in reach of TrainingDummy at 0,3.5,7); immaterial since the invisible-weapon defect is decisive."
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.15,
+   "cooldown": 0.3,
+   "damage": 28,
+   "reach": 6
+  },
+  "steps": [
+   "get_references 'Roman gladius' → noted: broad straight blade tapering to a triangular point, rounded wood guard, ribbed cylindrical grip, large spherical pommel",
+   "generate_mesh a gladius (0.71x4x0.72 studs, hand scale); save_mesh (local in-place serialize via MeshData StringValue); capture_angles front/right/iso/back — all read as gladius",
+   "stamp_frame melee-weapon (Grip, BladeTip, blade_dir +Y, edge_dir +X, roles hilt/blade) then make_tool with the mesh Handle",
+   "authored 3-keypose right-arm 'SwordSwing' (windup cocked→strike thrust @0.28s→recover, 0.7s) + bind_animation use",
+   "added BladeProxy part so blade role excludes the grip zone; frame-aligned grip_tool (Grip y=-2.4, hand just clear of mesh); oracle_suite 8/8 PASS",
+   "restored rig (removed AgentEditGrip weld, reset pose), moved Tool to StarterPack, bind_behavior 0.12/0.15/0.30, bind_hitbox 28dmg/6reach/0.4cd"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Roman gladius short-sword (distinct from prior scimitar/dagger/spear rungs). Cube-generated mesh: broad blade→sharp point, dark rounded guard, ribbed bone grip, spherical pommel; persisted via save_mesh local serialization (renders in edit; MeshId empty by that path's design). Semantic frame stamped pre-make_tool; grip via frame alignment. oracle_suite melee-weapon: 8 PASS / 0 FAIL — grip_offset 0.0 studs (2.7e-7), blade_up_angle 0.0°, clip sweep 130.9°, self-intersect 0. Active window [0.12,0.27]s brackets the strike keyframe. StarterPack was empty so nothing parked."
+ },
+ "stagedAt": 1783697808.5434701,
+ "headless": true,
+ "audit": false
+}
