@@ -401,7 +401,9 @@ class FactoryRunner:
         if audit:
             result["audit"] = True
             oa = verify.get("oracleAudit")
-            dis = (oa.get("disagreements") if isinstance(oa, dict) else None) or []
+            dis = oa.get("disagreements") if isinstance(oa, dict) else None
+            if not isinstance(dis, list):
+                dis = []  # a single-object (or junk) shape from the model must not crash the audit
             bugs = []
             for item in dis[:8]:
                 if not isinstance(item, dict) or not item.get("check"):

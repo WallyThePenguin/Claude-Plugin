@@ -390,6 +390,26 @@ def main():
     titles = [i.get("title", "") for i in filed.get("issues", [])]
     fails += _check("disagreement filed as ORACLE BUG", any(t.startswith("ORACLE BUG:") and "grip_sane" in t for t in titles))
 
+    # audit run with a malformed disagreements shape (single object, not an array — a common
+    # model JSON error): filing is best-effort and must NEVER fail the run — STAGE still happens
+    bad_verdict = dict(audit_verdict)
+    bad_verdict["oracleAudit"] = {"disagreements": {
+        "check": "grip_sane", "suiteSaid": "PASS 0.3 deg", "captureShowed": "blade points into forearm",
+    }}
+    loop = FakeLoop([
+        {"state": "done", "result": build_line()},
+        {"state": "done", "result": "FACTORY_VERIFY_JSON: " + json.dumps(bad_verdict)},
+    ])
+    bridge = FakeBridge({"GetAttributes": GATE_CLEAN, "FactoryStaging": STAGE_OK})
+    store = {}
+    tooling3 = os.path.join(tempfile.mkdtemp(), "tooling-issues.json")
+    r = _runner(loop, bridge, store, tooling_path=tooling3)
+    r.start("weapon-spear", staging_id=audit_tok)
+    st = _wait(r)
+    fails += _check("malformed disagreements never fails the run", st.get("state") == "done" and st.get("status") == "PASSED")
+    fails += _check("malformed disagreements still stages", ("staging", audit_tok) in store)
+    fails += _check("malformed disagreements files nothing", not os.path.exists(tooling3))
+
     # non-audit run: no AUDIT MODE, nothing filed
     loop = FakeLoop([
         {"state": "done", "result": build_line()},
