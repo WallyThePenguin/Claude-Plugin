@@ -335,6 +335,24 @@ def main():
     luau = factory._gate_luau("game.StarterPack.Spear")
     fails += _check("gate luau references reserved prefix", "StudioAgentTest_" in luau and "TestAutoKill" in luau)
 
+    # --- _learned_block renders [tier] prefixes + the symbolic-only prompt rule (SP2b) ---
+    d = tempfile.mkdtemp()
+    old_dir = factory.LEARNINGS_DIR
+    factory.LEARNINGS_DIR = d
+    try:
+        with open(os.path.join(d, "factory-methods.json"), "w", encoding="utf-8") as fh:
+            json.dump({"category": "factory-methods", "seq": 2, "entries": [
+                {"id": 1, "text": "untagged legacy lesson", "localId": 1},
+                {"id": 2, "text": "suite before capture", "tier": "capture-confirmed", "localId": 2},
+            ]}, fh)
+        block = factory._learned_block("melee-weapon")
+        fails += _check("learned block renders tier prefix", "- [capture-confirmed] suite before capture" in block)
+        fails += _check("legacy lesson renders untagged", "- untagged legacy lesson" in block)
+        fails += _check("learned block states the symbolic-only rule",
+                        "symbolic-only" in block and "NEVER cite" in block)
+    finally:
+        factory.LEARNINGS_DIR = old_dir
+
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
     sys.exit(1 if fails else 0)
 

@@ -64,15 +64,20 @@ def _learned_block(family) -> str:
         except (OSError, ValueError):
             continue
         for e in entries[-count:]:
-            t = str((e or {}).get("text") or "").strip()
-            if t:
-                picks.append(t)
+            e = e if isinstance(e, dict) else {}
+            t = str(e.get("text") or "").strip()
+            if not t:
+                continue
+            tier = e.get("tier")
+            picks.append((f"[{tier}] " if tier else "") + t)
     if not picks:
         return ""
     return (
         "LEARNED METHODS (banked from past cycles - apply these FIRST):\n"
         + "\n".join("- " + t for t in picks)
-        + "\n\n"
+        + "\nTier rule: a [symbolic-only] lesson is an unconfirmed hypothesis from oracle "
+        "numbers alone - try it, but NEVER cite it as settled method; [capture-confirmed] and "
+        "then [playtest-confirmed] carry increasing weight. Untagged lessons predate tiers.\n\n"
     )
 
 # Reserved symbols that block extraction (kept in sync with the workflow's GATE).

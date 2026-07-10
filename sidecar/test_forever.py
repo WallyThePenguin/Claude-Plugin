@@ -310,6 +310,33 @@ def main():
     fails += _check("unproven mechanic fully reverted", session.reverted_uncommitted and session.reverted_commits)
     fails += _check("mechanic status recorded", st.get("mechanicRuns") == 1 and st["mechanicLast"]["fixed"] is False)
 
+    # --- RETRO verification tiers (SP2b): dict lessons carry tier; legacy strings default ---
+    fac = FakeFactory("PASSED")
+    loop = FakeLoop([
+        retro_result(lessons=[
+            {"text": "measure grip via oracle_suite before any capture", "tier": "capture-confirmed"},
+            "legacy bare-string lesson",
+            {"text": "bogus tier is coerced", "tier": "gospel"},
+            {"text": "   ", "tier": "playtest-confirmed"},  # blank text dropped
+        ]),
+        proposals_result([]),
+    ])
+    r, _ = _runner(fac, loop)
+    r.start(cycles=1)
+    _wait(r)
+    data = json.load(open(r._learnings_path))
+    entries = data.get("entries", [])
+    by_text = {e["text"]: e for e in entries}
+    fails += _check("tiered lesson stored with tier",
+                    by_text.get("measure grip via oracle_suite before any capture", {}).get("tier") == "capture-confirmed")
+    fails += _check("legacy bare string defaults symbolic-only",
+                    by_text.get("legacy bare-string lesson", {}).get("tier") == "symbolic-only")
+    fails += _check("invalid tier coerced symbolic-only",
+                    by_text.get("bogus tier is coerced", {}).get("tier") == "symbolic-only")
+    fails += _check("blank tiered lesson dropped", len(entries) == 3)
+    fails += _check("retro prompt asks for tier objects",
+                    any('"tier":"symbolic-only|capture-confirmed|playtest-confirmed"' in p for p in loop.prompts))
+
     # --- proven mechanic fix is committed (backstop) + regression auto-reverts it ---
     class SeqFactory(FakeFactory):
         def __init__(self, seq):

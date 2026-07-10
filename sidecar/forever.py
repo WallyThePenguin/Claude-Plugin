@@ -49,6 +49,27 @@ MAX_PROPOSALS_PER_CYCLE = 3
 MAX_TOTAL_PROPOSALS = 40
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
+LESSON_TIERS = ("symbolic-only", "capture-confirmed", "playtest-confirmed")
+
+
+def _normalize_lessons(raw):
+    """RETRO methodLessons -> [{'text','tier'}]. Accepts {text,tier} objects AND legacy bare
+    strings; an unlabeled or unknown tier is coerced to symbolic-only (an unlabeled lesson is
+    never settled method)."""
+    out = []
+    for lesson in raw or []:
+        if isinstance(lesson, str):
+            text, tier = lesson, "symbolic-only"
+        elif isinstance(lesson, dict):
+            text = str(lesson.get("text") or "")
+            tier = lesson.get("tier") if lesson.get("tier") in LESSON_TIERS else "symbolic-only"
+        else:
+            continue
+        text = text.strip()
+        if text:
+            out.append({"text": text, "tier": tier})
+    return out
+
 
 class ForeverError(ValueError):
     """Client error — maps to HTTP 400/409."""
@@ -391,9 +412,7 @@ class ForeverRunner:
         try:
             text = self._wait_loop_text(self._retro_prompt(rung, fam, fres), RETRO_MAX_ITER)
             retro = _parse_last_obj(RETRO_JSON_RE, text or "")
-            lessons = [
-                l for l in (retro.get("methodLessons") or []) if isinstance(l, str) and l.strip()
-            ]
+            lessons = _normalize_lessons(retro.get("methodLessons"))
             issues = [
                 i for i in (retro.get("toolingIssues") or [])
                 if isinstance(i, dict) and i.get("title")
@@ -403,7 +422,7 @@ class ForeverRunner:
             with self._lock:
                 self._status["lessonsAdded"] = int(self._status.get("lessonsAdded") or 0) + n
             for lesson in lessons[:2]:
-                self._narrate(f"retro lesson: {lesson}")
+                self._narrate(f"retro lesson [{lesson['tier']}]: {lesson['text']}")
             for issue in issues:
                 self._narrate(f"retro: tooling defect filed - {issue.get('title')}", warn=True)
             return issues
@@ -429,19 +448,26 @@ class ForeverRunner:
             "From the record ALONE (no tools - answer in ONE message), report:\n"
             "1. METHOD LESSONS: 0-2 durable one-sentence rules that would make FUTURE cycles work "
             "better (procedure/technique: 'measure X in edit before Y', 'verify Z without a "
-            "playtest by ...'). NOT brief restatements, NOT one-off facts.\n"
+            "playtest by ...'). NOT brief restatements, NOT one-off facts. Each lesson is an "
+            "OBJECT with a VERIFICATION TIER naming the strongest evidence in THIS record backing "
+            "it: 'playtest-confirmed' (observed live in a playtest), 'capture-confirmed' (seen in "
+            "captures/filmstrips), 'symbolic-only' (oracle magnitudes or reasoning alone - an "
+            "unproven hypothesis). When unsure, use symbolic-only.\n"
             "2. TOOLING ISSUES: defects in the FACTORY'S OWN MACHINERY that the record shows (a "
             "tool erroring, a wedge, evidence impossible to gather) - NOT content-quality "
             "problems. Empty lists are fine - do not invent.\n\n"
             "Your message must be ONLY this line:\n"
-            'FACTORY_RETRO_JSON: {"methodLessons":["..."],"toolingIssues":[{"title":"...",'
+            'FACTORY_RETRO_JSON: {"methodLessons":[{"text":"...",'
+            '"tier":"symbolic-only|capture-confirmed|playtest-confirmed"}],'
+            '"toolingIssues":[{"title":"...",'
             '"symptom":"<verbatim error/behaviour>","suspectFiles":["src/..."],'
             '"repro":"<how to reproduce in EDIT mode>"}]}'
         )
 
     def _append_method_lessons(self, lessons) -> int:
-        """Append deduped method lessons to the factory-methods learnings bucket (same schema as
-        the plugin's quality learnings). Capped; newest survive. Returns how many were added."""
+        """Append deduped tiered method lessons to the factory-methods learnings bucket (same
+        schema as the plugin's quality learnings, plus a verification tier per entry). Capped;
+        newest survive. Returns how many were added."""
         if not lessons:
             return 0
         try:
@@ -452,8 +478,8 @@ class ForeverRunner:
         entries = data.setdefault("entries", [])
         known = {e.get("text") for e in entries if isinstance(e, dict)}
         added = 0
-        for text in lessons:
-            t = str(text).strip()[:400]
+        for lesson in lessons:
+            t = str(lesson.get("text") or "").strip()[:400]
             if not t or t in known:
                 continue
             data["seq"] = int(data.get("seq") or 0) + 1
@@ -461,6 +487,7 @@ class ForeverRunner:
                 "bucket": "factory-methods",
                 "id": data["seq"],
                 "text": t,
+                "tier": lesson.get("tier") or "symbolic-only",
                 "localId": data["seq"],
                 "createdAt": int(time.time()),
             })
@@ -610,10 +637,10 @@ class ForeverRunner:
         self._narrate(
             f"regression after a mechanic change - auto-reverted commit {sha[:10]}", warn=True
         )
-        self._append_method_lessons([
+        self._append_method_lessons(_normalize_lessons([
             f"A mechanic change ({sha[:10]}) was auto-reverted after the next same-family cycle "
             "regressed - re-diagnose from scratch before re-attempting that fix."
-        ])
+        ]))
         self._last_mechanic_commit = None
 
     def _author_prompt(self) -> str:
