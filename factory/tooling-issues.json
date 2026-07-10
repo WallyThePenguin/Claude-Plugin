@@ -1,6 +1,15 @@
 {
  "issues": [
   {
+   "title": "ORACLE CATCH #1: joint_census flagged spawn_rig's fixture as a MIXED rig (15 Motor6D + 15 AnimationConstraint)",
+   "symptom": "oracle_check joint_census on workspace.AgentRig -> FAIL 'MIXED rig: 15 Motor6D + 15 AnimationConstraint (animations will half-play)' - the Avatar Joint Upgrade ships AnimationConstraints that NativeRig.buildJoints never stripped",
+   "suspectFiles": ["src/NativeRig.luau"],
+   "repro": "spawn_rig, then oracle_check {check:'joint_census', args:{rig:'game.Workspace.AgentRig'}} on a pre-fix build",
+   "seenCount": 1,
+   "lastSeenAt": 1783688978,
+   "resolution": "FIXED in SP2b T5: NativeRig.finish strips AnimationConstraints+BallSocketConstraints after buildJoints (the PlayBridge.convertToMotor6D pattern). joint_census stays STRICT - no constraints-inert nuance; a mixed rig is the T-pose trap class and must FAIL."
+  },
+  {
    "title": "Build stage completed without emitting FACTORY_BUILD_JSON and harness captured no partial output",
    "symptom": "\"status\": \"BLOCKED\", \"reason\": \"build produced no FACTORY_BUILD_JSON\" with buildSteps/buildNotes/verifyEvidence/verifyReasons all null",
    "suspectFiles": [],
@@ -79,6 +88,38 @@
    "repro": "Complete a build rung in a session where capture is unavailable; the verify stage terminates without emitting any pass/fail verdict or evidence",
    "seenCount": 1,
    "lastSeenAt": 1783177264
+  },
+  {
+   "title": "Verify stage emits no verdict",
+   "symptom": "\"status\":\"UNVERIFIED\",\"reason\":null with \"verifyEvidence\":null and \"verifyReasons\":[\"verify produced no verdict\"]",
+   "suspectFiles": [
+    "src/factory/verify",
+    "src/factory/stages/verify"
+   ],
+   "repro": "Run the factory verify stage on a completed weapon-sword rung in EDIT mode and observe it returns no verdict/evidence (verifyEvidence stays null) instead of a pass/fail.",
+   "seenCount": 1,
+   "lastSeenAt": 1783237952
+  },
+  {
+   "title": "save_mesh restore-stash exceeds 200k-char engine limit and consumes the mesh handle",
+   "symptom": "save_mesh failed (tool's restore-stash exceeds a 200k-char engine limit; EditableMesh handle already consumed so manual re-persist impossible) \u2014 Handle.MeshId is empty and it has zero mesh children",
+   "suspectFiles": [
+    "src/tools/save_mesh.luau"
+   ],
+   "repro": "In EDIT mode, generate_mesh a detailed Cube model (e.g. 'naval cutlass' at 4 studs) then call save_mesh on it; the stash serialization exceeds the 200k-char limit, errors, and leaves the MeshPart with an empty MeshId.",
+   "seenCount": 1,
+   "lastSeenAt": 1783677988
+  },
+  {
+   "title": "save_mesh error leaves a ChangeHistory recording wedged open, blocking add_keyframe",
+   "symptom": "add_keyframe was blocked by a wedged ChangeHistory recording left open by save_mesh's error, so the clip had to be built via run_luau instead",
+   "suspectFiles": [
+    "src/tools/save_mesh.luau",
+    "src/tools/add_keyframe.luau"
+   ],
+   "repro": "In EDIT mode, trigger a save_mesh failure (see above), then call add_keyframe on any rig \u2014 it fails because the prior recording was never closed.",
+   "seenCount": 1,
+   "lastSeenAt": 1783677988
   }
  ]
 }

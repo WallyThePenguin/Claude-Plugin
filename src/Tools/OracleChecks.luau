@@ -4,7 +4,6 @@
 -- validity, context, cost_ms} — raw magnitudes ride every result (never bare booleans);
 -- UNKNOWN never satisfies a suite (SP2 spec §2.1-2.5). Checks never throw: internal
 -- errors become UNKNOWN(internal).
-local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
 local Path = require(script.Parent.Path)
@@ -365,10 +364,11 @@ register("rig_channel_check", "EDIT_OK", "Clip {clip} joint names vs rig {rig} M
 	if rig == nil then
 		return unknown("rig not found")
 	end
+	local clipName = tostring(args.clip or "SwordSwing")
 	local saves = rig:FindFirstChild("AnimSaves")
-	local ks = if saves ~= nil then saves:FindFirstChild(tostring(args.clip or "AgentClip")) else nil
+	local ks = if saves ~= nil then saves:FindFirstChild(clipName) else nil
 	if ks == nil or not ks:IsA("KeyframeSequence") then
-		return unknown("clip not found under rig/AnimSaves: " .. tostring(args.clip))
+		return unknown("clip not found under rig/AnimSaves: " .. clipName)
 	end
 	local channels = {}
 	for _, d in rig:GetDescendants() do

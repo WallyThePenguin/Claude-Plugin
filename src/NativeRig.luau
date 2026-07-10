@@ -1,9 +1,11 @@
 --!strict
 -- NativeRig: spawn REAL native R15 rigs from code (no trusted asset). CreateHumanoidModelFromDescription
 -- gives a real R15 rig (15 MeshParts + RigAttachment pairs) but ZERO Motor6Ds; we build the 15 joints from
--- the attachment pairs (Humanoid:BuildRigFromAttachments does NOT — verified live). Then place on the
--- baseplate, anchor the root, and (block only) flat-color each part so poses read clearly in captures. The
--- Async spawns YIELD (web-backed) — call from a tool, not a tight loop. All mechanisms proven via the dev bridge.
+-- the attachment pairs (Humanoid:BuildRigFromAttachments does NOT — verified live), then strip the
+-- joint-upgrade AnimationConstraints/BallSocketConstraints (MIXED rigs half-play Motor6D clips —
+-- joint_census FAILs them). Then place on the baseplate, anchor the root, and (block only) flat-color each
+-- part so poses read clearly in captures. The Async spawns YIELD (web-backed) — call from a tool, not a
+-- tight loop. All mechanisms proven via the dev bridge.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -115,6 +117,15 @@ local function finish(model: Model, colored: boolean): Model
 	model.Name = "AgentRig"
 	model.Parent = Workspace
 	NativeRig.buildJoints(model)
+	-- Avatar Joint Upgrade rigs ship AnimationConstraints (+BallSocketConstraints) that override /
+	-- ignore the Motor6D animation channel — the T-pose trap joint_census caught live (oracle catch
+	-- #1). Strip them so spawn_rig yields a uniform CLASSIC Motor6D rig (same conversion PlayBridge
+	-- applies to play-mode characters).
+	for _, d in model:GetDescendants() do
+		if d:IsA("AnimationConstraint") or d:IsA("BallSocketConstraint") then
+			d:Destroy()
+		end
+	end
 	NativeRig.placeOnBaseplate(model)
 	NativeRig.anchorRoot(model)
 	if colored then

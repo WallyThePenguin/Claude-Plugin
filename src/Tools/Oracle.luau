@@ -47,9 +47,26 @@ local SUITES = {
 			"clip channel coverage when rig_channel_check is UNKNOWN",
 		},
 	},
+	["animation"] = {
+		-- target doubles as the rig path when no separate rig is given (animation rungs ARE rigs).
+		checks = function(target: string, rig: string?, clip: string?)
+			local r = rig or target
+			return {
+				{ check = "joint_census", args = { rig = r } },
+				{ check = "rig_channel_check", args = { rig = r, clip = clip } },
+			}
+		end,
+		notAsserted = {
+			"arc/timing/weight vs references (filmstrip judgment)",
+			"foot-slide and limb clipping (capture-only)",
+			"tip sweep / self-intersection without a gripped Tool (clip_arc_of needs Semantic_BladeTip)",
+			"animation under the runtime Animator with locomotion blending (PLAY_ONLY twin)",
+		},
+	},
 }
 
 local function runSuite(family: string, target: string, rig: string?, clip: string?): any
+	local clipName = clip or "SwordSwing"
 	local suite = SUITES[family]
 	if suite == nil then
 		local names = {}
@@ -61,7 +78,7 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 	local results = {}
 	local counts = { PASS = 0, FAIL = 0, UNKNOWN = 0 } :: { [string]: number }
 	local twin_pending: { string } = {}
-	for _, spec in suite.checks(target, rig, clip) do
+	for _, spec in suite.checks(target, rig, clipName) do
 		local r = OracleChecks.run(spec.check, spec.args)
 		table.insert(results, r)
 		counts[r.verdict] = (counts[r.verdict] or 0) + 1
@@ -194,7 +211,7 @@ Oracle.descriptors = {
 		name = "oracle_suite",
 		description = "Run the full oracle suite for a family against a target (and optional rig). Returns per-check "
 			.. "verdicts + magnitudes, counts, the frame's missing fields, and the BLINDSPOT MANIFEST (what was NOT "
-			.. "asserted — those items still need captures/rubric judgment). Families: melee-weapon.",
+			.. "asserted — those items still need captures/rubric judgment). Families: melee-weapon, animation.",
 		inputSchema = {
 			type = "object",
 			properties = {

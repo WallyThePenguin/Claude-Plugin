@@ -58,7 +58,7 @@ local DEFAULTS = {
 	-- Dev bridge (DevBridge.luau): lets Claude Code drive the plugin from the shell via the sidecar.
 	-- EDIT-only + localhost-only, so default-on (nothing to toggle); set false to disable.
 	devBridge = true,
-	devBridgePollInterval = 1.5, -- seconds between bridge poll ticks
+	devBridgePollInterval = 0.25, -- seconds between bridge poll ticks (0.25 = snappy tool round-trips; was 1.5)
 }
 
 -- Allowed models. Never Haiku.
