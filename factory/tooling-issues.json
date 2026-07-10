@@ -197,6 +197,16 @@
    "repro": "generate_mesh a prop, save_mesh it, then get_properties on the resulting MeshPart and observe MeshId is empty rather than an rbxassetid; equip in a playtest to see it render invisible",
    "seenCount": 1,
    "lastSeenAt": 1783697825
+  },
+  {
+   "title": "Build produced no FACTORY_BUILD_JSON before iteration cap",
+   "symptom": "build produced no FACTORY_BUILD_JSON; iteration cap reached \u2014 the work so far is applied; run again to continue",
+   "suspectFiles": [
+    "src/factory"
+   ],
+   "repro": "Run the weapon-sword rung; the grip-fitting loop consumes all iterations re-tilting the weld against a canonical grip_sane magnitude that never changes, so the cycle hits the iteration cap without ever emitting FACTORY_BUILD_JSON.",
+   "seenCount": 1,
+   "lastSeenAt": 1783700043
   }
  ]
 }

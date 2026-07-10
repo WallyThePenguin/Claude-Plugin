@@ -35,5 +35,8 @@ assets/reference/*.glb
 # Reference-image cache (downloaded study material, licenses vary - never ship)
 sidecar/refcache/
 
+# Docs-grounding cache (creator-docs clone + API dumps - re-fetched on demand)
+sidecar/docscache/
+
 # Sidecar-loop transcripts (JSONL run logs)
 sidecar/loops/
