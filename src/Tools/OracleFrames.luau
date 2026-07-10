@@ -65,7 +65,20 @@ function M.stamp(target: Instance, frame: any): (any, boolean)
 			table.insert(stamped, "point:" .. name)
 		end
 	end
-	local dirs = {}
+	local dirs: { [string]: any } = {}
+	-- Seed with the previously stored dirs so a partial re-stamp (e.g. only blade_dir)
+	-- preserves earlier entries; the new input dirs below merge OVER these.
+	local existingRaw = handle:GetAttribute(M.ATTR)
+	if type(existingRaw) == "string" then
+		local okOld, oldDecoded = pcall(function()
+			return HttpService:JSONDecode(existingRaw)
+		end)
+		if okOld and type(oldDecoded) == "table" and type(oldDecoded.dirs) == "table" then
+			for name, d in oldDecoded.dirs :: { [string]: any } do
+				dirs[name] = d
+			end
+		end
+	end
 	for _, name in schema.dirs do
 		local d = if type(frame.dirs) == "table" then frame.dirs[name] else nil
 		if type(d) == "table" then
@@ -133,8 +146,7 @@ function M.read(target: Instance): (any, string?)
 			frame.dirs[name] = vec(d)
 		end
 	end
-	local container: Instance = if handle.Parent ~= nil and handle.Parent:IsA("Tool") then handle.Parent else handle
-	local parts: { Instance } = if container:IsA("Tool") then container:GetDescendants() else { handle :: Instance }
+	local parts: { Instance } = if target:IsA("Model") or target:IsA("Tool") then target:GetDescendants() else { handle :: Instance }
 	for _, part in parts do
 		if part:IsA("BasePart") then
 			for _, tag in CollectionService:GetTags(part) do

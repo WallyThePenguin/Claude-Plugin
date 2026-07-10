@@ -5,6 +5,7 @@
 -- UNKNOWN never satisfies a suite (SP2 spec §2.1-2.5). Checks never throw: internal
 -- errors become UNKNOWN(internal).
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 
 local Path = require(script.Parent.Path)
 local OracleFrames = require(script.Parent.OracleFrames)
@@ -216,9 +217,13 @@ register("frame_consistent", "EDIT_OK", "Anti-lie layer (spec §2.6): declared f
 	-- blade long axis in HANDLE space
 	local mnL, mxL = nil, nil
 	for _, p in bladeParts do
-		local lp = handle.CFrame:PointToObjectSpace(p.Position)
-		local half = p.Size.Magnitude / 2
-		local lo, hi = lp - Vector3.one * half, lp + Vector3.one * half
+		local rel = handle.CFrame:ToObjectSpace(p.CFrame)
+		local s = p.Size / 2
+		local hx = math.abs(rel.RightVector.X) * s.X + math.abs(rel.UpVector.X) * s.Y + math.abs(rel.LookVector.X) * s.Z
+		local hy = math.abs(rel.RightVector.Y) * s.X + math.abs(rel.UpVector.Y) * s.Y + math.abs(rel.LookVector.Y) * s.Z
+		local hz = math.abs(rel.RightVector.Z) * s.X + math.abs(rel.UpVector.Z) * s.Y + math.abs(rel.LookVector.Z) * s.Z
+		local lp = rel.Position
+		local lo, hi = lp - Vector3.new(hx, hy, hz), lp + Vector3.new(hx, hy, hz)
 		mnL = if mnL == nil then lo else Vector3.new(math.min(mnL.X, lo.X), math.min(mnL.Y, lo.Y), math.min(mnL.Z, lo.Z))
 		mxL = if mxL == nil then hi else Vector3.new(math.max(mxL.X, hi.X), math.max(mxL.Y, hi.Y), math.max(mxL.Z, hi.Z))
 	end
@@ -391,11 +396,9 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 	end
 	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
 	local animator = if humanoid ~= nil then humanoid:FindFirstChildWhichIsA("Animator") else rig:FindFirstChildWhichIsA("Animator", true)
-	local createdAnimator = false
 	if animator == nil and humanoid ~= nil then
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
-		createdAnimator = true
 	end
 	if animator == nil then
 		return "rig has no Humanoid/Animator"
@@ -406,7 +409,10 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 			saved[d] = d.Transform
 		end
 	end
-	local id = AnimationClip.register(ks)
+	local id, rerr = AnimationClip.register(ks)
+	if id == nil then
+		return rerr or "clip registration failed"
+	end
 	local anim = Instance.new("Animation")
 	anim.AnimationId = id
 	local track = animator:LoadAnimation(anim)
@@ -423,15 +429,14 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 			local t = (i / math.max(1, samples - 1)) * track.Length
 			track.TimePosition = t
 			animator:StepAnimations(0)
+			-- part CFrames/attachment WorldPositions update on the next frame step (the live-verified capture pattern settles after StepAnimations)
+			RunService.Heartbeat:Wait()
 			visit(t)
 		end
 	end
 	track:Stop(0)
-	-- Only destroy an Animator this scrub created; a pre-existing one may carry live
-	-- tracks (a stopped weight-0 track lingering on it is benign).
-	if createdAnimator then
-		animator:Destroy()
-	end
+	-- destroy unconditionally: a stopped edit-mode track lingers and overrides manual poses (live-verified capture_animation pattern)
+	animator:Destroy()
 	for motor, transform in saved do
 		motor.Transform = transform
 	end

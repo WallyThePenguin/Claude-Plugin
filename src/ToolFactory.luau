@@ -176,12 +176,26 @@ function ToolFactory.applyGrip(tool: Tool, grip: CFrame)
 	end
 end
 
--- Frame-aware grip (SP2): when the Handle carries a Semantic_Grip attachment (+ blade_dir
--- in the SemanticFrame attribute), compute the Grip CFrame that aligns the declared grip
--- point to the palm with blade_dir along the hand's up axis — mis-grips become impossible
--- rather than merely detectable. Returns nil when the frame is absent (caller falls back
--- to offset/rot mode).
-function ToolFactory.gripFromFrame(tool: Tool): CFrame?
+-- Frame-aware grip (SP2): when the Handle carries a stamped semantic frame (Semantic_Grip
+-- attachment + SemanticFrame attribute from stamp_frame), compute the Grip CFrame that
+-- places the declared grip point in the palm with blade_dir along the hand's up axis —
+-- mis-grips become impossible rather than merely detectable. Returns nil when the frame
+-- is absent (caller falls back to offset/rot mode). The optional rig lets the math fold
+-- in the hand's RightGripAttachment rotation (stock R15: -90deg about X); without it the
+-- attachment rotation is assumed identity.
+local function rotFromTo(a: Vector3, b: Vector3): CFrame
+	local d = math.clamp(a:Dot(b), -1, 1)
+	if d > 0.9999 then
+		return CFrame.new()
+	end
+	if d < -0.9999 then
+		local axis = if math.abs(a.X) < 0.9 then a:Cross(Vector3.xAxis).Unit else a:Cross(Vector3.yAxis).Unit
+		return CFrame.fromAxisAngle(axis, math.pi)
+	end
+	return CFrame.fromAxisAngle(a:Cross(b).Unit, math.acos(d))
+end
+
+function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 	local handle = tool:FindFirstChild("Handle")
 	if handle == nil or not handle:IsA("BasePart") then
 		return nil
@@ -190,27 +204,33 @@ function ToolFactory.gripFromFrame(tool: Tool): CFrame?
 	if att == nil or not att:IsA("Attachment") then
 		return nil
 	end
-	local bladeDir = Vector3.yAxis
+	-- Only align when stamp_frame actually ran: the toolify candidate attachment alone
+	-- must stay passive (legacy identity-grip behavior otherwise).
 	local raw = handle:GetAttribute("SemanticFrame")
-	if type(raw) == "string" then
-		local ok, decoded = pcall(function()
-			return game:GetService("HttpService"):JSONDecode(raw)
-		end)
-		if ok and type(decoded) == "table" and type(decoded.dirs) == "table" and type(decoded.dirs.blade_dir) == "table" then
-			local d = decoded.dirs.blade_dir
-			local v = Vector3.new(tonumber(d.x) or 0, tonumber(d.y) or 0, tonumber(d.z) or 0)
-			if v.Magnitude > 1e-4 then
-				bladeDir = v.Unit
-			end
+	if type(raw) ~= "string" then
+		return nil
+	end
+	local okDecode, decoded = pcall(function()
+		return game:GetService("HttpService"):JSONDecode(raw)
+	end)
+	if not okDecode or type(decoded) ~= "table" or type(decoded.dirs) ~= "table" or type(decoded.dirs.blade_dir) ~= "table" then
+		return nil
+	end
+	local d = decoded.dirs.blade_dir
+	local blade = Vector3.new(tonumber(d.x) or 0, tonumber(d.y) or 0, tonumber(d.z) or 0)
+	if blade.Magnitude < 1e-4 then
+		return nil
+	end
+	blade = blade.Unit
+	local v = Vector3.yAxis
+	if rig ~= nil then
+		local hand = rig:FindFirstChild("RightHand", true)
+		local gripAtt = if hand ~= nil then hand:FindFirstChild("RightGripAttachment") else nil
+		if gripAtt ~= nil and gripAtt:IsA("Attachment") then
+			v = gripAtt.CFrame:VectorToObjectSpace(Vector3.yAxis)
 		end
 	end
-	-- Build the handle-space frame at the grip point with blade_dir as UP; Grip (weld C1) is
-	-- the handle-relative CFrame whose inverse places the handle in the hand: hand-up == blade up.
-	local up = bladeDir
-	local fwd = if math.abs(up:Dot(Vector3.zAxis)) < 0.9 then up:Cross(Vector3.zAxis).Unit else up:Cross(Vector3.xAxis).Unit
-	local right = up:Cross(fwd).Unit
-	fwd = right:Cross(up).Unit
-	return CFrame.fromMatrix(att.Position, right, up, -fwd)
+	return CFrame.new(att.Position) * rotFromTo(v, blade)
 end
 
 return ToolFactory

@@ -109,7 +109,7 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		return "grip_tool: " .. tostring(rerr), true
 	end
 	local theRig = rig :: Model
-	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool) else nil
+	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool, theRig) else nil
 	local grip = if frameGrip ~= nil then frameGrip else ToolFactory.gripCFrame(args.offset, args.rot)
 	local function doEquipGrip()
 		ToolFactory.equip(tool, theRig)
