@@ -388,6 +388,9 @@ def _sdk_session_factory(spec):
         setting_sources=[],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         cli_path=_resolve_cli_path(),
+        # T2 live find: the transport's default 1MB JSON read buffer dies on base64 capture
+        # payloads (capture_angles = up to 6 full-res PNGs in ONE tool_result message).
+        max_buffer_size=32 * 1024 * 1024,
     )
 
     async def stream():
