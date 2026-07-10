@@ -1,11 +1,16 @@
 --!strict
 -- NativeRig: spawn REAL native R15 rigs from code (no trusted asset). CreateHumanoidModelFromDescription
--- gives a real R15 rig (15 MeshParts + RigAttachment pairs) but ZERO Motor6Ds; we build the 15 joints from
--- the attachment pairs (Humanoid:BuildRigFromAttachments does NOT — verified live), then strip the
--- joint-upgrade AnimationConstraints/BallSocketConstraints (MIXED rigs half-play Motor6D clips —
--- joint_census FAILs them). Then place on the baseplate, anchor the root, and (block only) flat-color each
--- part so poses read clearly in captures. The Async spawns YIELD (web-backed) — call from a tool, not a
--- tight loop. All mechanisms proven via the dev bridge.
+-- gives a real R15 rig (15 MeshParts + RigAttachment pairs) jointed with AnimationConstraints, NOT
+-- Motor6Ds — that is the documented Avatar Joint Upgrade default, not an engine quirk
+-- (create.roblox.com/docs/reference/engine/classes/AnimationConstraint: "Replaces Motor6D for Avatar
+-- rigs"). Our whole authoring stack (pose_joint/AnimationClip/scrubClip/joint_census) is Motor6D-typed
+-- (constraints fail IsA("Motor6D") and their C0/C1 are read-only aliases), so we CONVERT: build the 15
+-- Motor6Ds from the attachment pairs (Humanoid:BuildRigFromAttachments does NOT — verified live), then
+-- strip the AnimationConstraints/BallSocketConstraints (MIXED rigs half-play Motor6D clips —
+-- joint_census FAILs them). A constraints-NATIVE migration (docs' Phase 2; IsKinematic=false unlocks
+-- ragdoll/physical simulation) is a deliberate future project, not this module's job. Then place on the
+-- baseplate, anchor the root, and (block only) flat-color each part so poses read clearly in captures.
+-- The Async spawns YIELD (web-backed) — call from a tool, not a tight loop.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
