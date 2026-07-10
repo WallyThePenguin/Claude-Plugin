@@ -109,7 +109,8 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		return "grip_tool: " .. tostring(rerr), true
 	end
 	local theRig = rig :: Model
-	local grip = ToolFactory.gripCFrame(args.offset, args.rot)
+	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool) else nil
+	local grip = if frameGrip ~= nil then frameGrip else ToolFactory.gripCFrame(args.offset, args.rot)
 	local function doEquipGrip()
 		ToolFactory.equip(tool, theRig)
 		ToolFactory.applyGrip(tool, grip)
@@ -127,7 +128,7 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		"grip_tool: equipped '%s' on %s, grip set. Adjust offset/rot and re-call until it sits right.",
 		tool.Name,
 		theRig.Name
-	)
+	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "")
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
 	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)
@@ -181,7 +182,8 @@ Item.descriptors = {
 			.. "picks a Handle (a single Part, else the `handle` part, else the Model's PrimaryPart/first part), "
 			.. "unanchors all parts, welds the rest to the Handle, and names it 'Handle'. Inputs: target "
 			.. "(required path), name? (Tool name), handle? (path to the part to grip by). Then fit it in-hand "
-			.. "with grip_tool.",
+			.. "with grip_tool. Stamps a candidate Semantic_Grip at the Handle center if none exists — run "
+			.. "stamp_frame for the full semantic frame (family schema) before previewing.",
 		inputSchema = {
 			type = "object",
 			properties = {
@@ -204,7 +206,9 @@ Item.descriptors = {
 			.. "item and screenshots it. LOOK at the result and RE-CALL with adjusted offset/rot until the item "
 			.. "sits right in the fist (e.g. a sword's blade pointing out, gripped near the hilt). Inputs: tool "
 			.. "(required path, from make_tool), rig? (path; else the first workspace rig — spawn_rig first if "
-			.. "none), offset?, rot?. Requires the vision sidecar + a focused Studio.",
+			.. "none), offset?, rot?. Requires the vision sidecar + a focused Studio. When the tool carries a "
+			.. "Semantic_Grip frame (stamp_frame) and no offset/rot is given, the grip AUTO-ALIGNS to the "
+			.. "declared frame.",
 		inputSchema = {
 			type = "object",
 			properties = {

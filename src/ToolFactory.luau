@@ -85,6 +85,12 @@ function ToolFactory.toolify(
 	tool.CanBeDropped = true
 	handle.Anchored = false
 	handle.Name = "Handle"
+	if handle:FindFirstChild("Semantic_Grip") == nil then
+		local att = Instance.new("Attachment")
+		att.Name = "Semantic_Grip"
+		att.Position = Vector3.zero -- candidate: handle center; stamp_frame refines
+		att.Parent = handle
+	end
 	for _, p in parts do
 		if p ~= handle then
 			p.Anchored = false
@@ -168,6 +174,43 @@ function ToolFactory.applyGrip(tool: Tool, grip: CFrame)
 			weld.C1 = grip
 		end
 	end
+end
+
+-- Frame-aware grip (SP2): when the Handle carries a Semantic_Grip attachment (+ blade_dir
+-- in the SemanticFrame attribute), compute the Grip CFrame that aligns the declared grip
+-- point to the palm with blade_dir along the hand's up axis — mis-grips become impossible
+-- rather than merely detectable. Returns nil when the frame is absent (caller falls back
+-- to offset/rot mode).
+function ToolFactory.gripFromFrame(tool: Tool): CFrame?
+	local handle = tool:FindFirstChild("Handle")
+	if handle == nil or not handle:IsA("BasePart") then
+		return nil
+	end
+	local att = handle:FindFirstChild("Semantic_Grip")
+	if att == nil or not att:IsA("Attachment") then
+		return nil
+	end
+	local bladeDir = Vector3.yAxis
+	local raw = handle:GetAttribute("SemanticFrame")
+	if type(raw) == "string" then
+		local ok, decoded = pcall(function()
+			return game:GetService("HttpService"):JSONDecode(raw)
+		end)
+		if ok and type(decoded) == "table" and type(decoded.dirs) == "table" and type(decoded.dirs.blade_dir) == "table" then
+			local d = decoded.dirs.blade_dir
+			local v = Vector3.new(tonumber(d.x) or 0, tonumber(d.y) or 0, tonumber(d.z) or 0)
+			if v.Magnitude > 1e-4 then
+				bladeDir = v.Unit
+			end
+		end
+	end
+	-- Build the handle-space frame at the grip point with blade_dir as UP; Grip (weld C1) is
+	-- the handle-relative CFrame whose inverse places the handle in the hand: hand-up == blade up.
+	local up = bladeDir
+	local fwd = if math.abs(up:Dot(Vector3.zAxis)) < 0.9 then up:Cross(Vector3.zAxis).Unit else up:Cross(Vector3.xAxis).Unit
+	local right = up:Cross(fwd).Unit
+	fwd = right:Cross(up).Unit
+	return CFrame.fromMatrix(att.Position, right, up, -fwd)
 end
 
 return ToolFactory
