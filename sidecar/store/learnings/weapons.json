@@ -1,6 +1,6 @@
 {
  "category": "weapons",
- "seq": 3,
+ "seq": 4,
  "entries": [
   {
    "bucket": "weapons",
@@ -22,6 +22,13 @@
    "text": "Before judging a build of any real-world object, pull actual reference proportions first (exemplars or a web lookup) and compare feature-by-feature - judging the scimitar from memory shipped a disc guard and missed that scimitar-family hilts use cross quillons with a hooked/rounded pommel (kilij: yelman flare in the last 30% of the blade).",
    "localId": 3,
    "createdAt": 1783059595
+  },
+  {
+   "bucket": "weapons",
+   "id": 4,
+   "text": "FIT GRIPS AT T-POSE, VERIFY AT USE-POSES: fist-up is perpendicular to the arm only when the arm is horizontal - on a hanging arm it parallels the forearm bone, embedding a straight blade ~1.5 studs INSIDE the limb while grip offset/angle still read 0/0 (measured 2026-07-10). So: reset_pose to T-pose, grip_tool frame alignment, apply the ~15-25 deg forward cant, then check blade_in_arm_studs at the REST pose and clip_self_intersect across the swing - the fitting pose passing means nothing about the poses the weapon will actually be used in.",
+   "localId": 4,
+   "createdAt": 1783706498
   }
  ]
 }

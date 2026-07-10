@@ -1,21 +1,7 @@
 {
  "category": "factory-methods",
- "seq": 65,
+ "seq": 68,
  "entries": [
-  {
-   "bucket": "factory-methods",
-   "id": 26,
-   "text": "A mechanic change (4a6ff3b69f) was auto-reverted after the next same-family cycle regressed - re-diagnose from scratch before re-attempting that fix.",
-   "localId": 26,
-   "createdAt": 1783165501
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 27,
-   "text": "Rotated roof planes are sign-fragile: after placing them, assert numerically in edit that the ridge/center Y is HIGHER than the eave edges and that each plane's underside touches the wall-top Y (bbox/vertex probe), since raycast-through-the-door checks say nothing about roof orientation or seating.",
-   "localId": 27,
-   "createdAt": 1783165518
-  },
   {
    "bucket": "factory-methods",
    "id": 28,
@@ -283,6 +269,30 @@
    "tier": "capture-confirmed",
    "localId": 65,
    "createdAt": 1783697825
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 66,
+   "text": "grip_sane's blade_in_arm check measures Tool.Grip against a canonical reference pose, not the live weld, so re-tilting the weld cannot change it \u2014 treat that magnitude as fixed at grip-authoring time and don't iterate the weld to satisfy it.",
+   "tier": "symbolic-only",
+   "localId": 66,
+   "createdAt": 1783700043
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 67,
+   "text": "A straight ~3-stud blade held blade-up inherently overlaps the ~1.4-stud upper arm, so accept the hand_in_blade=false / grip_offset=0.0 passes as the meaningful grip signal rather than chasing a zero blade_in_arm.",
+   "tier": "symbolic-only",
+   "localId": 67,
+   "createdAt": 1783700043
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 68,
+   "text": "POSE IS A HIDDEN VARIABLE in every grip/attachment/clearance measurement: a check that passes at the fitting pose (T-pose) can fail at the use pose (hanging arm, swing). Always measure clearance at the pose(s) the asset will actually be USED in, and fit at a canonical neutral pose so the numbers are reproducible.",
+   "tier": "capture-confirmed",
+   "localId": 68,
+   "createdAt": 1783706498
   }
  ]
 }
