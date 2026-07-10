@@ -51,7 +51,7 @@ Checks never throw to the caller: internal errors → `UNKNOWN(internal: <msg>)`
 
 ## 6. Testing
 
-- Luau-side: checks are pure-ish functions over instances — tested via `run_luau` edit-context asserts driven by a new dependency-free script `sidecar/test_oracle.py`-style? No: Luau logic can't run without Studio. Testing = (a) `edit_script`-style compile gating on the new modules (existing pattern), (b) a scripted BRIDGE test battery `scripts/oracle-selftest.ps1` (or a `oracle_check {check:"__selftest"}` registry entry) that builds known-good and known-bad fixtures in the live place (correct sword, 90°-rotated grip, blade-through-torso pose, mixed rig) and asserts expected verdicts — run manually + by the acceptance demo.
+- Luau-side (cannot run outside Studio): (a) compile gating on the new modules via the existing hot-reload/compile-check path, (b) an in-registry `__selftest` check that builds known-good and known-bad fixtures in the live place (correct sword, 90°-rotated grip, blade-through-torso pose, mixed Motor6D/constraint rig), runs the relevant checks against each, asserts expected verdicts, and cleans up — invoked over the bridge (`oracle_check {check:"__selftest"}`) manually and by the acceptance demo.
 - Python-side: `sidecar/test_factory.py`/`test_forever.py` additions for tier parsing, audit-mode selection (run_token % 5), and prompt-assembly containing the oracle-first blocks. Dependency-free script style, as always.
 
 ## 7. Acceptance (the user's bar, verified live)
