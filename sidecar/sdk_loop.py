@@ -312,6 +312,20 @@ def _child_env(base_env):
     return env
 
 
+def _resolve_cli_path(env=None):
+    """The pip wheel's _bundled claude.exe can be absent on Windows (observed live in T2:
+    CLINotFoundError pointing at the bundled path), and the SDK prefers bundled over PATH.
+    Resolve explicitly: STUDIO_AGENT_CLAUDE_CLI override first, then the system CLI on PATH;
+    None lets the SDK fall back to its own resolution."""
+    env = os.environ if env is None else env
+    override = env.get("STUDIO_AGENT_CLAUDE_CLI")
+    if override:
+        return override
+    import shutil
+
+    return shutil.which("claude")
+
+
 def _sdk_session_factory(spec):
     """The only SDK-touching code. Maps our tool defs + spec into a query() stream and
     normalizes SDK messages to the event dicts _consume expects. Failure behavior per the
@@ -364,6 +378,7 @@ def _sdk_session_factory(spec):
         env=_child_env(os.environ),
         setting_sources=[],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        cli_path=_resolve_cli_path(),
     )
 
     async def stream():

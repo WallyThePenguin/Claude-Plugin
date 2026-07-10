@@ -347,6 +347,8 @@ def main():
     env2 = sdk_loop._child_env({"PATH": "p", "CLAUDE_CODE_OAUTH_TOKEN": "tok",
                                 "STUDIO_AGENT_SDK_BASE_URL": "http://proxy:1"})
     fails += _check("break-glass base url mapped", env2.get("ANTHROPIC_BASE_URL") == "http://proxy:1")
+    fails += _check("cli path env override wins",
+                    sdk_loop._resolve_cli_path({"STUDIO_AGENT_CLAUDE_CLI": "X:/claude.exe"}) == "X:/claude.exe")
 
     # --- schema normalization: no top-level "properties" would trip the SDK's _build_schema
     # verbatim-pass gate (needs "type" AND "properties") and get mangled as a {param: type} map ---
