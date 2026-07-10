@@ -391,9 +391,11 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 	end
 	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
 	local animator = if humanoid ~= nil then humanoid:FindFirstChildWhichIsA("Animator") else rig:FindFirstChildWhichIsA("Animator", true)
+	local createdAnimator = false
 	if animator == nil and humanoid ~= nil then
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
+		createdAnimator = true
 	end
 	if animator == nil then
 		return "rig has no Humanoid/Animator"
@@ -425,7 +427,11 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 		end
 	end
 	track:Stop(0)
-	animator:Destroy()
+	-- Only destroy an Animator this scrub created; a pre-existing one may carry live
+	-- tracks (a stopped weight-0 track lingering on it is benign).
+	if createdAnimator then
+		animator:Destroy()
+	end
 	for motor, transform in saved do
 		motor.Transform = transform
 	end
