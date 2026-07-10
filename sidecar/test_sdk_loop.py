@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 import tempfile
+import threading
 import time
 
 import sdk_loop
@@ -92,6 +93,7 @@ def main():
                     st["result"] == "all done\nFACTORY_BUILD_JSON: {\"ok\": true}")
     fails += _check("iteration counts assistant turns", st["iteration"] == 2)
     fails += _check("usage recorded", st.get("usage", {}).get("output_tokens") == 5)
+    fails += _check("cost merged into usage", st.get("usage", {}).get("total_cost_usd") == 0.0)
     spec = factory.captured[0]
     fails += _check("system prompt = describe instructions", spec["system_prompt"] == "BE EXCELLENT.")
     fails += _check("prompt passed through", spec["prompt"] == "build a part")
@@ -102,14 +104,23 @@ def main():
     fails += _check("narrated assistant text", any("working on it" in n for n in bridge.narrations))
 
     # --- double start raises ---
-    slow = fake_session([{"kind": "result", "subtype": "success", "result": "x", "usage": None, "total_cost_usd": None}])
-    r2 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=slow, loops_dir=tmp, sleep=lambda s: None)
+    gate = threading.Event()
+
+    def gated_factory(spec):
+        async def stream():
+            await asyncio.to_thread(gate.wait)
+            yield {"kind": "result", "subtype": "success", "result": "x", "usage": None, "total_cost_usd": None}
+
+        return stream()
+
+    r2 = sdk_loop.SdkLoopRunner(FakeBridge(), session_factory=gated_factory, loops_dir=tmp, sleep=lambda s: None)
     r2.start("one")
     try:
         r2.start("two")
         raised = False
     except sdk_loop.agent_loop.LoopError:
         raised = True
+    gate.set()
     _wait_done(r2)
     fails += _check("double start raises LoopError", raised)
 

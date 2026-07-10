@@ -12,12 +12,12 @@ event dicts; the real factory (_sdk_session_factory) is the only place that impo
 the SDK. Spec: docs/superpowers/specs/2026-07-10-sp1-agent-sdk-loop-swap-design.md
 """
 import asyncio
-import json
-import os
 import time
 
 import agent_loop
 
+# Mirrors the inline suffix in agent_loop._run_inner — agent_loop.py stays untouched during
+# SP1 (A/B + rollback integrity); unify when the legacy loop retires.
 ITERATION_CAP_SUFFIX = "\n(iteration cap reached — the work so far is applied; run again to continue)"
 
 
@@ -29,6 +29,8 @@ class SdkLoopRunner(agent_loop.LoopRunner):
         super().__init__(bridge, send_factory=lambda desc: None, loops_dir=loops_dir, sleep=sleep)
         self._session_factory = session_factory or _sdk_session_factory
 
+    # The describe/emit/fail block below deliberately duplicates agent_loop's (same rationale
+    # as the ITERATION_CAP_SUFFIX comment above: agent_loop.py stays untouched during SP1).
     def _run_inner(self, run_id, prompt, max_iterations, model, local_tools=None):
         write = self._transcript(run_id)
 
@@ -67,6 +69,7 @@ class SdkLoopRunner(agent_loop.LoopRunner):
 
         tool_defs = build_tool_defs(describe.get("tools") or [], self._bridge, local_tools, on_tool)
 
+        deadline = time.monotonic() + agent_loop.WALL_CLOCK_CAP
         while True:  # model-fallback retry loop (fresh session per attempt)
             spec = {
                 "prompt": prompt,
@@ -77,7 +80,7 @@ class SdkLoopRunner(agent_loop.LoopRunner):
                 "mechanic": bool(local_tools),
             }
             try:
-                outcome = asyncio.run(self._consume(spec, emit))
+                outcome = asyncio.run(self._consume(spec, emit, deadline))
             except Exception as exc:  # noqa: BLE001 — includes SDK/CLI process errors
                 text = repr(exc)
                 if _looks_rate_limited(text) and fallbacks:
@@ -92,10 +95,9 @@ class SdkLoopRunner(agent_loop.LoopRunner):
         self._set(state="done", result=outcome["result"], usage=outcome.get("usage"))
         emit("done", {"iterations": outcome["iterations"], "capped": outcome.get("capped", False)})
 
-    async def _consume(self, spec, emit):
+    async def _consume(self, spec, emit, deadline):
         """Drive one SDK session to completion under the wall clock. Returns
         {state, result, iterations, usage, capped} or {state:'error', error}."""
-        deadline = time.monotonic() + agent_loop.WALL_CLOCK_CAP
         stream = self._session_factory(spec)
         iterations = 0
         final_text = ""
@@ -113,6 +115,9 @@ class SdkLoopRunner(agent_loop.LoopRunner):
                 if ev["kind"] == "assistant":
                     iterations += 1
                     self._set(iteration=iterations, model=spec["model"])
+                    # tool_uses is informational-only in the event contract; toolCalls counting
+                    # rides the on_tool handler callback (exercised by Task 3 handler tests +
+                    # the T2 live run).
                     if ev.get("text"):
                         final_text = ev["text"]
                         emit("assistant_text", final_text)
@@ -129,6 +134,12 @@ class SdkLoopRunner(agent_loop.LoopRunner):
                     if not final_text and ev.get("result"):
                         final_text = str(ev["result"])
         except asyncio.TimeoutError:
+            # On 3.11+, asyncio.TimeoutError IS TimeoutError — a TimeoutError raised from INSIDE
+            # the SDK stream (e.g. an underlying HTTP read timeout) would land here too. Only
+            # classify as the wall-clock cap when the deadline has actually been reached;
+            # otherwise let it propagate as an sdk session error via the caller's except.
+            if deadline - time.monotonic() > 1.0:
+                raise
             await _aclose_quietly(stream)
             return {"state": "error", "error": f"wall-clock cap hit after {iterations} iterations"}
         result = final_text + (ITERATION_CAP_SUFFIX if capped else "")
@@ -154,7 +165,12 @@ async def _aclose_quietly(stream):
 
 def _looks_rate_limited(text):
     low = str(text).lower()
-    return "429" in low or "rate limit" in low or "rate_limit" in low or "cooling down" in low or "usage limit" in low
+    if "out of extra usage" in low:
+        # Subscription window exhausted, not a per-model cooldown — fail fast, never cycle
+        # fallback models (mirrors agent_loop.is_rate_limited + is_transient).
+        return False
+    # Token set to be calibrated against real SDK error strings during T2 (plan Task 7).
+    return "429" in low or "rate limit" in low or "rate_limit" in low or "cooling down" in low or "quota" in low
 
 
 def build_tool_defs(describe_tools, bridge, local_tools, on_tool):
