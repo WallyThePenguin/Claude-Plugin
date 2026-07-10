@@ -1,6 +1,6 @@
 """Docs-grounding channel: local clone of Roblox/creator-docs + the machine-readable API dump.
 
-ensure_docs() shallow-clones creator-docs into sidecar/docscache/creator-docs ONCE (no auto-pull:
+ensure_docs() sparse-clones creator-docs into sidecar/docscache/creator-docs ONCE (no auto-pull:
 the clone is grounding material, not a live mirror — refresh by deleting the directory).
 search() greps content/en-us/reference/engine/**/*.{yaml,md} then the rest of content/en-us/**/*.md,
 engine-reference hits ranked first. api_dump() caches the versioned Studio API dump; api_diff()
@@ -30,12 +30,41 @@ _ENGINE_REF = os.path.join(_EN_US, "reference", "engine")
 
 
 def ensure_docs(docs_root: str = DOCS_ROOT) -> str:
-    """Clone creator-docs (depth 1) if absent; an existing clone is left untouched."""
+    """Clone creator-docs (sparse: md/yaml only, ~20 MB not ~20 GB) if absent; existing clone untouched.
+
+    search() only reads content/en-us/**/*.{md,yaml}, so a blob:none partial clone plus a
+    non-cone sparse-checkout of those patterns is a full-fidelity substrate for it.
+    """
     if os.path.isdir(os.path.join(docs_root, "content")):
         return docs_root
     os.makedirs(os.path.dirname(docs_root), exist_ok=True)
     subprocess.run(
-        ["git", "clone", "--depth", "1", "--single-branch", DOCS_REPO, docs_root],
+        [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "--single-branch",
+            "--filter=blob:none",
+            "--sparse",
+            DOCS_REPO,
+            docs_root,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=900,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            docs_root,
+            "sparse-checkout",
+            "set",
+            "--no-cone",
+            "content/en-us/**/*.md",
+            "content/en-us/**/*.yaml",
+        ],
         check=True,
         capture_output=True,
         timeout=900,
