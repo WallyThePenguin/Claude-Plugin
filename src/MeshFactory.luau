@@ -397,6 +397,7 @@ end
 
 MeshFactory.LOCAL_TAG = "SALocalMesh" -- attribute marking a part whose geometry is stored locally
 MeshFactory.DATA_NAME = "MeshData" -- StringValue child holding the encoded geometry
+MeshFactory.DATA_CHUNK = 150000 -- chars per StringValue (engine hard-caps Value at 200k); overflow -> numbered child chunks
 
 -- Read a live EditableMesh's geometry into a serializable MeshData (0-based triangle indices).
 -- Read APIs live-verified 2026-07-05: GetVertices/GetPosition + GetFaces/GetFaceVertices.
@@ -443,12 +444,42 @@ function MeshFactory.persistMeshPartLocal(mp: MeshPart): LocalPersistResult
 	if existing then
 		existing:Destroy()
 	end
+	-- StringValue.Value hard-caps at 200k chars (live-caught 2026-07-11: a Cube crate encoded to
+	-- 423,748 chars and the assignment THREW). Chunk: first DATA_CHUNK chars live in the MeshData
+	-- value itself; the rest overflow into numbered child StringValues ("2", "3", ...) that every
+	-- reader (rebuildLocalMesh + the play/ship rebuild runtime) concatenates back in order.
+	local enc = encoded :: string
 	local sv = Instance.new("StringValue")
 	sv.Name = MeshFactory.DATA_NAME
-	sv.Value = encoded :: string
+	sv.Value = string.sub(enc, 1, MeshFactory.DATA_CHUNK)
+	local pos = MeshFactory.DATA_CHUNK + 1
+	local chunkN = 2
+	while pos <= #enc do
+		local chunk = Instance.new("StringValue")
+		chunk.Name = tostring(chunkN)
+		chunk.Value = string.sub(enc, pos, pos + MeshFactory.DATA_CHUNK - 1)
+		chunk.Parent = sv
+		pos += MeshFactory.DATA_CHUNK
+		chunkN += 1
+	end
 	sv.Parent = mp
 	mp:SetAttribute(MeshFactory.LOCAL_TAG, true)
-	return { stored = true, dataChars = #(encoded :: string), err = nil }
+	return { stored = true, dataChars = #enc, err = nil }
+end
+
+-- Reassemble the full encoded string from the MeshData StringValue plus its numbered overflow chunks.
+function MeshFactory.readMeshDataValue(dataInst: StringValue): string
+	local parts = { dataInst.Value }
+	local n = 2
+	while true do
+		local c = dataInst:FindFirstChild(tostring(n))
+		if c == nil or not c:IsA("StringValue") then
+			break
+		end
+		parts[#parts + 1] = c.Value
+		n += 1
+	end
+	return table.concat(parts)
 end
 
 -- Rebuild a locally-stored mesh's geometry from its `MeshData` child and apply it back onto the part.
@@ -458,7 +489,7 @@ function MeshFactory.rebuildLocalMesh(mp: MeshPart): (boolean, string?)
 	if dataInst == nil or not dataInst:IsA("StringValue") then
 		return false, "no MeshData child"
 	end
-	local data = MeshFactory.decodeMeshData(dataInst.Value)
+	local data = MeshFactory.decodeMeshData(MeshFactory.readMeshDataValue(dataInst))
 	if data == nil then
 		return false, "MeshData did not decode"
 	end

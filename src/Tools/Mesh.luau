@@ -220,7 +220,18 @@ local function rebuildPart(mp)
 	if dataInst == nil or not dataInst:IsA("StringValue") then
 		return false, "no MeshData StringValue child"
 	end
-	local v, t = decode(dataInst.Value)
+	-- Large meshes overflow the 200k StringValue cap into numbered child chunks ("2","3",...).
+	local chunks = { dataInst.Value }
+	local ci = 2
+	while true do
+		local c = dataInst:FindFirstChild(tostring(ci))
+		if c == nil or not c:IsA("StringValue") then
+			break
+		end
+		chunks[#chunks + 1] = c.Value
+		ci = ci + 1
+	end
+	local v, t = decode(table.concat(chunks))
 	if v == nil or t == nil then
 		return false, "MeshData did not decode"
 	end
