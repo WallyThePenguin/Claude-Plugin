@@ -120,6 +120,130 @@ def append_tooling_issues(issues, path):
         json.dump(data, fh, indent=1)
 
 
+# ---- mesh-upload ledger (real CreateAssetAsync uploads replace the local-mesh bypass) ----
+# save_mesh uploads are ASYNC: a fresh asset passes the session cache immediately (false
+# positive) then fails real CDN fetches while moderation is pending (hours). The ledger tracks
+# every factory upload as pending until a truthful confirm_mesh probe (AssetFetchStatus, capped
+# volume) finalizes or flags it. Deterministic code owns all ledger IO; the model only RELAYS
+# tool output through FACTORY_BUILD_JSON fields (meshUploads / meshConfirm), and every parse is
+# fail-open — ledger bookkeeping must never block a factory cycle.
+MESH_LEDGER_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "factory", "mesh-uploads.json"
+)
+MAX_MESH_LEDGER = 200
+MESH_CONFIRM_MENTION_CAP = 5  # matches confirm_mesh's own <=5-probes-per-pass volume cap
+
+
+def mesh_upload_mode() -> str:
+    """Upload policy from STUDIO_AGENT_MESH_UPLOAD: 'manual' (DEFAULT — the user has NOT
+    approved factory-volume uploads; save_mesh must run draft-only with upload=false) or
+    'auto' (plain save_mesh uploads real assets). Read at emit time, never cached."""
+    v = str(os.environ.get("STUDIO_AGENT_MESH_UPLOAD", "") or "").strip().lower()
+    return "auto" if v == "auto" else "manual"
+
+
+def load_mesh_ledger(path=None):
+    """All ledger entries; a missing/corrupt/wrong-shape file is an EMPTY ledger (fail-open —
+    the file is git-tracked and hand-editable, same convention as tooling-issues.json)."""
+    try:
+        with open(path or MESH_LEDGER_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    uploads = data.get("uploads") if isinstance(data, dict) else None
+    if not isinstance(uploads, list):
+        return []
+    return [u for u in uploads if isinstance(u, dict)]
+
+
+def pending_mesh_uploads(path=None):
+    return [e for e in load_mesh_ledger(path) if e.get("status") == "pending"]
+
+
+def _write_mesh_ledger(entries, path=None):
+    """Atomic write (tmp + os.replace, like store.py) — the file is git-tracked."""
+    path = path or MESH_LEDGER_PATH
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"uploads": entries[-MAX_MESH_LEDGER:]}, fh, indent=1)
+    os.replace(tmp, path)
+
+
+def record_mesh_uploads(uploads, rung_id, path=None):
+    """Ledger the save_mesh upload reports relayed in FACTORY_BUILD_JSON "meshUploads" as
+    PENDING entries, deduped by assetId. Junk shapes are skipped. Returns entries added."""
+    if not isinstance(uploads, list):
+        return 0
+    entries = load_mesh_ledger(path)
+    known = {e.get("assetId") for e in entries}
+    added = 0
+    for u in uploads:
+        if not isinstance(u, dict):
+            continue
+        try:
+            asset_id = int(u.get("assetId"))
+        except (TypeError, ValueError):
+            continue
+        if asset_id in known:
+            continue
+        known.add(asset_id)
+        entry = {
+            "assetId": asset_id,
+            "partPath": str(u.get("partPath") or "")[:200],
+            "rung": str(rung_id or "")[:100],
+            "uploadedAt": int(time.time()),
+            "status": "pending",
+        }
+        try:
+            entry["imageId"] = int(u.get("imageId"))
+        except (TypeError, ValueError):
+            pass
+        entries.append(entry)
+        added += 1
+    if added:
+        _write_mesh_ledger(entries, path)
+    return added
+
+
+def update_mesh_statuses(rows, path=None):
+    """Apply a confirm_mesh status table (relayed in FACTORY_BUILD_JSON "meshConfirm") to the
+    ledger: pending -> finalized|flagged. Unknown assetIds, still-pending rows, and junk are
+    ignored — the ledger only moves on a definitive relayed status. Returns entries changed."""
+    if not isinstance(rows, list):
+        return 0
+    entries = load_mesh_ledger(path)
+    by_id = {}
+    for e in entries:
+        try:
+            by_id[int(e.get("assetId"))] = e
+        except (TypeError, ValueError):
+            continue
+    changed = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            asset_id = int(row.get("assetId"))
+        except (TypeError, ValueError):
+            continue
+        status = str(row.get("status") or "").strip().lower()
+        if status in ("finalized", "ready", "success"):
+            status = "finalized"
+        elif status in ("flagged", "failed", "gaveup", "gave-up"):
+            status = "flagged"
+        else:
+            continue  # pending / junk — leave the entry alone
+        e = by_id.get(asset_id)
+        if e is not None and e.get("status") != status:
+            e["status"] = status
+            e["confirmedAt"] = int(time.time())
+            changed += 1
+    if changed:
+        _write_mesh_ledger(entries, path)
+    return changed
+
+
 # Spec default 5; STUDIO_AGENT_AUDIT_EVERY overrides for the young-vocabulary period, where a
 # hotter audit rate mines suite-vs-capture gaps faster (each disagreement becomes a new check).
 AUDIT_EVERY = max(1, int(os.environ.get("STUDIO_AGENT_AUDIT_EVERY", "5") or 5))
@@ -201,13 +325,14 @@ return "GATE_HITS:" .. table.concat(hits, ";")
 
 class FactoryRunner:
     def __init__(self, loop_runner, bridge, curriculum_path, store_writer, sleep=time.sleep,
-                 tooling_path=None):
+                 tooling_path=None, mesh_ledger_path=None):
         self._loop = loop_runner
         self._bridge = bridge
         self._curriculum_path = curriculum_path
         self._write_store = store_writer
         self._sleep = sleep
         self._tooling_path = tooling_path or TOOLING_PATH
+        self._mesh_ledger_path = mesh_ledger_path or MESH_LEDGER_PATH
         self._lock = threading.Lock()
         self._busy = False
         self._counter = 0
@@ -317,8 +442,13 @@ class FactoryRunner:
 
         # ---- BUILD ----
         self._set(stage="build")
+        try:  # ledger read is fail-open — a corrupt ledger must never block a cycle
+            mesh_pending = pending_mesh_uploads(self._mesh_ledger_path)
+        except Exception:  # noqa: BLE001
+            mesh_pending = []
         ok, text, err = self._wait_loop(
-            _build_prompt(rung, sabotage, playbook, variant_hint),
+            _build_prompt(rung, sabotage, playbook, variant_hint,
+                          pending_uploads=mesh_pending, mesh_mode=mesh_upload_mode()),
             max_iterations=_build_iterations(playbook),
             stage="build",
         )
@@ -326,6 +456,21 @@ class FactoryRunner:
             self._narrate(f"BUILD blocked: {err}", warn=True)
             return self._finish(state="done", status="BLOCKED", reason=f"build: {err}", **result)
         build = _last_json(text, BUILD_JSON_RE)
+        if isinstance(build, dict):
+            # Mesh-upload ledger IO runs even for ok:false builds (an upload that happened
+            # before the build failed still needs tracking) and is entirely fail-open.
+            try:
+                confirmed = update_mesh_statuses(build.get("meshConfirm"), self._mesh_ledger_path)
+                recorded = record_mesh_uploads(
+                    build.get("meshUploads"), rung_id, self._mesh_ledger_path
+                )
+                if confirmed or recorded:
+                    self._narrate(
+                        f"MESH LEDGER: {recorded} upload(s) recorded pending, "
+                        f"{confirmed} confirm status change(s)"
+                    )
+            except Exception:  # noqa: BLE001
+                pass
         if not build or not build.get("ok") or not build.get("artifactPath"):
             # Keep whatever the build DID say (partial JSON and/or the transcript tail) so the
             # RETRO stage sees the failure cause instead of an all-null record.
@@ -731,6 +876,38 @@ _ORACLE_BUILD = (
     "0.3 deg)."
 )
 
+# Mesh-upload policy blocks (STUDIO_AGENT_MESH_UPLOAD). Injected into every vision-family BUILD
+# prompt (script-only families never mesh). Manual is the DEFAULT arm until the user approves
+# factory-volume uploads.
+_MESH_POLICY_MANUAL = (
+    "MESH UPLOAD POLICY = manual (factory-volume asset uploads are NOT approved): every "
+    'save_mesh call MUST pass {"upload": false} - draft-only local persistence. Do NOT upload '
+    "mesh assets this cycle."
+)
+_MESH_POLICY_AUTO = (
+    "MESH UPLOAD POLICY = auto: call save_mesh normally (it uploads the mesh as a real SA_ "
+    "asset). REPORT every assetId line from save_mesh output in FACTORY_BUILD_JSON as "
+    '"meshUploads":[{"assetId":<n>,"imageId":<n, only if a texture uploaded>,"partPath":"<full '
+    'part path>"}] - relay the tool output VERBATIM, never invent ids; the sidecar ledgers them.'
+)
+
+
+def _mesh_confirm_block(pending) -> str:
+    """One BUILD-prompt instruction when the ledger has pending uploads: run the truthful
+    readiness probe FIRST and relay its table. Mentions at most MESH_CONFIRM_MENTION_CAP ids
+    (matching the tool's own per-pass probe cap)."""
+    if not pending:
+        return ""
+    ids = ", ".join(str(e.get("assetId")) for e in pending[:MESH_CONFIRM_MENTION_CAP])
+    return (
+        f"MESH CONFIRM PASS FIRST: {len(pending)} mesh upload(s) from earlier cycles await "
+        f"moderation (assetIds {ids}). Your FIRST action: run confirm_mesh and report its "
+        'status table in FACTORY_BUILD_JSON as "meshConfirm":[{"assetId":<n>,"status":'
+        '"pending|finalized|flagged"}] - relay the tool output VERBATIM, do NOT invent '
+        "statuses; the sidecar updates the ledger.\n\n"
+    )
+
+
 _VISUAL_VERIFY = (
     "This is judged VISUALLY, not by a runtime probe: (1) get_references for what the brief "
     "describes FIRST and list the signature features/proportions real examples show; (2) "
@@ -970,7 +1147,8 @@ def _build_iterations(playbook: dict) -> int:
     return int(playbook.get("buildIterations") or 45)
 
 
-def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> str:
+def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None,
+                  pending_uploads=None, mesh_mode=None) -> str:
     sabotage_line = (
         "SABOTAGE RUN: deliberately break the ONE thing the ORACLE checks (for a weapon skip the "
         "hitbox; for a system omit the win condition; for a visual omit the required feature) and "
@@ -984,19 +1162,23 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None) -> st
         if variant_hint
         else ""
     )
+    mesh_mode = mesh_mode or mesh_upload_mode()
+    mesh_policy = _MESH_POLICY_AUTO if mesh_mode == "auto" else _MESH_POLICY_MANUAL
     return (
         f"You are the headless factory BUILD stage for curriculum rung '{rung['id']}' "
         f"(category: {rung.get('category', '?')}, family: {rung.get('family', '?')}).\n"
         f"BRIEF: {rung.get('brief', '')}\n"
         f"ORACLE (what VERIFY will check): {rung.get('oracle', '')}\n\n"
         f"{variant_line}"
-        "Build ONLY what the brief asks, using the approach below, then STOP and emit the JSON. "
+        + _mesh_confirm_block(pending_uploads)
+        + "Build ONLY what the brief asks, using the approach below, then STOP and emit the JSON. "
         "This is a SCOPED build stage: do NOT gold-plate, do NOT add features from other rungs "
         "(extra animations, polish passes, unrelated systems), do NOT playtest (that is VERIFY's "
         "job)  -  over-building burns the iteration budget and FAILS the run. Never create anything "
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
         + _learned_block(rung.get("family"))
         + (f"{_VISION_BUILD}\n\n" if playbook.get("vision", True) else "")
+        + (f"{mesh_policy}\n\n" if playbook.get("vision", True) else "")
         + (_ORACLE_BUILD % playbook["oracleFamily"] + "\n\n" if playbook.get("oracleFamily") else "")
         + f"APPROACH for this {rung.get('family', 'artifact')}:\n{playbook['build']}\n\n"
         f"{sabotage_line}"
