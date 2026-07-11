@@ -1,0 +1,39 @@
+{
+ "rung": "weapon-sword",
+ "sabotage": false,
+ "status": "UNVERIFIED",
+ "gate": "clean",
+ "evidence": null,
+ "reasons": [
+  "verify produced no verdict",
+  "no FACTORY_VERIFY_JSON; transcript tail: The scene is completely static across 4 walk commands — the play character is not steerable in this session (walk is a no-op, likely stuck against the checker prop; and teleport is unavailable since loadstring/eval is off). That's 3+ failed approaches with clear mobility trouble. Per protocol I'll stop play immediately, then verify the damage path in code from edit.\n(iteration cap reached — the work so far is applied; run again to continue)"
+ ],
+ "artifactTrace": {
+  "path": "game.StarterPack.Gladius",
+  "config": {
+   "windup": 0.12,
+   "active": 0.14,
+   "cooldown": 0.34,
+   "damage": 30,
+   "reach": 5
+  },
+  "steps": [
+   "Parked existing StarterPack Sword to ServerStorage",
+   "generate_mesh gladius (0.6x3.2x0.4), captured front/right/iso vs refs, save_mesh -> SA asset (pending moderation)",
+   "Flattened model to single Handle mesh part",
+   "stamp_frame melee-weapon (Grip y=1.1, BladeTip y=-1.6, blade_dir -Y, edge_dir +X, hilt/blade roles)",
+   "make_tool Handle=grip part",
+   "Authored 3-keypose SwordSwing (rightArm scope): windup/strike/recover, 0.68s; bind_animation use",
+   "grip_tool frame-alignment (no offset), added weapon channel (AgentEditGrip cocked), fixed strike self-intersect",
+   "oracle_suite melee-weapon: 10 PASS / 0 FAIL",
+   "Released weld, moved Tool to StarterPack keeping Grip; bind_behavior + bind_hitbox"
+  ]
+ },
+ "recipe": {
+  "provisional": true,
+  "text": "Roman gladius short sword, distinct from prior artifacts (broad blade->long triangular point, wide guard, ribbed grip, spherical pommel+nut). Cube mesh 3.06 studs, save_mesh uploaded (moderation-pending; SAMeshRebuildRuntime renders MeshData draft in Play). Frame-aligned grip: grip_offset 0.40 studs, blade_up 18deg, blade_in_arm 0. SwordSwing weapon_channel swept 55deg, clip_arc 83.8deg, clip_self_intersect 0 studs after re-keying strike to extend blade forward. Fast swing 0.12/0.14/0.34, 30 dmg / 5 reach / 0.4 cooldown. green=false only from runtime twins (VERIFY's job)."
+ },
+ "stagedAt": 1783750558.8442726,
+ "headless": true,
+ "audit": false
+}

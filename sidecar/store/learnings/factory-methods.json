@@ -1,28 +1,7 @@
 {
  "category": "factory-methods",
- "seq": 68,
+ "seq": 70,
  "entries": [
-  {
-   "bucket": "factory-methods",
-   "id": 28,
-   "text": "When the capture pipeline is down, geometric checks must cover every orientation-sensitive assembly (slope direction, part contact/gaps) or the build should be flagged unverified rather than passed to VERIFY on doorway/bbox probes alone.",
-   "localId": 28,
-   "createdAt": 1783165518
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 29,
-   "text": "Probe viewport health FIRST (take two captures and frame-diff them; byte-identical frames = frozen/foreign view) before starting any cycle whose verify oracle is visual, so the build isn't authored against an unrenderable capture pipeline.",
-   "localId": 29,
-   "createdAt": 1783167476
-  },
-  {
-   "bucket": "factory-methods",
-   "id": 30,
-   "text": "Author loop clips as a palindromic keypose sequence (A-B-A-C-D-C-A) and verify numerically that first-vs-last pose diff is 0.0 and no leg joint or Pose translation is keyed - this makes seam pops and foot-slide structurally impossible without needing playback.",
-   "localId": 30,
-   "createdAt": 1783167476
-  },
   {
    "bucket": "factory-methods",
    "id": 31,
@@ -293,6 +272,22 @@
    "tier": "capture-confirmed",
    "localId": 68,
    "createdAt": 1783706498
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 69,
+   "text": "When a melee build already passes the oracle suite symbolically, verify the damage path from edit (inspect Hit BindableEvent wiring and Humanoid:TakeDamage calls in the bound server script) rather than depending on a playtest, so a mobility failure can't block verification.",
+   "tier": "symbolic-only",
+   "localId": 69,
+   "createdAt": 1783750578
+  },
+  {
+   "bucket": "factory-methods",
+   "id": 70,
+   "text": "Spawn the play character clear of workspace props (or park scene fixtures before playtest_start) since a character wedged against a prop makes walk a no-op and strands the whole verify stage.",
+   "tier": "symbolic-only",
+   "localId": 70,
+   "createdAt": 1783750578
   }
  ]
 }

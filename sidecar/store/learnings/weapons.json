@@ -1,6 +1,4 @@
 {
- "category": "weapons",
- "seq": 4,
  "entries": [
   {
    "bucket": "weapons",
@@ -29,6 +27,29 @@
    "text": "FIT GRIPS AT T-POSE, VERIFY AT USE-POSES: fist-up is perpendicular to the arm only when the arm is horizontal - on a hanging arm it parallels the forearm bone, embedding a straight blade ~1.5 studs INSIDE the limb while grip offset/angle still read 0/0 (measured 2026-07-10). So: reset_pose to T-pose, grip_tool frame alignment, apply the ~15-25 deg forward cant, then check blade_in_arm_studs at the REST pose and clip_self_intersect across the swing - the fitting pose passing means nothing about the poses the weapon will actually be used in.",
    "localId": 4,
    "createdAt": 1783706498
+  },
+  {
+   "bucket": "weapons",
+   "id": 5,
+   "text": "grip_tool frame-alignment can rotate the blade ~90deg PLUS the cant even when the stamped frame is PERFECT (frame_consistent blade_axis_dot=1): live-caught a -Y-blade mesh sword fitted to Grip rot ~108deg about X (expected ~18deg cant) so the swing read BACKWARDS and the sword rode the forearm. The declaration was honest; the FITTER axis-mapping is the suspect. Until the fitter is fixed: after any grip_tool fit, VIEW one edit-mode StepAnimations frame (Animator preview per the docs pattern, no play session) and check the blade points up-forward from the fist; correct manually with a Grip of shape CFrame.new(0,1.5,0)*CFrame.Angles(rad(165),0,0) for -Y-blade meshes.",
+   "localId": 4,
+   "createdAt": 1783751548
+  },
+  {
+   "bucket": "weapons",
+   "id": 6,
+   "text": "GRIP MUST BE VALIDATED AT REST POSE, not only mid-swing (live-caught: a grip tuned against a raised-arm preview looked correct swinging but crossed the body at neutral because grip_tool ARM-HOLD residue had contaminated the preview pose). Recipe for -Y-blade meshes: Grip=CFrame.new(0,1.5,0)*CFrame.Angles(rad(140),0,0) reads as a proper ready-stance at neutral AND sweeps clean mid-swing (165 = more upright variant). ALSO: grip_tool arm-hold writes joint C0 and PERSISTS AFTER UNEQUIP - a rig that held a tool keeps the bent-arm pose forever; spawn_rig fresh=true is the clean reset (re-apply UV ref textures after, asset ids in the animation lessons).",
+   "localId": 5,
+   "createdAt": 1783752969
+  },
+  {
+   "bucket": "weapons",
+   "id": 7,
+   "text": "WEAPON-AS-LIMB doctrine (user directive 2026-07-11): a weapon is a LIMB of the rig, not a prop - one Motor6D joint at the hilt minimum (AgentEditGrip already provides this; the skeleton gizmo shows its ball automatically), and ARTICULATED weapons (snake sword, flail, whip blade) get their own joint CHAIN from the hilt up: segment parts connected by Motor6Ds inside the Tool, each segment an animatable pose channel (the Animator finds joints anywhere under the rig model and matches poses BY PART NAME). Authoring implication: add_keyframe weapon:true must include ALL weapon-chain segment names, not just the grip Part1 (AnimationClip.weaponChildNames extension). Oracle implication: joint_census and clip checks should treat weapon-chain joints as first-class.",
+   "localId": 6,
+   "createdAt": 1783757687
   }
- ]
+ ],
+ "seq": 7,
+ "category": "weapons"
 }

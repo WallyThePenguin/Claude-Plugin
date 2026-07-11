@@ -1,0 +1,27 @@
+{
+ "category": "animation",
+ "seq": 3,
+ "entries": [
+  {
+   "bucket": "animation",
+   "id": 1,
+   "text": "UV ORIENTATION RIG (user-taught, 2026-07-11): the blocky rig is front/back symmetric so swing-direction judgments from captures are unreliable. Standing fix: apply the R15 UV reference templates as TextureID on all 15 MeshParts (Color white) - torso rbxassetid://98589653316755, limb rbxassetid://93485308521965, face rbxassetid://140582367643150 (durable, moderation-approved). FRONT/BACK/L/R labels make orientation readable in every capture. GOTCHA: Open Cloud uploads mint DECAL ids; TextureID needs the underlying IMAGE id - resolve via game:GetObjects(rbxassetid://decalId)[1].Texture. Preview clips in EDIT with Animator:StepAnimations (docs pattern) - never boot a play session just to view an animation.",
+   "localId": 1,
+   "createdAt": 1783751888
+  },
+  {
+   "bucket": "animation",
+   "id": 2,
+   "text": "STALE ANIMATION TRACKS POISON EVERYTHING (live-caught 3 ways in one session): any AnimationTrack left playing on a rig Animator re-stamps its pose on EVERY StepAnimations call - it silently overwrites batch keypose authoring (frozen identical keyframes), corrupts filmstrip previews of OTHER clips, and makes clip comparisons lie. DOCTRINE: every preview/authoring session MUST begin AND end with: for _,t in animator:GetPlayingAnimationTracks() do t:Stop(0) end; animator:StepAnimations(0). Also: a Tool ships its OWN Anims/use clip copy - verify THE TOOL COPY (what players see), not just the rig AnimSaves authoring copy; a grip change invalidates every clip authored against the old grip.",
+   "localId": 2,
+   "createdAt": 1783752748
+  },
+  {
+   "bucket": "animation",
+   "id": 3,
+   "text": "PLATFORM LIMIT (user-confirmed by live-viewport screenshot vs capture, 2026-07-11): HandleAdornments (Sphere/Cylinder/Box, AlwaysOnTop) render in the LIVE Studio viewport but Studio does NOT composite the adornment layer into CaptureScreenshot - a gizmo built on adornments is a HUMAN debugging aid only; the agent (whose eyes are captures) must verify with numeric probes + capture-visible geometry (UV orientation textures). Do NOT put gizmo PARTS inside a rig as the alternative: they pollute the oracle part/weld censuses.",
+   "localId": 3,
+   "createdAt": 1783757686
+  }
+ ]
+}
