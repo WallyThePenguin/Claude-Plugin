@@ -74,6 +74,7 @@ local EXPECTED_RELAY = {
 	"import_animation",
 	"bind_animation",
 	"bind_behavior",
+	"bind_grip_motor",
 	"bind_hitbox",
 	"make_npc",
 	"list_scripts",

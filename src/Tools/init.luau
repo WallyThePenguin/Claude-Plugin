@@ -47,6 +47,7 @@ local IconTool = require(script.Icon)
 local ItemTool = require(script.Item)
 local ItemAnimTool = require(script.ItemAnim)
 local ItemBehaviorTool = require(script.ItemBehavior)
+local ItemGripMotorTool = require(script.ItemGripMotor)
 local ItemHitTool = require(script.ItemHit)
 local NpcTool = require(script.Npc)
 local ScriptsTool = require(script.Scripts)
@@ -179,6 +180,9 @@ for _, descriptor in ItemAnimTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ItemBehaviorTool.descriptors :: { Descriptor } do
+	table.insert(registry, descriptor)
+end
+for _, descriptor in ItemGripMotorTool.descriptors :: { Descriptor } do
 	table.insert(registry, descriptor)
 end
 for _, descriptor in ItemHitTool.descriptors :: { Descriptor } do

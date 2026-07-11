@@ -383,6 +383,69 @@ local function serverHitTest()
 		(dhum :: Humanoid).MaxHealth
 	)
 end
+-- VERIFY bind_grip_motor: the runtime weld->Motor6D swap + the spin verb, measured server-side
+-- (no loadstring needed — seval is gated behind the manual LoadStringEnabled tick). Checks the
+-- equipped Tool's hand for RightGrip-gone + AgentGripMotor-present, then toggles GripSpin true,
+-- integrates the Handle's ACTUAL world rotation over ~0.6s of Heartbeats (frame-to-frame angle
+-- accumulation — measures rendered motion, not intent), toggles false, and checks the rest C0
+-- restored (positional part exact; the spin only touches rotation).
+local function serverGripTest()
+	local plr = firstPlayer()
+	local char = plr and plr.Character
+	local tool = char and char:FindFirstChildOfClass("Tool")
+	local hand = char and (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm"))
+	if not (tool and hand) then
+		return "sgrip: need an EQUIPPED tool (act equip first) — tool="
+			.. tostring(tool ~= nil)
+			.. " hand="
+			.. tostring(hand ~= nil)
+	end
+	local theTool = tool :: Tool
+	local theHand = hand :: BasePart
+	local weld = theHand:FindFirstChild("RightGrip")
+	local motor = theHand:FindFirstChild("AgentGripMotor")
+	local handle = theTool:FindFirstChild("Handle")
+	if motor == nil or not motor:IsA("Motor6D") or handle == nil or not handle:IsA("BasePart") then
+		return string.format(
+			"sgrip FAIL: weldPresent=%s motorPresent=%s (bind_grip_motor runtime did not swap — is the Tool bound?)",
+			tostring(weld ~= nil),
+			tostring(motor ~= nil)
+		)
+	end
+	local theMotor = motor :: Motor6D
+	local theHandle = handle :: BasePart
+	local restC0 = theMotor.C0
+	-- integrate actual world rotation while spinning
+	local swept = 0.0
+	local prev = theHandle.CFrame
+	local conn = RunService.Heartbeat:Connect(function()
+		local cur = theHandle.CFrame
+		local delta = (prev.Rotation:Inverse() * cur.Rotation)
+		local _, angle = delta:ToAxisAngle()
+		swept += math.deg(math.abs(angle))
+		prev = cur
+	end)
+	theTool:SetAttribute("GripSpin", true)
+	task.wait(0.6)
+	theTool:SetAttribute("GripSpin", false)
+	task.wait(0.1)
+	conn:Disconnect()
+	local after = theMotor.C0
+	local posRestored = (after.Position - restC0.Position).Magnitude < 1e-4
+	local _, rotDelta = (after.Rotation:Inverse() * restC0.Rotation):ToAxisAngle()
+	local speed = tonumber(theTool:GetAttribute("GripSpinSpeed")) or 720
+	return string.format(
+		"sgrip: weldGone=%s motor=AgentGripMotor liveAttr=%s | SPIN swept %.0f deg in ~0.6s "
+			.. "(configured %d deg/s => expected ~%d) | rest restore: pos=%s rotDelta=%.2f deg",
+		tostring(weld == nil),
+		tostring(theTool:GetAttribute("GripMotorLive")),
+		swept,
+		speed,
+		math.floor(speed * 0.6),
+		tostring(posRestored),
+		math.deg(math.abs(rotDelta))
+	)
+end
 -- VERIFY #5 NPC AI: sample workspace.EnemyNpc's NpcState + Health + the player's Health + their distance over
 -- ~5s (the NPC AI is a SERVER script, so NpcState/Health are readable here). Shows chase (dist shrinks,
 -- state=chase) then attack (playerHP drops, state=attack).
@@ -872,6 +935,8 @@ while true do
 					post(cmd.id, true, serverLogs(cmd.arg))
 				elseif cmd.cmd == "shit" then
 					post(cmd.id, true, serverHitTest())
+				elseif cmd.cmd == "sgrip" then
+					post(cmd.id, true, serverGripTest())
 				elseif cmd.cmd == "snpc" then
 					post(cmd.id, true, serverNpc())
 				else
