@@ -16,6 +16,7 @@ POST /play {"cmd":...}                                    -> {"id":N}  (a playte
 GET  /play/pending                                        -> the queued play command (and clears it) or {}
 POST /play/result {"id":N, ...}                           -> {"ok":true}
 GET  /play/result?id=N                                    -> the play command result, or {"status":"pending"}
+GET  /play/twins                                          -> {"session":N,"active":bool,"twins":[oracle-twin envelopes]} for the LATEST play session (+"dropped"/"skipped" when nonzero); sidecar-witnessed twin evidence
 GET  /store/<kind>                                        -> {"items":[{"id","size","mtime"}]}
 GET  /store/<kind>/<id>                                   -> the stored JSON body, or 404
 POST /store/<kind>/<id>  <json body>                      -> {"ok":true}   (atomic write; git-tracked)
@@ -23,7 +24,7 @@ DELETE /store/<kind>/<id>                                 -> {"ok":true,"existed
 GET  /runtime                                             -> {"version":N,"modules":{name:source}}  (runtime/ library)
 GET  /references?query=<q>&count=N                        -> {"references":[{title,license,author,source,media_type,image(b64)}...]}
 POST /loop {"prompt":str, "maxIterations"?:int}           -> {"id":N}  (sidecar-side agent loop; 409 if one is running)
-GET  /loop/status                                         -> the current/last loop's status
+GET  /loop/status                                         -> the current/last loop's status (+"bridgeStream":{"active":N,"total":N} SSE subscriber counters)
 POST /factory {"rungId":str, "sabotage"?:bool, "supervised"?:bool, "stagingId"?:str} -> {"id":N}  (BUILD->GATE->VERIFY->STAGE; supervised admits proven=false; stagingId pins the staging entry + audit token; 409 if busy)
 GET  /factory/status                                      -> the current/last factory run's status
 POST /forever {"cycles"?:int, "families"?:[str]}          -> {"id":N}  (endless curriculum loop; 409 if busy)
@@ -56,6 +57,10 @@ from bridge import Store
 
 PORT = int(os.environ.get("SIDECAR_PORT", "8389"))
 STORE = Store()
+# /bridge/stream subscriber counters (SP2e observability): active = currently-held SSE
+# connections, total = lifetime connects. Surfaced additively on GET /loop/status.
+_STREAM_LOCK = threading.Lock()
+_STREAM_STATS = {"active": 0, "total": 0}
 _BRIDGE = agent_loop.BridgeCaller(STORE)
 LOOP = sdk_loop.select_loop_runner(_BRIDGE)  # STUDIO_AGENT_LOOP=sdk|legacy (default legacy)
 _CURRICULUM = os.path.join(
@@ -186,6 +191,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "bad id"})
             res = STORE.play_get_result(cid)
             return self._json(200, res if res is not None else {"status": "pending"})
+        if parsed.path == "/play/twins":
+            return self._json(200, STORE.play_twins())
         if parsed.path.startswith("/store/"):
             return self._store_get(parsed.path)
         if parsed.path == "/runtime":
@@ -234,7 +241,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
         if parsed.path == "/loop/status":
-            return self._json(200, LOOP.status())
+            status = dict(LOOP.status())
+            with _STREAM_LOCK:
+                status["bridgeStream"] = dict(_STREAM_STATS)  # additive key: SSE subscribers
+            return self._json(200, status)
         if parsed.path == "/factory/status":
             return self._json(200, FACTORY.status())
         if parsed.path == "/forever/status":
@@ -248,6 +258,12 @@ class Handler(BaseHTTPRequestHandler):
         latency, never a command. The 0.05s poll is sidecar-local (free); a waiting command is
         re-nudged every 0.5s until claimed (covers a nudge the plugin missed mid-command);
         keepalive comment every 15s. Holds one ThreadingHTTPServer thread per client."""
+        # Subscriber observability (SP2e follow-up: corroboration previously needed netstat).
+        with _STREAM_LOCK:
+            _STREAM_STATS["active"] += 1
+            _STREAM_STATS["total"] += 1
+            print(f"[stream] subscriber connected (active={_STREAM_STATS['active']}, "
+                  f"total={_STREAM_STATS['total']})", flush=True)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -270,6 +286,11 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(0.05)
         except (OSError, ValueError):
             return  # client disconnected (broken pipe / closed wfile) — normal teardown
+        finally:
+            with _STREAM_LOCK:
+                _STREAM_STATS["active"] -= 1
+                print(f"[stream] subscriber disconnected (active={_STREAM_STATS['active']})",
+                      flush=True)
 
     def _store_parts(self, path: str):
         """Split /store/<kind>[/<id>] -> (kind, id|None)."""

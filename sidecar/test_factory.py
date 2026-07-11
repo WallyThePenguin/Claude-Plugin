@@ -465,6 +465,12 @@ def main():
     fails += _check("melee verify demands magnitude quotes", "MUST QUOTE" in vp and "adjectives" in vp)
     fails += _check("melee verify scopes captures to flagged + sign-off", "FLAGGED" in vp and "sign-off" in vp)
     fails += _check("melee verify keeps the damage twin", "TrainingDummy" in vp and "DAMAGE ONLY" in vp)
+    # SP2c weapon channel: the swing clip must key the weapon itself, after grip_tool exists
+    fails += _check("melee build keys the weapon channel", "add_keyframe {weapon:true" in bp and "AgentEditGrip" in bp)
+    fails += _check("melee weapon channel demands a real blade rotation", "ONE keypose" in bp and "blade rotation" in bp)
+    fails += _check("melee weapon channel comes after grip_tool", bp.index("grip_tool") < bp.index("add_keyframe {weapon:true"))
+    fails += _check("melee offhand grip is an optional flourish, not a step",
+                    "offhand:true" in bp and "never required" in bp and "skip it for one-handers" in bp)
     # SP2b live-deadlock fix: the convention escape valve + fitted-grip preservation
     fails += _check("melee build allows the forward-cant escape valve", "forward cant" in bp and "rx:-15 to -25" in bp)
     fails += _check("melee build fixes the artifact, never the check", "never by arguing with the check" in bp)
