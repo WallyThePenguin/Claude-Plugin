@@ -92,15 +92,34 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 
 	-- Restore LOCALLY-stored meshes: geometry is serialized in-place (a MeshData child + SALocalMesh
 	-- tag) instead of uploaded to Roblox, so session-backed geometry goes blank on open/reopen/play and
-	-- must be rebuilt. Async + fail-open — a mesh that can't rebuild just stays blank, never blocks load.
+	-- must be rebuilt. Scans every container save_mesh output can live in (StarterPack is where
+	-- make_tool swords go; a workspace+ServerStorage-only scan missed them — live-caught 2026-07-10).
+	-- Async + fail-open — a mesh that can't rebuild just stays blank, never blocks load.
 	task.spawn(function()
-		local ok, rebuilt = pcall(function()
-			local r1 = MeshFactory.rebuildAllLocal(workspace)
-			local r2 = MeshFactory.rebuildAllLocal(game:GetService("ServerStorage"))
-			return r1 + r2
+		local ok, rebuilt, failed = pcall(function(): (number, number)
+			local roots: { Instance } = {
+				workspace,
+				game:GetService("ServerStorage"),
+				game:GetService("StarterPack"),
+				game:GetService("ReplicatedStorage"),
+				game:GetService("StarterPlayer"),
+			}
+			local r, f = 0, 0
+			for _, root in roots do
+				local rr, ff = MeshFactory.rebuildAllLocal(root)
+				r += rr
+				f += ff
+			end
+			return r, f
 		end)
-		if ok and (rebuilt :: number) > 0 then
-			print(("[StudioAgent] rebuilt %d local mesh(es) from stored geometry"):format(rebuilt))
+		if ok and ((rebuilt :: number) + (failed :: number)) > 0 then
+			print(
+				("[StudioAgent] [SAMeshRebuild] edit: rebuilt %d, failed %d of %d candidates"):format(
+					rebuilt :: number,
+					failed :: number,
+					(rebuilt :: number) + (failed :: number)
+				)
+			)
 		end
 	end)
 
