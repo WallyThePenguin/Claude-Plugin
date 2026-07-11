@@ -1,0 +1,29 @@
+{
+ "mode": "cleanup",
+ "source": "molten-greatsword2.glb",
+ "verts_in": 112315,
+ "tris_in": 138701,
+ "verts": 9755,
+ "tris": 19492,
+ "extents_studs": [
+  2.372,
+  1.012,
+  5.2
+ ],
+ "target_studs": 5.2,
+ "smooth": 8,
+ "holes_closed_repair": 4171,
+ "holes_closed_post_smooth": 0,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "ZX",
+ "uv_margin": 0.03,
+ "uv_sides": 2,
+ "uv_aspect": 0.9122,
+ "uv_layers": 1,
+ "ao": "molten-greatsword2-ao.png",
+ "ao_size": [
+  1024,
+  934
+ ]
+}
