@@ -34,6 +34,7 @@ local SUITES = {
 				{ check = "scale_ratio", args = { target = target, expected = 4.5, tolerance_frac = 0.6 } },
 				{ check = "mesh_persisted", args = { target = target } },
 				{ check = "grip_sane", args = { tool = target, rig = rig } },
+				{ check = "tool_clip_current", args = { tool = target } },
 				{ check = "joint_census", args = { rig = rig } },
 				{ check = "rig_channel_check", args = { rig = rig, clip = clip } },
 				{ check = "clip_arc_of", args = { rig = rig, tool = target, clip = clip } },
@@ -47,6 +48,7 @@ local SUITES = {
 			"animation under the runtime Animator with locomotion blending (PLAY_ONLY twin)",
 			"edge_dir orientation (declared, not cross-validated)",
 			"clip channel coverage when rig_channel_check is UNKNOWN",
+			"clip visual correctness when tool_clip_current is green (it asserts grip-stamp FRESHNESS — staleness, not that the motion reads right)",
 		},
 	},
 	["animation"] = {
@@ -320,6 +322,19 @@ local function selftest(): any
 		local fellOpen7 = chosen7 ~= nil and chosen7[1] == callerForged and string.find(note7, "unreachable") ~= nil
 		table.insert(results, { name = "unreachable sidecar (404 today) falls open to caller-supplied", expected = "caller", got = if fellOpen7 then "caller" else "other", ok = fellOpen7 })
 	end
+	-- tool_clip_current pure logic (grip-stamp staleness — the stale-clip saga check; the
+	-- Anims/* attribute plumbing is exercised live via stampToolClips on a real Tool):
+	do
+		local OC: any = OracleChecks
+		local stampNow = OC.gripStampOf(CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(140), 0, 0))
+		local stampOld = OC.gripStampOf(CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(141), 0, 0))
+		table.insert(results, { name = "grip stamp is rotation-sensitive (1 deg changes it)", expected = true, got = stampNow ~= stampOld, ok = stampNow ~= stampOld })
+		expect("matching clip stamp passes", "PASS", OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampNow } }))
+		expect("mismatched clip stamp fails (stale clip)", "FAIL", OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampOld } }))
+		expect("unstamped clip is UNKNOWN (fail-open)", "UNKNOWN", OC.clipStampVerdict(stampNow, { { name = "use" } }))
+		expect("mismatch beats unstamped (a proven-stale clip FAILs)", "FAIL", OC.clipStampVerdict(stampNow, { { name = "idle" }, { name = "use", stamp = stampOld } }))
+		expect("no clips at all is UNKNOWN", "UNKNOWN", OC.clipStampVerdict(stampNow, {}))
+	end
 	folder:Destroy()
 	local failures = 0
 	for _, r in results do
@@ -349,7 +364,7 @@ Oracle.descriptors = {
 			.. "Checks: intersects{a,b}, penetration_depth{a,b,max_depth}, gap_between{a,b,max_gap}, "
 			.. "alignment{target,dir,against,max_deg,length}, scale_ratio{target,expected,tolerance_frac}, "
 			.. "mesh_persisted{target}, "
-			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, joint_census{rig}, "
+			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, tool_clip_current{tool}, joint_census{rig}, "
 			.. "rig_channel_check{rig,clip}, clip_arc_of{rig,tool,clip,samples,min_sweep}, "
 			.. "weapon_channel_of{rig,clip,min_swept_deg}, "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth}, __selftest{}. "

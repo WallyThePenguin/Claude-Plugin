@@ -409,6 +409,113 @@ register("grip_sane", "EDIT_OK", "For Tool {tool} on rig {rig (default workspace
 	return pass(mag)
 end)
 
+-- ---- tool_clip_current: grip-stamp staleness (the 2026-07-11 stale-clip saga) ----
+-- When a Tool's Grip changes, every clip authored against the old grip is visually invalid
+-- (live-caught: after the grip fix, the embedded Anims/use still held the blade through the
+-- character's body). The stamp is a compact exact serialization of Tool.Grip; authoring tools
+-- (grip_tool re-fits / bind_animation) should write it onto each Anims/* clip as attribute
+-- SAClipGripStamp via M.stampToolClips.
+
+-- Canonical stamp: all 12 CFrame components at 3 decimals (a 1-degree rotation moves sin
+-- components by ~0.017 — well above the quantum). "-0.000" normalizes to "0.000".
+function M.gripStampOf(grip: CFrame): string
+	local comps = { grip:GetComponents() }
+	local out = table.create(#comps)
+	for i, v in comps do
+		local s = string.format("%.3f", v)
+		if s == "-0.000" then
+			s = "0.000"
+		end
+		out[i] = s
+	end
+	return table.concat(out, ",")
+end
+
+-- Pure verdict core (selftest-covered): a mismatch FAILs even when other clips are unstamped
+-- (a proven-stale clip is stale); otherwise any unstamped clip fails OPEN as UNKNOWN.
+function M.clipStampVerdict(currentStamp: string, clips: { { name: string, stamp: string? } }): any
+	if #clips == 0 then
+		return unknown("tool has no Anims/* clips — nothing to check (bind_animation first)")
+	end
+	local matching, mismatched, unstamped = {}, {}, {}
+	for _, c in clips do
+		if c.stamp == nil then
+			table.insert(unstamped, c.name)
+		elseif c.stamp == currentStamp then
+			table.insert(matching, c.name)
+		else
+			table.insert(mismatched, c.name)
+		end
+	end
+	local mag = {
+		clips_total = #clips,
+		matching = matching,
+		mismatched = mismatched,
+		unstamped = unstamped,
+		current_stamp = currentStamp,
+	}
+	if #mismatched > 0 then
+		return fail(
+			"clip " .. table.concat(mismatched, ", ")
+				.. " authored against a different Grip (stamp mismatch) — re-author with the current grip",
+			mag
+		)
+	end
+	if #unstamped > 0 then
+		local r = unknown(
+			"clips carry no grip stamp (authored before stamping existed); re-author or stamp to activate: "
+				.. table.concat(unstamped, ", ")
+		)
+		r.magnitudes = mag
+		return r
+	end
+	return pass(mag)
+end
+
+-- Fix-forward helper, NOT a check (the registry has no fix-forward convention — checks stay
+-- read-only measurements): writes SAClipGripStamp = current-grip-stamp onto every Anims/*
+-- KeyframeSequence. grip_tool (after a Grip write) and bind_animation (after authoring against
+-- the live grip) should call this; until they do, call it manually via run_luau:
+--   require(script.Parent.Tools.OracleChecks).stampToolClips(game.StarterPack.Sword)
+function M.stampToolClips(toolOrPath: any): any
+	local tool = if typeof(toolOrPath) == "Instance" then toolOrPath else select(1, Path.resolve(tostring(toolOrPath)))
+	if tool == nil or not tool:IsA("Tool") then
+		return { ok = false, error = "tool not found / not a Tool" }
+	end
+	local anims = tool:FindFirstChild("Anims")
+	if anims == nil then
+		return { ok = false, error = "tool has no Anims folder (bind_animation first)" }
+	end
+	local stamp = M.gripStampOf(tool.Grip)
+	local stamped = {}
+	for _, c in anims:GetChildren() do
+		if c:IsA("KeyframeSequence") then
+			c:SetAttribute("SAClipGripStamp", stamp)
+			table.insert(stamped, c.Name)
+		end
+	end
+	return { ok = true, count = #stamped, stamped = stamped, stamp = stamp }
+end
+
+register("tool_clip_current", "EDIT_OK", "For Tool {tool}: every embedded Anims/* KeyframeSequence must carry attribute SAClipGripStamp equal to the CURRENT Tool.Grip stamp — a Grip change invalidates every clip authored against the old grip (the stale-clip trap: a green suite while Anims/use swings the blade through the body). UNKNOWN (fail-open) when clips are unstamped; stamp via OracleChecks.stampToolClips or re-author. BLINDSPOT: asserts STALENESS only, not visual correctness of the motion.", function(args)
+	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
+	if tool == nil or not tool:IsA("Tool") then
+		return unknown("tool not found / not a Tool")
+	end
+	local anims = tool:FindFirstChild("Anims")
+	if anims == nil then
+		return unknown("tool has no Anims folder — nothing to check (bind_animation first)")
+	end
+	local clips = {}
+	for _, c in anims:GetChildren() do
+		if c:IsA("KeyframeSequence") then
+			local raw = c:GetAttribute("SAClipGripStamp")
+			table.insert(clips, { name = c.Name, stamp = if raw ~= nil then tostring(raw) else nil })
+		end
+	end
+	return M.clipStampVerdict(M.gripStampOf(tool.Grip), clips)
+end)
+
 -- ---- rig + clip checks (kinematic; EDIT_OK via the Animator scrub used by capture_animation) ----
 
 local AnimationClip = require(script.Parent.Parent.AnimationClip)
