@@ -110,6 +110,52 @@ def main():
         fails += _check("dominant vertex_bone per vertex", skin.get("vertex_bone") == [0, 0, 1])
         fails += _check("exact 1.0 weights are not lossy", skin.get("weights_lossy") is False)
 
+    # ---- glTF animation parsing (the Pilot Doctrine's animation leg, v3) ----
+    with tempfile.TemporaryDirectory() as d:
+        ap = os.path.join(d, "anim.glb")
+        # 2-keyframe rotation on one named node
+        times = struct.pack("<2f", 0.0, 1.0)
+        quats = struct.pack("<8f", 0, 0, 0, 1, 0, 0.70711, 0, 0.70711)
+        binchunk = times + quats
+        gltf = {
+            "asset": {"version": "2.0"},
+            "nodes": [{"name": "RightArm"}],
+            "animations": [{
+                "name": "Swing",
+                "channels": [{"sampler": 0, "target": {"node": 0, "path": "rotation"}}],
+                "samplers": [{"input": 0, "output": 1, "interpolation": "LINEAR"}],
+            }],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 2, "type": "SCALAR"},
+                {"bufferView": 1, "componentType": 5126, "count": 2, "type": "VEC4"},
+            ],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 8},
+                {"buffer": 0, "byteOffset": 8, "byteLength": 32},
+            ],
+            "buffers": [{"byteLength": len(binchunk)}],
+        }
+        jsonchunk = json.dumps(gltf).encode()
+        jsonchunk += b" " * ((4 - len(jsonchunk) % 4) % 4)
+        total = 12 + 8 + len(jsonchunk) + 8 + len(binchunk)
+        with open(ap, "wb") as fh:
+            fh.write(b"glTF" + struct.pack("<II", 2, total))
+            fh.write(struct.pack("<II", len(jsonchunk), 0x4E4F534A) + jsonchunk)
+            fh.write(struct.pack("<II", len(binchunk), 0x004E4942) + binchunk)
+        cat = meshio.list_animations(ap)
+        fails += _check("animation catalog lists the clip",
+                        cat["animations"] == [{"name": "Swing", "channels": 1, "duration_s": 1.0}])
+        clip = meshio.parse_animation(ap, "Swing")
+        rot = clip["joints"].get("RightArm", {}).get("rotation", {})
+        fails += _check("clip channel keyed by node name", rot.get("times") == [0.0, 1.0])
+        fails += _check("quat keyframes parsed", rot.get("values", [[None]])[1] == [0, 0.70711, 0, 0.70711])
+        fails += _check("clip duration", clip["duration_s"] == 1.0)
+        try:
+            meshio.parse_animation(ap, "NoSuchClip")
+            fails += _check("unknown clip errors with the available list", False)
+        except meshio.MeshError as e:
+            fails += _check("unknown clip errors with the available list", "Swing" in str(e))
+
     for bad in ("../x.glb", "a/b.glb", "x.fbx"):
         try:
             meshio.read_reference_mesh(bad)

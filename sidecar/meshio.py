@@ -175,6 +175,68 @@ def parse_glb(path: str) -> dict:
     return out
 
 
+def list_animations(path: str) -> dict:
+    """{animations: [{name, channels, duration_s}], source} — the clip CATALOG of a GLB
+    (animation libraries like Quaternius UAL2 pack hundreds of named clips in one file;
+    the Pilot Doctrine's animation leg starts by LISTING what the library offers)."""
+    gltf, binchunk = _read_glb(path)
+    out = []
+    for i, anim in enumerate(gltf.get("animations", [])):
+        duration = 0.0
+        for ch in anim.get("channels", []):
+            sampler = anim["samplers"][ch["sampler"]]
+            times = _accessor_values(gltf, binchunk, sampler["input"])
+            if times:
+                duration = max(duration, times[-1][0])
+        out.append({
+            "name": anim.get("name", f"Animation{i}"),
+            "channels": len(anim.get("channels", [])),
+            "duration_s": round(duration, 3),
+        })
+    return {"animations": out, "source": os.path.basename(path)}
+
+
+def parse_animation(path: str, name: str) -> dict:
+    """One named clip -> {name, duration_s, joints: {nodeName: {rotation?: {times, values
+    (quat xyzw)}, translation?: {times, values}}}, interpolation}. RAW keyframes (no
+    resampling — the retarget/Luau layer owns timing). Scale channels are ignored (Roblox
+    joint channels are rigid). Unnamed target nodes fall back to node<index>."""
+    gltf, binchunk = _read_glb(path)
+    target = None
+    for i, anim in enumerate(gltf.get("animations", [])):
+        if anim.get("name", f"Animation{i}") == name:
+            target = anim
+            break
+    if target is None:
+        available = [a.get("name", f"Animation{i}") for i, a in enumerate(gltf.get("animations", []))]
+        raise MeshError(f"no animation named {name!r} (available: {', '.join(available[:20])})")
+    nodes = gltf.get("nodes", [])
+    joints: dict = {}
+    duration = 0.0
+    interpolation = "LINEAR"
+    for ch in target.get("channels", []):
+        tgt = ch.get("target", {})
+        path_kind = tgt.get("path")
+        if path_kind not in ("rotation", "translation"):
+            continue  # scale/weights are not Roblox joint channels
+        node_index = tgt.get("node")
+        node_name = nodes[node_index].get("name", f"node{node_index}") if node_index is not None else "?"
+        sampler = target["samplers"][ch["sampler"]]
+        interpolation = sampler.get("interpolation", "LINEAR")
+        times = [round(t[0], 5) for t in _accessor_values(gltf, binchunk, sampler["input"])]
+        values = [[round(c, 5) for c in v] for v in _accessor_values(gltf, binchunk, sampler["output"])]
+        if times:
+            duration = max(duration, times[-1])
+        joints.setdefault(node_name, {})[path_kind] = {"times": times, "values": values}
+    return {
+        "name": name,
+        "duration_s": round(duration, 3),
+        "joints": joints,
+        "interpolation": interpolation,
+        "source": os.path.basename(path),
+    }
+
+
 def read_reference_mesh(filename: str) -> dict:
     """Parse a .glb from assets/reference (allowlisted directory, .glb only)."""
     if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
