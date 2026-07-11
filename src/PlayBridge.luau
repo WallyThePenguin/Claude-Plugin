@@ -48,6 +48,7 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StudioTestService = game:GetService("StudioTestService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local base = "__BASE__"
 -- "play" = Play Solo (player + client relay); "run" = ExecuteRunModeAsync (server sim only, no
 -- Players, no client) — skip the relay wait so the poller answers immediately.
@@ -614,6 +615,183 @@ ORACLE_TWINS.stable_over = function(args)
 		}
 	end
 	return { verdict = "PASS", magnitudes = mag }
+end
+-- offhand_reach: does the AgentOffHandIK stamped by grip_tool {offhand:true} actually SOLVE under
+-- live run-mode stepping? Static edit mode leaves the IK inert (SP2c open question: LeftHand->target
+-- 2.95 studs); this MEASURES it — either verdict answers the question, no bias toward PASS.
+ORACLE_TWINS.offhand_reach = function(args)
+	local rig, rerr = resolvePath(args.rig)
+	if rig == nil then
+		return { verdict = "UNKNOWN", reason = rerr, magnitudes = {} }
+	end
+	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
+	local ik = if humanoid ~= nil then humanoid:FindFirstChild("AgentOffHandIK") else nil
+	if ik == nil or not ik:IsA("IKControl") then
+		return { verdict = "FAIL", reason = "no AgentOffHandIK under " .. tostring(args.rig), magnitudes = { samples = 0 } }
+	end
+	local target = ik.Target
+	if target == nil then
+		return { verdict = "FAIL", reason = "AgentOffHandIK has no Target set", magnitudes = { samples = 0 } }
+	end
+	local leftHand = rig:FindFirstChild("LeftHand", true)
+	if leftHand == nil or not leftHand:IsA("BasePart") then
+		return { verdict = "UNKNOWN", reason = "rig has no LeftHand part", magnitudes = {} }
+	end
+	local function targetPos()
+		return if target:IsA("Attachment") then target.WorldPosition else target.Position
+	end
+	local seconds = math.clamp(tonumber(args.seconds) or 2, 0.5, 8)
+	local distStart = (leftHand.Position - targetPos()).Magnitude
+	local distMin, distEnd = distStart, distStart
+	local samples = 1
+	local t0 = os.clock()
+	while os.clock() - t0 < seconds do
+		RunService.Heartbeat:Wait()
+		if leftHand.Parent == nil or ik.Parent == nil then
+			return {
+				verdict = "FAIL",
+				reason = "LeftHand/IKControl destroyed mid-run after " .. string.format("%.1f", os.clock() - t0) .. "s",
+				magnitudes = { dist_start = distStart, dist_min = distMin, dist_end = distEnd, samples = samples },
+			}
+		end
+		distEnd = (leftHand.Position - targetPos()).Magnitude
+		if distEnd < distMin then
+			distMin = distEnd
+		end
+		samples = samples + 1
+	end
+	local maxReach = tonumber(args.max_reach) or 1.5
+	local mag = { dist_start = distStart, dist_min = distMin, dist_end = distEnd, samples = samples }
+	if distMin < maxReach then
+		return { verdict = "PASS", magnitudes = mag }
+	end
+	return {
+		verdict = "FAIL",
+		reason = "IK never closed: LeftHand->target min "
+			.. string.format("%.2f", distMin)
+			.. " studs (start "
+			.. string.format("%.2f", distStart)
+			.. ", end "
+			.. string.format("%.2f", distEnd)
+			.. ") over "
+			.. seconds
+			.. "s — not demonstrably solving (need < "
+			.. maxReach
+			.. ")",
+		magnitudes = mag,
+	}
+end
+-- Twin of clip_arc_of (EDIT_MISLEADS: the edit scrub is a kinematic StepAnimations(0) — the runtime
+-- Animator can fade, blend with locomotion, or drop channels). Plays the clip on the REAL Animator
+-- under run-mode stepping and sweeps the tracked part. Comparable measure: max angle between
+-- root->point unit vectors across samples (clip_arc_of's kinematic sweep), tracing the tracked
+-- part's Semantic_BladeTip attachment when it carries one, else the part position.
+ORACLE_TWINS.played_arc_of = function(args)
+	local rig, rerr = resolvePath(args.rig)
+	if rig == nil then
+		return { verdict = "UNKNOWN", reason = rerr, magnitudes = {} }
+	end
+	local clipName = tostring(args.clip or "SwordSwing")
+	local saves = rig:FindFirstChild("AnimSaves")
+	local ks = if saves ~= nil then saves:FindFirstChild(clipName) else nil
+	if ks == nil or not ks:IsA("KeyframeSequence") then
+		return { verdict = "UNKNOWN", reason = "clip not found under rig/AnimSaves: " .. clipName, magnitudes = {} }
+	end
+	local partName = tostring(args.part or "Handle")
+	local tracked = rig:FindFirstChild(partName, true)
+	if tracked == nil or not tracked:IsA("BasePart") then
+		return { verdict = "UNKNOWN", reason = "tracked part '" .. partName .. "' not found under rig", magnitudes = {} }
+	end
+	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
+	if humanoid == nil then
+		return { verdict = "UNKNOWN", reason = "rig has no Humanoid", magnitudes = {} }
+	end
+	local animator = humanoid:FindFirstChildWhichIsA("Animator")
+	if animator == nil then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local root = rig:FindFirstChild("HumanoidRootPart", true)
+	if root == nil or not root:IsA("BasePart") then
+		return { verdict = "UNKNOWN", reason = "rig has no HumanoidRootPart", magnitudes = {} }
+	end
+	local tipAtt = tracked:FindFirstChild("Semantic_BladeTip")
+	local function point()
+		return if tipAtt ~= nil and tipAtt:IsA("Attachment") then tipAtt.WorldPosition else tracked.Position
+	end
+	local okId, assetId = pcall(function()
+		return game:GetService("KeyframeSequenceProvider"):RegisterKeyframeSequence(ks)
+	end)
+	if not okId or assetId == nil then
+		return { verdict = "UNKNOWN", reason = "RegisterKeyframeSequence failed: " .. tostring(assetId), magnitudes = {} }
+	end
+	local anim = Instance.new("Animation")
+	anim.AnimationId = assetId
+	local track = animator:LoadAnimation(anim)
+	-- MANDATORY Play(0): the default 0.1s fade-in reads identity poses at early samples (live-caught SP2c gotcha)
+	track:Play(0)
+	local loadDeadline = os.clock() + 3
+	while track.Length <= 0 and os.clock() < loadDeadline do
+		task.wait(0.05)
+	end
+	if track.Length <= 0 then
+		track:Stop(0)
+		anim:Destroy()
+		return { verdict = "UNKNOWN", reason = "clip failed to load (Length 0)", magnitudes = {} }
+	end
+	track.TimePosition = 0 -- the load-wait may have consumed part of a short clip; sample a FULL pass
+	local motors = {}
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") then
+			table.insert(motors, d)
+		end
+	end
+	local motorPeak = 0 -- max animator-written Transform angle: splits "animator wrote nothing" from "physics didn't apply it"
+	local dirs = {}
+	local t0 = os.clock()
+	while os.clock() - t0 < track.Length do
+		RunService.Heartbeat:Wait()
+		local v = point() - root.Position
+		if v.Magnitude >= 1e-3 and #dirs < 600 then
+			table.insert(dirs, v.Unit)
+		end
+		for _, m in motors do
+			local _, angle = m.Transform:ToAxisAngle()
+			motorPeak = math.max(motorPeak, math.deg(angle))
+		end
+	end
+	local durationMs = math.floor((os.clock() - t0) * 1000 + 0.5)
+	-- Diagnostics BEFORE Stop: tpos_end ~= 0 proves the engine auto-stepped the track; a 0-sweep
+	-- with tpos_end ~ Length means transforms were produced but no motor moved (rig-side truth).
+	local tposEnd = track.TimePosition
+	local playingEnd = track.IsPlaying
+	track:Stop(0)
+	anim:Destroy()
+	local sweep = 0
+	for i = 1, #dirs do
+		for j = i + 1, #dirs do
+			sweep = math.max(sweep, math.deg(math.acos(math.clamp(dirs[i]:Dot(dirs[j]), -1, 1))))
+		end
+	end
+	local minSweep = tonumber(args.min_sweep) or 60
+	local mag = {
+		sweep_deg = sweep,
+		samples = #dirs,
+		duration_ms = durationMs,
+		clip_length_s = track.Length,
+		tracked = tracked:GetFullName(),
+		tpos_end = tposEnd,
+		playing_end = playingEnd,
+		motor_peak_deg = motorPeak,
+	}
+	if sweep >= minSweep then
+		return { verdict = "PASS", magnitudes = mag }
+	end
+	return {
+		verdict = "FAIL",
+		reason = "played swing sweeps only " .. string.format("%.0f", sweep) .. " deg over " .. durationMs .. "ms (min " .. minSweep .. ")",
+		magnitudes = mag,
+	}
 end
 
 -- NOTE: a long twin (stable_over up to 8s) blocks this single-threaded poller — `stop` queues

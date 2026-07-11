@@ -191,20 +191,22 @@ register("scale_ratio", "EDIT_OK", "Longest world extent of {target} vs {expecte
 	return if ratio >= (1 - tol) and ratio <= (1 + tol) then pass(mag) else fail("scale off: " .. string.format("%.2f", longest) .. " studs vs expected " .. expected, mag)
 end)
 
-register("mesh_persisted", "EDIT_OK", "Every MeshPart under {target} must be renderable in PLAY: a non-empty MeshId, OR the save_mesh local-persist path (SALocalMesh attribute + MeshData child + a deployed ServerScriptService.SAMeshRebuildRuntime). Closes the audit-caught gap where an 8/8 suite green-lit an invisible weapon (RETRO-proposed 2026-07-10).", function(args)
+register("mesh_persisted", "EDIT_OK", "Upload-era persistence for every MeshPart under {target}: PASS arms are (a) finalized — real non-empty MeshId (durable asset), (b) pending upload — SAMeshAssetPending=true + SAMeshAssetId attributes (CreateAssetAsync in flight, confirm_mesh will finalize), or (c) legacy draft — SALocalMesh + MeshData child + deployed ServerScriptService.SAMeshRebuildRuntime (PROVISIONAL pass: draft-only, not shipped). A bare sessionless MeshPart = FAIL (invisible in Play). Closes the audit-caught gap where an 8/8 suite green-lit an invisible weapon (RETRO-proposed 2026-07-10; upload-era arms 2026-07-11).", function(args)
 	local parts, err = resolveParts(args.target)
 	if parts == nil then
 		return unknown(err or "unresolved")
 	end
-	local meshParts, uploaded, localRebuild = 0, 0, 0
+	local meshParts, finalized, pendingUpload, draftLocal = 0, 0, 0, 0
 	local firstNaked: string? = nil
 	for _, p in parts do
 		if p:IsA("MeshPart") then
 			meshParts += 1
 			if p.MeshId ~= "" then
-				uploaded += 1
+				finalized += 1
+			elseif p:GetAttribute("SAMeshAssetPending") == true and p:GetAttribute("SAMeshAssetId") ~= nil then
+				pendingUpload += 1
 			elseif p:GetAttribute("SALocalMesh") == true and p:FindFirstChild("MeshData") ~= nil then
-				localRebuild += 1
+				draftLocal += 1
 			elseif firstNaked == nil then
 				firstNaked = p.Name
 			end
@@ -213,16 +215,23 @@ register("mesh_persisted", "EDIT_OK", "Every MeshPart under {target} must be ren
 	local runtime = game:GetService("ServerScriptService"):FindFirstChild("SAMeshRebuildRuntime")
 	local mag = {
 		mesh_parts = meshParts,
-		uploaded = uploaded,
-		local_rebuild = localRebuild,
-		naked = meshParts - uploaded - localRebuild,
+		finalized = finalized,
+		pending_upload = pendingUpload,
+		draft_local = draftLocal,
+		naked = meshParts - finalized - pendingUpload - draftLocal,
 		rebuild_runtime_deployed = runtime ~= nil,
 	}
 	if firstNaked ~= nil then
-		return fail("MeshPart '" .. firstNaked .. "' has an empty MeshId and no local-rebuild data — INVISIBLE in Play", mag)
+		return fail("MeshPart '" .. firstNaked .. "' has an empty MeshId, no recorded upload, and no local-rebuild data — INVISIBLE in Play", mag)
 	end
-	if localRebuild > 0 and runtime == nil then
-		return fail(localRebuild .. " local-persisted mesh(es) but ServerScriptService.SAMeshRebuildRuntime is NOT deployed — invisible in Play", mag)
+	if draftLocal > 0 and runtime == nil then
+		return fail(draftLocal .. " draft mesh(es) (SALocalMesh) but ServerScriptService.SAMeshRebuildRuntime is NOT deployed — invisible in Play", mag)
+	end
+	if draftLocal > 0 then
+		-- provisional: renders in Play via the rebuild runtime, but is NOT a durable shipped asset
+		local r = pass(mag)
+		r.reason = "provisional: " .. draftLocal .. " draft-only mesh(es) (SALocalMesh, not shipped) — upload via save_mesh, finalize via confirm_mesh"
+		return r
 	end
 	return pass(mag)
 end)
@@ -521,7 +530,7 @@ local function scrubClip(rig: Model, clipName: string, samples: number, visit: (
 	return err
 end
 
-register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematically and traces the DECLARED Semantic_BladeTip of {tool}. Magnitudes: sweep_deg, path_studs, max_reach. PASS if sweep >= {min_sweep (default 60)}.", function(args)
+register("clip_arc_of", "EDIT_MISLEADS", "Samples clip {clip} on rig {rig} kinematically and traces the DECLARED Semantic_BladeTip of {tool}. Magnitudes: sweep_deg, path_studs, max_reach. PASS if sweep >= {min_sweep (default 60)}. EDIT_MISLEADS: the StepAnimations(0) scrub bypasses the runtime Animator (fade/blend/priority/locomotion) — needs the played_arc_of run twin.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
 	local tool = if typeof(args.tool) == "Instance" then args.tool else select(1, Path.resolve(tostring(args.tool)))
 	if rig == nil then
@@ -573,6 +582,65 @@ register("clip_arc_of", "EDIT_OK", "Samples clip {clip} on rig {rig} kinematical
 	local mag = { sweep_deg = sweep, path_studs = pathLen, max_reach_studs = maxReach, samples = #positions }
 	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
 end, 20000)
+
+register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIVES the weapon channel: >=2 keyframes must contain a Pose named after an AgentEditGrip Part1 (usually 'Handle') nested under the grip's Part0 Pose (usually 'RightHand'), AND the grip rotation must sweep > {min_swept_deg (default 10)} across keyframes. Catches scoped clips saved without add_keyframe {weapon=true} (a swing whose sword never moves).", function(args)
+	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+	if rig == nil then
+		return unknown("rig not found")
+	end
+	local clipName = tostring(args.clip or "SwordSwing")
+	local saves = rig:FindFirstChild("AnimSaves")
+	local ks = if saves ~= nil then saves:FindFirstChild(clipName) else nil
+	if ks == nil or not ks:IsA("KeyframeSequence") then
+		return unknown("clip not found under rig/AnimSaves: " .. clipName)
+	end
+	-- grip pairs from the live rig: Part0 name -> set of Part1 names (AgentEditGrip Motor6Ds; the
+	-- Animator matches poses by CONNECTED PART NAMES, so the clip must nest Part1 under Part0)
+	local gripPairs: { [string]: { [string]: boolean } } = {}
+	local gripCount = 0
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") and d.Name == "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
+			local p0 = (d.Part0 :: BasePart).Name
+			if gripPairs[p0] == nil then
+				gripPairs[p0] = {}
+			end
+			gripPairs[p0][(d.Part1 :: BasePart).Name] = true
+			gripCount += 1
+		end
+	end
+	if gripCount == 0 then
+		return unknown("no AgentEditGrip Motor6D under rig — grip_tool first (the weapon channel needs the edit grip joint)")
+	end
+	local keyframes = ks:GetKeyframes()
+	local handlePoses = 0
+	local handleCFs: { CFrame } = {}
+	for _, kf in keyframes do
+		for _, pose in (kf :: Keyframe):GetDescendants() do
+			local parent = pose.Parent
+			if pose:IsA("Pose") and parent ~= nil and parent:IsA("Pose") and gripPairs[parent.Name] ~= nil and gripPairs[parent.Name][pose.Name] == true then
+				handlePoses += 1
+				table.insert(handleCFs, pose.CFrame)
+				break -- one weapon pose per keyframe is enough for the census
+			end
+		end
+	end
+	local swept = 0
+	for i = 1, #handleCFs do
+		for j = i + 1, #handleCFs do
+			local _axis, angle = (handleCFs[i].Rotation:Inverse() * handleCFs[j].Rotation):ToAxisAngle()
+			swept = math.max(swept, math.deg(angle))
+		end
+	end
+	local minSwept = tonumber(args.min_swept_deg) or 10
+	local mag = { keyframes = #keyframes, handle_poses = handlePoses, swept_deg = swept }
+	if handlePoses < 2 then
+		return fail("weapon channel present in only " .. handlePoses .. "/" .. #keyframes .. " keyframes (need >=2 — save with add_keyframe {weapon=true})", mag)
+	end
+	if swept <= minSwept then
+		return fail("weapon channel exists but the grip rotation sweeps only " .. string.format("%.1f", swept) .. " deg across keyframes (min " .. minSwept .. ") — a static Handle pose", mag)
+	end
+	return pass(mag)
+end)
 
 register("clip_self_intersect", "EDIT_OK", "Samples clip {clip} on rig {rig}; at each pose, blade-tagged parts of {tool} vs the rig's torso/head (penetration beyond {max_depth (default 0.2)} studs) AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default 1.0)} studs) FAIL with the offending time.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
@@ -671,7 +739,6 @@ local function declStub(name: string, validity: string)
 		return unknown("declared; implemented in phase 2+")
 	end)
 end
-declStub("played_arc_of", "PLAY_ONLY")
 declStub("track_priority_audit", "PLAY_ONLY")
 declStub("impulse_effective", "PLAY_ONLY")
 declStub("load_scale_probe", "PLAY_ONLY")
@@ -685,6 +752,7 @@ declStub("clip_joint_mask", "EDIT_OK")
 -- them itself. Registered here as pointers so oracle_check answers with the run-mode recipe.
 M.twinOf = {
 	anchored_ok = "anchored_weld_census",
+	clip_arc_of = "played_arc_of",
 } :: { [string]: string }
 
 local RUN_TWIN_HINT = " Runs INSIDE run mode: playtest_start {mode:'run'}, then shell `play oracle "
@@ -701,6 +769,22 @@ register(
 	"stable_over",
 	"PLAY_ONLY",
 	"{target} holds position under live physics for {seconds} (default 2, cap 8); FAIL when drift > {max_drift} studs (default 0.5)." .. RUN_TWIN_HINT,
+	function(_args)
+		return unknown("PLAY_ONLY twin — execute via `play oracle` in run mode, not in edit")
+	end
+)
+register(
+	"played_arc_of",
+	"PLAY_ONLY",
+	"Runtime twin of clip_arc_of: plays {clip} on {rig}'s REAL Animator under run-mode stepping and sweeps {part (default Handle)} — max angle between root->point unit vectors per heartbeat (traces Semantic_BladeTip when the part carries one). PASS if sweep >= {min_sweep (default 60, matching clip_arc_of)}. Magnitudes: sweep_deg, samples, duration_ms." .. RUN_TWIN_HINT,
+	function(_args)
+		return unknown("PLAY_ONLY twin — execute via `play oracle` in run mode, not in edit")
+	end
+)
+register(
+	"offhand_reach",
+	"PLAY_ONLY",
+	"Does the AgentOffHandIK stamped by grip_tool {offhand:true} SOLVE under live run-mode stepping? Samples (LeftHand - IK Target).Magnitude every heartbeat for {seconds (default 2)} on {rig}. PASS iff dist_min < 1.5; FAIL quotes dist_start/dist_min/dist_end (missing IKControl is a measured FAIL). Answers the SP2c open question — either verdict is valuable." .. RUN_TWIN_HINT,
 	function(_args)
 		return unknown("PLAY_ONLY twin — execute via `play oracle` in run mode, not in edit")
 	end

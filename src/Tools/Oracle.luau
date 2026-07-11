@@ -37,6 +37,7 @@ local SUITES = {
 				{ check = "joint_census", args = { rig = rig } },
 				{ check = "rig_channel_check", args = { rig = rig, clip = clip } },
 				{ check = "clip_arc_of", args = { rig = rig, tool = target, clip = clip } },
+				{ check = "weapon_channel_of", args = { rig = rig, clip = clip } },
 				{ check = "clip_self_intersect", args = { rig = rig, tool = target, clip = clip } },
 			}
 		end,
@@ -55,6 +56,7 @@ local SUITES = {
 			return {
 				{ check = "joint_census", args = { rig = r } },
 				{ check = "rig_channel_check", args = { rig = r, clip = clip } },
+				{ check = "weapon_channel_of", args = { rig = r, clip = clip } },
 			}
 		end,
 		notAsserted = {
@@ -96,7 +98,42 @@ local function mergeTwins(twin_pending: { string }, twinResults: { any }): ({ st
 	return still, discharged, failures
 end
 
-local function runSuite(family: string, target: string, rig: string?, clip: string?, twinResults: { any }?): any
+-- Twin-source precedence (SP2e follow-up; INTER-AGENT CONTRACT with the sidecar): the sidecar
+-- ARCHIVES every `play oracle` envelope per play session and serves them at GET /play/twins as
+-- {"session": N, "active": bool, "twins": [verbatim envelopes]}. Sidecar-witnessed envelopes are
+-- the TRUSTED source (the sidecar saw them arrive over the play channel); caller-supplied
+-- twin_results are honest-agent evidence but FORGEABLE, so they are only the fail-open fallback.
+-- Pure table logic (selftest-covered); the merge RULES are identical for both sources.
+local function chooseTwinSource(sidecarBody: any, callerTwins: { any }?): ({ any }?, string)
+	if type(sidecarBody) == "table" and type(sidecarBody.twins) == "table" and #sidecarBody.twins > 0 then
+		return sidecarBody.twins, "twin source: sidecar-witnessed (session " .. tostring(sidecarBody.session) .. ")"
+	end
+	if callerTwins ~= nil then
+		local why = if sidecarBody == nil then "sidecar /play/twins unreachable" else "sidecar /play/twins empty/malformed"
+		return callerTwins, "twin source: caller-supplied (" .. why .. "; fail-open — caller-supplied evidence is FORGEABLE, quote the play-channel output verbatim)"
+	end
+	return nil, "twin source: none (sidecar /play/twins unavailable, no caller twin_results)"
+end
+
+-- One silent-graceful GET: any connection error, non-200 (the route 404s until the sidecar's next
+-- restart), or undecodable body degrades to fail-open — one note line in the suite, never an error.
+local function fetchSidecarTwins(baseUrl: string?): any
+	if baseUrl == nil then
+		return nil
+	end
+	local okReq, res = pcall(function()
+		return HttpService:RequestAsync({ Url = baseUrl .. "/play/twins", Method = "GET" })
+	end)
+	if not okReq or res == nil or not (res :: any).Success then
+		return nil
+	end
+	local okJ, body = pcall(function()
+		return HttpService:JSONDecode((res :: any).Body)
+	end)
+	return if okJ then body else "malformed body"
+end
+
+local function runSuite(family: string, target: string, rig: string?, clip: string?, twinResults: { any }?, sidecarBase: string?): any
 	local clipName = clip or "SwordSwing"
 	local suite = SUITES[family]
 	if suite == nil then
@@ -119,23 +156,41 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 			table.insert(twin_pending, r.check)
 			local twin = (OracleChecks :: any).twinOf[r.check]
 			if twin ~= nil then
+				-- per-twin args: played_arc_of measures the rig+clip, the census twins the target
+				local argsJson = if twin == "played_arc_of"
+					then '{"rig":"' .. (rig or "game.Workspace.AgentRig") .. '","clip":"' .. clipName .. '"}'
+					else '{"target":"' .. target .. '"}'
 				table.insert(twin_plan, {
 					check = r.check,
 					twin = twin,
-					cmd = 'play oracle {"check":"' .. twin .. '","args":{"target":"' .. target .. '"}}',
+					cmd = 'play oracle {"check":"' .. twin .. '","args":' .. argsJson .. "}",
 				})
 			end
 		end
 	end
-	-- SP2d follow-up: merge run-mode twin envelopes. A twin FAIL joins results and counts.FAIL.
+	-- SP2d/SP2e: merge run-mode twin envelopes — SIDECAR-WITNESSED (GET /play/twins) beats
+	-- caller-supplied twin_results (forgeable, fail-open). A twin FAIL joins results and counts.FAIL;
+	-- a discharged check also leaves twin_plan (its run already happened).
 	local twin_evidence: { [string]: any }? = nil
-	if twinResults ~= nil then
-		local still, discharged, failures = mergeTwins(twin_pending, twinResults)
-		twin_pending = still
-		twin_evidence = discharged
-		for _, f in failures do
-			counts.FAIL += 1
-			table.insert(results, f)
+	local twin_source: string? = nil
+	if #twin_pending > 0 then
+		local chosen, sourceNote = chooseTwinSource(fetchSidecarTwins(sidecarBase), twinResults)
+		twin_source = sourceNote
+		if chosen ~= nil then
+			local still, discharged, failures = mergeTwins(twin_pending, chosen)
+			twin_pending = still
+			twin_evidence = discharged
+			local plan: { any } = {}
+			for _, p in twin_plan do
+				if discharged[p.check] == nil then
+					table.insert(plan, p)
+				end
+			end
+			twin_plan = plan
+			for _, f in failures do
+				counts.FAIL += 1
+				table.insert(results, f)
+			end
 		end
 	end
 	local frameMissing: { string }
@@ -154,14 +209,17 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 		twin_pending = twin_pending,
 		twin_plan = twin_plan,
 		twin_evidence = twin_evidence,
+		twin_source = twin_source,
 		green = counts.FAIL == 0 and counts.UNKNOWN == 0 and #twin_pending == 0,
 		frameMissing = frameMissing,
 		blindspots = suite.notAsserted,
 		note = "UNKNOWN never satisfies; blindspots list what was NOT asserted — a green suite is not 'done'. "
 			.. "green=false while twin_pending is non-empty (EDIT_MISLEADS passes need their runtime twin). "
 			.. "To discharge: playtest_start {mode:'run'}, run each twin_plan[].cmd over the play channel, "
-			.. "playtest_stop, then re-run oracle_suite passing the VERBATIM returned JSON as twin_results[] "
-			.. "(quote the play-channel output as evidence; a twin FAIL fails the suite).",
+			.. "playtest_stop, then re-run oracle_suite — envelopes are auto-fetched from the sidecar witness "
+			.. "(GET /play/twins, trusted) when available; otherwise pass the VERBATIM returned JSON as "
+			.. "twin_results[] (fail-open, forgeable — quote the play-channel output as evidence; a twin FAIL "
+			.. "fails the suite).",
 	}
 end
 
@@ -207,6 +265,12 @@ local function selftest(): any
 		mp.Parent = nakedHolder
 		expect("naked MeshPart fails persistence", "FAIL", OracleChecks.run("mesh_persisted", { target = nakedHolder }))
 		expect("parts-only target passes persistence", "PASS", OracleChecks.run("mesh_persisted", { target = grip }))
+		-- upload-era arm (b): a recorded in-flight upload (pending attrs) passes without a MeshId
+		mp:SetAttribute("SAMeshAssetPending", true)
+		mp:SetAttribute("SAMeshAssetId", 125859573478095)
+		expect("pending-upload MeshPart passes persistence", "PASS", OracleChecks.run("mesh_persisted", { target = nakedHolder }))
+		mp:SetAttribute("SAMeshAssetPending", nil)
+		mp:SetAttribute("SAMeshAssetId", nil)
 	end
 	-- frame roundtrip on the toy sword (grip as the "handle": stamp on a Model wrapper)
 	local model = Instance.new("Model")
@@ -243,6 +307,18 @@ local function selftest(): any
 		local runFail = { check = "anchored_weld_census", verdict = "FAIL", context = "run", magnitudes = { anchored = 2, parts = 3 } }
 		local still4, _, fails4 = mergeTwins(pending, { runFail })
 		table.insert(results, { name = "twin FAIL is a suite failure and does not discharge", expected = 1, got = #fails4, ok = #fails4 == 1 and #still4 == 1 })
+		-- twin-source precedence (SP2e follow-up; pure — the /play/twins HTTP fetch is exercised live):
+		local witnessed = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = { anchored = 0 } }
+		local callerForged = { check = "anchored_weld_census", verdict = "FAIL", context = "run", magnitudes = { anchored = 9 } }
+		local chosen5, note5 = chooseTwinSource({ session = 3, active = false, twins = { witnessed } }, { callerForged })
+		local sidecarWon = chosen5 ~= nil and chosen5[1] == witnessed and string.find(note5, "sidecar%-witnessed %(session 3%)") ~= nil
+		table.insert(results, { name = "sidecar-witnessed beats caller-supplied", expected = "sidecar", got = if sidecarWon then "sidecar" else "caller", ok = sidecarWon })
+		local chosen6, note6 = chooseTwinSource("HTML error page, not JSON", { callerForged })
+		local fellOpen6 = chosen6 ~= nil and chosen6[1] == callerForged and string.find(note6, "caller%-supplied") ~= nil
+		table.insert(results, { name = "malformed sidecar body falls open to caller-supplied", expected = "caller", got = if fellOpen6 then "caller" else "other", ok = fellOpen6 })
+		local chosen7, note7 = chooseTwinSource(nil, { callerForged })
+		local fellOpen7 = chosen7 ~= nil and chosen7[1] == callerForged and string.find(note7, "unreachable") ~= nil
+		table.insert(results, { name = "unreachable sidecar (404 today) falls open to caller-supplied", expected = "caller", got = if fellOpen7 then "caller" else "other", ok = fellOpen7 })
 	end
 	folder:Destroy()
 	local failures = 0
@@ -275,6 +351,7 @@ Oracle.descriptors = {
 			.. "mesh_persisted{target}, "
 			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, joint_census{rig}, "
 			.. "rig_channel_check{rig,clip}, clip_arc_of{rig,tool,clip,samples,min_sweep}, "
+			.. "weapon_channel_of{rig,clip,min_swept_deg}, "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth}, __selftest{}. "
 			.. "Verdicts: PASS|FAIL|UNKNOWN (UNKNOWN never counts as pass). Prefer these over captures for anything measurable.",
 		inputSchema = {
@@ -315,14 +392,23 @@ Oracle.descriptors = {
 			required = { "family", "target" },
 		},
 		destructive = false,
-		run = function(input, _context)
+		run = function(input, context)
 			local args = if type(input) == "table" then input else {}
+			-- sidecar base for the trusted twin-witness fetch (the Playtest.luau config pattern);
+			-- nil (no config) just means fail-open to caller-supplied twin_results.
+			local sidecarBase: string? = nil
+			if context ~= nil and context.config ~= nil then
+				pcall(function()
+					sidecarBase = context.config:getSidecarUrl()
+				end)
+			end
 			local r = runSuite(
 				tostring(args.family),
 				tostring(args.target),
 				if args.rig ~= nil then tostring(args.rig) else nil,
 				if args.clip ~= nil then tostring(args.clip) else nil,
-				if type(args.twin_results) == "table" then args.twin_results else nil
+				if type(args.twin_results) == "table" then args.twin_results else nil,
+				sidecarBase
 			)
 			return encode(r), r.ok ~= true
 		end,
