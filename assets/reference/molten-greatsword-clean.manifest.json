@@ -1,0 +1,27 @@
+{
+ "mode": "cleanup",
+ "source": "molten-greatsword.glb",
+ "verts_in": 147225,
+ "tris_in": 164657,
+ "verts": 10003,
+ "tris": 19499,
+ "extents_studs": [
+  1.443,
+  0.773,
+  5.2
+ ],
+ "target_studs": 5.2,
+ "smooth": 8,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "ZX",
+ "uv_margin": 0.03,
+ "uv_sides": 2,
+ "uv_aspect": 0.555,
+ "uv_layers": 1,
+ "ao": "molten-greatsword-ao.png",
+ "ao_size": [
+  1024,
+  568
+ ]
+}
