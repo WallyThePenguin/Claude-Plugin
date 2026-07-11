@@ -150,6 +150,108 @@ def main():
         fails += _check("embedded atlas extracted",
                         tex.get("mime") == "image/png" and b64mod.b64decode(tex.get("base64", ""))[:4] == b"\x89PNG")
 
+    # ---- atlas RGBA decode + textured read_reference_mesh (texture-apply slice, Luau half) ----
+    # decode_atlas_rgba: the Luau side cannot decode PNG, so the sidecar hands it raw RGBA it can
+    # buffer.fromstring straight into EditableImage:WritePixelsBuffer (top-down rows, R,G,B,A order).
+    try:
+        from PIL import Image as _PILImage
+        _have_pil = True
+    except ImportError:
+        _have_pil = False
+    if not _have_pil:
+        print("  SKIP  PIL not available for atlas-decode tests")
+    else:
+        import io as _io
+
+        def _glb_with_png(path, png_bytes):
+            positions = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
+            uvs = struct.pack("<6f", 0.0, 0.0, 1.0, 0.0, 0.0, 1.0)
+            indices = struct.pack("<3H", 0, 1, 2) + b"\x00\x00"
+            binchunk = positions + uvs + png_bytes + indices
+            gltf = {
+                "asset": {"version": "2.0"},
+                "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2}]}],
+                "images": [{"mimeType": "image/png", "bufferView": 2}],
+                "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC2"},
+                    {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"},
+                ],
+                "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 60, "byteLength": len(png_bytes)},
+                    {"buffer": 0, "byteOffset": 60 + len(png_bytes), "byteLength": 6},
+                ],
+                "buffers": [{"byteLength": len(binchunk)}],
+            }
+            jsonchunk = json.dumps(gltf).encode()
+            jsonchunk += b" " * ((4 - len(jsonchunk) % 4) % 4)
+            total = 12 + 8 + len(jsonchunk) + 8 + len(binchunk)
+            with open(path, "wb") as fh:
+                fh.write(b"glTF" + struct.pack("<II", 2, total))
+                fh.write(struct.pack("<II", len(jsonchunk), 0x4E4F534A) + jsonchunk)
+                fh.write(struct.pack("<II", len(binchunk), 0x004E4942) + binchunk)
+
+        def _png(w, h, color):
+            buf = _io.BytesIO()
+            _PILImage.new("RGBA", (w, h), color).save(buf, format="PNG")
+            return buf.getvalue()
+
+        with tempfile.TemporaryDirectory() as d:
+            tp = os.path.join(d, "atlas4.glb")
+            _glb_with_png(tp, _png(4, 4, (200, 160, 30, 255)))
+            res = meshio.decode_atlas_rgba(tp)
+            fails += _check("atlas decodes to native size", res["width"] == 4 and res["height"] == 4)
+            fails += _check("rgba byte length = w*h*4", len(res["rgba"]) == 4 * 4 * 4)
+            fails += _check("rgba is R,G,B,A order", tuple(res["rgba"][:4]) == (200, 160, 30, 255))
+
+            tp2 = os.path.join(d, "atlas20.glb")
+            _glb_with_png(tp2, _png(20, 20, (10, 20, 30, 255)))
+            res2 = meshio.decode_atlas_rgba(tp2, max_size=8)
+            fails += _check("atlas downscaled to max_size", max(res2["width"], res2["height"]) == 8)
+            fails += _check("downscaled rgba length matches dims",
+                            len(res2["rgba"]) == res2["width"] * res2["height"] * 4)
+
+            # decode_image_rgba: the Gemini-painted atlas arrives as a bare PNG file (not embedded
+            # in a GLB) — same RGBA contract so the Luau apply path is identical.
+            pp = os.path.join(d, "painted.png")
+            with open(pp, "wb") as fh:
+                fh.write(_png(20, 20, (77, 66, 55, 255)))
+            res3 = meshio.decode_image_rgba(pp, max_size=8)
+            fails += _check("png decodes + downscales to max_size",
+                            max(res3["width"], res3["height"]) == 8
+                            and len(res3["rgba"]) == res3["width"] * res3["height"] * 4)
+            fails += _check("png rgba pixel order", tuple(res3["rgba"][:4]) == (77, 66, 55, 255))
+
+            # render_uv_template: rasterize the UV islands (glTF top-down space — Roblox samples
+            # the atlas 1:1, no V-flip, proven live on the DivineRapier) for the texture painter.
+            # The synthetic GLB's one face covers UV (0,0),(1,0),(0,1) — the upper-left triangle.
+            tpl = meshio.render_uv_template(tp, size=64)
+            im = _PILImage.open(_io.BytesIO(tpl)).convert("RGB")
+            fails += _check("template is the requested size", im.size == (64, 64))
+            inside = im.getpixel((16, 16))   # centroid region of the upper-left triangle
+            outside = im.getpixel((60, 60))  # far corner, outside every island
+            fails += _check("island interior is filled (non-black)", sum(inside) > 60)
+            fails += _check("outside the islands stays black", sum(outside) == 0)
+
+    # textured read_reference_mesh on the real cleaned rapier: vertex-aligned uvs + a LEAN texture
+    # descriptor (pixels ship via the separate binary /assets/texture route, never in this JSON).
+    rapier = os.path.join(meshio.ASSET_DIR, "rapier2-clean.glb")
+    if os.path.isfile(rapier):
+        base = meshio.read_reference_mesh("rapier2-clean.glb")
+        fails += _check("default read omits uvs (backward compat)", "uvs" not in base)
+        tx = meshio.read_reference_mesh("rapier2-clean.glb", textured=True)
+        fails += _check("textured read includes vertex-aligned uvs",
+                        len(tx.get("uvs", [])) == len(tx["vertices"]) and len(tx["uvs"]) > 0)
+        tex = tx.get("texture") or {}
+        fails += _check("texture descriptor present with dims",
+                        tex.get("present") is True and tex.get("width", 0) > 0 and tex.get("height", 0) > 0)
+        fails += _check("textured read stays lean (no base64 pixels in JSON)", "base64" not in tex)
+    else:
+        print("  SKIP  rapier2-clean.glb not present for textured read test")
+
     # ---- glTF animation parsing (the Pilot Doctrine's animation leg, v3) ----
     with tempfile.TemporaryDirectory() as d:
         ap = os.path.join(d, "anim.glb")

@@ -178,10 +178,13 @@ def parse_glb(path: str) -> dict:
 def parse_glb_textured(path: str) -> dict:
     """parse_glb PLUS the texture channel (v4, the texture slice): per-vertex UVs from
     TEXCOORD_0 (corner-split order matches the vertex expansion — same accessor walk) and the
-    FIRST embedded image (the TRELLIS base-color atlas) as base64. UV convention note for the
-    Luau side: glTF V runs top-down, EditableMesh UVs run bottom-up — flip V there, not here
-    (this module stays a faithful reader). Returns parse_glb's dict + {uvs: [[u,v]...],
-    texture: {mime, base64} | None}. Meshes without TEXCOORD_0 get uvs=[]."""
+    FIRST embedded image (the TRELLIS base-color atlas) as base64. UV convention (PROVEN LIVE
+    2026-07-11 on the DivineRapier): NO V-flip anywhere — glTF UVs are top-down and an
+    EditableImage written row-by-row from the top (WritePixelsBuffer with PIL tobytes()) samples
+    the SAME way, so glTF UVs pass through 1:1. (A flipped import rendered 81%-black — the
+    atlas background — and the unflipped re-import rendered correctly.) Returns parse_glb's
+    dict + {uvs: [[u,v]...], texture: {mime, base64} | None}. Meshes without TEXCOORD_0 get
+    uvs=[]."""
     import base64 as _b64
 
     out = parse_glb(path)
@@ -212,6 +215,84 @@ def parse_glb_textured(path: str) -> dict:
     out["uvs"] = uvs if len(uvs) == len(out["vertices"]) else []
     out["texture"] = texture
     return out
+
+
+def decode_atlas_rgba(path: str, max_size: int = 1024) -> dict:
+    """The base-color atlas as raw RGBA bytes for EditableImage:WritePixelsBuffer — the Luau side
+    can't decode PNG, so PIL does it here: first embedded image -> RGBA, downscaled so the longest
+    edge is <= max_size (the shipping EditableImage tops out around 1024, and a native 1536 atlas
+    would also bloat the single-slot bridge). Rows run TOP-DOWN, bytes R,G,B,A per pixel — the plugin
+    buffer.fromstring()s the body straight into WritePixelsBuffer and flips V on the UVs, not on the
+    image. Returns {width, height, rgba}. Raises MeshError when the GLB carries no embedded image."""
+    from io import BytesIO
+    from PIL import Image
+
+    gltf, binchunk = _read_glb(path)
+    img_bytes = None
+    for img in gltf.get("images", []):
+        if "bufferView" in img:
+            view = gltf["bufferViews"][img["bufferView"]]
+            start = view.get("byteOffset", 0)
+            img_bytes = binchunk[start:start + view["byteLength"]]
+            break
+    if img_bytes is None:
+        raise MeshError("GLB has no embedded texture image")
+    im = Image.open(BytesIO(img_bytes)).convert("RGBA")
+    w, h = im.size
+    longest = max(w, h)
+    if longest > max_size:
+        scale = max_size / longest
+        im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+        w, h = im.size
+    return {"width": w, "height": h, "rgba": im.tobytes()}
+
+
+def decode_image_rgba(path: str, max_size: int = 1024) -> dict:
+    """A bare image FILE (the Gemini-painted atlas PNG) -> the same {width, height, rgba}
+    contract as decode_atlas_rgba, so the Luau apply path is identical for embedded-in-GLB and
+    painted-on-disk textures. Top-down rows, R,G,B,A — no V-flip (see parse_glb_textured)."""
+    from PIL import Image
+
+    im = Image.open(path).convert("RGBA")
+    w, h = im.size
+    longest = max(w, h)
+    if longest > max_size:
+        scale = max_size / longest
+        im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+        w, h = im.size
+    return {"width": w, "height": h, "rgba": im.tobytes()}
+
+
+def render_uv_template(path: str, size: int = 1024, wire: bool = True) -> bytes:
+    """Rasterize a GLB's UV islands into a PNG template for the texture PAINTER (Gemini): black
+    background, light-gray island fill, and (wire=True) white wireframe edges. wire=False is the
+    PAINTER's version — on dense meshes the wireframe reads as solid white and pollutes the
+    canvas; the clean silhouette fill is the paint-here mask. Drawn in glTF's top-down UV
+    space — exactly the space the painted atlas is sampled in (no V-flip, proven live), so
+    painting inside these islands IS painting on the mesh. Returns PNG bytes."""
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+
+    parsed = parse_glb_textured(path)
+    uvs, faces = parsed["uvs"], parsed["faces"]
+    if not uvs:
+        raise MeshError("GLB has no TEXCOORD_0 — unwrap it first (rig_weapon.py --uv planar)")
+    im = Image.new("RGB", (size, size), (0, 0, 0))
+    draw = ImageDraw.Draw(im)
+
+    def px(uv):
+        return (uv[0] * (size - 1), uv[1] * (size - 1))
+
+    fill = (70, 70, 70) if wire else (128, 128, 128)
+    for f in faces:  # fill first, then edges, so shared borders stay visible
+        draw.polygon([px(uvs[f[0] - 1]), px(uvs[f[1] - 1]), px(uvs[f[2] - 1])], fill=fill)
+    if wire:
+        for f in faces:
+            pts = [px(uvs[f[0] - 1]), px(uvs[f[1] - 1]), px(uvs[f[2] - 1])]
+            draw.line([pts[0], pts[1], pts[2], pts[0]], fill=(255, 255, 255), width=1)
+    buf = BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def list_animations(path: str) -> dict:
@@ -276,8 +357,11 @@ def parse_animation(path: str, name: str) -> dict:
     }
 
 
-def read_reference_mesh(filename: str) -> dict:
-    """Parse a .glb from assets/reference (allowlisted directory, .glb only)."""
+def read_reference_mesh(filename: str, textured: bool = False) -> dict:
+    """Parse a .glb from assets/reference (allowlisted directory, .glb only). textured=True adds
+    per-vertex uvs + a LEAN texture descriptor {present, mime, width, height}; the atlas PIXELS
+    ship as raw RGBA via the separate /assets/texture route, never inline in this JSON (a 1536
+    atlas is ~9MB of RGBA — it does not belong in the mesh payload)."""
     if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
         raise MeshError("bad filename")
     if not filename.lower().endswith(".glb"):
@@ -285,4 +369,18 @@ def read_reference_mesh(filename: str) -> dict:
     path = os.path.join(ASSET_DIR, filename)
     if not os.path.isfile(path):
         raise MeshError(f"no such reference asset: {filename}")
-    return parse_glb(path)
+    if not textured:
+        return parse_glb(path)
+    out = parse_glb_textured(path)
+    tex = out.pop("texture", None)  # drop the heavy base64 PNG; describe it instead
+    if tex is not None:
+        import base64 as _b64
+
+        raw = _b64.b64decode(tex.get("base64", ""))
+        width = height = 0
+        if raw[:8] == b"\x89PNG\r\n\x1a\n":  # dims from the IHDR without a full decode
+            width, height = struct.unpack(">II", raw[16:24])
+        out["texture"] = {"present": True, "mime": tex.get("mime"), "width": width, "height": height}
+    else:
+        out["texture"] = {"present": False}
+    return out

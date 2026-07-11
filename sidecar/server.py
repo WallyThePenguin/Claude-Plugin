@@ -210,7 +210,80 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 import meshio
 
-                return self._json(200, meshio.read_reference_mesh(qs.get("file", [""])[0]))
+                textured = qs.get("textured", ["0"])[0] not in ("0", "", "false", "no")
+                return self._json(
+                    200, meshio.read_reference_mesh(qs.get("file", [""])[0], textured=textured)
+                )
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
+        if parsed.path == "/assets/texture":
+            # Raw RGBA bytes of a texture (decoded + downscaled) for the plugin to
+            # buffer.fromstring() straight into EditableImage:WritePixelsBuffer. Binary, not JSON —
+            # a 1024 atlas is 4MB and base64 in JSON would inflate it 33%. X-Size carries the served
+            # WxH (post-downscale) so the plugin sizes the EditableImage without a second call.
+            # Sources: a .glb (its FIRST embedded image — the TRELLIS atlas) or a bare .png/.jpg
+            # (the Gemini-painted atlas) — same contract either way.
+            try:
+                import meshio
+
+                fname = qs.get("file", [""])[0]
+                lower = fname.lower() if isinstance(fname, str) else ""
+                if (
+                    not isinstance(fname, str)
+                    or "/" in fname
+                    or "\\" in fname
+                    or ".." in fname
+                    or not lower.endswith((".glb", ".png", ".jpg", ".jpeg"))
+                ):
+                    return self._json(400, {"error": "bad filename"})
+                path = os.path.join(meshio.ASSET_DIR, fname)
+                if not os.path.isfile(path):
+                    return self._json(404, {"error": f"no such reference asset: {fname}"})
+                try:
+                    max_size = int(qs.get("max", ["1024"])[0])
+                except ValueError:
+                    max_size = 1024
+                max_size = max(16, min(2048, max_size))
+                if lower.endswith(".glb"):
+                    tex = meshio.decode_atlas_rgba(path, max_size=max_size)
+                else:
+                    tex = meshio.decode_image_rgba(path, max_size=max_size)
+                body = tex["rgba"]
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Size", f"{tex['width']},{tex['height']}")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
+        if parsed.path == "/assets/uvmap":
+            # The UV-island template PNG (render_uv_template) — the painter's canvas guide.
+            try:
+                import meshio
+
+                fname = qs.get("file", [""])[0]
+                if (
+                    not isinstance(fname, str)
+                    or "/" in fname
+                    or "\\" in fname
+                    or ".." in fname
+                    or not fname.lower().endswith(".glb")
+                ):
+                    return self._json(400, {"error": "bad filename"})
+                path = os.path.join(meshio.ASSET_DIR, fname)
+                if not os.path.isfile(path):
+                    return self._json(404, {"error": f"no such reference asset: {fname}"})
+                try:
+                    size = int(qs.get("size", ["1024"])[0])
+                except ValueError:
+                    size = 1024
+                size = max(64, min(2048, size))
+                body = meshio.render_uv_template(path, size=size)
+                return self._send(200, "image/png", body)
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
