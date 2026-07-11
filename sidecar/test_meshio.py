@@ -253,6 +253,14 @@ def main():
             im3 = _PILImage.open(_io.BytesIO(tpl3)).convert("RGB")
             fails += _check("template canvas carries the mesh aspect", im3.size == (64, 32))
 
+            # the manifest's uv_aspect (written by rig_weapon) OVERRIDES the geometric guess —
+            # a two-band unwrap's canvas is ~2x the geometric aspect and only the unwrap knows.
+            with open(os.path.join(d, "rect.manifest.json"), "w", encoding="utf-8") as fh:
+                json.dump({"uv_aspect": 1.0}, fh)
+            tpl4 = meshio.render_uv_template(tp3, size=64)
+            im4 = _PILImage.open(_io.BytesIO(tpl4)).convert("RGB")
+            fails += _check("manifest uv_aspect overrides the geometric aspect", im4.size == (64, 64))
+
     # textured read_reference_mesh on the real cleaned rapier: vertex-aligned uvs + a LEAN texture
     # descriptor (pixels ship via the separate binary /assets/texture route, never in this JSON).
     rapier = os.path.join(meshio.ASSET_DIR, "rapier2-clean.glb")

@@ -16,6 +16,12 @@
  "uv": "planar",
  "uv_axes": "ZX",
  "uv_margin": 0.03,
- "uv_aspect": 0.332,
- "uv_layers": 1
+ "uv_sides": 2,
+ "uv_aspect": 0.6639,
+ "uv_layers": 1,
+ "ao": "rapier2-uv-ao.png",
+ "ao_size": [
+  1024,
+  680
+ ]
 }

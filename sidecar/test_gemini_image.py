@@ -102,6 +102,22 @@ def main():
                             len(txt_parts) == 1 and "island" in txt_parts[0]["text"].lower())
             fails += _check("painted atlas written", r["ok"] is True and os.path.exists(r["out"]))
             fails += _check("paint result never echoes the key", "sekrit-b2c4" not in str(r))
+
+            # relief mode: the template is the mesh's OWN baked relief (AO) — the prompt must
+            # flip the authority (reference = theme only; relief = where detail lives) and
+            # demand albedo (no baked lighting). User-caught: silhouette paints are "an image
+            # stuck on a bunch of bumps" — painted features land where the REFERENCE had them,
+            # not where the mesh's real geometry is.
+            r2 = gemini_image.paint_atlas(
+                "divine rapier", ref, tpl, out, mode="relief",
+                describe=lambda: {"baseUrl": "http://x", "proxyKey": "sekrit-b2c4"})
+            body2 = captured2.get("body") or {}
+            parts2 = (body2.get("messages") or [{}])[0].get("content") or []
+            txt2 = [p for p in parts2 if isinstance(p, dict) and p.get("type") == "text"]
+            low2 = txt2[0]["text"].lower() if txt2 else ""
+            fails += _check("relief prompt makes the relief map the layout authority",
+                            "relief" in low2 and "albedo" in low2 and "theme" in low2)
+            fails += _check("relief paint writes too", r2["ok"] is True)
     finally:
         gemini_image.urllib.request.urlopen = real_paint_open
 

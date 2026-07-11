@@ -52,10 +52,19 @@ ap.add_argument("--uv-angle", dest="uv_angle", type=float, default=66.0,
                      "(fewer, larger islands paint better)")
 ap.add_argument("--uv-margin", dest="uv_margin", type=float, default=0.02,
                 help="island margin (UV space) — the gutter that absorbs painter bleed")
+ap.add_argument("--uv-sides", dest="uv_sides", type=int, default=2, choices=[1, 2],
+                help="planar unwrap islands: 2 (default) = front/back faces get their OWN "
+                     "stacked bands (no texel sharing — overlapped UVs speckle AO bakes with "
+                     "double-writes and mirror-smear complex geometry); 1 = the old "
+                     "mirror-texel single island")
 ap.add_argument("--smooth", type=int, default=0,
                 help="Laplacian smoothing iterations (factor 0.5) after decimate — melts the "
                      "voxel-reconstruction bumps ('rocky' surfaces). 0 = off. Keep modest "
                      "(~5-10): thin ornament thins further with every pass.")
+ap.add_argument("--bake-ao", dest="bake_ao", default="",
+                help="PNG path: bake the mesh's OWN ambient occlusion into UV space (Cycles CPU) "
+                     "at the canvas aspect — the relief map the texture PAINTER molds paint to "
+                     "(theme from the reference, layout from the mesh). Requires --uv.")
 ap.add_argument("--canon", default="long-y", choices=["none", "long-y"],
                 help="long-y (default) = PCA-rotate so the principal (long) axis lands on ROBLOX "
                      "vertical (+Y in the exported glTF). In Blender coords that is +Z — the glTF "
@@ -97,13 +106,17 @@ if len(meshes) > 1:
 obj = bpy.context.view_layer.objects.active
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
-# bmesh repair: merge-by-distance + degenerate dissolve (the anti-bone-heat pre-pass too)
+# bmesh repair: merge-by-distance + degenerate dissolve (the anti-bone-heat pre-pass too) +
+# RECALC FACE NORMALS: voxel-reconstruction meshes ship MIXED WINDING (the reason generated
+# blades rendered see-through from behind and needed DoubleSided=true) — inward-pointing faces
+# also sample AO from INSIDE the shell, shredding relief bakes into shard noise (measured).
 bm = bmesh.new()
 bm.from_mesh(obj.data)
 before_v, before_f = len(bm.verts), len(bm.faces)
 bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
 bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-5)
 bmesh.ops.triangulate(bm, faces=bm.faces[:])
+bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 bm.to_mesh(obj.data)
 bm.free()
 
@@ -250,21 +263,39 @@ elif args.uv == "planar":
     hi_v = max(v.co[ax_v] for v in mesh.vertices)
     span_u = max(hi_u - lo_u, 1e-9)
     span_v = max(hi_v - lo_v, 1e-9)
+    ax_w = order[2]  # the thin axis — face-normal sign along it decides front vs back
     m = max(0.0, min(0.2, args.uv_margin))
-    usable = 1.0 - 2.0 * m
+    usable_u = 1.0 - 2.0 * m
     # FULL-BOX per-axis normalization: the CANVAS carries the aspect, not the UVs — the
-    # template/atlas is rendered at the mesh's true aspect (render_uv_template auto-aspect), so
-    # texels stay square, the silhouette is undistorted, and the whole canvas is detail budget.
-    # (An aspect-true unwrap inside a square canvas wasted ~half the texels — measured: the
-    # squeezed repaint read worse than the near-square one.)
+    # template/atlas is rendered at the layout's aspect (uv_aspect in the manifest; meshio
+    # reads it), so texels stay square, the silhouette is undistorted, and the whole canvas is
+    # detail budget. TWO-SIDED (default): front/back faces get their own stacked horizontal
+    # bands — overlapped mirror-texels DOUBLE-WRITE AO bakes into shard noise (measured) and
+    # mirror-smear complex geometry like guards.
+    sides = args.uv_sides
+    if sides == 2:
+        band = (1.0 - 3.0 * m) / 2.0  # two bands + three gutters (top, middle, bottom)
+        canvas_aspect = 2.0 * span_v / span_u
+    else:
+        band = 1.0 - 2.0 * m
+        canvas_aspect = span_v / span_u
+
+    def v_of(nv, side):
+        return (m + nv * band) if side == 0 else (2.0 * m + band + nv * band)
+
     layer = mesh.uv_layers.new(name="UVMap")
-    for loop in mesh.loops:
-        co = mesh.vertices[loop.vertex_index].co
-        layer.data[loop.index].uv = (m + (co[ax_u] - lo_u) / span_u * usable,
-                                     m + (co[ax_v] - lo_v) / span_v * usable)
+    for poly in mesh.polygons:
+        side = 0 if (sides == 1 or poly.normal[ax_w] >= 0.0) else 1
+        for li in poly.loop_indices:
+            co = mesh.vertices[mesh.loops[li].vertex_index].co
+            u = m + (co[ax_u] - lo_u) / span_u * usable_u
+            nv = (co[ax_v] - lo_v) / span_v
+            layer.data[li].uv = (u, v_of(nv, side))
     uv_stats = {"uv": "planar", "uv_axes": "XYZ"[ax_u] + "XYZ"[ax_v], "uv_margin": m,
-                "uv_aspect": round(span_v / span_u, 4), "uv_layers": len(mesh.uv_layers)}
-    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} full-box aspect={uv_stats['uv_aspect']}")
+                "uv_sides": sides, "uv_aspect": round(canvas_aspect, 4),
+                "uv_layers": len(mesh.uv_layers)}
+    print(f"planar uv: axes={uv_stats['uv_axes']} sides={sides} margin={m} "
+          f"canvas-aspect={uv_stats['uv_aspect']}")
 
 bones_manifest = []
 if args.mode == "rigid":
@@ -340,6 +371,46 @@ if args.mode == "rigid":
                                "head_studs": [round(c, 3) for c in h]})
     print(f"rigid rig: axis={'XYZ'[axis]} grip_at_{'min' if grip_at_min else 'max'} bands={band_counts}")
 
+ao_stats = {}
+if args.bake_ao:
+    # The mesh's own relief, laid out in UV space — what the painter molds materials to
+    # (user-caught: silhouette paints are "an image stuck on a bunch of bumps"). Cycles AO is
+    # purely geometric (no lights needed); margin=8 doubles as the island bleed. The bake
+    # material is REMOVED before export so the GLB stays clean (an embedded AO would masquerade
+    # as the base-color atlas to parse_glb_textured).
+    if not obj.data.uv_layers:
+        raise SystemExit("--bake-ao requires a UV layer (pass --uv planar)")
+    if "uv_aspect" in uv_stats:  # the unwrap's own canvas aspect (two-band != geometric)
+        aspect = uv_stats["uv_aspect"]
+    else:
+        spans = sorted(mesh_extents(obj), reverse=True)
+        aspect = (spans[1] / spans[0]) if spans[0] > 1e-9 else 1.0
+    bw = 1024
+    bh = max(16, round(bw * max(0.05, min(1.0, aspect))))
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 24
+    img = bpy.data.images.new("SA_AO", width=bw, height=bh, alpha=False)
+    mat = bpy.data.materials.new("SA_BakeMat")
+    mat.use_nodes = True
+    tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex_node.image = img
+    mat.node_tree.nodes.active = tex_node
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.bake(type="AO", margin=8)
+    os.makedirs(os.path.dirname(os.path.abspath(args.bake_ao)), exist_ok=True)
+    img.filepath_raw = args.bake_ao
+    img.file_format = "PNG"
+    img.save()
+    obj.data.materials.clear()
+    ao_stats = {"ao": os.path.basename(args.bake_ao), "ao_size": [bw, bh]}
+    print(f"ao bake: {bw}x{bh} -> {args.bake_ao}")
+
 out_dir = os.path.dirname(os.path.abspath(args.out_glb))
 os.makedirs(out_dir, exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=args.out_glb, export_format="GLB")
@@ -358,6 +429,7 @@ manifest = {
     "smooth": args.smooth,
     "bones": bones_manifest,
     **uv_stats,
+    **ao_stats,
 }
 with open(os.path.splitext(args.out_glb)[0] + ".manifest.json", "w", encoding="utf-8") as f:
     json.dump(manifest, f, indent=1)

@@ -299,6 +299,16 @@ def render_uv_template(path: str, size: int = 1024, wire: bool = True,
     if not uvs:
         raise MeshError("GLB has no TEXCOORD_0 — unwrap it first (rig_weapon.py --uv planar)")
     if aspect is None:
+        # the unwrap's manifest knows the CANVAS aspect (a two-band layout is ~2x the geometric
+        # ratio — only rig_weapon knows how it packed the islands); geometry is the fallback.
+        manifest_path = os.path.splitext(path)[0] + ".manifest.json"
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as fh:
+                    aspect = json.load(fh).get("uv_aspect")
+            except (ValueError, OSError):
+                aspect = None
+    if aspect is None:
         verts = parsed["vertices"]
         spans = []
         for i in range(3):

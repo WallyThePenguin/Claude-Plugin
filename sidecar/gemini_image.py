@@ -185,29 +185,58 @@ PAINT_PROMPT = (
 )
 
 
+# Relief mode (user-caught failure of silhouette mode: "an image stuck on a bunch of bumps" —
+# painted features land where the REFERENCE had them, not where the mesh's real geometry is).
+# The template here is the mesh's OWN baked relief (ambient occlusion in UV space): dark
+# crevices, bright ridges — the ground truth of where the actual surface detail lives. The
+# reference is demoted to THEME (materials, palette, mood); the relief is the layout authority.
+# Albedo-only keeps engine lighting honest (painted highlights/shadows fight real-time light).
+PAINT_RELIEF_PROMPT = (
+    "You are painting a texture atlas for a 3D model of {subject}. The second image is the "
+    "model's OWN surface relief map (an ambient-occlusion bake laid out in UV space): dark "
+    "areas are real crevices and recesses of the mesh, bright areas are raised ridges and "
+    "flats; pure black is unused space. The first image is a THEME reference only — take its "
+    "materials, colors, and mood from it, but do NOT copy its layout or paste its picture. "
+    "Paint a full-color ALBEDO texture at the same resolution and aspect as the relief map, "
+    "molding the paint to the relief: assign materials so the relief's actual features make "
+    "sense (recessed engraving gets darker inlay tones, raised ornament gets the bright metal, "
+    "large smooth areas get clean base material). Style: a RICH hand-painted game albedo "
+    "texture — realistic material detail and color variation (brushed-metal grain, subtle "
+    "patina, engraving fill, worn edges), NOT flat cartoon fills — but with lighting kept OUT "
+    "of the paint: no specular highlights, no cast shadows, no baked shading, no glow. Cover "
+    "every non-black region of the relief (each island) fully, bleed each region's colors "
+    "roughly 8 pixels past its border, keep unused space pure black, and draw no outlines, "
+    "labels, or wireframe lines. Output only the painted atlas image."
+)
+
+
 def _data_url(path):
     mime = "image/jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "image/png"
     with open(path, "rb") as f:
         return "data:" + mime + ";base64," + base64.b64encode(f.read()).decode("ascii")
 
 
-def paint_atlas(subject, reference_path, template_path, out_path, describe=None, model=None):
-    """Paint a UV atlas for `subject`: multimodal call = reference image + UV template + the
-    islands contract -> painted atlas PNG at out_path (extension corrected). Same describe /
-    extract / atomic-write seams as generate(). Returns {ok, wall_s, out, bytes} | {ok:False,
-    error}."""
+def paint_atlas(subject, reference_path, template_path, out_path, describe=None, model=None,
+                mode="silhouette"):
+    """Paint a UV atlas for `subject`: multimodal call = reference image + template + the
+    contract prompt -> painted atlas PNG at out_path (extension corrected). mode="silhouette"
+    paints into the flat island mask (render_uv_template wire=False); mode="relief" expects the
+    template to be the mesh's OWN AO bake and paints theme-from-reference, layout-from-relief,
+    albedo-only. Same describe / extract / atomic-write seams as generate(). Returns
+    {ok, wall_s, out, bytes} | {ok:False, error}."""
     t0 = time.time()
     desc = (describe or self_describe)()
     base_url = (desc.get("baseUrl") or "").rstrip("/")
     key = desc.get("proxyKey") or ""
     if not base_url:
         return {"ok": False, "error": "no proxy baseUrl from describe (is Studio open with the bridge?)"}
+    prompt = (PAINT_RELIEF_PROMPT if mode == "relief" else PAINT_PROMPT).format(subject=subject)
     body = {
         "model": model or MODEL,
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "text", "text": PAINT_PROMPT.format(subject=subject)},
+                {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": _data_url(reference_path)}},
                 {"type": "image_url", "image_url": {"url": _data_url(template_path)}},
             ],
