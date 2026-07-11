@@ -110,6 +110,46 @@ def main():
         fails += _check("dominant vertex_bone per vertex", skin.get("vertex_bone") == [0, 0, 1])
         fails += _check("exact 1.0 weights are not lossy", skin.get("weights_lossy") is False)
 
+    # ---- textured parse (v4, the texture slice) ----
+    with tempfile.TemporaryDirectory() as d:
+        tp = os.path.join(d, "tex.glb")
+        positions = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
+        uvs = struct.pack("<6f", 0.0, 0.0, 1.0, 0.0, 0.0, 1.0)
+        png = b"\x89PNG\r\n\x1a\n" + b"fakepngbody!"  # content is opaque to the reader
+        indices = struct.pack("<3H", 0, 1, 2) + b"\x00\x00"
+        binchunk = positions + uvs + png + indices
+        gltf = {
+            "asset": {"version": "2.0"},
+            "meshes": [{"primitives": [{
+                "attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2}]}],
+            "images": [{"mimeType": "image/png", "bufferView": 2}],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC2"},
+                {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"},
+            ],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 36, "byteLength": 24},
+                {"buffer": 0, "byteOffset": 60, "byteLength": len(png)},
+                {"buffer": 0, "byteOffset": 60 + len(png), "byteLength": 6},
+            ],
+            "buffers": [{"byteLength": len(binchunk)}],
+        }
+        jsonchunk = json.dumps(gltf).encode()
+        jsonchunk += b" " * ((4 - len(jsonchunk) % 4) % 4)
+        total = 12 + 8 + len(jsonchunk) + 8 + len(binchunk)
+        with open(tp, "wb") as fh:
+            fh.write(b"glTF" + struct.pack("<II", 2, total))
+            fh.write(struct.pack("<II", len(jsonchunk), 0x4E4F534A) + jsonchunk)
+            fh.write(struct.pack("<II", len(binchunk), 0x004E4942) + binchunk)
+        out = meshio.parse_glb_textured(tp)
+        fails += _check("uvs aligned with vertices", out["uvs"] == [[0, 0], [1, 0], [0, 1]])
+        import base64 as b64mod
+        tex = out.get("texture") or {}
+        fails += _check("embedded atlas extracted",
+                        tex.get("mime") == "image/png" and b64mod.b64decode(tex.get("base64", ""))[:4] == b"\x89PNG")
+
     # ---- glTF animation parsing (the Pilot Doctrine's animation leg, v3) ----
     with tempfile.TemporaryDirectory() as d:
         ap = os.path.join(d, "anim.glb")

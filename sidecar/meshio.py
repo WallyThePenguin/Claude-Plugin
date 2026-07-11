@@ -175,6 +175,45 @@ def parse_glb(path: str) -> dict:
     return out
 
 
+def parse_glb_textured(path: str) -> dict:
+    """parse_glb PLUS the texture channel (v4, the texture slice): per-vertex UVs from
+    TEXCOORD_0 (corner-split order matches the vertex expansion — same accessor walk) and the
+    FIRST embedded image (the TRELLIS base-color atlas) as base64. UV convention note for the
+    Luau side: glTF V runs top-down, EditableMesh UVs run bottom-up — flip V there, not here
+    (this module stays a faithful reader). Returns parse_glb's dict + {uvs: [[u,v]...],
+    texture: {mime, base64} | None}. Meshes without TEXCOORD_0 get uvs=[]."""
+    import base64 as _b64
+
+    out = parse_glb(path)
+    gltf, binchunk = _read_glb(path)
+    uvs = []
+    for mesh in gltf.get("meshes", []):
+        for prim in mesh.get("primitives", []):
+            attrs = prim.get("attributes", {})
+            if "POSITION" not in attrs or "indices" not in prim:
+                continue
+            if "TEXCOORD_0" in attrs:
+                for uv in _accessor_values(gltf, binchunk, attrs["TEXCOORD_0"]):
+                    uvs.append([round(uv[0], 5), round(uv[1], 5)])
+            else:
+                # keep uv list aligned with the vertex list even on mixed primitives
+                uvs.extend([[0.0, 0.0]] * len(_accessor_values(gltf, binchunk, attrs["POSITION"])))
+    texture = None
+    for img in gltf.get("images", []):
+        if "bufferView" in img:
+            view = gltf["bufferViews"][img["bufferView"]]
+            start = view.get("byteOffset", 0)
+            data = binchunk[start:start + view["byteLength"]]
+            texture = {
+                "mime": img.get("mimeType", "image/png"),
+                "base64": _b64.b64encode(data).decode("ascii"),
+            }
+            break  # the first image = the base-color atlas in TRELLIS exports
+    out["uvs"] = uvs if len(uvs) == len(out["vertices"]) else []
+    out["texture"] = texture
+    return out
+
+
 def list_animations(path: str) -> dict:
     """{animations: [{name, channels, duration_s}], source} — the clip CATALOG of a GLB
     (animation libraries like Quaternius UAL2 pack hundreds of named clips in one file;
