@@ -1,0 +1,156 @@
+{
+ "space": "HumanoidRootPart-local, rest pose",
+ "rigType": "R15-block",
+ "joints": [
+  {
+   "part0": "LeftLowerLeg",
+   "part1": "LeftFoot",
+   "name": "LeftAnkle",
+   "pivot": {
+    "y": -2.93,
+    "x": -0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LeftUpperArm",
+   "part1": "LeftLowerArm",
+   "name": "LeftElbow",
+   "pivot": {
+    "y": 0.073,
+    "x": -1.472,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LowerTorso",
+   "part1": "LeftUpperLeg",
+   "name": "LeftHip",
+   "pivot": {
+    "y": -1,
+    "x": -0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LeftUpperLeg",
+   "part1": "LeftLowerLeg",
+   "name": "LeftKnee",
+   "pivot": {
+    "y": -1.921,
+    "x": -0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "UpperTorso",
+   "part1": "LeftUpperArm",
+   "name": "LeftShoulder",
+   "pivot": {
+    "y": 0.847,
+    "x": -0.972,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LeftLowerArm",
+   "part1": "LeftHand",
+   "name": "LeftWrist",
+   "pivot": {
+    "y": -0.734,
+    "x": -1.472,
+    "z": 0
+   }
+  },
+  {
+   "part0": "UpperTorso",
+   "part1": "Head",
+   "name": "Neck",
+   "pivot": {
+    "y": 1.098,
+    "x": 0,
+    "z": 0
+   }
+  },
+  {
+   "part0": "RightLowerLeg",
+   "part1": "RightFoot",
+   "name": "RightAnkle",
+   "pivot": {
+    "y": -2.93,
+    "x": 0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "RightUpperArm",
+   "part1": "RightLowerArm",
+   "name": "RightElbow",
+   "pivot": {
+    "y": 0.073,
+    "x": 1.472,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LowerTorso",
+   "part1": "RightUpperLeg",
+   "name": "RightHip",
+   "pivot": {
+    "y": -1,
+    "x": 0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "RightUpperLeg",
+   "part1": "RightLowerLeg",
+   "name": "RightKnee",
+   "pivot": {
+    "y": -1.921,
+    "x": 0.5,
+    "z": 0
+   }
+  },
+  {
+   "part0": "UpperTorso",
+   "part1": "RightUpperArm",
+   "name": "RightShoulder",
+   "pivot": {
+    "y": 0.847,
+    "x": 0.972,
+    "z": 0
+   }
+  },
+  {
+   "part0": "RightLowerArm",
+   "part1": "RightHand",
+   "name": "RightWrist",
+   "pivot": {
+    "y": -0.734,
+    "x": 1.472,
+    "z": 0
+   }
+  },
+  {
+   "part0": "HumanoidRootPart",
+   "part1": "LowerTorso",
+   "name": "Root",
+   "pivot": {
+    "y": -1,
+    "x": 0,
+    "z": 0
+   }
+  },
+  {
+   "part0": "LowerTorso",
+   "part1": "UpperTorso",
+   "name": "Waist",
+   "pivot": {
+    "y": -0.6,
+    "x": 0,
+    "z": 0
+   }
+  }
+ ]
+}
