@@ -58,9 +58,10 @@ ap.add_argument("--uv-sides", dest="uv_sides", type=int, default=2, choices=[1, 
                      "double-writes and mirror-smear complex geometry); 1 = the old "
                      "mirror-texel single island")
 ap.add_argument("--smooth", type=int, default=0,
-                help="Laplacian smoothing iterations (factor 0.5) after decimate — melts the "
-                     "voxel-reconstruction bumps ('rocky' surfaces). 0 = off. Keep modest "
-                     "(~5-10): thin ornament thins further with every pass.")
+                help="TAUBIN smoothing iterations (+0.5/-0.53 pairs) after decimate — melts the "
+                     "voxel-reconstruction bumps ('rocky' surfaces) with ~zero shrink. 0 = off. "
+                     "(Plain Laplacian is BANNED here: its shrink pulled the non-watertight "
+                     "shell's pinholes visibly open and thinned ornament.)")
 ap.add_argument("--bake-ao", dest="bake_ao", default="",
                 help="PNG path: bake the mesh's OWN ambient occlusion into UV space (Cycles CPU) "
                      "at the canvas aspect — the relief map the texture PAINTER molds paint to "
@@ -107,18 +108,34 @@ obj = bpy.context.view_layer.objects.active
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 # bmesh repair: merge-by-distance + degenerate dissolve (the anti-bone-heat pre-pass too) +
-# RECALC FACE NORMALS: voxel-reconstruction meshes ship MIXED WINDING (the reason generated
-# blades rendered see-through from behind and needed DoubleSided=true) — inward-pointing faces
-# also sample AO from INSIDE the shell, shredding relief bakes into shard noise (measured).
+# HOLE FILL (TRELLIS meshes are documented non-watertight — pinholes that stay sub-pixel on the
+# raw mesh get pulled WIDE OPEN by any smoothing; user-caught as visible holes) + RECALC FACE
+# NORMALS: voxel-reconstruction meshes ship MIXED WINDING (the reason generated blades rendered
+# see-through from behind and needed DoubleSided=true) — inward-pointing faces also sample AO
+# from INSIDE the shell, shredding relief bakes into shard noise (measured).
+
+
+def fill_holes(bm_):
+    """Close small boundary loops. Returns the boundary-edge count BEFORE filling (the hole
+    metric the manifest reports). holes_fill can emit ngons — callers re-triangulate."""
+    boundary = [e for e in bm_.edges if e.is_boundary]
+    if boundary:
+        bmesh.ops.holes_fill(bm_, edges=boundary, sides=64)
+    return len(boundary)
+
+
 bm = bmesh.new()
 bm.from_mesh(obj.data)
 before_v, before_f = len(bm.verts), len(bm.faces)
 bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
 bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-5)
+boundary_in = fill_holes(bm)
 bmesh.ops.triangulate(bm, faces=bm.faces[:])
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 bm.to_mesh(obj.data)
 bm.free()
+if boundary_in:
+    print(f"hole fill (repair): {boundary_in} boundary edges closed")
 
 # decimate to budget (preserving UVs where possible). ITERATE: a single collapse pass can
 # bottom out above the requested ratio on messy topology (measured: 56,962 tris -> 20,577 for
@@ -161,17 +178,28 @@ if tri_count > args.tri_budget:
     tri_count = decimate_to(args.tri_budget)
 
 # geometric smoothing: melt voxel-reconstruction bumps on the FINAL topology (after decimate /
-# remesh). Plain Laplacian at factor 0.5 — a few iterations flatten facet noise while the
-# silhouette survives; ornament thins slightly (why the default is 0/opt-in).
+# remesh). TAUBIN (alternating +0.5 / -0.53), NOT plain Laplacian — Laplacian SHRINKS, and the
+# shrink is what pulled the non-watertight shell's pinholes visibly open and thinned ornament
+# (user-caught holes on both swords). Taubin smooths the noise band with ~zero volume loss.
+# Post-smooth: dissolve slivers, re-fill any boundary the motion opened, re-triangulate,
+# recalc normals — smoothing must never be the last word on topology.
+boundary_smooth = 0
 if args.smooth > 0:
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     for _ in range(args.smooth):
         bmesh.ops.smooth_vert(bm, verts=bm.verts[:], factor=0.5,
                               use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        bmesh.ops.smooth_vert(bm, verts=bm.verts[:], factor=-0.53,
+                              use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-5)
+    boundary_smooth = fill_holes(bm)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     bm.to_mesh(obj.data)
     bm.free()
-    print(f"smooth: {args.smooth} iterations @ 0.5")
+    print(f"smooth: {args.smooth} Taubin iterations (+0.5/-0.53); "
+          f"{boundary_smooth} boundary edges re-closed after")
 
 # SMOOTH SHADING, always: without it the glTF exports faceted normals and the corner-split
 # EditableMesh import renders every voxel facet with its own highlight (the "rocky" look —
@@ -427,6 +455,8 @@ manifest = {
     "extents_studs": [round(d, 3) for d in mesh_extents(obj)],
     "target_studs": args.target_studs,
     "smooth": args.smooth,
+    "holes_closed_repair": boundary_in,
+    "holes_closed_post_smooth": boundary_smooth,
     "bones": bones_manifest,
     **uv_stats,
     **ao_stats,

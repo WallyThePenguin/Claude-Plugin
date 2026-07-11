@@ -4,24 +4,26 @@
  "verts_in": 53989,
  "tris_in": 17999,
  "verts": 8296,
- "tris": 17999,
+ "tris": 18828,
  "extents_studs": [
-  1.593,
-  0.629,
+  1.619,
+  0.685,
   4.8
  ],
  "target_studs": 4.8,
  "smooth": 8,
+ "holes_closed_repair": 3072,
+ "holes_closed_post_smooth": 1312,
  "bones": [],
  "uv": "planar",
  "uv_axes": "ZX",
  "uv_margin": 0.03,
  "uv_sides": 2,
- "uv_aspect": 0.6639,
+ "uv_aspect": 0.6744,
  "uv_layers": 1,
  "ao": "rapier2-uv-ao.png",
  "ao_size": [
   1024,
-  680
+  691
  ]
 }
