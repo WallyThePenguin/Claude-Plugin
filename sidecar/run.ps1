@@ -53,6 +53,11 @@ STUDIO_AGENT_MESH_UPLOAD=manual
 
 # Port the sidecar binds on 127.0.0.1 (server.py; default 8389).
 # SIDECAR_PORT=8389
+
+# Python interpreter for the sidecar. MUST be one with claude-agent-sdk pip-installed
+# (the SDK loop imports it). Default "python" (PATH); the bare "py" launcher may resolve
+# a DIFFERENT install (live-caught: py->3.13 without the sdk, python->3.11 with it).
+# SIDECAR_PYTHON=python
 '@
     [IO.File]::WriteAllText($envFile, $template, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "created template env file: $envFile (fill in values as needed)"
@@ -93,4 +98,8 @@ if ($EnvOnly) {
     exit 0
 }
 
-py "$PSScriptRoot\server.py"
+# Launch with an interpreter that has the SDK loop's deps. "py" (the launcher) is NOT the
+# default: it can resolve a different install than "python" (live-caught 2026-07-11: py->3.13
+# missing claude_agent_sdk while python->3.11 has it; the factory BLOCKED on the import).
+$sidecarPython = if ($env:SIDECAR_PYTHON) { $env:SIDECAR_PYTHON } else { "python" }
+& $sidecarPython "$PSScriptRoot\server.py"
