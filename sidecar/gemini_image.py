@@ -28,11 +28,51 @@ SIDECAR = "http://127.0.0.1:" + os.environ.get("SIDECAR_PORT", "8389")
 MODEL = os.environ.get("STUDIO_AGENT_GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
 GENERATE_TIMEOUT_S = int(os.environ.get("STUDIO_AGENT_GEMINI_IMAGE_TIMEOUT_S", "180"))
 
+# The prompt SHAPE is the user's (2026-07-11, the divine-rapier result): style-forward
+# ("make it look divine") + a plain WHITE background named for its purpose ("so TRELLIS 2 can
+# replicate it"). The earlier sterile product-photography template produced technically-clean
+# but boring weapons — style adjectives are what buy the ornate filigree/glow detail.
 REFERENCE_PROMPT = (
-    "Generate an image: a single {subject}, entire object fully in frame, 3/4 view, "
-    "plain solid light-gray background, studio product photography, sharp detail, "
-    "no hands, no people, no text, no watermark."
+    "Generate me {subject}, make it look {style}, make it have a plain white background "
+    "so TRELLIS 2 can replicate it. The entire object fully in frame, no hands, no people, "
+    "no text, no watermark."
 )
+DEFAULT_STYLE = "striking and detailed"
+
+# Prompt enrichment (pilot doctrine): a TEXT model turns a bare subject into a rich image
+# prompt. The proxy's closest tier to the user's "3.5 flash medium effort" is
+# gemini-3.5-flash-low (no medium variant is served; the image model itself must stay
+# gemini-3.1-flash-image — the only image-capable model on the proxy).
+ENRICH_MODEL = os.environ.get("STUDIO_AGENT_GEMINI_ENRICH_MODEL", "gemini-3.5-flash-low")
+
+
+def enrich_prompt(subject, style, desc):
+    """Ask the text model to write ONE vivid image prompt for the subject; falls back to the
+    template on any failure (enrichment is a bonus, never a blocker)."""
+    base_url = (desc.get("baseUrl") or "").rstrip("/")
+    key = desc.get("proxyKey") or ""
+    ask = (
+        "Write ONE image-generation prompt (a single paragraph, no preamble, no options) for: "
+        f"{subject}, in a {style} style. Requirements that MUST appear: plain white background, "
+        "entire object fully in frame, no hands, no people, no text, no watermark. Make the "
+        "object description vivid and specific (materials, ornament, silhouette)."
+    )
+    body = {"model": ENRICH_MODEL, "messages": [{"role": "user", "content": ask}]}
+    req = urllib.request.Request(
+        base_url + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            resp = json.loads(r.read().decode("utf-8", "replace"))
+        text = str(resp.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+        if 40 < len(text) < 2000:
+            return text
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        pass
+    return None
 
 
 def self_describe():
@@ -66,19 +106,25 @@ def extract_image(response_text):
     return None
 
 
-def generate(subject, out_path, describe=None, model=None, raw_prompt=None):
-    """subject ('rusty falchion sword') -> reference image at out_path (extension corrected to
-    the actual format). Returns {ok, wall_s, out, bytes} or {ok: False, error}."""
+def generate(subject, out_path, describe=None, model=None, raw_prompt=None,
+             style=DEFAULT_STYLE, enrich=False):
+    """subject ('an elden ring rapier') -> reference image at out_path (extension corrected to
+    the actual format). enrich=True drafts the prompt via the text model first.
+    Returns {ok, wall_s, out, bytes, prompt} or {ok: False, error}."""
     t0 = time.time()
     desc = (describe or self_describe)()
     base_url = (desc.get("baseUrl") or "").rstrip("/")
     key = desc.get("proxyKey") or ""
     if not base_url:
         return {"ok": False, "error": "no proxy baseUrl from describe (is Studio open with the bridge?)"}
+    prompt = raw_prompt
+    if prompt is None and enrich:
+        prompt = enrich_prompt(subject, style, desc)
+    if prompt is None:
+        prompt = REFERENCE_PROMPT.format(subject=subject, style=style)
     body = {
         "model": model or MODEL,
-        "messages": [{"role": "user",
-                      "content": raw_prompt or REFERENCE_PROMPT.format(subject=subject)}],
+        "messages": [{"role": "user", "content": prompt}],
     }
     req = urllib.request.Request(
         base_url + "/v1/chat/completions",
@@ -110,4 +156,5 @@ def generate(subject, out_path, describe=None, model=None, raw_prompt=None):
     with open(tmp, "wb") as f:
         f.write(data)
     os.replace(tmp, out)
-    return {"ok": True, "wall_s": round(time.time() - t0, 1), "out": out, "bytes": len(data)}
+    return {"ok": True, "wall_s": round(time.time() - t0, 1), "out": out, "bytes": len(data),
+            "prompt": prompt}
