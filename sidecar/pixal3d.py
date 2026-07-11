@@ -61,10 +61,17 @@ def ensure_server(boot_timeout_s=90):
     main_py = os.path.join(COMFY_DIR, "main.py")
     if not os.path.isfile(PYTHON) or not os.path.isfile(main_py):
         return False, f"comfyui install incomplete ({PYTHON} / {main_py})"
+    env = dict(os.environ)
+    # LIVE-CAUGHT (2026-07-11): the trellis2_gguf pipeline reads ATTN_BACKEND at MODULE IMPORT
+    # (ComfyUI boot), so the loader node's per-run `backend` input arrives too late — with the
+    # default flash_attn (not installed on this Turing box) the sparse stage crawled for ~2h
+    # at 39% GPU with zero progress lines. The backend MUST be pinned in the process env.
+    env.setdefault("ATTN_BACKEND", "sdpa")
     _server_proc = subprocess.Popen(
         [PYTHON, main_py, "--listen", HOST, "--port", str(PORT)],
         stdout=open(os.path.join(COMFY_DIR, "boot-out.log"), "ab"),
         stderr=open(os.path.join(COMFY_DIR, "boot-err.log"), "ab"),
+        env=env,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     deadline = time.time() + boot_timeout_s
