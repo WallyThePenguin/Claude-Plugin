@@ -32,6 +32,7 @@ POST /forever/stop                                        -> {"ok":true}  (grace
 GET  /forever/status                                      -> the current/last forever run's status
 GET  /docs/search?q=<q>&count=N                           -> {"results":[{path,line,snippet}...]}  (creator-docs grounding; shallow-clones on first use)
 GET  /docs/apidiff                                        -> {"unknownClasses":[...],"dumpVersion":str}  (PropertyCatalog classes vs the live Studio API dump)
+GET  /opencloud/asset-status?assetId=N                    -> {"assetId","state":"Approved|Reviewing|Rejected|Unknown|NotFound|Unavailable","raw",...}  (fetch-free moderation gate; 503 when Unavailable, e.g. no key file)
 GET  /bridge/stream                                       -> SSE (text/event-stream): "event: command" nudges while a bridge command waits + 15s keepalives
 
 Bind is 127.0.0.1 ONLY — the only trust boundary. No auth. Pure standard library.
@@ -238,6 +239,18 @@ class Handler(BaseHTTPRequestHandler):
                 import docsindex
 
                 return self._json(200, docsindex.api_diff())
+            except Exception as exc:  # noqa: BLE001
+                return self._json(500, {"error": str(exc)})
+        if parsed.path == "/opencloud/asset-status":
+            try:
+                import opencloud
+
+                try:
+                    asset_id = int(qs.get("assetId", [""])[0])
+                except ValueError:
+                    return self._json(400, {"error": "assetId must be an integer"})
+                result = opencloud.get_asset_status(asset_id)
+                return self._json(503 if result["state"] == "Unavailable" else 200, result)
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": str(exc)})
         if parsed.path == "/loop/status":
