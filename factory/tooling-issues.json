@@ -240,6 +240,17 @@
    "resolution": "PENDING - (a) batch must VERIFY the applied pose survived to snapshot time (read back the joint rotation after apply; error loudly on mismatch instead of keying a lie); (b) refuse/stop-and-warn when the Animator has playing tracks; (c) resolve the Transform-vs-C0 snapshot channel question for grip-held rigs. The single-call pose_joint path and the earlier clean-rig batch verify (BatchTest 40deg stored) both worked - the failure needs the held-rig + track-history state.",
    "filedAt": "2026-07-11T02:52:09",
    "filedBy": "hands-on session 2026-07-11 night (user-reported backwards animation, round 2)"
+  },
+  {
+   "id": "grip-tool-armhold-persists-after-unequip",
+   "tool": "grip_tool",
+   "summary": "grip_tool writes the arm-hold pose into joint C0 (RightShoulder ~37deg / RightElbow ~31deg) and NOTHING restores it when the Tool is unequipped/reparented away - the rig keeps the bent holding-arm pose forever (user screenshot: rig at rest with arm across chest, blade crossing the body). The residue also contaminates keypose authoring snapshots and made a grip look correct in preview while wrong at true neutral.",
+   "repro": "spawn_rig fresh -> grip_tool equip any tool -> move the Tool back to StarterPack / destroy it -> the arm joints keep the hold C0 (read RightShoulder C0 vs a fresh rig). Reset requires spawn_rig fresh=true.",
+   "severity": "medium",
+   "status": "OPEN",
+   "resolution": "PENDING - grip_tool must snapshot the pre-hold C0 values (attributes on the joints) and restore them on unequip/release; alternatively implement the hold via the Animator channel (Transform) so it cannot persist. Pair with the fitter axis-mapping fix (grip-fitter-axis-mapping).",
+   "filedAt": "2026-07-11T02:56:32",
+   "filedBy": "hands-on session 2026-07-11 night (user screenshot: \"why is the user holding it like this\")"
   }
  ]
 }
