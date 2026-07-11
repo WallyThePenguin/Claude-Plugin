@@ -241,20 +241,49 @@ end
 
 -- Spawn a native R15 rig. type "block" (default) = CreateHumanoidModelFromDescription; "avatar" = a mesh
 -- character from a userId (default 1). Both build the Motor6Ds, sit on the baseplate, and anchor the root;
--- block also flat-colors each part. (Async/web — YIELDS.) Returns (model, note) or (nil, errorNote).
-function RigWorkbench.spawn(rigType: string, userId: number?): (Instance?, string)
-	if string.lower(rigType) == "avatar" then
+-- block also flat-colors each part. DEDUP (live bug 2026-07-10: every call stacked another "AgentRig"):
+-- an existing workspace.AgentRig is REUSED by default (healed: attribute re-stamped, black
+-- BodyColors/HumanoidDescription stripped on the block path); fresh=true destroys it and builds new;
+-- duplicates beyond the first are destroyed either way. (Async/web — YIELDS.) Returns (model, note) or
+-- (nil, errorNote).
+function RigWorkbench.spawn(rigType: string, userId: number?, fresh: boolean?): (Instance?, string)
+	local isAvatar = string.lower(rigType) == "avatar"
+	local existing = NativeRig.findExisting()
+	local destroyed = 0
+	for i = 2, #existing do
+		existing[i]:Destroy()
+		destroyed += 1
+	end
+	local kept: Model? = existing[1]
+	if kept ~= nil and fresh ~= true then
+		NativeRig.heal(kept, not isAvatar)
+		local note = "reused existing rig at "
+			.. kept:GetFullName()
+			.. " (healed; pass fresh=true to rebuild)"
+		if destroyed > 0 then
+			note ..= string.format(" — destroyed %d duplicate AgentRig(s)", destroyed)
+		end
+		return kept, note
+	end
+	if kept ~= nil then
+		kept:Destroy()
+		destroyed += 1
+	end
+	local suffix = if destroyed > 0
+		then string.format(" — destroyed %d pre-existing AgentRig(s)", destroyed)
+		else ""
+	if isAvatar then
 		local model, err = NativeRig.spawnAvatar(userId or 1)
 		if model == nil then
 			return nil, "spawn_rig avatar: " .. tostring(err)
 		end
-		return model, "spawned avatar rig at " .. model:GetFullName()
+		return model, "spawned avatar rig at " .. model:GetFullName() .. suffix
 	end
 	local model, err = NativeRig.spawnBlock()
 	if model == nil then
 		return nil, "spawn_rig block: " .. tostring(err)
 	end
-	return model, "spawned native R15 block rig at " .. model:GetFullName()
+	return model, "spawned native R15 block rig at " .. model:GetFullName() .. suffix
 end
 
 return RigWorkbench

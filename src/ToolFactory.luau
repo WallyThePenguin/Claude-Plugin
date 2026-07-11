@@ -86,6 +86,11 @@ function ToolFactory.toolify(
 	handleHint: Instance?,
 	toolName: string?
 ): (Tool?, string?)
+	-- A target with a Humanoid is a RIG, not an item: toolifying it welds every body part to one
+	-- Handle and parents the character into a Tool (the rig-inside-rig live mess, 2026-07-10).
+	if target:FindFirstChildWhichIsA("Humanoid", true) ~= nil then
+		return nil, "refusing to toolify a rig — target contains a Humanoid"
+	end
 	local parts = collectParts(target)
 	if #parts == 0 then
 		return nil, "no BaseParts under the target to make a Tool from"

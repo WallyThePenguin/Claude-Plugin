@@ -34,7 +34,8 @@ local function runSpawn(input: any, _context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	local t = if type(args.type) == "string" then args.type else "block"
 	local userId = if type(args.userId) == "number" then args.userId else nil
-	local model, note = RigWorkbench.spawn(t, userId)
+	local fresh = args.fresh == true
+	local model, note = RigWorkbench.spawn(t, userId, fresh)
 	if model == nil then
 		return note, true
 	end
@@ -105,7 +106,9 @@ Rig.descriptors = {
 		description = "Spawn a real NATIVE R15 rig to pose/animate. type 'block' (default) = the standard "
 			.. "R15 block rig (built in-engine, joints + attachments, parts flat-colored so poses read "
 			.. "clearly); type 'avatar' = a real mesh character from a userId (pass userId; defaults to 1). "
-			.. "The rig lands on the baseplate with its root anchored. get_rig/pose_joint/ik_reach then "
+			.. "REUSES an existing workspace.AgentRig by default (heals it; duplicates are destroyed) — "
+			.. "pass fresh=true to destroy it and build a new one. The rig lands on the baseplate offset "
+			.. "from the origin spawn (X=6) with its root anchored. get_rig/pose_joint/ik_reach then "
 			.. "operate on it (they work on ANY Motor6D rig, incl. one you insert via Avatar > Rig Builder).",
 		inputSchema = {
 			type = "object",
@@ -114,6 +117,11 @@ Rig.descriptors = {
 				userId = {
 					type = "number",
 					description = "For type 'avatar': the Roblox userId to spawn (default 1).",
+				},
+				fresh = {
+					type = "boolean",
+					description = "Default false = reuse (heal) an existing workspace.AgentRig. "
+						.. "true = destroy it and build a new rig.",
 				},
 			},
 		},

@@ -85,11 +85,62 @@ function NativeRig.buildJoints(model: Instance): number
 	return built
 end
 
--- Lift the model so its lowest extent sits ~0.5 above the baseplate (y=0).
+-- Where the rig stands on the baseplate. NOT the origin: the play-mode player spawns at the
+-- origin SpawnLocation, and a rig left there has the player materialize INSIDE it (live capture
+-- 2026-07-10). X=6 keeps both in one camera frame without overlap.
+local RIG_X = 6
+local RIG_Z = 0
+
+-- Place the model at (RIG_X, RIG_Z) with its lowest extent ~0.5 above the baseplate (y=0).
 function NativeRig.placeOnBaseplate(model: Model)
 	local cf, size = model:GetBoundingBox()
 	local bottom = cf.Position.Y - size.Y / 2
-	model:PivotTo(model:GetPivot() + Vector3.new(0, 0.5 - bottom, 0))
+	local pivot = model:GetPivot()
+	model:PivotTo(CFrame.new(RIG_X, pivot.Position.Y + (0.5 - bottom), RIG_Z) * pivot.Rotation)
+end
+
+-- Strip the engine's play-boot repaint channel from a BLOCK rig. The spawned model ships a
+-- "Body Colors" BodyColors instance + a HumanoidDescription child under the Humanoid whose colors
+-- are ALL (0,0,0) — in edit the palette part colors mask them, but at PLAY boot the engine
+-- re-applies BodyColors over part colors and the whole rig renders solid black (live capture
+-- 2026-07-10). Destroying both (vs repainting) is the minimal fix: the palette lives on the part
+-- colors. NEVER call this on an avatar rig — a real avatar needs its description.
+function NativeRig.stripBodyColors(model: Instance)
+	local bc = model:FindFirstChildOfClass("BodyColors")
+	if bc ~= nil then
+		bc:Destroy()
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid ~= nil then
+		local desc = humanoid:FindFirstChildOfClass("HumanoidDescription")
+		if desc ~= nil then
+			desc:Destroy()
+		end
+	end
+end
+
+-- Every existing Workspace child Model named "AgentRig" with a Humanoid, in child order. Dedup
+-- input: spawn reuses the first and destroys the rest (pre-fix, every spawn_rig stacked another).
+function NativeRig.findExisting(): { Model }
+	local out: { Model } = {}
+	for _, d in Workspace:GetChildren() do
+		if d:IsA("Model") and d.Name == "AgentRig" and d:FindFirstChildOfClass("Humanoid") ~= nil then
+			table.insert(out, d :: Model)
+		end
+	end
+	return out
+end
+
+-- Heal a pre-existing rig so reuse is safe: re-stamp the identity attribute, re-place it at the
+-- standard off-origin spot (a pre-fix rig sits ON the player spawn; the model pivot move preserves
+-- Motor6D poses), and (block rigs only) strip the black BodyColors/HumanoidDescription repaint
+-- channel.
+function NativeRig.heal(model: Model, colored: boolean)
+	model:SetAttribute("StudioAgentGenerated", true)
+	NativeRig.placeOnBaseplate(model)
+	if colored then
+		NativeRig.stripBodyColors(model)
+	end
 end
 
 function NativeRig.anchorRoot(model: Instance)
@@ -120,6 +171,7 @@ end
 
 local function finish(model: Model, colored: boolean): Model
 	model.Name = "AgentRig"
+	model:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	model.Parent = Workspace
 	NativeRig.buildJoints(model)
 	-- Avatar Joint Upgrade rigs ship AnimationConstraints (+BallSocketConstraints) that override /
@@ -134,6 +186,9 @@ local function finish(model: Model, colored: boolean): Model
 	NativeRig.placeOnBaseplate(model)
 	NativeRig.anchorRoot(model)
 	if colored then
+		-- Block rig: kill the play-boot black repaint (see stripBodyColors) BEFORE painting the
+		-- palette, so the part colors are the only color channel left.
+		NativeRig.stripBodyColors(model)
 		NativeRig.colorParts(model)
 	end
 	return model
