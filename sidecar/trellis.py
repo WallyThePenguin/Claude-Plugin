@@ -1,22 +1,22 @@
-"""Local image->3D via trellis.cpp — Stage 2 of the asset pipeline (SP3).
+﻿"""Local image->3D via trellis.cpp â€” Stage 2 of the asset pipeline (SP3).
 
 Drives the trellis.cpp server binary (TRELLIS.2 GGUF weights) as a managed child process and
 turns a reference PNG/JPG into a textured GLB on disk. Everything here was MEASURED live on this
 machine (2026-07-11, RTX 2060 SUPER 8GB + AMD iGPU, Windows 11):
 
-- The CUDA build is DEAD on Turing sm_75: `no kernel image is available` at IM2COL — the shipped
+- The CUDA build is DEAD on Turing sm_75: `no kernel image is available` at IM2COL â€” the shipped
   fatbins carry sm_80+ only. The VULKAN build is the working engine on this card.
 - Device pinning: ggml's Vulkan backend picks the LARGEST-memory device by default, which here is
   the AMD iGPU (33GB shared UMA, slow). GGML_VK_VISIBLE_DEVICES="0" pins the NVIDIA card.
-  (The iGPU is a legitimate fallback lane for VRAM-starved sessions — slower, memory-rich.)
+  (The iGPU is a legitimate fallback lane for VRAM-starved sessions â€” slower, memory-rich.)
 - One generation at --res 512: ~90s wall on the pinned 2060 (Studio open), peak process VRAM
   ~2.8GB over baseline; per-stage model load/free keeps it inside 8GB.
 - HTTP surface (learned by error-walking the binary): GET /health -> "ok";
-  POST /generate multipart fields: image (file part, REQUIRED — missing => {"error": ...}),
-  resolution (512|1024|1536 — the field is `resolution`; `res` is silently IGNORED and the
+  POST /generate multipart fields: image (file part, REQUIRED â€” missing => {"error": ...}),
+  resolution (512|1024|1536 â€” the field is `resolution`; `res` is silently IGNORED and the
   server then defaults to 1024, which cascades into the *_1024 GGUFs), bg_removal
   (threshold|birefnet), seed. Response body = binary GLB (magic 'glTF'), or JSON error.
-- res-512 output is NOT ship-ready: ~120k tris (Roblox cap 20k/MeshPart), non-watertight —
+- res-512 output is NOT ship-ready: ~120k tris (Roblox cap 20k/MeshPart), non-watertight â€”
   the Blender cleanup stage (blenderbridge) owns decimation/repair.
 - Garbage-in garbage-out is REAL and cheap to hit: a scanned book-page "photo" generated a flat
   paper plate with the sword as a texture. Inputs must be single-object, plain-background
@@ -118,7 +118,7 @@ def _multipart(fields, file_field, file_name, file_bytes):
     return b"".join(lines), boundary
 
 
-def generate(image_path, out_glb, resolution=512, bg_removal="birefnet", seed=42):
+def generate(image_path, out_glb, resolution=1024, bg_removal="birefnet", seed=42):
     """image file -> textured GLB at out_glb. Returns dict {ok, wall_s, bytes, error?}.
 
     The caller owns retry policy (plan: <=2 re-seeds) and post-validation (meshio/trimesh).
@@ -153,7 +153,7 @@ def generate(image_path, out_glb, resolution=512, bg_removal="birefnet", seed=42
         return {"ok": False, "error": f"generate transport error: {e}"}
     wall = round(time.time() - t0, 1)
     if payload[:4] != b"glTF":
-        # JSON error body (e.g. missing model file) — surface it verbatim, truncated
+        # JSON error body (e.g. missing model file) â€” surface it verbatim, truncated
         try:
             err = json.loads(payload.decode("utf-8", "replace"))
         except (ValueError, UnicodeDecodeError):
@@ -165,3 +165,4 @@ def generate(image_path, out_glb, resolution=512, bg_removal="birefnet", seed=42
         f.write(payload)
     os.replace(tmp, out_glb)
     return {"ok": True, "wall_s": wall, "bytes": len(payload), "out": out_glb}
+
