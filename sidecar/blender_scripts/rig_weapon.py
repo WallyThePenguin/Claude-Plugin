@@ -70,14 +70,45 @@ bmesh.ops.triangulate(bm, faces=bm.faces[:])
 bm.to_mesh(obj.data)
 bm.free()
 
-# decimate to budget (preserving UVs where possible)
-tri_count = len(obj.data.polygons)
+# decimate to budget (preserving UVs where possible). ITERATE: a single collapse pass can
+# bottom out above the requested ratio on messy topology (measured: 56,962 tris -> 20,577 for
+# BOTH 19,500 and 18,000 budgets — and 20,577 tris corner-split past EditableMesh's 60k-vert
+# cap). Repeat passes until under budget or the count stops moving.
+def decimate_to(budget):
+    count = len(obj.data.polygons)
+    attempts = 0
+    while count > budget and attempts < 5:
+        mod = obj.modifiers.new("decim", "DECIMATE")
+        mod.ratio = budget / count
+        mod.use_collapse_triangulate = True
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        new_count = len(obj.data.polygons)
+        if new_count >= count:
+            break  # no progress — topology floor
+        count = new_count
+        attempts += 1
+    return count
+
+
+tri_count = decimate_to(args.tri_budget)
 if tri_count > args.tri_budget:
-    mod = obj.modifiers.new("decim", "DECIMATE")
-    mod.ratio = args.tri_budget / tri_count
-    mod.use_collapse_triangulate = True
+    # Collapse floored out (measured: voxel-reconstruction shell soup stuck at ~20.5k for any
+    # budget). VOXEL REMESH rebuilds clean manifold topology — the retopo step — then the
+    # collapse can actually reach the budget. UVs are lost; acceptable: this path feeds the
+    # untextured EditableMesh import (texture streaming is a separate leg).
+    rm = obj.modifiers.new("remesh", "REMESH")
+    rm.mode = "VOXEL"
+    rm.voxel_size = max(obj.dimensions) / 200.0
     bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.modifier_apply(modifier=mod.name)
+    bpy.ops.object.modifier_apply(modifier=rm.name)
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.to_mesh(obj.data)
+    bm.free()
+    print(f"remesh escalation: {len(obj.data.polygons)} tris after voxel remesh")
+    tri_count = decimate_to(args.tri_budget)
 
 # scale: longest extent -> target studs (EditableMesh coords stream as raw studs)
 dims = obj.dimensions
