@@ -1,0 +1,19 @@
+{
+ "mode": "cleanup",
+ "source": "rapier2-clean.glb",
+ "verts_in": 53989,
+ "tris_in": 17999,
+ "verts": 8296,
+ "tris": 17999,
+ "extents_studs": [
+  1.227,
+  4.8,
+  4.76
+ ],
+ "target_studs": 4.8,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "YZ",
+ "uv_margin": 0.03,
+ "uv_layers": 1
+}

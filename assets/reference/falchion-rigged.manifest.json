@@ -1,0 +1,52 @@
+{
+ "mode": "rigid",
+ "source": "falchion.glb",
+ "verts_in": 15538,
+ "tris_in": 21218,
+ "verts": 9520,
+ "tris": 19500,
+ "extents_studs": [
+  4.5,
+  0.233,
+  2.613
+ ],
+ "target_studs": 4.5,
+ "bones": [
+  {
+   "name": "Grip",
+   "parent": null,
+   "head_studs": [
+    2.25,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Seg1",
+   "parent": "Grip",
+   "head_studs": [
+    1.125,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Seg2",
+   "parent": "Seg1",
+   "head_studs": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Seg3",
+   "parent": "Seg2",
+   "head_studs": [
+    -1.125,
+    0.0,
+    0.0
+   ]
+  }
+ ]
+}

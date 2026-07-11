@@ -38,6 +38,20 @@ ap.add_argument("--target-studs", dest="target_studs", type=float, default=4.5)
 ap.add_argument("--tri-budget", dest="tri_budget", type=int, default=19500)
 ap.add_argument("--segments", type=int, default=4, help="rigid mode: bone count (Grip + N-1 blade segments)")
 ap.add_argument("--grip-end", dest="grip_end", default="auto", choices=["auto", "min", "max"])
+ap.add_argument("--uv", default="none", choices=["none", "smart", "planar"],
+                help="Clean unwrap after cleanup (the decoupled-texture architecture: shape from "
+                     "TRELLIS, UVs authored once here, texture painted on these islands "
+                     "downstream). smart = Smart UV Project — MEASURED UNPAINTABLE on voxel-shell "
+                     "weapon meshes (thousands of micro-islands, 1.5%% canvas coverage). planar = "
+                     "deterministic projection onto the two-largest-extents plane: ONE "
+                     "silhouette-shaped island, front/back sharing texels (the hand-painter "
+                     "mirror trick) — the painter-friendly default for blade-like assets. Both "
+                     "also heal the voxel-remesh path, which destroys source UVs.")
+ap.add_argument("--uv-angle", dest="uv_angle", type=float, default=66.0,
+                help="smart-project angle limit in DEGREES; higher merges more faces per island "
+                     "(fewer, larger islands paint better)")
+ap.add_argument("--uv-margin", dest="uv_margin", type=float, default=0.02,
+                help="island margin (UV space) — the gutter that absorbs painter bleed")
 args = ap.parse_args(argv)
 
 if args.mode == "skinned":
@@ -129,6 +143,58 @@ center = (mins + maxs) / 2
 obj.location = obj.location - center
 bpy.ops.object.transform_apply(location=True)
 
+uv_stats = {}
+if args.uv == "smart":
+    # Clean unwrap AFTER all geometry surgery (decimate/remesh/scale) so the islands map the
+    # final topology. Smart UV Project is deterministic and headless-safe; angle limit is
+    # radians in 4.x.
+    import math as _math
+
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    while obj.data.uv_layers:  # drop stale source UVs — this unwrap becomes THE layout
+        obj.data.uv_layers.remove(obj.data.uv_layers[0])
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(
+        angle_limit=_math.radians(args.uv_angle),
+        island_margin=args.uv_margin,
+        correct_aspect=True,
+        scale_to_bounds=False,
+    )
+    bpy.ops.object.mode_set(mode="OBJECT")
+    uv_stats = {"uv": "smart", "uv_angle_deg": args.uv_angle, "uv_margin": args.uv_margin,
+                "uv_layers": len(obj.data.uv_layers)}
+    print(f"smart uv: angle={args.uv_angle}deg margin={args.uv_margin} layers={len(obj.data.uv_layers)}")
+elif args.uv == "planar":
+    # Deterministic planar projection: UV = the vertex position on the two-largest-extents
+    # plane, normalized to [margin, 1-margin]. One island, silhouette-shaped, front/back
+    # overlapped — no operators, no context, fully headless-safe.
+    while obj.data.uv_layers:
+        obj.data.uv_layers.remove(obj.data.uv_layers[0])
+    mesh = obj.data
+    dims = obj.dimensions
+    order = sorted(range(3), key=lambda i: -dims[i])
+    ax_u, ax_v = order[0], order[1]
+    lo_u = min(v.co[ax_u] for v in mesh.vertices)
+    hi_u = max(v.co[ax_u] for v in mesh.vertices)
+    lo_v = min(v.co[ax_v] for v in mesh.vertices)
+    hi_v = max(v.co[ax_v] for v in mesh.vertices)
+    span_u = max(hi_u - lo_u, 1e-9)
+    span_v = max(hi_v - lo_v, 1e-9)
+    m = max(0.0, min(0.2, args.uv_margin))
+    usable = 1.0 - 2.0 * m
+    layer = mesh.uv_layers.new(name="UVMap")
+    for loop in mesh.loops:
+        co = mesh.vertices[loop.vertex_index].co
+        u = (co[ax_u] - lo_u) / span_u
+        w = (co[ax_v] - lo_v) / span_v
+        layer.data[loop.index].uv = (m + u * usable, m + w * usable)
+    uv_stats = {"uv": "planar", "uv_axes": "XYZ"[ax_u] + "XYZ"[ax_v], "uv_margin": m,
+                "uv_layers": len(mesh.uv_layers)}
+    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} layers={len(mesh.uv_layers)}")
+
 bones_manifest = []
 if args.mode == "rigid":
     # ---- deterministic weapon armature ----
@@ -219,6 +285,7 @@ manifest = {
     "extents_studs": [round(d, 3) for d in obj.dimensions],
     "target_studs": args.target_studs,
     "bones": bones_manifest,
+    **uv_stats,
 }
 with open(os.path.splitext(args.out_glb)[0] + ".manifest.json", "w", encoding="utf-8") as f:
     json.dump(manifest, f, indent=1)

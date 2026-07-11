@@ -1,0 +1,15 @@
+{
+ "mode": "cleanup",
+ "source": "rapier2.glb",
+ "verts_in": 129007,
+ "tris_in": 129919,
+ "verts": 8296,
+ "tris": 17999,
+ "extents_studs": [
+  1.227,
+  4.8,
+  4.76
+ ],
+ "target_studs": 4.8,
+ "bones": []
+}

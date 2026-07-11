@@ -1,0 +1,15 @@
+{
+ "mode": "cleanup",
+ "source": "gemini-falchion2.glb",
+ "verts_in": 42483,
+ "tris_in": 56962,
+ "verts": 9110,
+ "tris": 17994,
+ "extents_studs": [
+  4.5,
+  0.388,
+  2.876
+ ],
+ "target_studs": 4.5,
+ "bones": []
+}

@@ -40,10 +40,14 @@ REFERENCE_PROMPT = (
 DEFAULT_STYLE = "striking and detailed"
 
 # Prompt enrichment (pilot doctrine): a TEXT model turns a bare subject into a rich image
-# prompt. The proxy's closest tier to the user's "3.5 flash medium effort" is
-# gemini-3.5-flash-low (no medium variant is served; the image model itself must stay
-# gemini-3.1-flash-image — the only image-capable model on the proxy).
-ENRICH_MODEL = os.environ.get("STUDIO_AGENT_GEMINI_ENRICH_MODEL", "gemini-3.5-flash-low")
+# prompt. The effort tier the user wanted ("3.5 flash medium") IS reachable after all — it
+# rides the model string as a call-time suffix: gemini-3.5-flash-low(medium) | (high). An
+# isolated cliproxy test (issue #3699) proved a bare listed alias can't carry the tier (it
+# resolves to low), but the (tier) suffix and the reasoning_effort param both do — verified
+# 200 on the live proxy. Default to medium (the user's original ask); flip to (high) via
+# STUDIO_AGENT_GEMINI_ENRICH_MODEL with no code change. The IMAGE model stays
+# gemini-3.1-flash-image — the only image-capable model on the proxy.
+ENRICH_MODEL = os.environ.get("STUDIO_AGENT_GEMINI_ENRICH_MODEL", "gemini-3.5-flash-low(medium)")
 
 
 def enrich_prompt(subject, style, desc):
@@ -158,3 +162,83 @@ def generate(subject, out_path, describe=None, model=None, raw_prompt=None,
     os.replace(tmp, out)
     return {"ok": True, "wall_s": round(time.time() - t0, 1), "out": out, "bytes": len(data),
             "prompt": prompt}
+
+
+# Texture painting (decoupled-texture architecture, user decision 2026-07-11): the shape comes
+# from TRELLIS untextured, Blender authors clean UV islands ONCE (rig_weapon.py --uv smart), and
+# the PAINTER fills those islands conditioned on the original Gemini reference. This prompt is
+# the islands contract — the template's gray regions are the canvas, black is dead space, and
+# painted color must bleed PAST island borders so mip-sampling at seams never reads black.
+PAINT_PROMPT = (
+    "You are painting a texture atlas for a 3D model of {subject}. The second image is the UV "
+    "layout template: each solid gray region is one unwrapped island of the model's surface "
+    "(for a planar unwrap the single island IS the object's silhouette seen from its broad "
+    "side); black is unused space. The first image is the reference showing how the object must "
+    "look. Paint a complete texture atlas AT THE SAME RESOLUTION as the template: fill EVERY "
+    "gray island with the surface detail the reference shows for that part of the object "
+    "(metal, ornament, gems, engraving), keeping every painted feature aligned to the island's "
+    "shape — the blade region gets the blade's surface, the guard region the guard, and so on. "
+    "Extend each island's colors roughly 8 pixels past its border (bleed), keep unused space "
+    "dark, and draw no outlines, labels, or wireframe lines. Output only the painted atlas image."
+)
+
+
+def _data_url(path):
+    mime = "image/jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "image/png"
+    with open(path, "rb") as f:
+        return "data:" + mime + ";base64," + base64.b64encode(f.read()).decode("ascii")
+
+
+def paint_atlas(subject, reference_path, template_path, out_path, describe=None, model=None):
+    """Paint a UV atlas for `subject`: multimodal call = reference image + UV template + the
+    islands contract -> painted atlas PNG at out_path (extension corrected). Same describe /
+    extract / atomic-write seams as generate(). Returns {ok, wall_s, out, bytes} | {ok:False,
+    error}."""
+    t0 = time.time()
+    desc = (describe or self_describe)()
+    base_url = (desc.get("baseUrl") or "").rstrip("/")
+    key = desc.get("proxyKey") or ""
+    if not base_url:
+        return {"ok": False, "error": "no proxy baseUrl from describe (is Studio open with the bridge?)"}
+    body = {
+        "model": model or MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": PAINT_PROMPT.format(subject=subject)},
+                {"type": "image_url", "image_url": {"url": _data_url(reference_path)}},
+                {"type": "image_url", "image_url": {"url": _data_url(template_path)}},
+            ],
+        }],
+    }
+    req = urllib.request.Request(
+        base_url + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=GENERATE_TIMEOUT_S) as r:
+            text = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"proxy HTTP {e.code}: {e.read()[:300]!r}"}
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        return {"ok": False, "error": f"proxy transport error: {e}"}
+    found = extract_image(text)
+    if found is None:
+        head = ""
+        try:
+            msg = json.loads(text).get("choices", [{}])[0].get("message", {})
+            head = str(msg.get("content"))[:200]
+        except (ValueError, AttributeError, IndexError):
+            head = text[:200]
+        return {"ok": False, "error": "no image in response; content head: " + head}
+    ext, data = found
+    root, _ = os.path.splitext(out_path)
+    out = root + "." + ext
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    tmp = out + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, out)
+    return {"ok": True, "wall_s": round(time.time() - t0, 1), "out": out, "bytes": len(data)}

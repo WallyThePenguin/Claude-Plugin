@@ -1,0 +1,14 @@
+{
+ "mode": "cleanup",
+ "source": "falchion.glb",
+ "verts_in": 15538,
+ "tris_in": 21218,
+ "verts": 9520,
+ "tris": 19500,
+ "extents_studs": [
+  4.5,
+  0.233,
+  2.613
+ ],
+ "target_studs": 4.5
+}
