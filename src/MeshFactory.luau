@@ -485,6 +485,159 @@ function MeshFactory.rebuildLocalMesh(mp: MeshPart): (boolean, string?)
 	return true, nil
 end
 
+-- ---- asset upload lifecycle (impure; two-phase commit) ----
+--
+-- REAL uploads, done safely. Phase 1 (uploadMeshPart, at save_mesh time): upload the geometry (+
+-- generated texture) via CreateAssetAsync and mark the part PENDING via attributes — the local draft
+-- (MeshData child + SALocalMesh tag + live session render) stays untouched, so nothing goes blank.
+-- Phase 2 (finalizeMeshPart, from confirm_mesh, ONLY after a TRUTHFUL readiness probe returns
+-- AssetFetchStatus.Success): swap the part onto the durable asset IN PLACE and clear the draft.
+-- Why two-phase: a fresh asset passes an immediate CreateMeshPartAsync load from the SESSION CACHE
+-- (false positive) then fails real CDN fetches while moderation is pending — swapping immediately is
+-- what once pushed Studio into degraded mode (docs/superpowers/specs/2026-07-05-local-mesh-storage-design.md).
+
+MeshFactory.ATTR_ASSET_ID = "SAMeshAssetId" -- number: the uploaded Mesh asset id (kept as provenance)
+MeshFactory.ATTR_TEXTURE_ID = "SATextureAssetId" -- number?: the uploaded Image asset id
+MeshFactory.ATTR_PENDING = "SAMeshAssetPending" -- true while uploaded-but-not-finalized
+MeshFactory.ATTR_UPLOADED_AT = "SAMeshUploadedAt" -- os.time() of the upload
+MeshFactory.ATTR_PROBE_COUNT = "SAMeshProbeCount" -- readiness probes run so far (drives backoff)
+MeshFactory.ATTR_LAST_PROBE = "SAMeshLastProbe" -- os.time() of the last readiness probe
+MeshFactory.ATTR_REVIEW_FLAG = "SAMeshReviewFlag" -- true after 6h still-pending (possibly rejected)
+
+export type UploadResult = { assetId: number?, imageId: number?, err: string? }
+
+-- Count the part's LIVE session-mesh faces (0 on any failure/no geometry). Used to detect drafts
+-- whose session geometry went blank (reopen without a rebuild) so save_mesh can migrate them.
+function MeshFactory.liveFaceCount(mp: MeshPart): number
+	local count = 0
+	pcall(function()
+		local em = AssetService:CreateEditableMeshAsync(mp.MeshContent)
+		count = #em:GetFaces()
+	end)
+	return count
+end
+
+-- Phase 1: upload a session-backed MeshPart's geometry (+ generated texture) to owned assets and mark
+-- the part PENDING. NO part mutation beyond attributes — the local draft keeps rendering. Fresh-handle
+-- rule: re-extract via CreateEditableMeshAsync(mp.MeshContent), NEVER upload a live handle (the
+-- recorded handle-consumption bug, factory/tooling-issues.json). Uploads from MeshContent (keeps
+-- UVs/normals), not the lossy MeshData string. assetId=nil means the upload FAILED (err says why,
+-- including the CreateAssetResult enum); assetId set with a non-nil err means the MESH uploaded but
+-- the texture step failed (geometry-only pending). Needs the "CreateAssetAsync Lua API" beta flag.
+function MeshFactory.uploadMeshPart(mp: MeshPart, name: string?): UploadResult
+	local assetName = "SA_" .. (if type(name) == "string" and name ~= "" then name :: string else mp.Name)
+	local okEx, em = pcall(function()
+		return AssetService:CreateEditableMeshAsync(mp.MeshContent)
+	end)
+	if not okEx or em == nil then
+		return { err = "could not re-extract EditableMesh from MeshContent: " .. tostring(em) }
+	end
+	local okSave, result, assetId = pcall(function()
+		return AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh, { Name = assetName })
+	end)
+	if not okSave then
+		return {
+			err = "CreateAssetAsync failed (is the 'CreateAssetAsync Lua API' beta flag on?): "
+				.. tostring(result),
+		}
+	end
+	if result ~= Enum.CreateAssetResult.Success or type(assetId) ~= "number" then
+		return { err = "mesh upload not successful (result=" .. tostring(result) .. ")" }
+	end
+	-- Texture: a session-backed generated texture (SourceType "Opaque"/"Object") is uploaded as an
+	-- owned Image asset; finalize sets TextureID from it. Probed + uploaded under pcall — a texture
+	-- failure degrades to geometry-only (honest note), never loses the mesh upload.
+	local imageId: number? = nil
+	local texErr: string? = nil
+	local srcName = "None"
+	pcall(function()
+		srcName = mp.TextureContent.SourceType.Name
+	end)
+	if srcName == "Opaque" or srcName == "Object" then
+		local okTex, terr = pcall(function()
+			local imgEm = AssetService:CreateEditableImageAsync(mp.TextureContent)
+			local tResult, tid =
+				AssetService:CreateAssetAsync(imgEm, Enum.AssetType.Image, { Name = assetName .. "_tex" })
+			if tResult ~= Enum.CreateAssetResult.Success or type(tid) ~= "number" then
+				error("image upload not successful (result=" .. tostring(tResult) .. ")")
+			end
+			imageId = tid :: number
+		end)
+		if not okTex then
+			texErr = "texture upload failed (mesh still uploaded): " .. tostring(terr)
+		end
+	end
+	mp:SetAttribute(MeshFactory.ATTR_ASSET_ID, assetId)
+	mp:SetAttribute(MeshFactory.ATTR_TEXTURE_ID, imageId)
+	mp:SetAttribute(MeshFactory.ATTR_PENDING, true)
+	mp:SetAttribute(MeshFactory.ATTR_UPLOADED_AT, os.time())
+	mp:SetAttribute(MeshFactory.ATTR_PROBE_COUNT, 0)
+	return { assetId = assetId :: number, imageId = imageId, err = texErr }
+end
+
+-- TRUTHFUL readiness probe: ContentProvider:PreloadAsync reads the real CDN (it bypasses the session
+-- cache that makes fresh uploads look loadable). Returns the AssetFetchStatus NAME ("Success" /
+-- "Failure" / "TimedOut" / "Loading") or "Error: ..." if the call itself threw. Callers own the
+-- volume caps (<=5 probes per pass + per-asset backoff — repeated real fetch failures are what
+-- degraded Studio before).
+function MeshFactory.probeAssetFetchStatus(assetId: number): string
+	local ContentProvider = game:GetService("ContentProvider")
+	local status = "Unknown"
+	local ok, err = pcall(function()
+		ContentProvider:PreloadAsync(
+			{ "rbxassetid://" .. tostring(assetId) },
+			function(_contentId: string, fetchStatus: Enum.AssetFetchStatus)
+				status = fetchStatus.Name
+			end
+		)
+	end)
+	if not ok then
+		return "Error: " .. tostring(err)
+	end
+	return status
+end
+
+-- Phase 2: swap a PENDING part onto its durable uploaded asset IN PLACE. Call ONLY after
+-- probeAssetFetchStatus returned "Success". Loads a temp part from the asset, ApplyMesh's it onto the
+-- existing part (preserves welds/children/identity — MeshId/MeshContent are not directly writable),
+-- sets TextureID from the uploaded image, then clears the local-draft state (MeshData child +
+-- SALocalMesh + pending flag). Keeps SAMeshAssetId as provenance. Returns (true) or (false, err) —
+-- on error the part stays PENDING (drafts keep rendering; confirm_mesh retries later).
+function MeshFactory.finalizeMeshPart(mp: MeshPart): (boolean, string?)
+	local assetId = mp:GetAttribute(MeshFactory.ATTR_ASSET_ID)
+	if type(assetId) ~= "number" then
+		return false, "no " .. MeshFactory.ATTR_ASSET_ID .. " attribute"
+	end
+	local okLoad, temp = pcall(function()
+		return AssetService:CreateMeshPartAsync(Content.fromAssetId(assetId :: number))
+	end)
+	if not okLoad or temp == nil then
+		return false, "CreateMeshPartAsync failed (left pending): " .. tostring(temp)
+	end
+	local tempPart = temp :: MeshPart
+	local okApply, applyErr = pcall(function()
+		mp:ApplyMesh(tempPart)
+	end)
+	tempPart:Destroy()
+	if not okApply then
+		return false, "ApplyMesh failed (left pending): " .. tostring(applyErr)
+	end
+	local imageId = mp:GetAttribute(MeshFactory.ATTR_TEXTURE_ID)
+	if type(imageId) == "number" then
+		pcall(function()
+			mp.TextureID = "rbxassetid://" .. tostring(imageId)
+		end)
+	end
+	local dataInst = mp:FindFirstChild(MeshFactory.DATA_NAME)
+	if dataInst ~= nil then
+		dataInst:Destroy()
+	end
+	mp:SetAttribute(MeshFactory.LOCAL_TAG, nil)
+	mp:SetAttribute(MeshFactory.ATTR_PENDING, false)
+	print("[SAMeshUpload] finalized " .. mp:GetFullName() .. " -> rbxassetid://" .. tostring(assetId))
+	return true, nil
+end
+
 -- Rebuild every locally-stored mesh under `root` (or the whole DataModel). Returns (rebuilt, failed).
 function MeshFactory.rebuildAllLocal(root: Instance?): (number, number)
 	local scope = root or game

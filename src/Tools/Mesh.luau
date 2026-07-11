@@ -164,18 +164,16 @@ local function collectSessionMeshParts(
 	end
 end
 
--- Self-contained runtime that reconstructs LOCALLY-stored mesh geometry at Play/ship time.
--- save_mesh serializes a session mesh into a `MeshData` StringValue child + a `SALocalMesh` tag (no
--- upload). The plugin rebuilds those in EDIT (Main.run), but a real Play/ship DataModel has NO plugin,
--- so without a deployed script the geometry stays blank. The SAME body is deployed TWICE: as a server
--- Script (ServerScriptService.SAMeshRebuildRuntime) AND as a LocalScript
--- (StarterPlayer.StarterPlayerScripts.SAMeshRebuildClient) — a server-side
--- Content.fromObject(EditableMesh)/ApplyMesh does NOT replicate to play clients (capture-proven
--- 2026-07-10: clients render a checkered placeholder cube), so each client must rebuild locally too.
--- If the engine rejects client ApplyMesh on a server-owned part, the per-part pcall warn()s loudly
--- instead of silently pretending. Mirrors MeshFactory.decode/rebuildLocalMesh inline (it can't
--- require the plugin at runtime) and heals CLONED handles (Tool copied into a Backpack/Character)
--- via DescendantAdded. ASCII-only. `CONTEXT` is prepended per deployment by rebuildRuntimeSource.
+-- Self-contained runtime that reconstructs LOCALLY-stored DRAFT mesh geometry at Play/ship time.
+-- save_mesh serializes a session mesh into a `MeshData` StringValue child + a `SALocalMesh` tag AND
+-- uploads it as a real owned asset (confirm_mesh finalizes once moderation clears). Until a part is
+-- FINALIZED it is still draft-rendered, and a real Play/ship DataModel has NO plugin, so this server
+-- Script (ServerScriptService.SAMeshRebuildRuntime) rebuilds drafts there. Finalized parts need NO
+-- runtime — a real asset-backed MeshPart replicates natively (the old per-client
+-- SAMeshRebuildClient LocalScript is RETIRED; ensureRebuildRuntime destroys stray copies). Mirrors
+-- MeshFactory.decode/rebuildLocalMesh inline (it can't require the plugin at runtime) and heals
+-- CLONED handles (Tool copied into a Backpack/Character) via DescendantAdded. ASCII-only. `CONTEXT`
+-- is prepended per deployment by rebuildRuntimeSource.
 local REBUILD_BODY = [==[
 local AssetService = game:GetService("AssetService")
 
@@ -278,7 +276,7 @@ game.DescendantAdded:Connect(function(inst)
 end)
 ]==]
 
--- Wrap the shared body for one deployment context ("server" | "client").
+-- Wrap the body for a deployment context (only "server" is deployed now; the client copy is retired).
 local function rebuildRuntimeSource(context: string): string
 	return "-- SAMeshRebuild ("
 		.. context
@@ -290,10 +288,11 @@ local function rebuildRuntimeSource(context: string): string
 		.. REBUILD_BODY
 end
 
--- Deploy (idempotently) BOTH rebuild runtimes — server Script + per-client LocalScript — so
--- LOCALLY-stored meshes reconstruct in Play/ship on both sides of the replication boundary.
--- Replaces any prior copies; tagged StudioAgentGenerated so game_pull excludes them.
--- Returns the list of deployed script full-names for the tool note.
+-- Deploy (idempotently) the SERVER rebuild runtime so LOCALLY-stored DRAFTS reconstruct in Play/ship
+-- while their uploads await finalize. Replaces any prior copy; tagged StudioAgentGenerated so
+-- game_pull excludes it. ALSO a heal point: destroys the RETIRED per-client SAMeshRebuildClient
+-- LocalScript if a prior save deployed one (finalized asset-backed meshes replicate natively, so the
+-- client rebuilder is no longer needed). Returns the deployed script full-names for the tool note.
 local function ensureRebuildRuntime(): { string }
 	local deployed: { string } = {}
 
@@ -309,21 +308,13 @@ local function ensureRebuildRuntime(): { string }
 	s.Parent = sss
 	table.insert(deployed, s:GetFullName())
 
-	-- CLIENT rebuilder: server ApplyMesh output is invisible to clients (does not replicate), so
-	-- every client redoes the rebuild from the replicated MeshData. StarterPlayerScripts always
-	-- exists under StarterPlayer in a real place; fail-open (with an honest note) if it somehow doesn't.
+	-- Heal: remove the retired client rebuilder wherever an older save left it.
 	local starterScripts = game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")
 	if starterScripts ~= nil then
 		local priorClient = starterScripts:FindFirstChild("SAMeshRebuildClient")
 		if priorClient ~= nil then
 			priorClient:Destroy()
 		end
-		local ls = Instance.new("LocalScript")
-		ls.Name = "SAMeshRebuildClient"
-		ls.Source = rebuildRuntimeSource("client")
-		ls:SetAttribute("StudioAgentGenerated", true)
-		ls.Parent = starterScripts
-		table.insert(deployed, ls:GetFullName())
 	end
 
 	return deployed
@@ -359,17 +350,52 @@ local function runSave(input: any, _context: any): (string, boolean)
 		return "save_mesh: no session-backed custom meshes found (already durable, or only Parts present).",
 			false
 	end
-	-- LOCAL persistence: serialize each mesh's geometry into the place (NO CreateAssetAsync upload).
-	-- Uploading is what caused the pending-moderation CDN load-failures that destabilized Studio; this
-	-- stores geometry as a MeshData child + a SALocalMesh tag, and the plugin/runtime rebuilds it on load.
-	local stored, failed = 0, 0
+	-- TWO-PHASE persistence. Phase A (recorded, undoable): keep/refresh the LOCAL draft (MeshData
+	-- child + SALocalMesh tag — the part keeps rendering NOW regardless of moderation) and deploy the
+	-- server rebuild runtime. A draft whose live session geometry went blank (place reopened without a
+	-- rebuild) is MIGRATED — geometry rebuilt from MeshData — before upload. Phase B (AFTER the
+	-- recording: CreateAssetAsync is a long web yield we will not hold a ChangeHistory recording
+	-- across): REAL upload per part via MeshFactory.uploadMeshPart, which marks it pending-moderation
+	-- via attributes only. confirm_mesh finalizes once the CDN truthfully serves the asset.
+	local stored, failed, skipped = 0, 0, 0
 	local failLines: { string } = {}
+	local skipLines: { string } = {}
+	local uploadable: { MeshPart } = {}
 	local deployedScripts: { string } = {}
 	local function doPersist()
 		for _, mp in parts do
+			-- Already uploaded (pending or awaiting finalize): NEVER re-upload (duplicate assets).
+			local priorId = mp:GetAttribute(MeshFactory.ATTR_ASSET_ID)
+			if type(priorId) == "number" then
+				skipped += 1
+				table.insert(
+					skipLines,
+					mp:GetFullName()
+						.. " — already uploaded (rbxassetid://"
+						.. tostring(priorId)
+						.. "; confirm_mesh finalizes it)"
+				)
+				continue
+			end
+			if
+				mp:GetAttribute(MeshFactory.LOCAL_TAG) == true
+				and mp:FindFirstChild(MeshFactory.DATA_NAME) ~= nil
+				and MeshFactory.liveFaceCount(mp) == 0
+			then
+				local okR, rerr = MeshFactory.rebuildLocalMesh(mp)
+				if not okR then
+					failed += 1
+					table.insert(
+						failLines,
+						mp:GetFullName() .. " — migration rebuild failed: " .. tostring(rerr)
+					)
+					continue
+				end
+			end
 			local result = MeshFactory.persistMeshPartLocal(mp)
 			if result.stored then
 				stored += 1
+				table.insert(uploadable, mp)
 			else
 				failed += 1
 				table.insert(
@@ -378,42 +404,253 @@ local function runSave(input: any, _context: any): (string, boolean)
 				)
 			end
 		end
-		-- Deploy the Play/ship rebuild runtimes (server Script + per-client LocalScript) so the
-		-- stored geometry reconstructs where the plugin does NOT run (a real playtest / shipped
-		-- game) AND on each play client (server rebuilds do not replicate — capture-proven).
+		-- Deploy the Play/ship DRAFT rebuild runtime (server Script) so not-yet-finalized geometry
+		-- reconstructs where the plugin does NOT run. Finalized parts replicate natively (no runtime).
 		if stored > 0 then
 			deployedScripts = ensureRebuildRuntime()
 		end
 	end
+	-- ChangeHistory: GUARANTEED finish — the body is pcall-wrapped and the recording is finished in
+	-- BOTH arms (a save_mesh error once left a recording wedged open and blocked add_keyframe).
+	local persistErr: string? = nil
 	if RunService:IsEdit() then
 		local rid = ChangeHistoryService:TryBeginRecording("save_mesh")
-		doPersist()
-		-- rid == nil (stale recording): proceed UNRECORDED rather than wedge the pipeline.
+		local okRun, runErr = pcall(doPersist)
+		-- rid == nil (stale recording): proceeded UNRECORDED rather than wedge the pipeline.
 		if rid ~= nil then
 			ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
 		end
+		if not okRun then
+			persistErr = tostring(runErr)
+		end
 	else
-		doPersist()
+		local okRun, runErr = pcall(doPersist)
+		if not okRun then
+			persistErr = tostring(runErr)
+		end
+	end
+	if persistErr ~= nil then
+		return "save_mesh: internal error during local persist — " .. persistErr, true
+	end
+	-- Phase B: the real uploads (attribute-only DataModel writes; deliberately outside the recording).
+	local uploaded = 0
+	local uploadLines: { string } = {}
+	for _, mp in uploadable do
+		-- Asset naming: "SA_" .. <artifact/part name> (cleanup is manual dashboard work; names make it
+		-- possible). A Handle inside a Model/Tool gets the artifact's name prefixed so the dashboard
+		-- entry reads "SA_ProbeSword_Handle", not an anonymous "SA_Handle".
+		local parent = mp.Parent
+		local label = if parent ~= nil and (parent:IsA("Model") or parent:IsA("Tool"))
+			then parent.Name .. "_" .. mp.Name
+			else mp.Name
+		local up = MeshFactory.uploadMeshPart(mp, label)
+		if up.assetId == nil then
+			table.insert(
+				uploadLines,
+				mp:GetFullName()
+					.. " — upload FAILED: "
+					.. tostring(up.err)
+					.. " (local draft kept; re-run save_mesh to retry)"
+			)
+		else
+			uploaded += 1
+			local line = mp:GetFullName()
+				.. " -> SA_"
+				.. label
+				.. " rbxassetid://"
+				.. tostring(up.assetId)
+			if up.imageId ~= nil then
+				line = line .. " (+ texture rbxassetid://" .. tostring(up.imageId) .. ")"
+			end
+			if up.err ~= nil then
+				line = line .. " — " .. tostring(up.err)
+			end
+			table.insert(uploadLines, line)
+		end
 	end
 	local msg = string.format(
-		"save_mesh: %d/%d mesh(es) stored LOCALLY (geometry serialized in-place; NO upload — survives "
-			.. "save/reopen AND Play/ship, no moderation/CDN dependency).",
+		"save_mesh: %d/%d mesh(es) drafted locally (MeshData in-place; renders now) and %d/%d uploaded "
+			.. "as REAL owned assets — pending moderation; run confirm_mesh later to finalize each part "
+			.. "onto its durable asset when the CDN serves it.",
 		stored,
-		#parts
+		#parts,
+		uploaded,
+		#uploadable
 	)
+	for _, line in uploadLines do
+		msg = msg .. "\n  " .. line
+	end
 	if #deployedScripts > 0 then
 		msg = msg
-			.. " Deployed rebuild runtimes: "
+			.. "\nDeployed draft rebuild runtime: "
 			.. table.concat(deployedScripts, " + ")
-			.. " (server rebuilds do not replicate to clients, hence both)."
+			.. " (the retired per-client SAMeshRebuildClient is removed if present)."
+	end
+	for _, line in skipLines do
+		msg = msg .. "\n  SKIPPED " .. line
 	end
 	if failed > 0 then
-		msg = msg .. string.format(" — %d FAILED:", failed)
+		msg = msg .. string.format("\n%d FAILED:", failed)
 		for _, line in failLines do
 			msg = msg .. "\n  " .. line
 		end
 	end
-	return msg, (stored == 0)
+	return msg, (stored == 0 and skipped == 0)
+end
+
+-- ---- confirm_mesh: the finalize half of the two-phase upload commit ----
+
+local PROBE_BACKOFF = { 60, 300, 900 } -- delay in seconds AFTER the Nth probe; then the 30-min floor
+local PROBE_FLOOR = 1800
+local REVIEW_AFTER = 6 * 3600 -- still pending after this -> flag for user review (possibly rejected)
+local MAX_PROBES_PER_PASS = 5 -- LOAD-BEARING: real fetch storms once pushed Studio into degraded mode
+
+-- Seconds that must elapse since the LAST probe (or the upload, before any probe) before the next
+-- probe. First probe is immediate; then 60s -> 5m -> 15m -> 30m floor.
+local function backoffWindow(probeCount: number): number
+	if probeCount <= 0 then
+		return 0
+	end
+	return PROBE_BACKOFF[probeCount] or PROBE_FLOOR
+end
+
+-- Scan the same 5 roots the edit rescan covers for SAMeshAssetPending parts; truth-probe at most 5
+-- per pass (oldest upload first, per-asset backoff) via ContentProvider AssetFetchStatus — the probe
+-- that BYPASSES the session cache which makes fresh uploads look loadable — and finalize the ones the
+-- CDN actually serves. Everything else gets an honest per-part status line. No ChangeHistory
+-- recording: PreloadAsync/CreateMeshPartAsync are web yields we won't hold a recording across
+-- (mirrors the edit-rescan rebuild, which is also unrecorded).
+local function runConfirm(_input: any, _context: any): (string, boolean)
+	local roots: { Instance } = {
+		workspace,
+		game:GetService("ServerStorage"),
+		game:GetService("StarterPack"),
+		game:GetService("ReplicatedStorage"),
+		game:GetService("StarterPlayer"),
+	}
+	local pending: { MeshPart } = {}
+	for _, root in roots do
+		for _, d in root:GetDescendants() do
+			if d:IsA("MeshPart") and d:GetAttribute(MeshFactory.ATTR_PENDING) == true then
+				table.insert(pending, d)
+			end
+		end
+	end
+	if #pending == 0 then
+		return "confirm_mesh: no pending mesh uploads found (nothing to finalize).", false
+	end
+	table.sort(pending, function(a: MeshPart, b: MeshPart): boolean
+		return (tonumber(a:GetAttribute(MeshFactory.ATTR_UPLOADED_AT)) or 0)
+			< (tonumber(b:GetAttribute(MeshFactory.ATTR_UPLOADED_AT)) or 0)
+	end)
+	local now = os.time()
+	local lines: { string } = {}
+	local probed, finalized = 0, 0
+	for _, mp in pending do
+		local assetId = mp:GetAttribute(MeshFactory.ATTR_ASSET_ID)
+		local uploadedAt = tonumber(mp:GetAttribute(MeshFactory.ATTR_UPLOADED_AT)) or 0
+		local probeCount = tonumber(mp:GetAttribute(MeshFactory.ATTR_PROBE_COUNT)) or 0
+		local lastProbe = tonumber(mp:GetAttribute(MeshFactory.ATTR_LAST_PROBE)) or uploadedAt
+		local age = now - uploadedAt
+		if type(assetId) ~= "number" then
+			table.insert(
+				lines,
+				"BROKEN " .. mp:GetFullName() .. " — pending but no SAMeshAssetId; re-run save_mesh"
+			)
+		elseif mp:GetAttribute(MeshFactory.ATTR_REVIEW_FLAG) == true then
+			table.insert(
+				lines,
+				string.format(
+					"REVIEW %s — rbxassetid://%d still unfetchable after %dh; flagged for user review "
+						.. "(possibly rejected — check the Creator Dashboard)",
+					mp:GetFullName(),
+					assetId :: number,
+					age // 3600
+				)
+			)
+		elseif probed >= MAX_PROBES_PER_PASS then
+			table.insert(
+				lines,
+				"CAPPED " .. mp:GetFullName() .. " — probe cap (5/pass) reached; re-run confirm_mesh"
+			)
+		elseif now - lastProbe < backoffWindow(probeCount) then
+			table.insert(
+				lines,
+				string.format(
+					"BACKOFF %s — next probe in %ds (probe %d was %ds ago)",
+					mp:GetFullName(),
+					backoffWindow(probeCount) - (now - lastProbe),
+					probeCount,
+					now - lastProbe
+				)
+			)
+		else
+			probed += 1
+			local status = MeshFactory.probeAssetFetchStatus(assetId :: number)
+			mp:SetAttribute(MeshFactory.ATTR_PROBE_COUNT, probeCount + 1)
+			mp:SetAttribute(MeshFactory.ATTR_LAST_PROBE, now)
+			if status == "Success" then
+				local okF, ferr = MeshFactory.finalizeMeshPart(mp)
+				if okF then
+					finalized += 1
+					table.insert(
+						lines,
+						string.format(
+							"FINALIZED %s -> rbxassetid://%d (AssetFetchStatus=Success)",
+							mp:GetFullName(),
+							assetId :: number
+						)
+					)
+				else
+					table.insert(
+						lines,
+						string.format(
+							"ERROR %s — AssetFetchStatus=Success but finalize failed: %s (left pending)",
+							mp:GetFullName(),
+							tostring(ferr)
+						)
+					)
+				end
+			elseif age > REVIEW_AFTER then
+				mp:SetAttribute(MeshFactory.ATTR_REVIEW_FLAG, true)
+				table.insert(
+					lines,
+					string.format(
+						"REVIEW %s — AssetFetchStatus=%s after %.1fh pending; flagged for user review "
+							.. "(possibly rejected — check the Creator Dashboard)",
+						mp:GetFullName(),
+						status,
+						age / 3600
+					)
+				)
+			else
+				table.insert(
+					lines,
+					string.format(
+						"PENDING %s — rbxassetid://%d AssetFetchStatus=%s (%dm since upload, probe %d; "
+							.. "next probe after %ds)",
+						mp:GetFullName(),
+						assetId :: number,
+						status,
+						age // 60,
+						probeCount + 1,
+						backoffWindow(probeCount + 1)
+					)
+				)
+			end
+		end
+	end
+	local msg = string.format(
+		"confirm_mesh: %d pending part(s); probed %d (cap %d/pass), finalized %d.",
+		#pending,
+		probed,
+		MAX_PROBES_PER_PASS,
+		finalized
+	)
+	for _, line in lines do
+		msg = msg .. "\n  " .. line
+	end
+	return msg, false
 end
 
 local POS_SCHEMA = {
@@ -477,14 +714,17 @@ Mesh.descriptors = {
 	},
 	{
 		name = "save_mesh",
-		description = "PERSIST the custom meshes in a build to durable, creator-OWNED assets so they SURVIVE "
-			.. "PLAY / save / ship (in-session generate_mesh/author_mesh geometry is edit-only and goes blank "
-			.. "in a playtest until saved). Serializes each session mesh's geometry in-place (a MeshData child "
-			.. "+ a SALocalMesh tag, NO upload) and deploys TWO rebuild runtimes — a server "
-			.. "SAMeshRebuildRuntime AND a per-client SAMeshRebuildClient (server rebuilds do not replicate "
-			.. "to play clients) — that reconstruct it in Play/ship (incl. cloned Tool Handles). Inputs: "
-			.. "target (path to the Model/MeshPart; omit to use the selection). Run it on a FINISHED build, "
-			.. "not every iteration.",
+		description = "PERSIST the custom meshes in a build so they SURVIVE Play / save / ship (in-session "
+			.. "generate_mesh/author_mesh geometry is edit-only and goes blank in a playtest until saved). "
+			.. "TWO-PHASE: (1) drafts each session mesh LOCALLY in-place (a MeshData child + SALocalMesh tag "
+			.. "— keeps rendering immediately; a deployed server SAMeshRebuildRuntime reconstructs drafts in "
+			.. "Play, incl. cloned Tool Handles) and (2) UPLOADS the mesh + its generated texture as REAL "
+			.. "creator-owned assets via CreateAssetAsync (named 'SA_<part name>'; needs the 'CreateAssetAsync "
+			.. "Lua API' beta flag). Fresh uploads sit in MODERATION (often hours) — run confirm_mesh later to "
+			.. "finalize ready parts onto their durable assets. Parts with an existing SAMeshAssetId are "
+			.. "skipped (never re-uploaded); blank drafts from a reopened place are auto-migrated from "
+			.. "MeshData before upload. Inputs: target (path to the Model/MeshPart; omit to use the "
+			.. "selection). Run it on a FINISHED build, not every iteration.",
 		inputSchema = {
 			type = "object",
 			properties = {
@@ -496,6 +736,22 @@ Mesh.descriptors = {
 		},
 		destructive = true,
 		run = runSave,
+	},
+	{
+		name = "confirm_mesh",
+		description = "FINALIZE save_mesh uploads once moderation clears (phase 2 of the mesh persist). "
+			.. "Scans workspace/ServerStorage/StarterPack/ReplicatedStorage/StarterPlayer for "
+			.. "SAMeshAssetPending parts, TRUTH-probes at most 5 per call (oldest first; per-asset backoff "
+			.. "60s -> 5m -> 15m -> 30m between probes) via ContentProvider AssetFetchStatus — the probe that "
+			.. "bypasses the session cache which fakes readiness — and on Success swaps each part onto its "
+			.. "durable asset IN PLACE (ApplyMesh; welds/children/identity preserved), applies the uploaded "
+			.. "texture, and clears the local draft. Everything else is reported honestly per part "
+			.. "(PENDING/BACKOFF/CAPPED with the exact AssetFetchStatus); after 6h still pending a part is "
+			.. "flagged SAMeshReviewFlag — check the Creator Dashboard (possibly rejected). No inputs. Re-run "
+			.. "periodically after save_mesh; the volume caps make repeat calls safe.",
+		inputSchema = { type = "object", properties = {} },
+		destructive = true,
+		run = runConfirm,
 	},
 } :: { Descriptor }
 
