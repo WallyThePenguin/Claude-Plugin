@@ -52,6 +52,10 @@ ap.add_argument("--uv-angle", dest="uv_angle", type=float, default=66.0,
                      "(fewer, larger islands paint better)")
 ap.add_argument("--uv-margin", dest="uv_margin", type=float, default=0.02,
                 help="island margin (UV space) — the gutter that absorbs painter bleed")
+ap.add_argument("--smooth", type=int, default=0,
+                help="Laplacian smoothing iterations (factor 0.5) after decimate — melts the "
+                     "voxel-reconstruction bumps ('rocky' surfaces). 0 = off. Keep modest "
+                     "(~5-10): thin ornament thins further with every pass.")
 ap.add_argument("--canon", default="long-y", choices=["none", "long-y"],
                 help="long-y (default) = PCA-rotate so the principal (long) axis lands on ROBLOX "
                      "vertical (+Y in the exported glTF). In Blender coords that is +Z — the glTF "
@@ -143,6 +147,25 @@ if tri_count > args.tri_budget:
     print(f"remesh escalation: {len(obj.data.polygons)} tris after voxel remesh")
     tri_count = decimate_to(args.tri_budget)
 
+# geometric smoothing: melt voxel-reconstruction bumps on the FINAL topology (after decimate /
+# remesh). Plain Laplacian at factor 0.5 — a few iterations flatten facet noise while the
+# silhouette survives; ornament thins slightly (why the default is 0/opt-in).
+if args.smooth > 0:
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    for _ in range(args.smooth):
+        bmesh.ops.smooth_vert(bm, verts=bm.verts[:], factor=0.5,
+                              use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.to_mesh(obj.data)
+    bm.free()
+    print(f"smooth: {args.smooth} iterations @ 0.5")
+
+# SMOOTH SHADING, always: without it the glTF exports faceted normals and the corner-split
+# EditableMesh import renders every voxel facet with its own highlight (the "rocky" look —
+# user-caught). Shared smooth normals ride TEXCOORD-style into the NORMAL attribute.
+for poly in obj.data.polygons:
+    poly.use_smooth = True
+
 # orientation canonicalization: PCA-rotate so principal axis -> +Y, second -> +Z, thinnest -> +X.
 # Runs BEFORE scale/recenter so extents, grip detection, and the planar unwrap all live in the
 # canonical frame. Sign ambiguity (a PCA axis is a line, not a ray) is left to downstream
@@ -229,20 +252,19 @@ elif args.uv == "planar":
     span_v = max(hi_v - lo_v, 1e-9)
     m = max(0.0, min(0.2, args.uv_margin))
     usable = 1.0 - 2.0 * m
-    # ASPECT-TRUE: one scale for both axes (independent normalization distorts the silhouette,
-    # which hurts painter alignment and makes texel density anisotropic); the shorter axis is
-    # centered in its leftover space.
-    scale = usable / max(span_u, span_v)
-    off_u = (1.0 - span_u * scale) / 2.0
-    off_v = (1.0 - span_v * scale) / 2.0
+    # FULL-BOX per-axis normalization: the CANVAS carries the aspect, not the UVs — the
+    # template/atlas is rendered at the mesh's true aspect (render_uv_template auto-aspect), so
+    # texels stay square, the silhouette is undistorted, and the whole canvas is detail budget.
+    # (An aspect-true unwrap inside a square canvas wasted ~half the texels — measured: the
+    # squeezed repaint read worse than the near-square one.)
     layer = mesh.uv_layers.new(name="UVMap")
     for loop in mesh.loops:
         co = mesh.vertices[loop.vertex_index].co
-        layer.data[loop.index].uv = (off_u + (co[ax_u] - lo_u) * scale,
-                                     off_v + (co[ax_v] - lo_v) * scale)
+        layer.data[loop.index].uv = (m + (co[ax_u] - lo_u) / span_u * usable,
+                                     m + (co[ax_v] - lo_v) / span_v * usable)
     uv_stats = {"uv": "planar", "uv_axes": "XYZ"[ax_u] + "XYZ"[ax_v], "uv_margin": m,
-                "uv_layers": len(mesh.uv_layers)}
-    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} aspect-true scale={scale:.4f}")
+                "uv_aspect": round(span_v / span_u, 4), "uv_layers": len(mesh.uv_layers)}
+    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} full-box aspect={uv_stats['uv_aspect']}")
 
 bones_manifest = []
 if args.mode == "rigid":
@@ -333,6 +355,7 @@ manifest = {
     "tris": final_tris,
     "extents_studs": [round(d, 3) for d in mesh_extents(obj)],
     "target_studs": args.target_studs,
+    "smooth": args.smooth,
     "bones": bones_manifest,
     **uv_stats,
 }

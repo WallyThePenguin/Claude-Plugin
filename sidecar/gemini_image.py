@@ -174,12 +174,14 @@ PAINT_PROMPT = (
     "layout template: each solid gray region is one unwrapped island of the model's surface "
     "(for a planar unwrap the single island IS the object's silhouette seen from its broad "
     "side); black is unused space. The first image is the reference showing how the object must "
-    "look. Paint a complete texture atlas AT THE SAME RESOLUTION as the template: fill EVERY "
-    "gray island with the surface detail the reference shows for that part of the object "
-    "(metal, ornament, gems, engraving), keeping every painted feature aligned to the island's "
-    "shape — the blade region gets the blade's surface, the guard region the guard, and so on. "
-    "Extend each island's colors roughly 8 pixels past its border (bleed), keep unused space "
-    "dark, and draw no outlines, labels, or wireframe lines. Output only the painted atlas image."
+    "look. Paint a complete texture atlas AT THE SAME RESOLUTION and aspect ratio as the "
+    "template: fill EVERY gray island with the surface detail the reference shows for that part "
+    "of the object, and MATCH THE REFERENCE'S MATERIAL DISTRIBUTION REGION BY REGION — do not "
+    "restyle or recolor (if the reference blade is pale polished silver with a narrow gold "
+    "center line, paint exactly that, not an all-gold blade). Keep every painted feature "
+    "aligned to the island's shape. Extend each island's colors roughly 8 pixels past its "
+    "border (bleed), and keep all remaining space PURE BLACK — no drop shadows, no glow, no "
+    "background, no outlines, labels, or wireframe lines. Output only the painted atlas image."
 )
 
 

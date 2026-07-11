@@ -163,26 +163,29 @@ def main():
     else:
         import io as _io
 
-        def _glb_with_png(path, png_bytes):
-            positions = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
+        def _glb_with_png(path, png_bytes, positions=None):
+            positions = positions or struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
             uvs = struct.pack("<6f", 0.0, 0.0, 1.0, 0.0, 0.0, 1.0)
+            normals = struct.pack("<9f", 0, 0, 1, 0, 0, 1, 0, 0, 1)
             indices = struct.pack("<3H", 0, 1, 2) + b"\x00\x00"
-            binchunk = positions + uvs + png_bytes + indices
+            binchunk = positions + uvs + normals + png_bytes + indices
             gltf = {
                 "asset": {"version": "2.0"},
                 "meshes": [{"primitives": [{
-                    "attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2}]}],
-                "images": [{"mimeType": "image/png", "bufferView": 2}],
+                    "attributes": {"POSITION": 0, "TEXCOORD_0": 1, "NORMAL": 3}, "indices": 2}]}],
+                "images": [{"mimeType": "image/png", "bufferView": 3}],
                 "accessors": [
                     {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
                     {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC2"},
-                    {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"},
+                    {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"},
+                    {"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC3"},
                 ],
                 "bufferViews": [
                     {"buffer": 0, "byteOffset": 0, "byteLength": 36},
                     {"buffer": 0, "byteOffset": 36, "byteLength": 24},
-                    {"buffer": 0, "byteOffset": 60, "byteLength": len(png_bytes)},
-                    {"buffer": 0, "byteOffset": 60 + len(png_bytes), "byteLength": 6},
+                    {"buffer": 0, "byteOffset": 60, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 96, "byteLength": len(png_bytes)},
+                    {"buffer": 0, "byteOffset": 96 + len(png_bytes), "byteLength": 6},
                 ],
                 "buffers": [{"byteLength": len(binchunk)}],
             }
@@ -235,6 +238,20 @@ def main():
             outside = im.getpixel((60, 60))  # far corner, outside every island
             fails += _check("island interior is filled (non-black)", sum(inside) > 60)
             fails += _check("outside the islands stays black", sum(outside) == 0)
+
+            # smooth normals stream with the vertices (the flat-shaded voxel-facet fix)
+            tex_out = meshio.parse_glb_textured(tp)
+            fails += _check("normals aligned with vertices",
+                            tex_out.get("normals") == [[0, 0, 1], [0, 0, 1], [0, 0, 1]])
+
+            # auto-aspect template: a 2:1-extent mesh renders on a 2:1 canvas (non-square atlas —
+            # full-box UVs stay undistorted because the CANVAS carries the aspect, not the UVs)
+            tp3 = os.path.join(d, "rect.glb")
+            _glb_with_png(tp3, _png(4, 4, (1, 2, 3, 255)),
+                          positions=struct.pack("<9f", 0, 0, 0, 2, 0, 0, 0, 1, 0))
+            tpl3 = meshio.render_uv_template(tp3, size=64)
+            im3 = _PILImage.open(_io.BytesIO(tpl3)).convert("RGB")
+            fails += _check("template canvas carries the mesh aspect", im3.size == (64, 32))
 
     # textured read_reference_mesh on the real cleaned rapier: vertex-aligned uvs + a LEAN texture
     # descriptor (pixels ship via the separate binary /assets/texture route, never in this JSON).

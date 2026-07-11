@@ -190,17 +190,27 @@ def parse_glb_textured(path: str) -> dict:
     out = parse_glb(path)
     gltf, binchunk = _read_glb(path)
     uvs = []
+    normals = []
     for mesh in gltf.get("meshes", []):
         for prim in mesh.get("primitives", []):
             attrs = prim.get("attributes", {})
             if "POSITION" not in attrs or "indices" not in prim:
                 continue
+            n_pos = len(_accessor_values(gltf, binchunk, attrs["POSITION"]))
             if "TEXCOORD_0" in attrs:
                 for uv in _accessor_values(gltf, binchunk, attrs["TEXCOORD_0"]):
                     uvs.append([round(uv[0], 5), round(uv[1], 5)])
             else:
                 # keep uv list aligned with the vertex list even on mixed primitives
-                uvs.extend([[0.0, 0.0]] * len(_accessor_values(gltf, binchunk, attrs["POSITION"])))
+                uvs.extend([[0.0, 0.0]] * n_pos)
+            if "NORMAL" in attrs:
+                # smooth shading for the Luau side (EditableMesh AddNormal/SetFaceNormals —
+                # probed live): without these the corner-split import renders FLAT-shaded and
+                # every voxel facet catches its own highlight (the "rocky" look).
+                for n in _accessor_values(gltf, binchunk, attrs["NORMAL"]):
+                    normals.append([round(n[0], 4), round(n[1], 4), round(n[2], 4)])
+            else:
+                normals.extend([[0.0, 0.0, 0.0]] * n_pos)
     texture = None
     for img in gltf.get("images", []):
         if "bufferView" in img:
@@ -213,6 +223,7 @@ def parse_glb_textured(path: str) -> dict:
             }
             break  # the first image = the base-color atlas in TRELLIS exports
     out["uvs"] = uvs if len(uvs) == len(out["vertices"]) else []
+    out["normals"] = normals if len(normals) == len(out["vertices"]) else []
     out["texture"] = texture
     return out
 
@@ -263,13 +274,23 @@ def decode_image_rgba(path: str, max_size: int = 1024) -> dict:
     return {"width": w, "height": h, "rgba": im.tobytes()}
 
 
-def render_uv_template(path: str, size: int = 1024, wire: bool = True) -> bytes:
+def render_uv_template(path: str, size: int = 1024, wire: bool = True,
+                       aspect: float | None = None) -> bytes:
     """Rasterize a GLB's UV islands into a PNG template for the texture PAINTER (Gemini): black
     background, light-gray island fill, and (wire=True) white wireframe edges. wire=False is the
     PAINTER's version — on dense meshes the wireframe reads as solid white and pollutes the
-    canvas; the clean silhouette fill is the paint-here mask. Drawn in glTF's top-down UV
-    space — exactly the space the painted atlas is sampled in (no V-flip, proven live), so
-    painting inside these islands IS painting on the mesh. Returns PNG bytes."""
+    canvas; the clean silhouette fill is the paint-here mask.
+
+    NON-SQUARE canvas: `aspect` = height/width. None (default) AUTO-derives it from the mesh's
+    two largest extents (matching the planar unwrap's axis pick), so a full-box planar unwrap
+    renders UNDISTORTED on a canvas shaped like the object — the whole canvas is detail budget
+    (an aspect-true unwrap inside a SQUARE canvas wasted ~half the texels; measured: the squeezed
+    repaint read worse than the near-square one). Roblox samples UV [0,1]^2 over any image dims,
+    so non-square atlases are native. Pass aspect=1.0 to force square (non-planar unwraps).
+
+    Drawn in glTF's top-down UV space — exactly the space the painted atlas is sampled in (no
+    V-flip, proven live), so painting inside these islands IS painting on the mesh. Returns PNG
+    bytes."""
     from io import BytesIO
     from PIL import Image, ImageDraw
 
@@ -277,11 +298,21 @@ def render_uv_template(path: str, size: int = 1024, wire: bool = True) -> bytes:
     uvs, faces = parsed["uvs"], parsed["faces"]
     if not uvs:
         raise MeshError("GLB has no TEXCOORD_0 — unwrap it first (rig_weapon.py --uv planar)")
-    im = Image.new("RGB", (size, size), (0, 0, 0))
+    if aspect is None:
+        verts = parsed["vertices"]
+        spans = []
+        for i in range(3):
+            vals = [v[i] for v in verts]
+            spans.append(max(vals) - min(vals))
+        spans.sort(reverse=True)
+        aspect = (spans[1] / spans[0]) if spans[0] > 1e-9 else 1.0
+    aspect = max(0.05, min(1.0, aspect))
+    w, h = size, max(16, round(size * aspect))
+    im = Image.new("RGB", (w, h), (0, 0, 0))
     draw = ImageDraw.Draw(im)
 
     def px(uv):
-        return (uv[0] * (size - 1), uv[1] * (size - 1))
+        return (uv[0] * (w - 1), uv[1] * (h - 1))
 
     fill = (70, 70, 70) if wire else (128, 128, 128)
     for f in faces:  # fill first, then edges, so shared borders stay visible

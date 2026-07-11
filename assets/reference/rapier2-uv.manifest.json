@@ -6,14 +6,16 @@
  "verts": 8296,
  "tris": 17999,
  "extents_studs": [
-  1.623,
-  0.703,
+  1.593,
+  0.629,
   4.8
  ],
  "target_studs": 4.8,
+ "smooth": 8,
  "bones": [],
  "uv": "planar",
  "uv_axes": "ZX",
  "uv_margin": 0.03,
+ "uv_aspect": 0.332,
  "uv_layers": 1
 }
