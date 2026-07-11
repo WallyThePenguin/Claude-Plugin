@@ -41,6 +41,54 @@ def _make_glb(path):
         fh.write(struct.pack("<II", len(binchunk), 0x004E4942) + binchunk)
 
 
+def _make_skinned_glb(path):
+    # One triangle skinned to 2 bones: Grip at origin (verts 0,1 @ weight 1), Seg1 at (0,2,0)
+    # (vert 2 @ weight 1). IBMs are translation-only column-major inverses (-t).
+    positions = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 2, 0)
+    joints = struct.pack("<12B", 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0)  # uint8 vec4 x3
+    weights = struct.pack("<12f", 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+    ident = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
+    ibm_grip = struct.pack("<16f", *(ident + [0, 0, 0, 1]))          # inverse of I = I
+    ibm_seg = struct.pack("<16f", *(ident + [0, -2, 0, 1]))          # inverse of T(0,2,0)
+    indices = struct.pack("<3H", 0, 1, 2) + b"\x00\x00"
+    binchunk = positions + joints + weights + ibm_grip + ibm_seg + indices
+    off_j, off_w = 36, 48
+    off_ibm, off_idx = 96, 224
+    gltf = {
+        "asset": {"version": "2.0"},
+        "nodes": [
+            {"name": "Grip", "children": [1]},
+            {"name": "Seg1", "translation": [0, 2, 0]},
+            {"name": "Mesh", "mesh": 0, "skin": 0},
+        ],
+        "skins": [{"joints": [0, 1], "inverseBindMatrices": 3}],
+        "meshes": [{"primitives": [{
+            "attributes": {"POSITION": 0, "JOINTS_0": 1, "WEIGHTS_0": 2}, "indices": 4}]}],
+        "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+            {"bufferView": 1, "componentType": 5121, "count": 3, "type": "VEC4"},
+            {"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC4"},
+            {"bufferView": 3, "componentType": 5126, "count": 2, "type": "MAT4"},
+            {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"},
+        ],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+            {"buffer": 0, "byteOffset": off_j, "byteLength": 12},
+            {"buffer": 0, "byteOffset": off_w, "byteLength": 48},
+            {"buffer": 0, "byteOffset": off_ibm, "byteLength": 128},
+            {"buffer": 0, "byteOffset": off_idx, "byteLength": 6},
+        ],
+        "buffers": [{"byteLength": len(binchunk)}],
+    }
+    jsonchunk = json.dumps(gltf).encode()
+    jsonchunk += b" " * ((4 - len(jsonchunk) % 4) % 4)
+    total = 12 + 8 + len(jsonchunk) + 8 + len(binchunk)
+    with open(path, "wb") as fh:
+        fh.write(b"glTF" + struct.pack("<II", 2, total))
+        fh.write(struct.pack("<II", len(jsonchunk), 0x4E4F534A) + jsonchunk)
+        fh.write(struct.pack("<II", len(binchunk), 0x004E4942) + binchunk)
+
+
 def main():
     fails = 0
     with tempfile.TemporaryDirectory() as d:
@@ -49,6 +97,18 @@ def main():
         out = meshio.parse_glb(p)
         fails += _check("triangle verts", out["vertices"] == [[0, 0, 0], [1, 0, 0], [0, 1, 0]])
         fails += _check("triangle face 1-indexed", out["faces"] == [[1, 2, 3]])
+        fails += _check("no skin key on unskinned glb", "skin" not in out)
+
+        sp = os.path.join(d, "skinned.glb")
+        _make_skinned_glb(sp)
+        out = meshio.parse_glb(sp)
+        skin = out.get("skin") or {}
+        bones = skin.get("bones") or []
+        fails += _check("skin bones parsed", len(bones) == 2 and bones[0]["name"] == "Grip" and bones[1]["name"] == "Seg1")
+        fails += _check("bone parent chain", bones[0]["parent"] == -1 and bones[1]["parent"] == 0)
+        fails += _check("bone rest position from inverse(IBM)", bones[1]["position"] == [0, 2, 0])
+        fails += _check("dominant vertex_bone per vertex", skin.get("vertex_bone") == [0, 0, 1])
+        fails += _check("exact 1.0 weights are not lossy", skin.get("weights_lossy") is False)
 
     for bad in ("../x.glb", "a/b.glb", "x.fbx"):
         try:

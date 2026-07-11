@@ -5,9 +5,20 @@ cannot read files, so the sidecar parses them and serves {vertices, faces} JSON 
 into an EditableMesh -> CreateMeshPartAsync (the June breakthrough path, no manual 3D Importer).
 
 Scope (v1, deliberate): POSITION + indices of every mesh primitive, merged; component types
-float32 / uint8 / uint16 / uint32; byteStride honored. Node transforms, skinning, normals, UVs,
-and materials are NOT applied — this feeds silhouette/proportion study and re-topology reference,
+float32 / uint8 / uint16 / uint32; byteStride honored. Node transforms, normals, UVs, and
+materials are NOT applied — this feeds silhouette/proportion study and re-topology reference,
 not 1:1 visual reproduction. Faces are 1-indexed for Luau.
+
+SKIN extraction (v2, weapon-as-limb 2026-07-11): when the GLB carries a skin (the Blender
+rigid-rig export), parse_glb also returns {skin = {bones, vertex_bone, weights_lossy}} so the
+plugin can rebuild the rig via EditableMesh:AddBone + SetVertexBones (the G3-proven runtime
+skinning path — bones + weights survive CreateMeshPartAsync and deform in edit). Bone rest
+positions come from inverse(inverseBindMatrices) — rigid-transform inverse (R^T | -R^T t) —
+so Blender's baked bone orientations don't corrupt positions; the plugin authors Roblox Bone
+instances with IDENTITY rotation at those positions (simpler Transform composition, and the
+deterministic band weights make orientation irrelevant to the deformation). vertex_bone is the
+DOMINANT bone per vertex (0-based); weights_lossy=true flags any vertex whose max weight was
+below 0.9 (foreign multi-weighted skins import lossily — ours are exact 1.0 bands).
 """
 
 import json
@@ -28,7 +39,7 @@ _COMPONENT = {
     5125: ("I", 4),  # uint32
     5126: ("f", 4),  # float32
 }
-_TYPE_COUNT = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
+_TYPE_COUNT = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
 
 class MeshError(ValueError):
@@ -72,11 +83,51 @@ def _accessor_values(gltf, binchunk, accessor_index):
     return out
 
 
+def _skin_bones(gltf, binchunk):
+    """skins[0] -> [{name, parent (0-based bone index or -1), position [x,y,z]}].
+    Rest position = inverse(IBM) translation via the rigid-transform inverse (R^T | -R^T t);
+    glTF matrices are column-major float32."""
+    skin = gltf["skins"][0]
+    joints = skin["joints"]  # node indices, in JOINTS_0 index order
+    nodes = gltf.get("nodes", [])
+    joint_pos = {int(n): i for i, n in enumerate(joints)}
+    parent_of_node = {}
+    for ni, node in enumerate(nodes):
+        for child in node.get("children", []):
+            parent_of_node[int(child)] = ni
+    ibms = None
+    if "inverseBindMatrices" in skin:
+        ibms = _accessor_values(gltf, binchunk, skin["inverseBindMatrices"])
+    bones = []
+    for bi, node_index in enumerate(joints):
+        name = nodes[node_index].get("name", f"Bone{bi}")
+        pnode = parent_of_node.get(int(node_index))
+        parent = joint_pos.get(pnode, -1) if pnode is not None else -1
+        if ibms is not None:
+            m = ibms[bi]  # 16 floats, column-major: columns of (R|t)
+            r = ((m[0], m[4], m[8]), (m[1], m[5], m[9]), (m[2], m[6], m[10]))
+            t = (m[12], m[13], m[14])
+            # inverse translation = -R^T t; R^T rows are r's columns == original rows
+            pos = [
+                -(r[0][0] * t[0] + r[1][0] * t[1] + r[2][0] * t[2]),
+                -(r[0][1] * t[0] + r[1][1] * t[1] + r[2][1] * t[2]),
+                -(r[0][2] * t[0] + r[1][2] * t[1] + r[2][2] * t[2]),
+            ]
+        else:
+            pos = [0.0, 0.0, 0.0]
+        bones.append({"name": name, "parent": parent, "position": [round(c, 4) for c in pos]})
+    return bones
+
+
 def parse_glb(path: str) -> dict:
-    """{vertices: [[x,y,z]...], faces: [[a,b,c]...1-indexed], meshes: n, source: name}."""
+    """{vertices: [[x,y,z]...], faces: [[a,b,c]...1-indexed], meshes: n, source: name,
+    skin?: {bones, vertex_bone (0-based dominant bone per vertex), weights_lossy}}."""
     gltf, binchunk = _read_glb(path)
+    has_skin = bool(gltf.get("skins"))
     vertices = []
     faces = []
+    vertex_bone = []
+    weights_lossy = False
     mesh_count = 0
     for mesh in gltf.get("meshes", []):
         for prim in mesh.get("primitives", []):
@@ -89,6 +140,19 @@ def parse_glb(path: str) -> dict:
             vertices.extend([round(p[0], 4), round(p[1], 4), round(p[2], 4)] for p in positions)
             if len(vertices) > MAX_VERTS:
                 raise MeshError(f"mesh exceeds {MAX_VERTS} vertices — too heavy for EditableMesh")
+            if has_skin and "JOINTS_0" in attrs and "WEIGHTS_0" in attrs:
+                jvals = _accessor_values(gltf, binchunk, attrs["JOINTS_0"])
+                wacc = gltf["accessors"][attrs["WEIGHTS_0"]]
+                wvals = _accessor_values(gltf, binchunk, attrs["WEIGHTS_0"])
+                wscale = {5121: 1 / 255.0, 5123: 1 / 65535.0}.get(wacc["componentType"], 1.0)
+                for j4, w4 in zip(jvals, wvals):
+                    weights = [w * wscale for w in w4]
+                    best = max(range(len(weights)), key=lambda i: weights[i])
+                    if weights[best] < 0.9:
+                        weights_lossy = True
+                    vertex_bone.append(int(j4[best]))
+            elif has_skin:
+                vertex_bone.extend([0] * len(positions))  # unskinned primitive under a skin
             indices = [v[0] for v in _accessor_values(gltf, binchunk, prim["indices"])]
             for t in range(0, len(indices) - 2, 3):
                 faces.append(
@@ -96,12 +160,19 @@ def parse_glb(path: str) -> dict:
                 )
     if not vertices:
         raise MeshError("no triangle mesh primitives found")
-    return {
+    out = {
         "vertices": vertices,
         "faces": faces,
         "meshes": mesh_count,
         "source": os.path.basename(path),
     }
+    if has_skin:
+        out["skin"] = {
+            "bones": _skin_bones(gltf, binchunk),
+            "vertex_bone": vertex_bone,
+            "weights_lossy": weights_lossy,
+        }
+    return out
 
 
 def read_reference_mesh(filename: str) -> dict:
