@@ -6,6 +6,7 @@
 local Selection = game:GetService("Selection")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local MeshFactory = require(script.Parent.Parent.MeshFactory)
 local Path = require(script.Parent.Path)
@@ -514,13 +515,48 @@ local function backoffWindow(probeCount: number): number
 	return PROBE_BACKOFF[probeCount] or PROBE_FLOOR
 end
 
--- Scan the same 5 roots the edit rescan covers for SAMeshAssetPending parts; truth-probe at most 5
--- per pass (oldest upload first, per-asset backoff) via ContentProvider AssetFetchStatus — the probe
--- that BYPASSES the session cache which makes fresh uploads look loadable — and finalize the ones the
--- CDN actually serves. Everything else gets an honest per-part status line. No ChangeHistory
--- recording: PreloadAsync/CreateMeshPartAsync are web yields we won't hold a recording across
--- (mirrors the edit-rescan rebuild, which is also unrecorded).
-local function runConfirm(_input: any, _context: any): (string, boolean)
+-- Fetch-free moderation state from the sidecar's Open Cloud route. Returns
+-- "Approved"|"Reviewing"|"Rejected"|"Unknown"|nil — nil means the route/key/sidecar is unavailable
+-- (older sidecar, no key, HTTP off) and the caller must fall back to the engine-side probe.
+local function fetchModerationState(sidecarBase: string?, assetId: number): string?
+	if sidecarBase == nil then
+		return nil
+	end
+	local ok, resp = pcall(function()
+		return HttpService:RequestAsync({
+			Url = sidecarBase .. "/opencloud/asset-status?assetId=" .. tostring(assetId),
+			Method = "GET",
+		})
+	end)
+	if not ok or resp == nil or not resp.Success then
+		return nil
+	end
+	local okDecode, body = pcall(HttpService.JSONDecode, HttpService, resp.Body)
+	if not okDecode or type(body) ~= "table" or type(body.state) ~= "string" then
+		return nil
+	end
+	if body.state == "Unavailable" then
+		return nil -- key/route present but unusable: fall back honestly
+	end
+	return body.state
+end
+
+-- Scan the same 5 roots the edit rescan covers for SAMeshAssetPending parts; gate at most 5 per pass
+-- (oldest upload first, per-asset backoff). READINESS SOURCES, in order: (1) the sidecar's FETCH-FREE
+-- Open Cloud moderation poll — Approved skips straight to finalize (whose own CreateMeshPartAsync
+-- pcall is the real CDN test), Rejected flags immediately (definitive, unlike the 6h heuristic),
+-- Reviewing waits WITHOUT spending an engine fetch; (2) fallback when the route/key is unavailable:
+-- ContentProvider AssetFetchStatus — the engine probe that bypasses the session cache. NOTE: a
+-- PreloadAsync Failure can be negative-cached by the Studio session even after approval — another
+-- reason the Open Cloud source wins. No ChangeHistory recording: these are web yields we won't hold
+-- a recording across (mirrors the edit-rescan rebuild, which is also unrecorded).
+local function runConfirm(_input: any, context: any): (string, boolean)
+	local sidecarBase: string? = nil
+	if context ~= nil and context.config ~= nil then
+		pcall(function()
+			sidecarBase = context.config:getSidecarUrl()
+		end)
+	end
 	local roots: { Instance } = {
 		workspace,
 		game:GetService("ServerStorage"),
@@ -586,28 +622,69 @@ local function runConfirm(_input: any, _context: any): (string, boolean)
 			)
 		else
 			probed += 1
-			local status = MeshFactory.probeAssetFetchStatus(assetId :: number)
 			mp:SetAttribute(MeshFactory.ATTR_PROBE_COUNT, probeCount + 1)
 			mp:SetAttribute(MeshFactory.ATTR_LAST_PROBE, now)
+			local moderation = fetchModerationState(sidecarBase, assetId :: number)
+			local status: string
+			if moderation == "Rejected" then
+				mp:SetAttribute(MeshFactory.ATTR_REVIEW_FLAG, true)
+				table.insert(
+					lines,
+					string.format(
+						"REJECTED %s — rbxassetid://%d rejected by moderation (Open Cloud, definitive); "
+							.. "flagged for user review — the mesh needs re-authoring + re-upload",
+						mp:GetFullName(),
+						assetId :: number
+					)
+				)
+				continue
+			elseif moderation == "Reviewing" then
+				table.insert(
+					lines,
+					string.format(
+						"PENDING %s — rbxassetid://%d moderation=Reviewing (Open Cloud, fetch-free; "
+							.. "%dm since upload, probe %d; next probe after %ds)",
+						mp:GetFullName(),
+						assetId :: number,
+						age // 60,
+						probeCount + 1,
+						backoffWindow(probeCount + 1)
+					)
+				)
+				continue
+			elseif moderation == "Approved" then
+				-- Approved: skip the engine probe entirely — finalize's own CreateMeshPartAsync pcall
+				-- is the truthful CDN test (PreloadAsync may negative-cache an earlier failure).
+				status = "Success"
+			else
+				-- Unknown state or route unavailable: fall back to the engine-side truth probe.
+				status = MeshFactory.probeAssetFetchStatus(assetId :: number)
+			end
 			if status == "Success" then
+				local readySource = if moderation == "Approved"
+					then "moderation=Approved (Open Cloud)"
+					else "AssetFetchStatus=Success"
 				local okF, ferr = MeshFactory.finalizeMeshPart(mp)
 				if okF then
 					finalized += 1
 					table.insert(
 						lines,
 						string.format(
-							"FINALIZED %s -> rbxassetid://%d (AssetFetchStatus=Success)",
+							"FINALIZED %s -> rbxassetid://%d (%s)",
 							mp:GetFullName(),
-							assetId :: number
+							assetId :: number,
+							readySource
 						)
 					)
 				else
 					table.insert(
 						lines,
 						string.format(
-							"ERROR %s — AssetFetchStatus=Success but finalize failed: %s (left pending)",
+							"ERROR %s — %s but finalize failed: %s (left pending%s)",
 							mp:GetFullName(),
-							tostring(ferr)
+							readySource,
+							tostring(ferr),
+							if moderation == "Approved" then " — CDN likely still propagating" else ""
 						)
 					)
 				end
@@ -741,14 +818,16 @@ Mesh.descriptors = {
 		name = "confirm_mesh",
 		description = "FINALIZE save_mesh uploads once moderation clears (phase 2 of the mesh persist). "
 			.. "Scans workspace/ServerStorage/StarterPack/ReplicatedStorage/StarterPlayer for "
-			.. "SAMeshAssetPending parts, TRUTH-probes at most 5 per call (oldest first; per-asset backoff "
-			.. "60s -> 5m -> 15m -> 30m between probes) via ContentProvider AssetFetchStatus — the probe that "
-			.. "bypasses the session cache which fakes readiness — and on Success swaps each part onto its "
-			.. "durable asset IN PLACE (ApplyMesh; welds/children/identity preserved), applies the uploaded "
-			.. "texture, and clears the local draft. Everything else is reported honestly per part "
-			.. "(PENDING/BACKOFF/CAPPED with the exact AssetFetchStatus); after 6h still pending a part is "
-			.. "flagged SAMeshReviewFlag — check the Creator Dashboard (possibly rejected). No inputs. Re-run "
-			.. "periodically after save_mesh; the volume caps make repeat calls safe.",
+			.. "SAMeshAssetPending parts, gates at most 5 per call (oldest first; per-asset backoff "
+			.. "60s -> 5m -> 15m -> 30m). READINESS: first the sidecar's FETCH-FREE Open Cloud moderation "
+			.. "poll (Approved -> finalize now; Rejected -> flagged REJECTED, definitive; Reviewing -> wait, "
+			.. "no engine fetch spent); fallback when the sidecar/key is unavailable: ContentProvider "
+			.. "AssetFetchStatus (bypasses the session cache that fakes readiness). On ready it swaps each "
+			.. "part onto its durable asset IN PLACE (ApplyMesh; welds/children/identity preserved), applies "
+			.. "the uploaded texture, and clears the local draft. Everything else is reported honestly per "
+			.. "part (PENDING/BACKOFF/CAPPED with the exact source+status); after 6h still pending a part is "
+			.. "flagged SAMeshReviewFlag — check the Creator Dashboard. No inputs. Re-run periodically after "
+			.. "save_mesh; the volume caps make repeat calls safe.",
 		inputSchema = { type = "object", properties = {} },
 		destructive = true,
 		run = runConfirm,
