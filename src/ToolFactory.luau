@@ -8,10 +8,22 @@ local ToolFactory = {}
 
 -- Rest cant: tip the blade FORWARD off the hand-up axis at the neutral pose. Pure fist-up
 -- parallels a hanging forearm and embeds the blade ~1.5 studs in the arm (measured 2026-07-10);
--- classic Roblox tools cant forward via the RightGripAttachment C0 rotation. Must stay under
--- grip_sane's 35-degree blade_up_angle bound. Sign/axis tuned live: negative about hand X =
--- toward -Z = character forward.
-ToolFactory.REST_CANT_DEG = 18
+-- classic Roblox tools cant forward via the RightGripAttachment C0 rotation. Sign/axis tuned
+-- live: negative about hand X = toward -Z = character forward.
+--
+-- 50 deg = the USER-VALIDATED ready stance (grip-fitter-axis-mapping fix, 2026-07-11). The
+-- fitter math maps ANY declared blade axis to the same canted-fist-up target, and for a
+-- -Y-blade mesh on the stock R15 RightGripAttachment (-90 deg about X) that lands the Grip at
+-- Angles(90 + cant, 0, 0) about X. All three live data points confirm the formula: the old
+-- cant 18 produced the observed-bad 108 (18 + 90), and the hand-validated fixes 140 / 165
+-- (StarterPack.Sword, edit-mode StepAnimations filmstrip) are exactly cant 50 / 75. So the
+-- axis MAPPING was honest; the REST TARGET was wrong: 18 was tuned under grip_sane's
+-- 35-degree blade_up_angle bound (metric pressure, not visual truth — anti-Goodhart lesson),
+-- which parks the blade nearly parallel to the arm at rest and reads up-BACK over the
+-- shoulder at any raised hold pose (the user's screenshot). NOTE: grip_sane's default
+-- max_blade_angle (35) is now BELOW this cant — measure fitted grips with
+-- {max_blade_angle = 55} until the oracle bound is recalibrated to the validated stance.
+ToolFactory.REST_CANT_DEG = 50
 -- Forward seat: the grip point rests this far forward of the palm center (hand -Z). Required,
 -- not cosmetic: the block-rig arm is 1.0 stud thick and sits directly over the palm, so a cant
 -- alone can't clear it inside the 35-degree bound (escape needs >50deg — measured 2026-07-10);
@@ -148,6 +160,58 @@ function ToolFactory.resolveRig(rigInst: Instance?): (Model?, string?)
 	return nil, "no rig found — spawn one first with spawn_rig"
 end
 
+-- ---- arm-hold snapshot/restore (grip_tool arm-hold C0 residue, tooling issue 2026-07-11) ----
+-- A hold pose written into joint C0 (e.g. RightShoulder ~37 / RightElbow ~31 deg) survives
+-- unequip FOREVER unless something restores it: rigs kept the bent holding-arm, contaminating
+-- rest-pose grip validation AND keypose snapshots. equip() snapshots EVERY Motor6D's C0/C1
+-- into string attributes ON THE JOINT ITSELF; release() restores them and clears the
+-- attributes. IDEMPOTENT: a joint that already carries a snapshot keeps its ORIGINAL pre-hold
+-- values (re-equipping an already-held rig never re-snapshots the bent pose as "original").
+ToolFactory.HOLD_C0_ATTR = "SAPreHoldC0"
+ToolFactory.HOLD_C1_ATTR = "SAPreHoldC1"
+-- Where the Tool lived before equip parented it to the rig (release re-homes it there).
+ToolFactory.PRE_EQUIP_PARENT_ATTR = "SAPreEquipParent"
+
+-- Exact 12-component CFrame <-> string (attributes; %.17g round-trips doubles losslessly).
+local function cframeToString(cf: CFrame): string
+	local comps = { cf:GetComponents() }
+	local out: { string } = {}
+	for _, n in comps do
+		table.insert(out, string.format("%.17g", n))
+	end
+	return table.concat(out, ",")
+end
+
+local function cframeFromString(s: string): CFrame?
+	local nums: { number } = {}
+	for token in string.gmatch(s, "[^,]+") do
+		local n = tonumber(token)
+		if n == nil then
+			return nil
+		end
+		table.insert(nums, n)
+	end
+	if #nums ~= 12 then
+		return nil
+	end
+	local ok, cf = pcall(function(): CFrame
+		return CFrame.new(table.unpack(nums))
+	end)
+	return if ok then cf else nil
+end
+
+-- Snapshot every rig joint's pre-hold C0/C1 (skips AgentEditGrip — ours, destroyed on release).
+local function snapshotHoldPose(rig: Model)
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") and d.Name ~= "AgentEditGrip" then
+			if d:GetAttribute(ToolFactory.HOLD_C0_ATTR) == nil then
+				d:SetAttribute(ToolFactory.HOLD_C0_ATTR, cframeToString(d.C0))
+				d:SetAttribute(ToolFactory.HOLD_C1_ATTR, cframeToString(d.C1))
+			end
+		end
+	end
+end
+
 -- Equip: parent the Tool to the rig AND joint the Handle to the RightHand. In EDIT mode the engine
 -- creates NO grip weld (that only happens at runtime via Humanoid:EquipTool), so without this the
 -- tool just sits wherever it was — inside the rig, not following the hand (observed live). The joint
@@ -155,14 +219,26 @@ end
 -- offset, C1 = Tool.Grip) so the edit preview renders the hold exactly as a running game would,
 -- and because the Animator matches poses by CONNECTED PART NAMES (RightHand -> Handle), the Handle
 -- becomes an animatable channel in edit. Idempotent: re-grip replaces the prior joint. Un-grip =
--- destroy the "AgentEditGrip" instance (name is playbook API surface) + reparent the tool out.
+-- ToolFactory.release via grip_tool {release:true} (destroys "AgentEditGrip" — name is playbook
+-- API surface — restores pre-hold joint C0/C1, and the caller re-homes the tool).
 function ToolFactory.equip(tool: Tool, rig: Model)
+	-- Remember where the Tool came from so release() can re-home it. Only stamped when the
+	-- Tool arrives from OUTSIDE the rig (a re-grip on the same rig keeps the original origin).
+	if tool.Parent ~= rig then
+		local prior = tool.Parent
+		tool:SetAttribute(
+			ToolFactory.PRE_EQUIP_PARENT_ATTR,
+			if prior ~= nil then prior:GetFullName() else ""
+		)
+	end
 	tool.Parent = rig
 	local hand = rig:FindFirstChild("RightHand")
 	local handle = tool:FindFirstChild("Handle")
 	if hand == nil or not hand:IsA("BasePart") or handle == nil or not handle:IsA("BasePart") then
 		return -- no hand/handle to weld; the tool is merely parented
 	end
+	-- Pre-hold snapshot BEFORE any hold-pose C0 writes can land on this rig (idempotent).
+	snapshotHoldPose(rig)
 	for _, p in tool:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = false -- an anchored part ignores the weld and stays put
@@ -242,6 +318,16 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 		return nil
 	end
 	blade = blade.Unit
+	-- INVARIANT (grip-fitter-axis-mapping, 2026-07-11): the fitted blade WORLD direction at
+	-- rest ~= the fist-up axis rotated REST_CANT_DEG forward, REGARDLESS of the mesh's local
+	-- blade axis. rotFromTo maps the declared blade_dir onto the canted target expressed in
+	-- RightGripAttachment space, so Grip^-1 * blade_dir = target BY CONSTRUCTION for any
+	-- blade_dir (+X, -Y, anything). On the stock R15 attachment (-90 deg about X) the Grip
+	-- rotation family about X is (90 + cant) for a -Y blade and (cant - 90) for a +Y blade;
+	-- the validated StarterPack.Sword grip Angles(rad(140),0,0) is the 50-deg-cant image of
+	-- its -Y blade. Verified against tonight's three data points: cant 18 -> 108 (observed
+	-- bad), 50 -> 140 and 75 -> 165 (hand-validated good).
+	--
 	-- Rest cant + forward seat (hand space): rotate the target axis off pure fist-up about the
 	-- hand's X so the blade tips FORWARD (-Z) instead of paralleling the hanging forearm, and
 	-- seat the grip point forward of the palm center (blade-in-arm fix, both tuned live).
@@ -328,6 +414,51 @@ function ToolFactory.setOffHand(
 	ik.Parent = humanoid
 	return "off-hand IK: LeftHand reaches " .. theAtt:GetFullName() .. " (IKControl '" .. OFFHAND_IK .. "' under the Humanoid).",
 		true
+end
+
+-- Release (the un-equip surface, grip_tool {release:true}): destroy the AgentEditGrip motor,
+-- remove the off-hand IK, and restore every joint's pre-hold C0/C1 from the equip-time
+-- snapshot (clearing the snapshot attributes). Returns the number of joints whose C0 was
+-- restored. The CALLER also purges playing tracks, resets Motor6D Transforms + StepAnimations
+-- (so the restore is visible), and re-homes the Tool via PRE_EQUIP_PARENT_ATTR.
+function ToolFactory.release(_tool: Tool, rig: Model): number
+	local hand = rig:FindFirstChild("RightHand")
+	if hand ~= nil then
+		local weld = hand:FindFirstChild("AgentEditGrip")
+		if weld ~= nil then
+			weld:Destroy()
+		end
+	end
+	local humanoid = rig:FindFirstChildOfClass("Humanoid")
+	if humanoid ~= nil then
+		local ik = humanoid:FindFirstChild(OFFHAND_IK)
+		if ik ~= nil then
+			ik:Destroy()
+		end
+	end
+	local restored = 0
+	for _, d in rig:GetDescendants() do
+		if d:IsA("Motor6D") then
+			local rawC0 = d:GetAttribute(ToolFactory.HOLD_C0_ATTR)
+			if type(rawC0) == "string" then
+				local c0 = cframeFromString(rawC0)
+				if c0 ~= nil then
+					d.C0 = c0
+					restored += 1
+				end
+			end
+			local rawC1 = d:GetAttribute(ToolFactory.HOLD_C1_ATTR)
+			if type(rawC1) == "string" then
+				local c1 = cframeFromString(rawC1)
+				if c1 ~= nil then
+					d.C1 = c1
+				end
+			end
+			d:SetAttribute(ToolFactory.HOLD_C0_ATTR, nil)
+			d:SetAttribute(ToolFactory.HOLD_C1_ATTR, nil)
+		end
+	end
+	return restored
 end
 
 return ToolFactory

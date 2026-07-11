@@ -89,10 +89,64 @@ local function runMakeTool(input: any, _context: any): (any, boolean)
 		false
 end
 
+-- Doctrine (2026-07-11): every authoring/preview path purges playing AnimationTracks first —
+-- a stale playing track re-stamps its pose on every StepAnimations call, silently overwriting
+-- fits, resets, and keypose snapshots (the add_keyframe frozen-snapshot aggravator).
+local function stopPlayingTracks(rig: Model)
+	local controller = rig:FindFirstChildOfClass("Humanoid")
+		or rig:FindFirstChildOfClass("AnimationController")
+	local animator = if controller ~= nil then controller:FindFirstChildOfClass("Animator") else nil
+	if animator == nil then
+		return
+	end
+	local anim = animator :: Animator
+	pcall(function()
+		for _, tr in anim:GetPlayingAnimationTracks() do
+			tr:Stop(0)
+		end
+		anim:StepAnimations(0)
+	end)
+end
+
+-- Frame the rig + screenshot so the agent SEES the result in context; falls back to the bare
+-- note when no camera/capture is available. Shared by the equip and release paths.
+local function captureTail(note: string, theRig: Model, context: any): (any, boolean)
+	local r = if type(context) == "table" then context.cameraRig else nil
+	if r == nil then
+		return note .. " (no camera here — capture it yourself)", false
+	end
+	local state, ferr = r:focus(theRig:GetFullName())
+	if state == nil then
+		return note .. " (couldn't frame: " .. tostring(ferr) .. ")", false
+	end
+	local since = os.time() - 2
+	local shotOk = false
+	pcall(function()
+		-- Neutral light: a backlit rig+item renders as a silhouette nobody can judge.
+		CaptureCore.withNeutralLighting(function()
+			shotOk = CaptureCore.triggerCapture()
+		end)
+	end)
+	if not shotOk then
+		return note .. " (CaptureService produced no screenshot — focus Studio and re-call)", false
+	end
+	CaptureCore.settle(2)
+	local config = if type(context) == "table" then context.config else nil
+	local blocks, berr = CaptureCore.fetchCaptures(1, since, config)
+	if blocks == nil then
+		return note .. " (capture fetch failed: " .. tostring(berr) .. ")", false
+	end
+	local content: { any } = { { type = "text", text = note } }
+	for _, b in blocks do
+		table.insert(content, b)
+	end
+	return content, false
+end
+
 local function runGripTool(input: any, context: any): (any, boolean)
 	local args = if type(input) == "table" then input else {}
 	if type(args.tool) ~= "string" or args.tool == "" then
-		return "grip_tool requires { tool = <path to a Tool>, rig?, offset? {x,y,z}, rot? {rx,ry,rz} }",
+		return "grip_tool requires { tool = <path to a Tool>, rig?, offset? {x,y,z}, rot? {rx,ry,rz}, release? }",
 			true
 	end
 	local toolInst = Path.resolve(args.tool)
@@ -105,11 +159,66 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	if type(args.rig) == "string" and args.rig ~= "" then
 		rigInst = Path.resolve(args.rig)
 	end
+	-- Release path (arm-hold C0 residue fix, 2026-07-11): un-equip + restore the rig. The rig
+	-- the Tool is actually PARENTED to wins over resolution (release must hit the held rig).
+	if args.release == true then
+		local heldRig: Model? = nil
+		local hp = tool.Parent
+		if hp ~= nil and hp:IsA("Model") and hp:FindFirstChildOfClass("Humanoid") ~= nil then
+			heldRig = hp :: Model
+		end
+		if heldRig == nil then
+			local r2, rerr2 = ToolFactory.resolveRig(rigInst)
+			if r2 == nil then
+				return "grip_tool release: " .. tostring(rerr2), true
+			end
+			heldRig = r2 :: Model
+		end
+		local relRig = heldRig :: Model
+		stopPlayingTracks(relRig)
+		local restored = 0
+		local function doRelease()
+			restored = ToolFactory.release(tool, relRig)
+			-- Re-home the Tool where equip found it (fallback: workspace).
+			local priorPath = tool:GetAttribute(ToolFactory.PRE_EQUIP_PARENT_ATTR)
+			local dest: Instance? = nil
+			if type(priorPath) == "string" and priorPath ~= "" then
+				dest = Path.resolve(priorPath)
+			end
+			tool.Parent = if dest ~= nil then dest else workspace
+			tool:SetAttribute(ToolFactory.PRE_EQUIP_PARENT_ATTR, nil)
+		end
+		if RunService:IsEdit() then
+			local rid = ChangeHistoryService:TryBeginRecording("grip_tool release")
+			doRelease()
+			if rid ~= nil then
+				ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
+			end
+		else
+			doRelease()
+		end
+		-- Neutralize Motor6D Transforms + StepAnimations so the C0 restore is VISIBLE (its own
+		-- ChangeHistory recording — sequenced after ours, same pattern as the equip path).
+		RigWorkbench.resetPose(relRig)
+		local note = string.format(
+			"grip_tool release: un-equipped '%s' from %s — grip motor + off-hand IK removed, "
+				.. "%d joint C0/C1 pair(s) restored to pre-hold values, pose reset to neutral. "
+				.. "Tool re-homed to %s.",
+			tool.Name,
+			relRig.Name,
+			restored,
+			if tool.Parent ~= nil then (tool.Parent :: Instance):GetFullName() else "nil"
+		)
+		return captureTail(note, relRig, context)
+	end
 	local rig, rerr = ToolFactory.resolveRig(rigInst)
 	if rig == nil then
 		return "grip_tool: " .. tostring(rerr), true
 	end
 	local theRig = rig :: Model
+	-- Purge playing tracks BEFORE fitting/resetting (doctrine; a playing track would re-stamp
+	-- its pose over the T-pose reset and the capture below).
+	stopPlayingTracks(theRig)
 	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool, theRig) else nil
 	local grip = if frameGrip ~= nil then frameGrip else ToolFactory.gripCFrame(args.offset, args.rot)
 	-- T-pose-first (SP2c): frame auto-alignment must fit against the canonical NEUTRAL pose —
@@ -157,37 +266,7 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
 	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)
-	local r = if type(context) == "table" then context.cameraRig else nil
-	if r == nil then
-		return note .. " (no camera here — capture it yourself)", false
-	end
-	local state, ferr = r:focus(theRig:GetFullName())
-	if state == nil then
-		return note .. " (couldn't frame: " .. tostring(ferr) .. ")", false
-	end
-	local since = os.time() - 2
-	local shotOk = false
-	pcall(function()
-		-- Neutral light: a backlit rig+item renders as a silhouette nobody can judge.
-		CaptureCore.withNeutralLighting(function()
-			shotOk = CaptureCore.triggerCapture()
-		end)
-	end)
-	if not shotOk then
-		return note .. " (CaptureService produced no screenshot — focus Studio and re-call)",
-			false
-	end
-	CaptureCore.settle(2)
-	local config = if type(context) == "table" then context.config else nil
-	local blocks, berr = CaptureCore.fetchCaptures(1, since, config)
-	if blocks == nil then
-		return note .. " (capture fetch failed: " .. tostring(berr) .. ")", false
-	end
-	local content: { any } = { { type = "text", text = note } }
-	for _, b in blocks do
-		table.insert(content, b)
-	end
-	return content, false
+	return captureTail(note, theRig, context)
 end
 
 local VEC3_SCHEMA = {
@@ -233,7 +312,10 @@ Item.descriptors = {
 			.. "(required path, from make_tool), rig? (path; else the first workspace rig — spawn_rig first if "
 			.. "none), offset?, rot?, offhand? (true = two-handed: IK the LeftHand to a Semantic_OffHand "
 			.. "attachment on the Handle; offhandOffset {x,y,z} moves that attachment in Handle-local studs), "
-			.. "Requires the vision sidecar + a focused Studio. When the tool carries a "
+			.. "release? (true = UN-equip: removes the grip motor + off-hand IK, restores every joint's "
+			.. "pre-hold C0/C1 snapshotted at equip time, resets the pose to neutral, and re-homes the Tool "
+			.. "where it came from — ALWAYS release before validating rest poses or authoring keyposes on an "
+			.. "unheld rig). Requires the vision sidecar + a focused Studio. When the tool carries a "
 			.. "Semantic_Grip frame (stamp_frame) and no offset/rot is given, the grip AUTO-ALIGNS to the "
 			.. "declared frame.",
 		inputSchema = {
@@ -253,6 +335,12 @@ Item.descriptors = {
 						.. "false = remove the off-hand IK.",
 				},
 				offhandOffset = VEC3_SCHEMA,
+				release = {
+					type = "boolean",
+					description = "true = un-equip the Tool: remove the AgentEditGrip motor + "
+						.. "off-hand IK, restore the joints' pre-hold C0/C1 (snapshotted at equip), "
+						.. "reset the pose to neutral, re-home the Tool. Other args are ignored.",
+				},
 			},
 			required = { "tool" },
 		},
