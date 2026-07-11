@@ -1,7 +1,7 @@
 --!strict
 -- AnimationClipSpec: in-Studio self-test for the PURE AnimationClip logic (no spawn/web). Builds a tiny
 -- synthetic Motor6D rig with Instance.new and asserts adjacency/rigRoot/buildPoseTree + normalizeTime
--- / scopedJointSet / buildScopedPoses.
+-- / parsePoseBatch / scopedJointSet / buildScopedPoses.
 -- Run via temporarily adding `require(script.AnimationClipSpec).run()` to init.server.luau.
 
 local AnimationClip = require(script.Parent.AnimationClip)
@@ -168,6 +168,56 @@ local function buildCases(): { Case }
 		local upper, uerr = AnimationClip.scopedJointSet("upperBody")
 		if upper == nil or #upper ~= 8 then
 			return false, "upperBody should return 8 names: " .. tostring(uerr or #upper)
+		end
+		return true
+	end)
+
+	add("parsePoseBatch parses a valid map name-sorted with missing axes = 0", function()
+		local entries, err = AnimationClip.parsePoseBatch({
+			RightShoulder = { z = 70 },
+			AgentEditGrip = { x = 40 },
+		})
+		if entries == nil then
+			return false, "valid map rejected: " .. tostring(err)
+		end
+		if #entries ~= 2 then
+			return false, "expected 2 entries, got " .. tostring(#entries)
+		end
+		if entries[1].name ~= "AgentEditGrip" or entries[2].name ~= "RightShoulder" then
+			return false, "entries not name-sorted: " .. entries[1].name .. ", " .. entries[2].name
+		end
+		if entries[1].x ~= 40 or entries[1].y ~= 0 or entries[1].z ~= 0 then
+			return false, "AgentEditGrip axes wrong (missing axes should default to 0)"
+		end
+		if entries[2].z ~= 70 or entries[2].x ~= 0 or entries[2].y ~= 0 then
+			return false, "RightShoulder axes wrong"
+		end
+		local empty, eerr = AnimationClip.parsePoseBatch({})
+		if empty == nil or #empty ~= 0 then
+			return false, "empty map should parse to {}: " .. tostring(eerr)
+		end
+		return true
+	end)
+
+	add("parsePoseBatch rejects malformed maps without partial results", function()
+		local bad1, e1 = AnimationClip.parsePoseBatch({ RightShoulder = 70 })
+		if bad1 ~= nil or e1 == nil then
+			return false, "non-table entry should error"
+		end
+		if not string.find(e1 :: string, "RightShoulder", 1, true) then
+			return false, "error should name the bad entry: " .. tostring(e1)
+		end
+		local bad2, e2 = AnimationClip.parsePoseBatch({ RightShoulder = { z = 0 / 0 } })
+		if bad2 ~= nil or e2 == nil then
+			return false, "NaN axis should error"
+		end
+		local bad3, e3 = AnimationClip.parsePoseBatch({ RightShoulder = { z = "70" } })
+		if bad3 ~= nil or e3 == nil then
+			return false, "string axis should error"
+		end
+		local bad4, e4 = AnimationClip.parsePoseBatch("nope")
+		if bad4 ~= nil or e4 == nil then
+			return false, "non-table poses should error"
 		end
 		return true
 	end)

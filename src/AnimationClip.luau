@@ -25,6 +25,46 @@ function AnimationClip.normalizeTime(t: number): number
 	return math.floor(t * 1000 + 0.5) / 1000
 end
 
+-- One entry of add_keyframe's batch-keypose map: a joint name + its ABSOLUTE rotation in degrees.
+export type PoseEntry = { name: string, x: number, y: number, z: number }
+
+-- Parse add_keyframe's optional `poses` map ({ [jointName] = {x?,y?,z?} } in DEGREES, missing axes = 0 —
+-- the same axis convention as pose_joint's rotation) into a deterministic name-sorted entry list. Rejects
+-- a malformed map (non-string key, non-table entry, non-number/NaN axis) so the tool can refuse BEFORE
+-- mutating the rig (all-or-nothing). An empty map parses to {} (the caller no-ops the batch). PURE ->
+-- unit-tested. Returns (entries, nil) or (nil, err).
+function AnimationClip.parsePoseBatch(poses: any): ({ PoseEntry }?, string?)
+	if type(poses) ~= "table" then
+		return nil,
+			"poses must be a map of { [jointName] = {x?,y?,z?} degrees }, got " .. type(poses)
+	end
+	local out: { PoseEntry } = {}
+	for name, rot in poses do
+		if type(name) ~= "string" or name == "" then
+			return nil, "poses keys must be non-empty joint-name strings"
+		end
+		if type(rot) ~= "table" then
+			return nil,
+				"poses['" .. name .. "'] must be a {x?,y?,z?} degrees table, got " .. type(rot)
+		end
+		local entry: PoseEntry = { name = name, x = 0, y = 0, z = 0 }
+		for _, axis in { "x", "y", "z" } do
+			local v = (rot :: { [string]: any })[axis]
+			if v ~= nil then
+				if type(v) ~= "number" or v ~= v then
+					return nil, "poses['" .. name .. "']." .. axis .. " must be a number (degrees)"
+				end
+				(entry :: { [string]: any })[axis] = v
+			end
+		end
+		table.insert(out, entry)
+	end
+	table.sort(out, function(a, b)
+		return a.name < b.name
+	end)
+	return out, nil
+end
+
 -- Part0 -> { Motor6D } adjacency (walk the joint graph root->leaf).
 function AnimationClip.adjacency(rig: Instance): { [Instance]: { Motor6D } }
 	local childrenOf: { [Instance]: { Motor6D } } = {}

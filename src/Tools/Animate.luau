@@ -12,6 +12,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local AssetService = game:GetService("AssetService")
 
 local AnimationClip = require(script.Parent.Parent.AnimationClip)
+local RigWorkbench = require(script.Parent.Parent.RigWorkbench)
 local Path = require(script.Parent.Path)
 
 local Animate = {}
@@ -135,12 +136,63 @@ local function runAdd(input: any, _context: any): (string, boolean)
 			else " (full-body snapshot keys it already).")
 		scopeNote = if scopeNote ~= "" then scopeNote .. " " .. wNote else wNote
 	end
+	-- BATCH KEYPOSE: the optional `poses` map poses N joints THEN snapshots — ONE tool call per keypose
+	-- (the capped factory transcript spent ~65% of its 114 tool calls on pose_joint-per-joint-per-keypose;
+	-- this collapses pose_joint xN + add_keyframe into one call). All-or-nothing: parse the map + resolve
+	-- EVERY joint (RigWorkbench.findJoint — pose_joint's resolver) BEFORE mutating; unknown names error
+	-- listing the bad ones. Rotations apply ABSOLUTE (pose_joint relative=false semantics): a keypose is a
+	-- complete statement, so an all-zeros entry returns that joint to neutral (no reset_pose needed).
+	local poseEntries: { AnimationClip.PoseEntry } = {}
+	local poseJoints: { Motor6D } = {}
+	if args.poses ~= nil then
+		local entries, perr = AnimationClip.parsePoseBatch(args.poses)
+		if entries == nil then
+			return "add_keyframe: " .. tostring(perr), true
+		end
+		local bad: { string } = {}
+		for _, e in entries do
+			local m = RigWorkbench.findJoint(rig :: Instance, e.name)
+			if m == nil then
+				table.insert(bad, e.name)
+			else
+				table.insert(poseJoints, m)
+			end
+		end
+		if #bad > 0 then
+			return "add_keyframe: unknown joint(s) in poses: "
+				.. table.concat(bad, ", ")
+				.. " — nothing was posed or keyed (get_rig lists the joint names).",
+				true
+		end
+		poseEntries = entries
+	end
 	local time = if type(args.time) == "number"
 		then args.time
 		else AnimationClip.appendTime(rig, clip)
+	local posedApplied = false
 	local text, ok = recorded("Add keyframe", function()
+		-- Pose the batch INSIDE the recording (a cancel rolls the rig back too), then snapshot as today.
+		for i, e in poseEntries do
+			local m = poseJoints[i]
+			m.Transform = RigWorkbench.applyRotation(
+				m.Transform,
+				RigWorkbench.rotationCFrame(e.x, e.y, e.z),
+				false -- absolute: each entry IS the keypose
+			)
+		end
+		if #poseEntries > 0 then
+			RigWorkbench.applyPose(rig :: Instance) -- one StepAnimations for the whole batch
+			posedApplied = true
+		end
 		return AnimationClip.snapshotKeyframe(rig :: Instance, clip, time, scopeNames)
 	end)
+	if ok and posedApplied then
+		text = string.format(
+			"%d joint(s) posed + keyframe at t=%g.",
+			#poseEntries,
+			AnimationClip.normalizeTime(time)
+		) .. "\n" .. text
+	end
 	if scopeNote ~= "" then
 		text = scopeNote .. "\n" .. text
 	end
@@ -224,16 +276,22 @@ end
 Animate.descriptors = {
 	{
 		name = "add_keyframe",
-		description = "Author an animation by SNAPSHOTTING the rig's current pose as a keyframe. Pose the "
-			.. "rig first (pose_joint / ik_reach), then call this to capture that pose at `time` seconds "
+		description = "Author an animation by SNAPSHOTTING the rig's current pose as a keyframe. PREFER the "
+			.. "batch form — author a keypose per call: poses map + time; 3-5 keyposes suffice for the "
+			.. "oracle's sweep checks. poses = { [jointName] = {x?,y?,z?} } in DEGREES poses those joints "
+			.. "FIRST (ABSOLUTE, i.e. pose_joint relative=false: each call states the complete keypose, and "
+			.. "an all-zeros entry returns a joint to neutral — no reset_pose between keyposes), then "
+			.. "snapshots. Unknown joint names error BEFORE anything is posed or keyed. Without poses, pose "
+			.. "the rig first (pose_joint / ik_reach), then call this to capture that pose at `time` seconds "
 			.. "into a clip (a KeyframeSequence saved under rig/AnimSaves/<clip>, the Animation Editor's "
-			.. "folder). Repeat per keypose to build the motion. Inputs: rig (path or selection), clip "
-			.. "(default 'AgentClip'), time (seconds; omit to append after the last keyframe), scope "
+			.. "folder). Inputs: rig (path or selection), clip "
+			.. "(default 'AgentClip'), time (seconds; omit to append after the last keyframe), poses "
+			.. "(optional batch keypose map), scope "
 			.. "(optional — keys only a subset of joints: 'rightArm' for an item swing/use clip so the "
 			.. "legs/torso keep their own animation, 'upperBody', or an array of joint child-part names; "
 			.. "omit for a full-body clip), weapon (optional boolean — ALSO key the equipped Tool's "
-			.. "Handle so the clip moves the WEAPON itself: pose the grip joint via pose_joint "
-			.. "{joint='AgentEditGrip'}, then add_keyframe {weapon=true, scope='rightArm'}). "
+			.. "Handle so the clip moves the WEAPON itself; pose the grip via poses={AgentEditGrip={x=40}} "
+			.. "with weapon=true, scope='rightArm'). "
 			.. "Re-snapshots replace any keyframe already at that time. Then "
 			.. "use capture_animation to SEE it.",
 		inputSchema = {
@@ -244,6 +302,13 @@ Animate.descriptors = {
 				time = {
 					type = "number",
 					description = "Keyframe time in seconds (omit = append).",
+				},
+				poses = {
+					type = "object",
+					description = "Batch keypose: { [jointName] = {x?,y?,z?} } in DEGREES (names from "
+						.. "get_rig; 'AgentEditGrip' = the weapon grip). Poses those joints FIRST — "
+						.. "ABSOLUTE, all-zeros = neutral; joints not in the map keep their current "
+						.. "pose — then snapshots. Unknown names error before any mutation.",
 				},
 				scope = {
 					description = "Joint scope: 'rightArm' (key only the right-arm chain — use for "
