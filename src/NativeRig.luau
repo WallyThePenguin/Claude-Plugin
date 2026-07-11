@@ -150,20 +150,38 @@ function NativeRig.anchorRoot(model: Instance)
 	end
 end
 
--- Flat distinct color per part + cleared avatar textures, so poses read clearly in captures.
+-- UV ORIENTATION REFERENCE textures (user-taught 2026-07-11): the blocky rig is front/back
+-- symmetric, so swing/pose direction is unreadable in captures without them. These are durable
+-- moderation-approved Image assets minted from the R15 UV template pack (FRONT/BACK/L/R/UP/DOWN
+-- labels per face). Applied as the DEFAULT block-rig look so no fresh/heal/rebuild can lose the
+-- labels (live-caught: a fresh:true respawn silently shed manually-applied textures).
+local UV_REF_TORSO = "rbxassetid://98589653316755"
+local UV_REF_FACE = "rbxassetid://140582367643150"
+local UV_REF_LIMB = "rbxassetid://93485308521965"
+local UV_REF_BY_PART: { [string]: string } = {
+	UpperTorso = UV_REF_TORSO,
+	LowerTorso = UV_REF_TORSO,
+	Head = UV_REF_FACE,
+}
+
+-- UV-labeled orientation look on every body MeshPart (white base so the labels read crisply);
+-- avatar junk (SurfaceAppearance / old TextureID) is stripped first. Non-mesh parts (e.g. the
+-- invisible HumanoidRootPart) keep a palette color as before.
 function NativeRig.colorParts(model: Instance)
 	local i = 0
 	for _, d in model:GetChildren() do
 		if d:IsA("BasePart") then
 			i += 1
 			if d:IsA("MeshPart") then
-				d.TextureID = ""
 				local sa = d:FindFirstChildOfClass("SurfaceAppearance")
 				if sa ~= nil then
 					sa:Destroy()
 				end
+				d.TextureID = UV_REF_BY_PART[d.Name] or UV_REF_LIMB
+				d.Color = Color3.new(1, 1, 1)
+			else
+				d.Color = PALETTE[(i - 1) % #PALETTE + 1]
 			end
-			d.Color = PALETTE[(i - 1) % #PALETTE + 1]
 			d.Material = Enum.Material.SmoothPlastic
 		end
 	end

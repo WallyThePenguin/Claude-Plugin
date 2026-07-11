@@ -75,6 +75,13 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 		deps.cameraRig:removeGizmos()
 	end
 
+	-- Same class of leak for the rig-skeleton gizmo (user-reported 2026-07-11: a stale skeleton
+	-- ghost hung in the workspace across sessions): sweep any leftover folder at boot — a fresh
+	-- session starts gizmo-free; show_skeleton redraws on demand.
+	pcall(function()
+		require(script.Parent.RigWorkbench).clearSkeleton()
+	end)
+
 	-- Client-view relay (edit: none; serverplay: host; clientplay: relay-aware anthropic).
 	local relayMode = Relay.mode()
 	if relayMode == "serverplay" then
