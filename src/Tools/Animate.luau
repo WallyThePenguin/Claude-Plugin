@@ -5,6 +5,9 @@
 -- and otherwise hands off to the Animation Editor. PREVIEW is capture_animation (Tools/Capture). Thin
 -- wrappers over AnimationClip + resolveRig (path or selection). DataModel edits are undoable + relay in
 -- client view (absent from Relay.LOCAL_TOOLS, like pose_joint).
+-- HONESTY (issue #23): add_keyframe purges lingering AnimationTracks first (they re-stamp their pose
+-- into Motor6D.Transform on every StepAnimations, freezing snapshots) and READS BACK every batch-posed
+-- joint after apply — a >2 deg mismatch errors loudly and refuses the keyframe instead of keying a lie.
 
 local Selection = game:GetService("Selection")
 local RunService = game:GetService("RunService")
@@ -26,6 +29,10 @@ export type Descriptor = {
 }
 
 local DEFAULT_CLIP = "AgentClip"
+
+-- Verify-after-apply tolerance (issue #23): a posed joint must read back within this many degrees of
+-- the request or the keyframe is REFUSED (silent frozen-snapshot lies become loud errors).
+local VERIFY_TOLERANCE_DEG = 2
 
 local function resolveRig(target: any): (Instance?, string?)
 	if type(target) == "string" and target ~= "" then
@@ -169,6 +176,15 @@ local function runAdd(input: any, _context: any): (string, boolean)
 	local time = if type(args.time) == "number"
 		then args.time
 		else AnimationClip.appendTime(rig, clip)
+	-- TRACK GUARD (issue #23 add-keyframe-batch-frozen-snapshot + banked doctrine: every authoring path
+	-- purges playing tracks first). CHANNEL FACTS, resolved by reading the code: the batch WRITES
+	-- Motor6D.Transform and the snapshot READS Motor6D.Transform (AnimationClip.currentTransforms) —
+	-- the same channel, no C0 on either side. The frozen snapshot happened because StepAnimations
+	-- (applyPose) re-stamps every loaded AnimationTrack's pose into Motor6D.Transform BETWEEN the
+	-- batch's write and the snapshot's read — and a track lingers in edit even after Stop() (only
+	-- destroying the Animator removes it; live-verified in capture_animation). Purge BEFORE the
+	-- recording so a verify-fail cancel can't resurrect the animator with its tracks.
+	local purged = RigWorkbench.purgeTracks(rig :: Instance)
 	local posedApplied = false
 	local text, ok = recorded("Add keyframe", function()
 		-- Pose the batch INSIDE the recording (a cancel rolls the rig back too), then snapshot as today.
@@ -183,15 +199,47 @@ local function runAdd(input: any, _context: any): (string, boolean)
 		if #poseEntries > 0 then
 			RigWorkbench.applyPose(rig :: Instance) -- one StepAnimations for the whole batch
 			posedApplied = true
+			-- VERIFY-AFTER-APPLY (the honesty fix, issue #23): read back each posed joint's EFFECTIVE
+			-- rotation (Motor6D.Transform — the exact channel the snapshot reads) AFTER StepAnimations.
+			-- Any clobber source (stale tracks, held-rig state, future regressions) fails loudly HERE
+			-- instead of silently keying a lie.
+			for i, e in poseEntries do
+				local m = poseJoints[i]
+				local want = RigWorkbench.rotationCFrame(e.x, e.y, e.z)
+				local delta = AnimationClip.rotationDeltaDeg(want, m.Transform)
+				if delta > VERIFY_TOLERANCE_DEG then
+					local gx, gy, gz = m.Transform:ToEulerAnglesXYZ()
+					return string.format(
+						"add_keyframe: pose verify FAILED — posed %s, requested (%g, %g, %g) deg but it "
+							.. "reads back (%.1f, %.1f, %.1f) deg (off by %.1f deg > %d deg) — pose did "
+							.. "not take; suspect stale tracks or held-rig C0 state. NO keyframe was "
+							.. "written (the batch was rolled back).",
+						e.name,
+						e.x,
+						e.y,
+						e.z,
+						math.deg(gx),
+						math.deg(gy),
+						math.deg(gz),
+						delta,
+						VERIFY_TOLERANCE_DEG
+					),
+						false
+				end
+			end
 		end
 		return AnimationClip.snapshotKeyframe(rig :: Instance, clip, time, scopeNames)
 	end)
 	if ok and posedApplied then
 		text = string.format(
-			"%d joint(s) posed + keyframe at t=%g.",
+			"%d joint(s) posed + read-back verified within %d deg + keyframe at t=%g.",
 			#poseEntries,
+			VERIFY_TOLERANCE_DEG,
 			AnimationClip.normalizeTime(time)
 		) .. "\n" .. text
+	end
+	if purged > 0 then
+		text = string.format("stopped %d stale playing track(s) first.", purged) .. "\n" .. text
 	end
 	if scopeNote ~= "" then
 		text = scopeNote .. "\n" .. text
@@ -292,8 +340,10 @@ Animate.descriptors = {
 			.. "omit for a full-body clip), weapon (optional boolean — ALSO key the equipped Tool's "
 			.. "Handle so the clip moves the WEAPON itself; pose the grip via poses={AgentEditGrip={x=40}} "
 			.. "with weapon=true, scope='rightArm'). "
-			.. "Re-snapshots replace any keyframe already at that time. Then "
-			.. "use capture_animation to SEE it.",
+			.. "Re-snapshots replace any keyframe already at that time. Stale playing AnimationTracks "
+			.. "are stopped first (noted in the result), and every batch-posed joint is READ BACK after "
+			.. "apply — a >2 deg mismatch errors and refuses the keyframe (no silent frozen snapshots). "
+			.. "Then use capture_animation to SEE it.",
 		inputSchema = {
 			type = "object",
 			properties = {

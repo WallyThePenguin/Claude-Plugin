@@ -1,7 +1,7 @@
 --!strict
 -- AnimationClipSpec: in-Studio self-test for the PURE AnimationClip logic (no spawn/web). Builds a tiny
 -- synthetic Motor6D rig with Instance.new and asserts adjacency/rigRoot/buildPoseTree + normalizeTime
--- / parsePoseBatch / scopedJointSet / buildScopedPoses.
+-- / parsePoseBatch / scopedJointSet / buildScopedPoses / rotationDeltaDeg (the verify-after-apply metric).
 -- Run via temporarily adding `require(script.AnimationClipSpec).run()` to init.server.luau.
 
 local AnimationClip = require(script.Parent.AnimationClip)
@@ -218,6 +218,46 @@ local function buildCases(): { Case }
 		local bad4, e4 = AnimationClip.parsePoseBatch("nope")
 		if bad4 ~= nil or e4 == nil then
 			return false, "non-table poses should error"
+		end
+		return true
+	end)
+
+	add("rotationDeltaDeg measures the rotation angle, translation-blind + symmetric", function()
+		local a = CFrame.Angles(math.rad(140), 0, 0)
+		local b = CFrame.Angles(math.rad(143), 0, 0)
+		local d = AnimationClip.rotationDeltaDeg(a, b)
+		if math.abs(d - 3) > 0.01 then
+			return false, "140 vs 143 about X should be 3 deg, got " .. tostring(d)
+		end
+		if AnimationClip.rotationDeltaDeg(a, a) > 1e-3 then
+			return false, "identical rotations should be ~0"
+		end
+		-- translation must not count (Motor6D.Transform can carry position)
+		local c = CFrame.new(5, -2, 7) * CFrame.Angles(0, math.rad(90), 0)
+		local dyaw = AnimationClip.rotationDeltaDeg(CFrame.identity, c)
+		if math.abs(dyaw - 90) > 0.01 then
+			return false, "identity vs translated 90 deg yaw should be 90, got " .. tostring(dyaw)
+		end
+		if math.abs(AnimationClip.rotationDeltaDeg(c, CFrame.identity) - dyaw) > 1e-6 then
+			return false, "delta should be symmetric"
+		end
+		return true
+	end)
+
+	add("rotationDeltaDeg vs the 2deg verify tolerance: catches the live frozen-snapshot lie", function()
+		-- the live repro: requested RightShoulder (-160, 0, 25) but the stale hold pose (37, 0, 0)
+		-- was what got keyed — must be FAR outside tolerance
+		local want = CFrame.Angles(math.rad(-160), 0, math.rad(25))
+		local stale = CFrame.Angles(math.rad(37), 0, 0)
+		local d = AnimationClip.rotationDeltaDeg(want, stale)
+		if d <= 2 then
+			return false, "stale 37 deg hold vs requested -160 deg should exceed 2 deg, got " .. tostring(d)
+		end
+		-- a near-exact apply must PASS the tolerance (no false alarms)
+		local near = CFrame.Angles(math.rad(-159.2), 0, math.rad(25.4))
+		local nd = AnimationClip.rotationDeltaDeg(want, near)
+		if nd > 2 then
+			return false, "a ~1 deg apply error should be within tolerance, got " .. tostring(nd)
 		end
 		return true
 	end)

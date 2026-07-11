@@ -25,6 +25,17 @@ function AnimationClip.normalizeTime(t: number): number
 	return math.floor(t * 1000 + 0.5) / 1000
 end
 
+-- Smallest angle (degrees) between two CFrames' rotation parts — the verify-after-apply metric for
+-- add_keyframe's batch (tooling issue #23 add-keyframe-batch-frozen-snapshot: a keyframe must store
+-- what was REQUESTED; a delta beyond tolerance means the applied pose was clobbered between apply and
+-- snapshot, e.g. by a lingering AnimationTrack re-stamping Motor6D.Transform on StepAnimations).
+-- Translation-blind (compares .Rotation only) and symmetric. PURE -> unit-tested.
+function AnimationClip.rotationDeltaDeg(a: CFrame, b: CFrame): number
+	local delta = a.Rotation:Inverse() * b.Rotation
+	local _, angle = delta:ToAxisAngle()
+	return math.abs(math.deg(angle))
+end
+
 -- One entry of add_keyframe's batch-keypose map: a joint name + its ABSOLUTE rotation in degrees.
 export type PoseEntry = { name: string, x: number, y: number, z: number }
 
