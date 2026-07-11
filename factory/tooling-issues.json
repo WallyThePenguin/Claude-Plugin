@@ -207,6 +207,28 @@
    "repro": "Run the weapon-sword rung; the grip-fitting loop consumes all iterations re-tilting the weld against a canonical grip_sane magnitude that never changes, so the cycle hits the iteration cap without ever emitting FACTORY_BUILD_JSON.",
    "seenCount": 1,
    "lastSeenAt": 1783700043
+  },
+  {
+   "title": "Playtest character unsteerable / walk no-op",
+   "symptom": "The scene is completely static across 4 walk commands \u2014 the play character is not steerable in this session (walk is a no-op, likely stuck against the checker prop; and teleport is unavailable since loadstring/eval is off).",
+   "suspectFiles": [
+    "src/playtest/act.luau",
+    "src/playtest/eval.luau"
+   ],
+   "repro": "playtest_start with a prop (e.g. the checker fixture) overlapping the spawn point, then playtest_act('walk') and capture \u2014 the character never moves; playtest_eval is also unavailable to teleport it out.",
+   "seenCount": 1,
+   "lastSeenAt": 1783750578
+  },
+  {
+   "repro": "StarterPack.Sword (forever cycle weapon-sword-auto-749500-1, Handle mesh rbxassetid://99102634186274, blade -Y): run grip_tool {tool, rig} and read Tool.Grip rotation; expect ~18deg X, observe ~108deg. Fixed manually to CFrame.new(0,1.5,0)*CFrame.Angles(rad(165),0,0) and visually verified via edit-mode StepAnimations filmstrip.",
+   "id": "grip-fitter-axis-mapping",
+   "tool": "grip_tool",
+   "summary": "Frame-align fit rotated a frame_consistent (blade_axis_dot=1) -Y-blade mesh sword to Grip rot ~108deg about X (expected ~18deg cant): blade pointed up-BACK over the arm, swing read backwards, handle rode the forearm. Declaration honest, geometry honest -> the fitter blade_dir->fist axis mapping is the bug.",
+   "severity": "high",
+   "status": "OPEN",
+   "resolution": "PENDING - fix the ToolFactory frame-align axis convention for non-+X blade_dir frames; add an oracle check comparing fitted blade world-direction vs fist-up axis at rest (visual-truth twin of grip_sane); grip_sane passed because it measures against the declared frame the fitter itself used.",
+   "filedAt": "2026-07-11T02:32:44",
+   "filedBy": "hands-on session 2026-07-11 (user-reported backwards animation)"
   }
  ]
 }
