@@ -936,9 +936,18 @@ PLAYBOOKS = {
         "kind": "runtime",
         "sandbox": "clear",
         "oracleFamily": "melee-weapon",
-        # The oracle-first procedure adds measured steps (stamp_frame, suite self-check, fix
-        # rows) — the first live SP2b cycle capped out at the old default one step short.
-        "buildIterations": 70,
+        # Budget unit = SDK max_turns (API turns; sdk_loop passes buildIterations straight
+        # through as spec["max_turns"] — _spike_sdk R3: turns, NOT assistant messages). The
+        # status loopIteration counts assistant stream messages and runs ~2.6x higher (the
+        # capped live run read loopIteration=181 against this cap at 70) — never read it
+        # against this number. Measured on that capped run: 114 tool calls in 70 turns
+        # (~1.6 calls/turn), blocked ONE turn short of FACTORY_BUILD_JSON, with clip authoring
+        # eating 75 calls (54 pose_joint + 16 add_keyframe + 3 reset_pose + 2 captures ≈ 46
+        # turns). Batched keyposes (ONE add_keyframe per keypose, poses inline) collapse those
+        # 75 calls to ~20 — worst-case ~20 sequential turns — so the procedure now costs
+        # ~24 non-clip + ~20 clip + 1 emit ≈ 45 turns; 45 * 1.4 ≈ 63, rounded to 65 for ~40%
+        # headroom over the measured procedure.
+        "buildIterations": 65,
         "config": '{"windup":<n>,"active":<n>,"cooldown":<n>,"damage":<n>,"reach":<n>}',
         "build": (
             "(1) park any Tools in StarterPack into ServerStorage and report their new paths in "
@@ -951,17 +960,21 @@ PLAYBOOKS = {
             "grip part as Handle; "
             "(4) ANIMATE THE SWING in EDIT (no playtest): on workspace.AgentRig (spawn_rig if "
             "missing) author a 3-keypose right-arm swing clip NAMED 'SwordSwing' (the oracle "
-            "suite's default clip name) - add_keyframe scope rightArm: windup back, strike "
-            "through, recover; total ~0.6-0.9s per the brief's speed - then bind_animation "
+            "suite's default clip name) - author each keypose with ONE add_keyframe call using "
+            "the poses map (all joint rotations for that keypose inline, scope rightArm): "
+            "windup back, strike through, recover; total ~0.6-0.9s per the brief's speed. 3-5 "
+            "keyposes suffice - the oracle measures sweep magnitude, not smoothness; do NOT "
+            "pose joints one call at a time. Then bind_animation "
             "{tool, event='use', clip} so the weapon ACTUALLY ANIMATES when used (the clip gets "
             "its WEAPON CHANNEL in step 5, once the grip weld exists); "
             "(5) MEASURE, THEN PREVIEW: record Tool.Parent via run_luau, grip_tool the weapon "
             "onto the rig with NO offset/rot args (frame alignment first); now give 'SwordSwing' "
             "its WEAPON CHANNEL (the AgentEditGrip joint IS the weapon channel - it only exists "
-            "after grip_tool): at each keypose time re-key with add_keyframe {weapon:true, "
-            "scope:'rightArm'}, and pose_rig {joint:'AgentEditGrip'} at least ONE keypose with a "
-            "real blade rotation (e.g. cock the blade back at windup) so the clip moves the "
-            "weapon itself, not just the arm; then run oracle_suite "
+            "after grip_tool): at each keypose time re-key with ONE add_keyframe {weapon:true, "
+            "scope:'rightArm'} call whose poses map carries the arm AND the AgentEditGrip "
+            "rotation inline - at least ONE keypose gets a real blade rotation (e.g. cock the "
+            "blade back at windup) so the clip moves the weapon itself, not just the arm; do "
+            "NOT pose joints one call at a time; then run oracle_suite "
             "{family:'melee-weapon', target:<the Tool under the rig>, "
             "rig:'game.Workspace.AgentRig', clip:'SwordSwing'} and FIX every FAIL row by fixing "
             "the ARTIFACT - never by arguing with the check (grip_sane's blade_up_angle_deg and "
@@ -1024,14 +1037,22 @@ PLAYBOOKS = {
     "animation": {
         "kind": "visual",
         "oracleFamily": "animation",
-        "buildIterations": 60,
+        # Same max_turns unit as melee-weapon (see the comment there). This rung is mostly
+        # clip work, and batched keyposes cost ~5 add_keyframe calls instead of the measured
+        # joints-x-keyposes pose_joint spam (54+16 calls on the capped melee run) that the old
+        # 60 priced in: census + 3-5 keyposes + channel check + references + 2-angle
+        # filmstrips ≈ 30 turns worst case; 30 * 1.4 ≈ 42, rounded to 45 for ~40% headroom.
+        "buildIterations": 45,
         "config": '{"clipName":"<name>","keyframeCount":<n>,"priority":"<Action|Movement|...>"}',
         "build": (
             "(1) use an existing rig or spawn_rig; FIRST run oracle_check {check:'joint_census', "
             "args:{rig:<rig>}} - a MIXED Motor6D/AnimationConstraint rig will silently T-pose "
-            "your clip; fix the rig before authoring; (2) author the clip as KEYPOSES: pose_joint "
-            "/ ik_reach into each keypose then add_keyframe to snapshot it, repeated per pose, "
-            "with KeyframeMarkers if the brief needs contact/cancel points; (3) after authoring, "
+            "your clip; fix the rig before authoring; (2) author the clip as KEYPOSES: each "
+            "keypose is ONE add_keyframe call using the poses map (all joint rotations for that "
+            "keypose inline); 3-5 keyposes suffice - the oracle measures sweep magnitude, not "
+            "smoothness; do NOT pose joints one call at a time (pose_joint / ik_reach are for "
+            "the odd single joint you must eyeball first), with KeyframeMarkers if the brief "
+            "needs contact/cancel points; (3) after authoring, "
             "oracle_check {check:'rig_channel_check', args:{rig:<rig>, clip:<clipName>}} - "
             "unmapped pose names are silently-dead channels; fix them before filming; (4) the "
             "artifact is the clip/KeyframeSequence. Author with NO preview running; review with "
@@ -1143,7 +1164,10 @@ def _playbook(rung) -> dict:
 
 
 def _build_iterations(playbook: dict) -> int:
-    """BUILD loop budget: oracle-first playbooks carry their own (bigger) budget."""
+    """BUILD loop budget, in SDK max_turns (API turns — sdk_loop passes it through as
+    spec["max_turns"]; the status loopIteration counts assistant stream messages, ~2.6x
+    higher on the measured transcript): oracle-first playbooks carry their own measured
+    budget (justified in comments at their buildIterations)."""
     return int(playbook.get("buildIterations") or 45)
 
 

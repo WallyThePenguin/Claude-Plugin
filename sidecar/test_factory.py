@@ -491,8 +491,32 @@ def main():
     fails += _check("animation verify is oracle-first", "oracle_suite" in factory.PLAYBOOKS["animation"]["verify"])
     fails += _check("animation build census-checks the rig", "joint_census" in factory.PLAYBOOKS["animation"]["build"])
 
-    # --- oracle-first BUILD budget (SP2b live find: the first cycle capped one step short) ---
-    fails += _check("melee build budget raised", factory._build_iterations(factory.PLAYBOOKS["melee-weapon"]) == 70)
+    # --- batched keypose authoring (playbook economics: the capped run spent ~65% of its
+    # 114 tool calls on pose_joint-per-joint-per-keypose; the flow is now ONE add_keyframe
+    # per keypose with the poses map, 3-5 keyposes) ---
+    anim_build = factory.PLAYBOOKS["animation"]["build"]
+    fails += _check("melee swing authors keyposes batched",
+                    "ONE add_keyframe call using the poses map" in bp)
+    fails += _check("melee swing caps keypose count", "3-5 keyposes suffice" in bp)
+    fails += _check("melee swing states the sweep-not-smoothness rationale",
+                    "sweep magnitude, not smoothness" in bp)
+    fails += _check("melee swing forbids per-joint posing",
+                    bp.count("do NOT pose joints one call at a time") >= 2)  # arm pass + weapon re-key
+    fails += _check("melee weapon re-key is batched too",
+                    "poses map carries the arm AND the AgentEditGrip" in bp)
+    fails += _check("animation build authors keyposes batched",
+                    "ONE add_keyframe call using the poses map" in anim_build)
+    fails += _check("animation build caps keypose count", "3-5 keyposes suffice" in anim_build)
+    fails += _check("animation build forbids per-joint posing",
+                    "do NOT pose joints one call at a time" in anim_build)
+
+    # --- BUILD budgets (unit = SDK max_turns / API turns; the capped live run measured
+    # 114 tool calls in 70 turns with clip authoring 75 of them — batched keyposes collapse
+    # that to ~20 calls, so ~45 turns needed; * 1.4 headroom -> melee 65, animation 45) ---
+    fails += _check("melee build budget fits the batched flow",
+                    factory._build_iterations(factory.PLAYBOOKS["melee-weapon"]) == 65)
+    fails += _check("animation build budget fits the batched flow",
+                    factory._build_iterations(factory.PLAYBOOKS["animation"]) == 45)
     fails += _check("default build budget unchanged", factory._build_iterations(factory.PLAYBOOKS["_default"]) == 45)
     melee_bp = factory._build_prompt(
         {"id": "weapon-spear", "family": "melee-weapon", "brief": "b", "oracle": "o"},
@@ -500,7 +524,7 @@ def main():
     default_bp = factory._build_prompt(
         {"id": "house-cottage", "family": "building", "brief": "b", "oracle": "o"},
         False, factory.PLAYBOOKS["building"])
-    fails += _check("melee emit line tracks the budget", "well before iteration 65" in melee_bp)
+    fails += _check("melee emit line tracks the budget", "well before iteration 60" in melee_bp)
     fails += _check("default emit line unchanged", "well before iteration 40" in default_bp)
 
     print(f"=== {('ALL PASS' if fails == 0 else str(fails) + ' FAILED')} ===")
