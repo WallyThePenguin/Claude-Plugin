@@ -229,6 +229,17 @@
    "resolution": "PENDING - fix the ToolFactory frame-align axis convention for non-+X blade_dir frames; add an oracle check comparing fitted blade world-direction vs fist-up axis at rest (visual-truth twin of grip_sane); grip_sane passed because it measures against the declared frame the fitter itself used.",
    "filedAt": "2026-07-11T02:32:44",
    "filedBy": "hands-on session 2026-07-11 (user-reported backwards animation)"
+  },
+  {
+   "id": "add-keyframe-batch-frozen-snapshot",
+   "tool": "add_keyframe",
+   "summary": "poses-map batch authoring produced FOUR IDENTICAL keyframes (the rig's pre-existing 37/31deg pose) across four different requested keyposes while reporting \"3 joint(s) posed\" \u2014 an honesty bug: posing silently failed but the tool claimed success. Two confirmed aggravators: (1) STALE PLAYING AnimationTracks hijack every StepAnimations call and re-stamp their pose over the batch's (fixed by stopping tracks \u2014 but the tool must detect/refuse this itself); (2) even after stopping tracks + resetting Transforms on a grip_tool-held rig the snapshot still captured the old pose \u2014 suspect the batch applies rotations to a channel (Transform) the snapshot does not read on held rigs (C0-based arm-hold), or the apply is undone before snapshot.",
+   "repro": "workspace.AgentRig with grip_tool-equipped Sword (AgentEditGrip present) after several Animator preview tracks were played: add_keyframe {clip:\"SwordUse\", poses:{RightShoulder:{x:-160,z:25},RightElbow:{x:40},AgentEditGrip:{x:30}}} x4 with different values -> dump keyframe poses -> all identical RightUpperArm=37 RightLowerArm=31. Reproduced post-reload and post-track-stop+Transform-reset.",
+   "severity": "high",
+   "status": "OPEN",
+   "resolution": "PENDING - (a) batch must VERIFY the applied pose survived to snapshot time (read back the joint rotation after apply; error loudly on mismatch instead of keying a lie); (b) refuse/stop-and-warn when the Animator has playing tracks; (c) resolve the Transform-vs-C0 snapshot channel question for grip-held rigs. The single-call pose_joint path and the earlier clean-rig batch verify (BatchTest 40deg stored) both worked - the failure needs the held-rig + track-history state.",
+   "filedAt": "2026-07-11T02:52:09",
+   "filedBy": "hands-on session 2026-07-11 night (user-reported backwards animation, round 2)"
   }
  ]
 }
