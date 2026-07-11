@@ -160,7 +160,7 @@ function ToolFactory.toolify(
 	-- freezes the collapse. Fit-then-unanchor makes the solver enforcement reproduce the
 	-- built geometry instead of destroying it.)
 	if #joints > 0 then
-		ToolFactory.fitChain(target)
+		ToolFactory.fitChain(target, handle) -- root = the handle: normalizes joint direction too
 	end
 	local tool = Instance.new("Tool")
 	tool.Name = if toolName ~= nil and toolName ~= "" then toolName else target.Name
@@ -210,45 +210,110 @@ end
 --   C0 = the Part0-relative placement folded through C1: Motor6D kinematics are
 --        Part1.CFrame = Part0.CFrame * C0 * Transform * C1^-1, so at rest
 --        C0 = Part0.CFrame^-1 * Part1.CFrame * C1 (exact by construction).
+-- DIRECTION NORMALIZATION (review-caught 2026-07-11): every downstream consumer — the
+-- weaponChildNames BFS, buildPoseTree/buildScopedPoses nesting, weapon_channel_of's chain
+-- walk — follows Part0 -> Part1 AWAY from the grip, so a joint authored tip-down
+-- (Part1 on the hilt side) would be kept and fit yet NEVER drivable, and a backwards
+-- Part1="Handle" even clobbers the grip channel's pose nesting. When `root` is given
+-- (the Handle), fitChain walks the chain outward from it and FLIPS any joint pointing
+-- inward: swap Part0/Part1 and swap C0/C1 — rest-pose exact, since
+-- P0 = P1 * C1 * C0^-1 is the same equation read backwards.
+-- A REAL edit grip (a Motor6D named AgentEditGrip whose Part0 lives OUTSIDE the container,
+-- i.e. the rig's hand) is skipped; a builder-authored joint that merely REUSES the reserved
+-- name inside the weapon is healed (renamed after its Part1) and treated as chain — a
+-- name-skip alone would leave it identity-C0/C1 and the unanchor solver would collapse it.
 -- A joint whose C0 or C1 is already non-identity was authored deliberately and is left alone
 -- (but still stamped + counted as a chain channel). Joints keeping the Instance.new default
 -- name ("Motor6D") are renamed after their Part1 — pose channels are addressed by joint NAME
 -- in add_keyframe poses maps (RigWorkbench.findJoint) and by PART name in the clip's Pose
 -- tree; naming the joint after Part1 makes those coincide. Idempotent via SAChainFitted.
--- Returns (fittedCount, chainJointNames).
+-- Returns (fittedCount, chainJointNames, flippedCount).
 ToolFactory.CHAIN_FITTED_ATTR = "SAChainFitted"
 
-function ToolFactory.fitChain(tool: Instance): (number, { string })
-	local fitted = 0
-	local names: { string } = {}
+function ToolFactory.fitChain(tool: Instance, root: BasePart?): (number, { string }, number)
+	-- collect candidate chain joints (skip only the REAL grip: reserved name + Part0 outside)
+	local joints: { Motor6D } = {}
 	for _, d in tool:GetDescendants() do
-		if d:IsA("Motor6D") and d.Name ~= "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
-			local p0 = d.Part0 :: BasePart
-			local p1 = d.Part1 :: BasePart
-			if d.Name == "Motor6D" or d.Name == "" then
-				d.Name = p1.Name
-			end
-			table.insert(names, d.Name)
-			if d:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
-				if d.C0 == CFrame.identity and d.C1 == CFrame.identity then
-					local toward = p1.CFrame:PointToObjectSpace(p0.Position)
-					local half = p1.Size / 2
-					local hinge = Vector3.new(
-						math.clamp(toward.X, -half.X, half.X),
-						math.clamp(toward.Y, -half.Y, half.Y),
-						math.clamp(toward.Z, -half.Z, half.Z)
-					)
-					local c1 = CFrame.new(hinge)
-					d.C1 = c1
-					d.C0 = p0.CFrame:ToObjectSpace(p1.CFrame * c1)
-					d.Transform = CFrame.identity
-					fitted += 1
+		if d:IsA("Motor6D") and d.Part0 ~= nil and d.Part1 ~= nil then
+			local p0In = (d.Part0 :: Instance) == tool or (d.Part0 :: Instance):IsDescendantOf(tool)
+			if d.Name == "AgentEditGrip" then
+				if not p0In then
+					continue -- the rig's edit grip joint reaching into the tool — not ours to fit
 				end
-				d:SetAttribute(ToolFactory.CHAIN_FITTED_ATTR, true)
+				-- reserved-name reuse: blank it now, the fit loop names it after the FINAL Part1
+				-- (a rename here would bake the wrong name if the joint also needs flipping)
+				d.Name = ""
+			end
+			table.insert(joints, d)
+		end
+	end
+	-- direction normalization: BFS outward from the root, flipping inward-pointing joints
+	local flipped = 0
+	if root ~= nil then
+		local touching: { [Instance]: { Motor6D } } = {}
+		for _, j in joints do
+			for _, p in { j.Part0 :: Instance, j.Part1 :: Instance } do
+				if touching[p] == nil then
+					touching[p] = {}
+				end
+				table.insert(touching[p], j)
+			end
+		end
+		local seen: { [Instance]: boolean } = { [root :: Instance] = true }
+		local queue: { Instance } = { root :: Instance }
+		local head = 1
+		while head <= #queue do
+			local part = queue[head]
+			head += 1
+			for _, j in (touching[part] or {}) do
+				local far: Instance = if (j.Part0 :: Instance) == part
+					then j.Part1 :: Instance
+					else j.Part0 :: Instance
+				if not seen[far] then
+					seen[far] = true
+					if (j.Part1 :: Instance) == part then
+						-- inward-pointing: flip so Part0 is on the root side (rest-exact swap)
+						local p0, p1 = j.Part0, j.Part1
+						local c0, c1 = j.C0, j.C1
+						j.Part0 = p1
+						j.Part1 = p0
+						j.C0 = c1
+						j.C1 = c0
+						flipped += 1
+					end
+					table.insert(queue, far)
+				end
 			end
 		end
 	end
-	return fitted, names
+	local fitted = 0
+	local names: { string } = {}
+	for _, d in joints do
+		local p0 = d.Part0 :: BasePart
+		local p1 = d.Part1 :: BasePart
+		if d.Name == "Motor6D" or d.Name == "" then
+			d.Name = p1.Name
+		end
+		table.insert(names, d.Name)
+		if d:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
+			if d.C0 == CFrame.identity and d.C1 == CFrame.identity then
+				local toward = p1.CFrame:PointToObjectSpace(p0.Position)
+				local half = p1.Size / 2
+				local hinge = Vector3.new(
+					math.clamp(toward.X, -half.X, half.X),
+					math.clamp(toward.Y, -half.Y, half.Y),
+					math.clamp(toward.Z, -half.Z, half.Z)
+				)
+				local c1 = CFrame.new(hinge)
+				d.C1 = c1
+				d.C0 = p0.CFrame:ToObjectSpace(p1.CFrame * c1)
+				d.Transform = CFrame.identity
+				fitted += 1
+			end
+			d:SetAttribute(ToolFactory.CHAIN_FITTED_ATTR, true)
+		end
+	end
+	return fitted, names, flipped
 end
 
 -- Resolve a rig: an explicit Model with a Humanoid, else the first workspace Model with a Humanoid +
@@ -350,6 +415,40 @@ function ToolFactory.equip(tool: Tool, rig: Model)
 			ToolFactory.PRE_EQUIP_PARENT_ATTR,
 			if prior ~= nil then prior:GetFullName() else ""
 		)
+	end
+	-- EVICT the previously-equipped Tool (review-caught 2026-07-11): equip used to destroy
+	-- only the grip motor, leaving the old Tool dangling INSIDE the rig — where its same-named
+	-- parts (Handle, SegA...) trip joint_census's duplicate-channel FAIL and pollute the
+	-- weapon census. Re-home any other Tool to where it came from (else StarterPack, the
+	-- rig-destroy eviction convention).
+	for _, child in rig:GetChildren() do
+		if child:IsA("Tool") and child ~= tool then
+			local priorPath = child:GetAttribute(ToolFactory.PRE_EQUIP_PARENT_ATTR)
+			local dest: Instance? = nil
+			if type(priorPath) == "string" and priorPath ~= "" then
+				local ok, found = pcall(function()
+					local cur: Instance? = game
+					for token in string.gmatch(priorPath :: string, "[^%.]+") do
+						if cur == nil then
+							return nil
+						end
+						if token == "game" then
+							cur = game
+						elseif cur == game then
+							cur = game:GetService(token) :: Instance
+						else
+							cur = (cur :: Instance):FindFirstChild(token)
+						end
+					end
+					return cur
+				end)
+				if ok and found ~= nil and found ~= game then
+					dest = found :: Instance
+				end
+			end
+			child.Parent = if dest ~= nil then dest else game:GetService("StarterPack")
+			child:SetAttribute(ToolFactory.PRE_EQUIP_PARENT_ATTR, nil)
+		end
 	end
 	tool.Parent = rig
 	local hand = rig:FindFirstChild("RightHand")
@@ -537,11 +636,45 @@ function ToolFactory.setOffHand(
 end
 
 -- Release (the un-equip surface, grip_tool {release:true}): destroy the AgentEditGrip motor,
--- remove the off-hand IK, and restore every joint's pre-hold C0/C1 from the equip-time
--- snapshot (clearing the snapshot attributes). Returns the number of joints whose C0 was
--- restored. The CALLER also purges playing tracks, resets Motor6D Transforms + StepAnimations
--- (so the restore is visible), and re-homes the Tool via PRE_EQUIP_PARENT_ATTR.
-function ToolFactory.release(_tool: Tool, rig: Model): number
+-- remove the off-hand IK, restore every joint's pre-hold C0/C1 from the equip-time
+-- snapshot (clearing the snapshot attributes), and ZERO the tool's own chain Motor6D
+-- Transforms (review-caught 2026-07-11: keypose residue on segment joints survived release —
+-- the caller's resetPose runs on the RIG after the Tool is re-homed out of it, and the
+-- hold-pose snapshot deliberately skips Tool-internal joints, so a released snake sword
+-- stayed frozen mid-curl and the curl re-entered the next authoring session's snapshots).
+-- Returns the number of joints whose C0 was restored. The CALLER also purges playing
+-- tracks, resets rig Motor6D Transforms + StepAnimations (so the restore is visible), and
+-- re-homes the Tool via PRE_EQUIP_PARENT_ATTR.
+function ToolFactory.release(tool: Tool, rig: Model): number
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Motor6D") then
+			d.Transform = CFrame.identity
+		end
+	end
+	-- FLUSH the zeroed Transforms into part placement while the Tool is still under the rig:
+	-- writing a part CFrame would teleport the whole rigid ASSEMBLY (measured: it dragged the
+	-- chain 0.07 studs and kept the bend), but one StepAnimations pass re-solves every joint
+	-- from C0/C1/Transform — the exact pose_joint/applyPose pattern. Without it a released
+	-- tool has no Animator and stays visibly frozen mid-pose until the next equip.
+	local controller: Instance? = rig:FindFirstChildOfClass("Humanoid")
+		or rig:FindFirstChildOfClass("AnimationController")
+	if controller ~= nil then
+		local animator = controller:FindFirstChildOfClass("Animator")
+		if animator == nil then
+			local na = Instance.new("Animator")
+			na.Parent = controller
+			animator = na
+		end
+		pcall(function()
+			(animator :: Animator):StepAnimations(0)
+		end)
+	end
+	return ToolFactory.releaseRig(rig)
+end
+
+-- The rig-side half of release (grip motor + IK + hold-pose restore) — split so release()
+-- can zero the tool chain first while keeping one code path for the rig restore.
+function ToolFactory.releaseRig(rig: Model): number
 	local hand = rig:FindFirstChild("RightHand")
 	if hand ~= nil then
 		local weld = hand:FindFirstChild("AgentEditGrip")

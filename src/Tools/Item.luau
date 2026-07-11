@@ -248,12 +248,18 @@ local function runGripTool(input: any, context: any): (any, boolean)
 			tonumber(args.offhandOffset.z) or 0
 		)
 	end
-	local chainFitted, chainNames = 0, {} :: { string }
+	local chainFitted, chainNames, chainFlipped = 0, {} :: { string }, 0
 	local function doEquipGrip()
 		-- Fit the articulated chain BEFORE the grip joint exists (weapon-as-limb): fitChain
 		-- freezes the tool's CURRENT geometry into the chain joints' C0/C1, so it must read the
 		-- built placement, not a hand-snapped one. Idempotent — already-fitted joints are kept.
-		chainFitted, chainNames = ToolFactory.fitChain(tool)
+		-- The Handle root also normalizes joint DIRECTION (tip-down authored joints are flipped
+		-- so every chain channel is actually drivable by the Animator).
+		local handleRoot = tool:FindFirstChild("Handle")
+		chainFitted, chainNames, chainFlipped = ToolFactory.fitChain(
+			tool,
+			if handleRoot ~= nil and handleRoot:IsA("BasePart") then handleRoot else nil
+		)
 		ToolFactory.equip(tool, theRig)
 		ToolFactory.applyGrip(tool, grip)
 		if type(args.offhand) == "boolean" then
@@ -272,11 +278,14 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	end
 	local chainNote = if #chainNames > 0
 		then string.format(
-			" Weapon chain: %d joint(s) [%s]%s — each is an animatable pose channel "
+			" Weapon chain: %d joint(s) [%s]%s%s — each is an animatable pose channel "
 				.. "(add_keyframe poses + weapon=true keys them all).",
 			#chainNames,
 			table.concat(chainNames, ", "),
-			if chainFitted > 0 then string.format(" (%d newly fit from built geometry)", chainFitted) else ""
+			if chainFitted > 0 then string.format(" (%d newly fit from built geometry)", chainFitted) else "",
+			if chainFlipped > 0
+				then string.format(" (%d joint(s) FLIPPED hilt-outward so the Animator can drive them)", chainFlipped)
+				else ""
 		)
 		else ""
 	local note = string.format(

@@ -563,7 +563,7 @@ register("joint_census", "EDIT_OK", "Joint inventory for rig {rig}: BODY Motor6D
 		duplicate_channels = dupes,
 	}
 	if #dupes > 0 then
-		return fail("duplicate animation channel name(s): " .. table.concat(dupes, ", ") .. " — the Animator matches poses by connected-part NAME; a duplicate silently clobbers one channel (rename the part)", mag)
+		return fail("duplicate animation channel name(s): " .. table.concat(dupes, ", ") .. " — the Animator matches poses by connected-part NAME; a duplicate silently clobbers one channel. Most likely cause: a STALE previously-equipped Tool still under the rig — release/evict it (grip_tool {release:true}); rename parts only for a genuine same-name collision inside ONE weapon", mag)
 	end
 	if (#motors + #weaponMotors) > 0 and #constraints > 0 then
 		return fail("MIXED rig: " .. (#motors + #weaponMotors) .. " Motor6D + " .. #constraints .. " AnimationConstraint (animations will half-play)", mag)
@@ -719,7 +719,7 @@ register("clip_arc_of", "EDIT_MISLEADS", "Samples clip {clip} on rig {rig} kinem
 	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
 end, 20000)
 
-register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIVES the weapon channel: >=2 keyframes must contain a Pose named after an AgentEditGrip Part1 (usually 'Handle') nested under the grip's Part0 Pose (usually 'RightHand'), AND the grip rotation must sweep > {min_swept_deg (default 10)} across keyframes. Catches scoped clips saved without add_keyframe {weapon=true} (a swing whose sword never moves). CHAIN-AWARE (weapon-as-limb): articulated joints reachable from the grip's Part1 (snake sword / flail segments) are measured first-class — magnitudes chain_joints/chain_channels/chain_posed_channels/chain_swept_deg; pass {require_chain=true} to ALSO require >=1 chain channel posed in >=2 keyframes sweeping > min_swept_deg.", function(args)
+register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIVES the weapon channel: >=2 keyframes must contain a Pose named after an AgentEditGrip Part1 (usually 'Handle') nested under the grip's Part0 Pose AND connected to the keyframe's ROOT pose chain (unrooted stray subtrees are ignored — the Animator never applies them), AND the grip rotation must sweep > {min_swept_deg (default 10)} across keyframes. Catches scoped clips saved without add_keyframe {weapon=true} (a swing whose sword never moves). CHAIN-AWARE (weapon-as-limb): articulated joints reachable from the grip's Part1 (snake sword / flail segments) are measured first-class — magnitudes chain_joints/chain_channels/chain_posed_channels/chain_swept_deg. DEFAULT ESCALATION: when the rig's weapon HAS a chain, a clip that leaves the chain entirely UNKEYED FAILs (keyed-but-static chains pass — idle clips are legitimate). {require_chain=true} additionally demands EVERY chain channel keyed in >=2 keyframes and a chain sweep > min_swept_deg (use for strike clips). BLINDSPOT: default does not assert chain SWEEP.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
 	if rig == nil then
 		return unknown("rig not found")
@@ -782,6 +782,23 @@ register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIV
 			end
 		end
 	end
+	-- ROOT-CONNECTIVITY (review-caught): the Animator only applies a Pose nested under the
+	-- keyframe's root-pose chain (live-verified doctrine in AnimationClip.buildScopedPoses) —
+	-- a stray subtree parented directly under the Keyframe never plays, so it must not
+	-- satisfy this check. A matched pose counts only when walking up its Pose ancestors
+	-- terminates at a top-level Pose named after the rig root, directly under the Keyframe.
+	local rootPart = AnimationClip.rigRoot(rig)
+	if rootPart == nil then
+		return unknown("rig has no Motor6D root — cannot judge pose-tree rooting")
+	end
+	local rootName = (rootPart :: Instance).Name
+	local function rootConnected(pose: Instance, kf: Instance): boolean
+		local cur: Instance = pose
+		while cur.Parent ~= nil and (cur.Parent :: Instance):IsA("Pose") do
+			cur = cur.Parent :: Instance
+		end
+		return cur.Parent == kf and cur.Name == rootName
+	end
 	local keyframes = ks:GetKeyframes()
 	local handlePoses = 0
 	local handleCFs: { CFrame } = {}
@@ -791,7 +808,7 @@ register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIV
 		local chainSeen: { [string]: boolean } = {}
 		for _, pose in (kf :: Keyframe):GetDescendants() do
 			local parent = pose.Parent
-			if pose:IsA("Pose") and parent ~= nil and parent:IsA("Pose") then
+			if pose:IsA("Pose") and parent ~= nil and parent:IsA("Pose") and rootConnected(pose, kf) then
 				if not gripSeen and gripPairs[parent.Name] ~= nil and gripPairs[parent.Name][pose.Name] == true then
 					gripSeen = true
 					handlePoses += 1
@@ -836,20 +853,27 @@ register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIV
 		chain_swept_deg = chainSwept,
 	}
 	if handlePoses < 2 then
-		return fail("weapon channel present in only " .. handlePoses .. "/" .. #keyframes .. " keyframes (need >=2 — save with add_keyframe {weapon=true})", mag)
+		return fail("weapon channel present in only " .. handlePoses .. "/" .. #keyframes .. " keyframes (need >=2 root-connected — save with add_keyframe {weapon=true})", mag)
 	end
 	if swept <= minSwept then
 		return fail("weapon channel exists but the grip rotation sweeps only " .. string.format("%.1f", swept) .. " deg across keyframes (min " .. minSwept .. ") — a static Handle pose", mag)
+	end
+	-- DEFAULT ESCALATION (review-caught: suites could never assert the chain): when the rig's
+	-- weapon IS articulated, a clip that leaves the chain entirely UNKEYED fails by default —
+	-- that is the weaponChildNames-regression / forgot-weapon=true defect class. Keyed-but-
+	-- static chains still pass (an idle hold clip legitimately keeps segments straight).
+	if #chainChannels > 0 and chainPosedChannels == 0 then
+		return fail("the weapon has an articulated chain (" .. #chainChannels .. " joint(s)) but NO chain channel is keyed in this clip — save with add_keyframe {weapon=true} (it keys the whole chain)", mag)
 	end
 	if args.require_chain == true then
 		if #chainChannels == 0 then
 			return fail("require_chain: the rig has NO articulated chain joints beyond the grip (segments must be Motor6D-jointed inside the Tool)", mag)
 		end
-		if chainPosedChannels == 0 then
-			return fail("require_chain: no chain channel is posed in >=2 keyframes (key segments via add_keyframe poses + weapon=true)", mag)
+		if chainPosedChannels < #chainChannels then
+			return fail("require_chain: only " .. chainPosedChannels .. "/" .. #chainChannels .. " chain channels are keyed in >=2 keyframes — a weapon is a LIMB; key every segment (add_keyframe poses + weapon=true)", mag)
 		end
 		if chainSwept <= minSwept then
-			return fail("require_chain: chain channels exist but sweep only " .. string.format("%.1f", chainSwept) .. " deg across keyframes (min " .. minSwept .. ") — static segment poses", mag)
+			return fail("require_chain: all chain channels are keyed but sweep only " .. string.format("%.1f", chainSwept) .. " deg across keyframes (min " .. minSwept .. ") — static segment poses", mag)
 		end
 	end
 	return pass(mag)

@@ -158,6 +158,72 @@ local function buildCases(): { Case }
 		return ok, err
 	end)
 
+	add("fitChain: flips a tip-down joint so the channel is drivable (review fix)", function()
+		local holder, handle, seg, m = chainFixture()
+		-- author the joint BACKWARDS: Part0 = the segment, Part1 = the handle (tip-down)
+		m.Part0 = seg
+		m.Part1 = handle
+		local fitted, names, flipped = ToolFactory.fitChain(holder, handle)
+		local ok, err = (function(): (boolean, string?)
+			if flipped ~= 1 then
+				return false, "expected 1 flip, got " .. flipped
+			end
+			if m.Part0 ~= handle or m.Part1 ~= seg then
+				return false, "joint not re-pointed hilt-outward"
+			end
+			if fitted ~= 1 or #names ~= 1 or names[1] ~= "SegA" then
+				return false, "flip did not feed the normal fit/rename path"
+			end
+			local rest = handle.CFrame * m.C0 * m.C1:Inverse()
+			if not cframesClose(rest, seg.CFrame, 1e-4) then
+				return false, "rest pose broken by the flip: " .. tostring(rest)
+			end
+			return true
+		end)()
+		holder:Destroy()
+		return ok, err
+	end)
+
+	add("fitChain: heals an internal reserved-name joint; skips the real external grip", function()
+		local holder, handle = chainFixture()
+		-- rename the internal chain joint to the reserved grip name (builder mistake)
+		local internal = handle:FindFirstChildWhichIsA("Motor6D") :: Motor6D
+		internal.Name = "AgentEditGrip"
+		-- a REAL grip shape: joint named AgentEditGrip parented inside the holder but with
+		-- Part0 OUTSIDE it (the rig's hand) — must be left alone entirely
+		local hand = Instance.new("Part")
+		hand.Name = "RightHand"
+		hand.Anchored = true
+		local realGrip = Instance.new("Motor6D")
+		realGrip.Name = "AgentEditGrip"
+		realGrip.Part0 = hand
+		realGrip.Part1 = handle
+		realGrip.Parent = handle
+		local fitted, names = ToolFactory.fitChain(holder, handle)
+		local ok, err = (function(): (boolean, string?)
+			if internal.Name ~= "SegA" then
+				return false, "internal reserved-name joint not healed: " .. internal.Name
+			end
+			if fitted ~= 1 or #names ~= 1 then
+				return false, string.format("expected the healed joint fit once, got fitted=%d names=%d", fitted, #names)
+			end
+			if internal:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
+				return false, "healed joint not stamped as fitted"
+			end
+			if realGrip.Name ~= "AgentEditGrip" or realGrip.C0 ~= CFrame.identity then
+				return false, "the real external grip joint was touched"
+			end
+			-- the healed joint must have a REAL fit (identity C0 here = the collapse trap)
+			if internal.C0 == CFrame.identity then
+				return false, "healed joint left identity C0 — would collapse at unanchor"
+			end
+			return true
+		end)()
+		holder:Destroy()
+		hand:Destroy()
+		return ok, err
+	end)
+
 	add("toolify: chained parts keep their Motor6D (no weld), loose parts weld", function()
 		local holder, handle, seg = chainFixture()
 		holder.Name = "ChainToolFixture"
