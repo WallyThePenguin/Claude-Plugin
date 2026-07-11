@@ -260,6 +260,26 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
+        if parsed.path == "/animate/retarget":
+            # Library clip -> R15 Motor6D Transform channels (retarget.py world-delta math).
+            # {clip, duration_s, fps, joints: {R15Joint: {times, rot quats}}} — Luau builds the
+            # KeyframeSequence Poses via CFrame.new(0,0,0, qx,qy,qz,qw).
+            try:
+                import retarget
+
+                fname = qs.get("file", ["UAL2_Standard.glb"])[0]
+                clip = qs.get("clip", [""])[0]
+                if not clip:
+                    return self._json(400, {"error": "clip parameter required"})
+                try:
+                    fps = int(qs.get("fps", ["30"])[0])
+                except ValueError:
+                    fps = 30
+                fps = max(5, min(60, fps))
+                return self._json(200, retarget.retarget_reference_clip(fname, clip, fps=fps))
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
         if parsed.path == "/assets/uvmap":
             # The UV-island template PNG (render_uv_template) — the painter's canvas guide.
             try:

@@ -1,0 +1,357 @@
+"""Library-clip -> R15 animation retargeter (the Pilot Doctrine's animation leg, slice 2).
+
+Pure-python world-space delta retargeting — no Blender needed for this leg (the banked plan
+reached for copy-rotation constraints; the constraint math reduces to quaternion algebra on
+data meshio.parse_animation already extracts, because R15 block-rig Motor6D joint frames are
+WORLD-ALIGNED at rest — C0/C1 are translation-only):
+
+    Transform(J, t) = Dw(parentBone(J), t)^-1 * Dw(bone(J), t)
+    where Dw(B, t)  = Wanim(B, t) * Wrest(B)^-1   (B's world-rotation delta from ITS rest)
+
+The product TELESCOPES down the joint chain, so the R15 rig reproduces the source skeleton's
+WORLD orientations frame-by-frame regardless of proportion differences, and unmapped
+intermediate bones (clavicles, the 3-segment spine, fingers) fold into their nearest mapped
+ancestor automatically. Assumes source rest pose ~= R15 rest pose per mapped bone (both
+T-pose families — verify by filmstrip; a per-bone rest-offset correction is the escalation).
+
+Output JSON (per clip): {clip, duration_s, fps, joints: {R15JointName: {times: [...],
+rot: [[qx,qy,qz,qw], ...]}}} — quaternions land in Luau as CFrame.new(0,0,0, qx,qy,qz,qw)
+for KeyframeSequence Poses. Root translation is NOT emitted (v1: in-place clips).
+
+The UAL2->R15 name map covers Quaternius' UE-mannequin-style skeleton (Universal Animation
+Library 2); other libraries add their own map here.
+"""
+
+import json
+import math
+import os
+
+import meshio
+
+SPEC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "specs", "r15-skeleton.json")
+
+# R15 Motor6D joint -> (source bone, source bone of the R15 PARENT joint; None = world/HRP).
+# World-delta division by the parent bone makes intermediate source bones fold in.
+UAL2_MAP = {
+    "Root": ("pelvis", None),
+    "Waist": ("spine_03", "pelvis"),
+    "Neck": ("Head", "spine_03"),
+    "LeftShoulder": ("upperarm_l", "spine_03"),
+    "LeftElbow": ("lowerarm_l", "upperarm_l"),
+    "LeftWrist": ("hand_l", "lowerarm_l"),
+    "RightShoulder": ("upperarm_r", "spine_03"),
+    "RightElbow": ("lowerarm_r", "upperarm_r"),
+    "RightWrist": ("hand_r", "lowerarm_r"),
+    "LeftHip": ("thigh_l", "pelvis"),
+    "LeftKnee": ("calf_l", "thigh_l"),
+    "LeftAnkle": ("foot_l", "calf_l"),
+    "RightHip": ("thigh_r", "pelvis"),
+    "RightKnee": ("calf_r", "thigh_r"),
+    "RightAnkle": ("foot_r", "calf_r"),
+}
+
+
+# ---- quaternion helpers (xyzw, right-handed, unit) ----
+
+def q_mul(a, b):
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    ]
+
+
+def q_inv(q):
+    return [-q[0], -q[1], -q[2], q[3]]
+
+
+def q_norm(q):
+    m = math.sqrt(sum(c * c for c in q)) or 1.0
+    return [c / m for c in q]
+
+
+def q_slerp(a, b, t):
+    """Normalized-lerp with shortest-path sign fix — indistinguishable from true slerp at the
+    dense keyframe spacing baked library clips use, and total (no domain errors)."""
+    d = sum(x * y for x, y in zip(a, b))
+    if d < 0.0:
+        b = [-c for c in b]
+    return q_norm([x + (y - x) * t for x, y in zip(a, b)])
+
+
+# ---- glTF skeleton walk ----
+
+def _rest_locals(gltf):
+    """node index -> rest local rotation (xyzw). Matrix-form nodes are not expected in
+    Quaternius exports; rotation defaults to identity."""
+    out = {}
+    for i, n in enumerate(gltf.get("nodes", [])):
+        out[i] = list(n.get("rotation", [0.0, 0.0, 0.0, 1.0]))
+    return out
+
+
+def _parents(gltf):
+    parent = {}
+    for ni, n in enumerate(gltf.get("nodes", [])):
+        for c in n.get("children", []):
+            parent[int(c)] = ni
+    return parent
+
+
+def _name_index(gltf):
+    return {n.get("name", f"node{i}"): i for i, n in enumerate(gltf.get("nodes", []))}
+
+
+def q_rot_vec(q, v):
+    x, y, z, w = q
+    vx, vy, vz = v
+    uvx = 2 * (y * vz - z * vy)
+    uvy = 2 * (z * vx - x * vz)
+    uvz = 2 * (x * vy - y * vx)
+    return [
+        vx + w * uvx + (y * uvz - z * uvy),
+        vy + w * uvy + (z * uvx - x * uvz),
+        vz + w * uvz + (x * uvy - y * uvx),
+    ]
+
+
+def q_from_to(a, b):
+    """Shortest-arc quaternion rotating unit vector a onto unit vector b (xyzw)."""
+    d = max(-1.0, min(1.0, sum(x * y for x, y in zip(a, b))))
+    if d > 0.99999:
+        return [0.0, 0.0, 0.0, 1.0]
+    if d < -0.99999:
+        ax = [0.0, -a[2], a[1]] if abs(a[0]) < 0.9 else [-a[1], a[0], 0.0]
+        m = math.sqrt(sum(c * c for c in ax)) or 1.0
+        return [ax[0] / m, ax[1] / m, ax[2] / m, 0.0]
+    cx = a[1] * b[2] - a[2] * b[1]
+    cy = a[2] * b[0] - a[0] * b[2]
+    cz = a[0] * b[1] - a[1] * b[0]
+    return q_norm([cx, cy, cz, 1.0 + d])
+
+
+def _rest_world_positions(gltf):
+    """node index -> rest world position (composing the TRS chain; scale ignored — Quaternius
+    exports are unit-scale)."""
+    nodes = gltf.get("nodes", [])
+    parent = _parents(gltf)
+    cache = {}
+
+    def pos(ni):
+        if ni in cache:
+            return cache[ni]
+        chain = []
+        n = ni
+        while n is not None:
+            chain.append(n)
+            n = parent.get(n)
+        q = [0.0, 0.0, 0.0, 1.0]
+        t = [0.0, 0.0, 0.0]
+        for n in reversed(chain):
+            node = nodes[n]
+            lt = list(node.get("translation", [0.0, 0.0, 0.0]))
+            rt = q_rot_vec(q, lt)
+            t = [t[i] + rt[i] for i in range(3)]
+            q = q_mul(q, list(node.get("rotation", [0.0, 0.0, 0.0, 1.0])))
+        cache[ni] = t
+        return t
+
+    return {i: pos(i) for i in range(len(nodes))}
+
+
+# Source bone -> the bone whose rest position defines its DIRECTION (limb child). Bones absent
+# here (torso chain, head, feet) keep identity alignment — near-vertical on both skeletons.
+UAL2_DIR_CHILD = {
+    "upperarm_l": "lowerarm_l", "lowerarm_l": "hand_l", "hand_l": "middle_01_l",
+    "upperarm_r": "lowerarm_r", "lowerarm_r": "hand_r", "hand_r": "middle_01_r",
+    "thigh_l": "calf_l", "calf_l": "foot_l",
+    "thigh_r": "calf_r", "calf_r": "foot_r",
+}
+
+# R15 joint -> (pivot of, pivot toward) for the TARGET rest limb direction, from the skeleton
+# spec. Wrists point straight down at rest (no finger pivot in the spec).
+R15_DIR = {
+    "LeftShoulder": ("LeftShoulder", "LeftElbow"), "LeftElbow": ("LeftElbow", "LeftWrist"),
+    "LeftWrist": ("LeftWrist", None),
+    "RightShoulder": ("RightShoulder", "RightElbow"), "RightElbow": ("RightElbow", "RightWrist"),
+    "RightWrist": ("RightWrist", None),
+    "LeftHip": ("LeftHip", "LeftKnee"), "LeftKnee": ("LeftKnee", "LeftAnkle"),
+    "RightHip": ("RightHip", "RightKnee"), "RightKnee": ("RightKnee", "RightAnkle"),
+}
+
+
+def _conv(q):
+    """glTF-world -> Roblox-world: characters face +Z in glTF, -Z in Roblox — RotY(pi)
+    conjugation, which on quaternions flips the X and Z components (measured live: without it
+    the rig scrambles)."""
+    return [-q[0], q[1], -q[2], q[3]]
+
+
+def _alignments(gltf, name_map, spec_path):
+    """Per-SOURCE-BONE rest-offset quaternions A_b: the shortest arc taking the TARGET's rest
+    limb direction onto the (facing-converted) SOURCE rest limb direction. Bridges mismatched
+    rest poses (R15 rests arms-down ~33deg off vertical; UAL2 rests in a T-pose — measured:
+    pure world-deltas left the rig in a twisted crouch). Bones without direction data stay
+    identity."""
+    with open(spec_path or SPEC_PATH, "r", encoding="utf-8") as fh:
+        spec = json.load(fh)
+    pivots = {j["name"]: [j["pivot"]["x"], j["pivot"]["y"], j["pivot"]["z"]] for j in spec["joints"]}
+    names = _name_index(gltf)
+    positions = _rest_world_positions(gltf)
+    align = {}
+    for joint, (bone, _pbone) in name_map.items():
+        childname = UAL2_DIR_CHILD.get(bone)
+        dirspec = R15_DIR.get(joint)
+        if childname is None or dirspec is None:
+            continue
+        if bone not in names or childname not in names:
+            continue
+        a = positions[names[bone]]
+        b = positions[names[childname]]
+        sdir = [b[i] - a[i] for i in range(3)]
+        m = math.sqrt(sum(c * c for c in sdir))
+        if m < 1e-6:
+            continue
+        sdir = [c / m for c in sdir]
+        sdir = [-sdir[0], sdir[1], -sdir[2]]  # facing conversion, vector form
+        p_from, p_to = dirspec
+        if p_to is None:
+            tdir = [0.0, -1.0, 0.0]
+        else:
+            pa, pb = pivots[p_from], pivots[p_to]
+            tdir = [pb[i] - pa[i] for i in range(3)]
+            tm = math.sqrt(sum(c * c for c in tdir)) or 1.0
+            tdir = [c / tm for c in tdir]
+        align[bone] = q_from_to(tdir, sdir)
+    return align
+
+
+def _sample(track, t):
+    """Sample a {times, values} rotation channel at time t (LINEAR, clamped ends)."""
+    times, values = track["times"], track["values"]
+    if not times:
+        return None
+    if t <= times[0]:
+        return list(values[0])
+    if t >= times[-1]:
+        return list(values[-1])
+    lo, hi = 0, len(times) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if times[mid] <= t:
+            lo = mid
+        else:
+            hi = mid
+    span = times[hi] - times[lo]
+    f = (t - times[lo]) / span if span > 0 else 0.0
+    return q_slerp(list(values[lo]), list(values[hi]), f)
+
+
+def retarget_clip(glb_path, clip_name, fps=30, name_map=None, spec_path=None):
+    """Retarget one named library clip onto the R15 skeleton. Returns the joints-JSON dict."""
+    name_map = name_map or UAL2_MAP
+    clip = meshio.parse_animation(glb_path, clip_name)
+    gltf, _ = meshio._read_glb(glb_path)
+    rest = _rest_locals(gltf)
+    parent = _parents(gltf)
+    names = _name_index(gltf)
+
+    # animated local-rotation channels by node index
+    channels = {}
+    for node_name, chans in clip["joints"].items():
+        if "rotation" in chans and node_name in names:
+            channels[names[node_name]] = chans["rotation"]
+
+    duration = clip["duration_s"]
+    steps = max(1, round(duration * fps))
+    times = [round(i * duration / steps, 5) for i in range(steps + 1)]
+
+    def world_rot(ni, t, animated):
+        q = None
+        node = ni
+        while node is not None:
+            local = None
+            if animated and node in channels:
+                local = _sample(channels[node], t)
+            if local is None:
+                local = rest.get(node, [0.0, 0.0, 0.0, 1.0])
+            q = local if q is None else q_mul(local, q)
+            node = parent.get(node)
+        return q_norm(q if q is not None else [0.0, 0.0, 0.0, 1.0])
+
+    # world deltas per mapped source bone, per grid time
+    needed = set()
+    for bone, pbone in name_map.values():
+        needed.add(bone)
+        if pbone is not None:
+            needed.add(pbone)
+    deltas = {}
+    for bone in needed:
+        ni = names.get(bone)
+        if ni is None:
+            continue
+        w_rest = world_rot(ni, 0.0, animated=False)
+        w_rest_inv = q_inv(w_rest)
+        deltas[bone] = [q_norm(q_mul(world_rot(ni, t, animated=True), w_rest_inv)) for t in times]
+
+    align = _alignments(gltf, name_map, spec_path)
+    identity = [0.0, 0.0, 0.0, 1.0]
+
+    joints = {}
+    for joint, (bone, pbone) in name_map.items():
+        if bone not in deltas:
+            continue
+        if pbone is not None and pbone not in deltas:
+            continue  # named parent missing from the file: an undivided track would DOUBLE-COUNT
+            # inherited motion — omit the joint rather than emit a knowingly-wrong channel
+        a_b = align.get(bone, identity)
+        a_p = align.get(pbone, identity) if pbone is not None else identity
+        track = []
+        moving = False
+        for i in range(len(times)):
+            # Transform = A_p^-1 * Conv(Dp)^-1 * Conv(Db) * A_b  — facing-converted world deltas
+            # (RotY(pi) conjugation; measured: raw axes scramble the rig) bridged across the
+            # mismatched rest poses by the per-bone alignment offsets.
+            db = _conv(deltas[bone][i])
+            d = db
+            if pbone is not None and pbone in deltas:
+                d = q_mul(q_inv(_conv(deltas[pbone][i])), db)
+            d = q_norm(q_mul(q_inv(a_p), q_mul(d, a_b)))
+            if abs(d[3]) < 0.99999:  # any real rotation on any frame -> keep the track
+                moving = True
+            track.append([round(c, 5) for c in d])
+        if moving:
+            joints[joint] = {"times": times, "rot": track}
+
+    return {
+        "clip": clip_name,
+        "duration_s": duration,
+        "fps": fps,
+        "source": os.path.basename(glb_path),
+        "joints": joints,
+    }
+
+
+def retarget_reference_clip(filename, clip_name, fps=30):
+    """Allowlisted assets/reference entry point (the /animate/retarget route)."""
+    if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
+        raise meshio.MeshError("bad filename")
+    if not filename.lower().endswith(".glb"):
+        raise meshio.MeshError("only .glb files are supported")
+    path = os.path.join(meshio.ASSET_DIR, filename)
+    if not os.path.isfile(path):
+        raise meshio.MeshError(f"no such reference asset: {filename}")
+    return retarget_clip(path, clip_name, fps=fps)
+
+
+if __name__ == "__main__":
+    import sys
+
+    fname = sys.argv[1] if len(sys.argv) > 1 else "UAL2_Standard.glb"
+    cname = sys.argv[2] if len(sys.argv) > 2 else "Sword_Regular_A"
+    out = retarget_reference_clip(fname, cname)
+    print(json.dumps({k: (v if k != "joints" else {j: len(t["times"]) for j, t in v.items()})
+                      for k, v in out.items()}, indent=1))
