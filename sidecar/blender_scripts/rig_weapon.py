@@ -52,6 +52,13 @@ ap.add_argument("--uv-angle", dest="uv_angle", type=float, default=66.0,
                      "(fewer, larger islands paint better)")
 ap.add_argument("--uv-margin", dest="uv_margin", type=float, default=0.02,
                 help="island margin (UV space) — the gutter that absorbs painter bleed")
+ap.add_argument("--canon", default="long-y", choices=["none", "long-y"],
+                help="long-y (default) = PCA-rotate so the principal (long) axis lands on ROBLOX "
+                     "vertical (+Y in the exported glTF). In Blender coords that is +Z — the glTF "
+                     "exporter's +Y-up conversion maps Blender Z->glTF Y (and Blender Y->glTF -Z; "
+                     "live-caught: a Blender-Y-long sword imported lying flat). Second axis -> "
+                     "Blender X, thinnest -> Blender Y. Every downstream stage (planar UVs, grip "
+                     "detection, extents gate) sees one canonical frame")
 args = ap.parse_args(argv)
 
 if args.mode == "skinned":
@@ -59,6 +66,18 @@ if args.mode == "skinned":
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=args.in_glb)
+
+
+def mesh_extents(o):
+    """Per-axis extents straight from the vertices. obj.dimensions is STALE right after
+    obj.data.transform in background mode (live-caught: the scale step read pre-rotation dims
+    and overshot target-studs by 38%) — never trust it between edits."""
+    vs = o.data.vertices
+    if not vs:
+        return (0.0, 0.0, 0.0)
+    lo = [min(v.co[i] for v in vs) for i in range(3)]
+    hi = [max(v.co[i] for v in vs) for i in range(3)]
+    return tuple(hi[i] - lo[i] for i in range(3))
 
 meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
 if not meshes:
@@ -113,7 +132,7 @@ if tri_count > args.tri_budget:
     # untextured EditableMesh import (texture streaming is a separate leg).
     rm = obj.modifiers.new("remesh", "REMESH")
     rm.mode = "VOXEL"
-    rm.voxel_size = max(obj.dimensions) / 200.0
+    rm.voxel_size = max(mesh_extents(obj)) / 200.0
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.modifier_apply(modifier=rm.name)
     bm = bmesh.new()
@@ -124,9 +143,34 @@ if tri_count > args.tri_budget:
     print(f"remesh escalation: {len(obj.data.polygons)} tris after voxel remesh")
     tri_count = decimate_to(args.tri_budget)
 
+# orientation canonicalization: PCA-rotate so principal axis -> +Y, second -> +Z, thinnest -> +X.
+# Runs BEFORE scale/recenter so extents, grip detection, and the planar unwrap all live in the
+# canonical frame. Sign ambiguity (a PCA axis is a line, not a ray) is left to downstream
+# grip-end detection — a 180-degree flip changes nothing it can't handle.
+if args.canon == "long-y":
+    import numpy as np
+    from mathutils import Matrix
+
+    pts = np.array([v.co[:] for v in obj.data.vertices])
+    pts -= pts.mean(axis=0)
+    evals, evecs = np.linalg.eigh(pts.T @ pts)  # ascending eigenvalues
+    # basis columns (BLENDER frame): X <- middle spread, Y <- smallest, Z <- largest (long).
+    # Blender +Z is what the glTF +Y-up export turns into Roblox vertical.
+    basis = np.column_stack([evecs[:, 1], evecs[:, 0], evecs[:, 2]])
+    if np.linalg.det(basis) < 0:
+        basis[:, 0] = -basis[:, 0]  # keep it a proper rotation
+    rot = basis.T  # new_co = basis^T @ co
+    mat = Matrix([[rot[0][0], rot[0][1], rot[0][2], 0.0],
+                  [rot[1][0], rot[1][1], rot[1][2], 0.0],
+                  [rot[2][0], rot[2][1], rot[2][2], 0.0],
+                  [0.0, 0.0, 0.0, 1.0]])
+    obj.data.transform(mat)
+    obj.data.update()
+    print(f"canon long-y: dims now {tuple(round(d, 3) for d in mesh_extents(obj))}")
+
 # scale: longest extent -> target studs (EditableMesh coords stream as raw studs)
-dims = obj.dimensions
-longest = max(dims.x, dims.y, dims.z)
+dims = mesh_extents(obj)
+longest = max(dims)
 if longest > 1e-6:
     f = args.target_studs / longest
     obj.scale = (f, f, f)
@@ -174,7 +218,7 @@ elif args.uv == "planar":
     while obj.data.uv_layers:
         obj.data.uv_layers.remove(obj.data.uv_layers[0])
     mesh = obj.data
-    dims = obj.dimensions
+    dims = mesh_extents(obj)
     order = sorted(range(3), key=lambda i: -dims[i])
     ax_u, ax_v = order[0], order[1]
     lo_u = min(v.co[ax_u] for v in mesh.vertices)
@@ -185,20 +229,25 @@ elif args.uv == "planar":
     span_v = max(hi_v - lo_v, 1e-9)
     m = max(0.0, min(0.2, args.uv_margin))
     usable = 1.0 - 2.0 * m
+    # ASPECT-TRUE: one scale for both axes (independent normalization distorts the silhouette,
+    # which hurts painter alignment and makes texel density anisotropic); the shorter axis is
+    # centered in its leftover space.
+    scale = usable / max(span_u, span_v)
+    off_u = (1.0 - span_u * scale) / 2.0
+    off_v = (1.0 - span_v * scale) / 2.0
     layer = mesh.uv_layers.new(name="UVMap")
     for loop in mesh.loops:
         co = mesh.vertices[loop.vertex_index].co
-        u = (co[ax_u] - lo_u) / span_u
-        w = (co[ax_v] - lo_v) / span_v
-        layer.data[loop.index].uv = (m + u * usable, m + w * usable)
+        layer.data[loop.index].uv = (off_u + (co[ax_u] - lo_u) * scale,
+                                     off_v + (co[ax_v] - lo_v) * scale)
     uv_stats = {"uv": "planar", "uv_axes": "XYZ"[ax_u] + "XYZ"[ax_v], "uv_margin": m,
                 "uv_layers": len(mesh.uv_layers)}
-    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} layers={len(mesh.uv_layers)}")
+    print(f"planar uv: axes={uv_stats['uv_axes']} margin={m} aspect-true scale={scale:.4f}")
 
 bones_manifest = []
 if args.mode == "rigid":
     # ---- deterministic weapon armature ----
-    dims = obj.dimensions
+    dims = mesh_extents(obj)
     axis = max(range(3), key=lambda i: dims[i])  # the LONG axis index
     lo = min(v.co[axis] for v in obj.data.vertices)
     hi = max(v.co[axis] for v in obj.data.vertices)
@@ -282,7 +331,7 @@ manifest = {
     "tris_in": before_f,
     "verts": final_verts,
     "tris": final_tris,
-    "extents_studs": [round(d, 3) for d in obj.dimensions],
+    "extents_studs": [round(d, 3) for d in mesh_extents(obj)],
     "target_studs": args.target_studs,
     "bones": bones_manifest,
     **uv_stats,

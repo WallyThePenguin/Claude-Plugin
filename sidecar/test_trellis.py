@@ -71,6 +71,13 @@ def main():
         fails += _check("GLB response written", r["ok"] is True and os.path.exists(out_glb))
         fails += _check("byte count reported", r.get("bytes") == 68)
         fails += _check("no tmp residue", not os.path.exists(out_glb + ".tmp"))
+
+        # NO no_texture param, deliberately: probed live 2026-07-11 — the per-request multipart
+        # field is silently ignored by trellis-server v0.1.5 (--no-texture is launch-only), so a
+        # param would be a lying knob. Guard that it stays absent until a server version honors it.
+        import inspect
+        fails += _check("generate refuses a lying no_texture knob (server ignores the field)",
+                        "no_texture" not in inspect.signature(trellis.generate).parameters)
     finally:
         trellis.ensure_server = real_ensure
         trellis.urllib.request.urlopen = real_open

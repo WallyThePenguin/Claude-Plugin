@@ -121,7 +121,12 @@ def _multipart(fields, file_field, file_name, file_bytes):
 def generate(image_path, out_glb, resolution=1024, bg_removal="birefnet", seed=42):
     """image file -> textured GLB at out_glb. Returns dict {ok, wall_s, bytes, error?}.
 
-    The caller owns retry policy (plan: <=2 re-seeds) and post-validation (meshio/trimesh).
+    NO shape-only knob, deliberately: the binary's --no-texture is a LAUNCH flag; a per-request
+    `no_texture` multipart field is SILENTLY IGNORED (probed live 2026-07-11 on v0.1.5: the
+    output kept 2 embedded images + TEXCOORD_0 — same unknown-field-dropped behavior as `res`).
+    The painted-texture path simply ignores the baked atlas downstream; a param that lies would
+    be a factory trap. The caller owns retry policy (plan: <=2 re-seeds) and post-validation
+    (meshio/trimesh).
     """
     t0 = time.time()
     if not os.path.isfile(image_path):
