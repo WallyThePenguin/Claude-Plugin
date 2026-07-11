@@ -290,6 +290,69 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("weaponChildNames walks the articulated chain from the grip's Part1", function()
+		local rig = branchedRig()
+		local function part(name: string): BasePart
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Parent = rig
+			return p
+		end
+		local function joint(name: string, p0: BasePart, p1: BasePart)
+			local m = Instance.new("Motor6D")
+			m.Name = name
+			m.Part0 = p0
+			m.Part1 = p1
+			m.Parent = p0
+		end
+		local handle = part("Handle")
+		local segA = part("SegA")
+		local segB = part("SegB")
+		local hand = rig:FindFirstChild("RightLowerArm") :: BasePart
+		joint("AgentEditGrip", hand, handle)
+		joint("SegA", handle, segA)
+		joint("SegB", segA, segB)
+		local names = AnimationClip.weaponChildNames(rig)
+		if #names ~= 3 or names[1] ~= "Handle" or names[2] ~= "SegA" or names[3] ~= "SegB" then
+			return false, "expected {Handle, SegA, SegB}, got {" .. table.concat(names, ", ") .. "}"
+		end
+		-- body joints (the arm chain ABOVE the grip) must not leak into the weapon channel list
+		for _, n in names do
+			if n == "RightLowerArm" or n == "RightUpperArm" then
+				return false, "body joint leaked into the weapon chain: " .. n
+			end
+		end
+		return true
+	end)
+
+	add("weaponChildNames terminates on a pathological joint cycle", function()
+		local rig = branchedRig()
+		local function part(name: string): BasePart
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Parent = rig
+			return p
+		end
+		local function joint(name: string, p0: BasePart, p1: BasePart)
+			local m = Instance.new("Motor6D")
+			m.Name = name
+			m.Part0 = p0
+			m.Part1 = p1
+			m.Parent = p0
+		end
+		local handle = part("Handle")
+		local segA = part("SegA")
+		local hand = rig:FindFirstChild("RightLowerArm") :: BasePart
+		joint("AgentEditGrip", hand, handle)
+		joint("SegA", handle, segA)
+		joint("CycleBack", segA, handle) -- Handle already seen; must neither loop nor duplicate
+		local names = AnimationClip.weaponChildNames(rig)
+		if #names ~= 2 or names[1] ~= "Handle" or names[2] ~= "SegA" then
+			return false, "expected {Handle, SegA}, got {" .. table.concat(names, ", ") .. "}"
+		end
+		return true
+	end)
+
 	add(
 		"buildScopedPoses includes the scoped chain + ancestor carriers, pruning siblings",
 		function()

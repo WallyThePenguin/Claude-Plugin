@@ -90,24 +90,78 @@ local function resolveHandle(parts: { BasePart }, target: Instance, handleHint: 
 	return parts[1]
 end
 
--- Turn a built Part/Model into an equippable Tool. (Tool?, err?). The Handle is renamed "Handle"; every
--- other part is WeldConstraint'd to it; all parts are unanchored; an emptied Model wrapper is destroyed.
+-- The Motor6Ds that join two of the target's OWN parts — a builder-authored articulated chain
+-- (weapon-as-limb, 2026-07-11: snake sword / flail segments jointed from the hilt up).
+local function chainJointsAmong(target: Instance, parts: { BasePart }): { Motor6D }
+	local inSet: { [Instance]: boolean } = {}
+	for _, p in parts do
+		inSet[p] = true
+	end
+	local joints: { Motor6D } = {}
+	for _, d in target:GetDescendants() do
+		if
+			d:IsA("Motor6D")
+			and d.Part0 ~= nil
+			and d.Part1 ~= nil
+			and inSet[d.Part0 :: Instance] == true
+			and inSet[d.Part1 :: Instance] == true
+		then
+			table.insert(joints, d)
+		end
+	end
+	return joints
+end
+
+-- Turn a built Part/Model into an equippable Tool. (Tool?, err?, chainCount). The Handle is renamed
+-- "Handle"; parts reachable from it through builder-authored Motor6Ds are the ARTICULATED CHAIN and
+-- keep their joints (each is an animatable pose channel — a WeldConstraint would freeze the joint
+-- and fight the Animator); every other part is WeldConstraint'd to the Handle; all parts are
+-- unanchored; chain joints are re-homed under their Part0 (they must ride the Tool, not die with
+-- the emptied Model wrapper) and fit via fitChain; the wrapper is destroyed.
 -- THROWS only on an engine failure (callers pcall); returns (nil, err) for a bad target.
 function ToolFactory.toolify(
 	target: Instance,
 	handleHint: Instance?,
 	toolName: string?
-): (Tool?, string?)
+): (Tool?, string?, number)
 	-- A target with a Humanoid is a RIG, not an item: toolifying it welds every body part to one
 	-- Handle and parents the character into a Tool (the rig-inside-rig live mess, 2026-07-10).
 	if target:FindFirstChildWhichIsA("Humanoid", true) ~= nil then
-		return nil, "refusing to toolify a rig — target contains a Humanoid"
+		return nil, "refusing to toolify a rig — target contains a Humanoid", 0
 	end
 	local parts = collectParts(target)
 	if #parts == 0 then
-		return nil, "no BaseParts under the target to make a Tool from"
+		return nil, "no BaseParts under the target to make a Tool from", 0
 	end
 	local handle = resolveHandle(parts, target, handleHint)
+	-- the chained set: parts connected to the Handle through Motor6Ds (undirected closure —
+	-- a builder may point Part0 either way along the chain)
+	local joints = chainJointsAmong(target, parts)
+	local chained: { [Instance]: boolean } = { [handle] = true }
+	local grew = true
+	while grew do
+		grew = false
+		for _, j in joints do
+			local a, b = j.Part0 :: Instance, j.Part1 :: Instance
+			if chained[a] and not chained[b] then
+				chained[b] = true
+				grew = true
+			end
+			if chained[b] and not chained[a] then
+				chained[a] = true
+				grew = true
+			end
+		end
+	end
+	-- FIT THE CHAIN FIRST, while the parts are still ANCHORED in their built placement
+	-- (live-caught 2026-07-11: the moment a Motor6D's parts are unanchored, the edit-mode
+	-- assembly solver SNAPS Part1 to satisfy C0*Transform*C1^-1 — with the default identity
+	-- C0/C1 that collapses every segment onto the Handle, and a fit computed afterwards
+	-- freezes the collapse. Fit-then-unanchor makes the solver enforcement reproduce the
+	-- built geometry instead of destroying it.)
+	if #joints > 0 then
+		ToolFactory.fitChain(target)
+	end
 	local tool = Instance.new("Tool")
 	tool.Name = if toolName ~= nil and toolName ~= "" then toolName else target.Name
 	tool.RequiresHandle = true
@@ -123,11 +177,22 @@ function ToolFactory.toolify(
 	for _, p in parts do
 		if p ~= handle then
 			p.Anchored = false
-			local wc = Instance.new("WeldConstraint")
-			wc.Part0 = handle
-			wc.Part1 = p
-			wc.Parent = handle
+			if not chained[p] then
+				local wc = Instance.new("WeldConstraint")
+				wc.Part0 = handle
+				wc.Part1 = p
+				wc.Parent = handle
+			end
 			p.Parent = tool
+		end
+	end
+	-- re-home chain joints under Part0 (the body-joint convention) BEFORE the wrapper dies
+	local chainCount = 0
+	for _, j in joints do
+		local a, b = j.Part0 :: Instance, j.Part1 :: Instance
+		if chained[a] and chained[b] then
+			j.Parent = a
+			chainCount += 1
 		end
 	end
 	handle.Parent = tool
@@ -135,7 +200,55 @@ function ToolFactory.toolify(
 	if target:IsA("Model") and target ~= tool then
 		target:Destroy()
 	end
-	return tool, nil
+	return tool, nil, chainCount
+end
+
+-- Chain fit (weapon-as-limb, 2026-07-11): freeze the BUILT geometry into each chain joint's
+-- C0/C1 so Transform=identity reproduces exactly the placement the builder authored:
+--   C1 = the HINGE point in Part1-local space — Part0's center clamped into Part1's half-size
+--        box (the near-face center), so a segment bends at its BASE, not about its center;
+--   C0 = the Part0-relative placement folded through C1: Motor6D kinematics are
+--        Part1.CFrame = Part0.CFrame * C0 * Transform * C1^-1, so at rest
+--        C0 = Part0.CFrame^-1 * Part1.CFrame * C1 (exact by construction).
+-- A joint whose C0 or C1 is already non-identity was authored deliberately and is left alone
+-- (but still stamped + counted as a chain channel). Joints keeping the Instance.new default
+-- name ("Motor6D") are renamed after their Part1 — pose channels are addressed by joint NAME
+-- in add_keyframe poses maps (RigWorkbench.findJoint) and by PART name in the clip's Pose
+-- tree; naming the joint after Part1 makes those coincide. Idempotent via SAChainFitted.
+-- Returns (fittedCount, chainJointNames).
+ToolFactory.CHAIN_FITTED_ATTR = "SAChainFitted"
+
+function ToolFactory.fitChain(tool: Instance): (number, { string })
+	local fitted = 0
+	local names: { string } = {}
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Motor6D") and d.Name ~= "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
+			local p0 = d.Part0 :: BasePart
+			local p1 = d.Part1 :: BasePart
+			if d.Name == "Motor6D" or d.Name == "" then
+				d.Name = p1.Name
+			end
+			table.insert(names, d.Name)
+			if d:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
+				if d.C0 == CFrame.identity and d.C1 == CFrame.identity then
+					local toward = p1.CFrame:PointToObjectSpace(p0.Position)
+					local half = p1.Size / 2
+					local hinge = Vector3.new(
+						math.clamp(toward.X, -half.X, half.X),
+						math.clamp(toward.Y, -half.Y, half.Y),
+						math.clamp(toward.Z, -half.Z, half.Z)
+					)
+					local c1 = CFrame.new(hinge)
+					d.C1 = c1
+					d.C0 = p0.CFrame:ToObjectSpace(p1.CFrame * c1)
+					d.Transform = CFrame.identity
+					fitted += 1
+				end
+				d:SetAttribute(ToolFactory.CHAIN_FITTED_ATTR, true)
+			end
+		end
+	end
+	return fitted, names
 end
 
 -- Resolve a rig: an explicit Model with a Humanoid, else the first workspace Model with a Humanoid +
@@ -200,10 +313,17 @@ local function cframeFromString(s: string): CFrame?
 	return if ok then cf else nil
 end
 
--- Snapshot every rig joint's pre-hold C0/C1 (skips AgentEditGrip — ours, destroyed on release).
+-- Snapshot every rig joint's pre-hold C0/C1 (skips AgentEditGrip — ours, destroyed on release —
+-- and Tool-INTERNAL joints: an articulated weapon's chain C0/C1 are its FIT, not a hold pose;
+-- snapshotting them at equip would let release() revert a later re-fit, and they travel with
+-- the Tool anyway).
 local function snapshotHoldPose(rig: Model)
 	for _, d in rig:GetDescendants() do
-		if d:IsA("Motor6D") and d.Name ~= "AgentEditGrip" then
+		if
+			d:IsA("Motor6D")
+			and d.Name ~= "AgentEditGrip"
+			and d:FindFirstAncestorWhichIsA("Tool") == nil
+		then
 			if d:GetAttribute(ToolFactory.HOLD_C0_ATTR) == nil then
 				d:SetAttribute(ToolFactory.HOLD_C0_ATTR, cframeToString(d.C0))
 				d:SetAttribute(ToolFactory.HOLD_C1_ATTR, cframeToString(d.C1))

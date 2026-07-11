@@ -116,9 +116,11 @@ local function runAdd(input: any, _context: any): (string, boolean)
 	if scopeErr ~= nil then
 		return "add_keyframe: " .. scopeErr, true
 	end
-	-- WEAPON channel (SP2c): weapon=true keys the equipped tool's Handle too (Pose named after the
-	-- AgentEditGrip joint's Part1, nested under RightHand — the Animator matches by connected-part
-	-- names). Full-body snapshots already include it; a scope must have it appended explicitly.
+	-- WEAPON channel (SP2c; chain-aware 2026-07-11 "a weapon is a limb"): weapon=true keys the
+	-- equipped tool's Handle AND every articulated segment reachable from it (Motor6D chain inside
+	-- the Tool — snake sword / flail). Poses are named after each joint's Part1, nested under its
+	-- Part0's pose (the Animator matches by connected-part names). Full-body snapshots already
+	-- include them; a scope must have them appended explicitly.
 	if args.weapon == true then
 		local wnames = AnimationClip.weaponChildNames(rig :: Instance)
 		if #wnames == 0 then
@@ -338,8 +340,10 @@ Animate.descriptors = {
 			.. "(optional — keys only a subset of joints: 'rightArm' for an item swing/use clip so the "
 			.. "legs/torso keep their own animation, 'upperBody', or an array of joint child-part names; "
 			.. "omit for a full-body clip), weapon (optional boolean — ALSO key the equipped Tool's "
-			.. "Handle so the clip moves the WEAPON itself; pose the grip via poses={AgentEditGrip={x=40}} "
-			.. "with weapon=true, scope='rightArm'). "
+			.. "Handle AND its whole articulated joint chain (segments Motor6D-jointed inside the Tool, "
+			.. "e.g. a snake sword's SegA/SegB) so the clip moves the WEAPON itself; pose the grip via "
+			.. "poses={AgentEditGrip={x=40}} and segments via poses={SegA={z=25}} with weapon=true, "
+			.. "scope='rightArm'). "
 			.. "Re-snapshots replace any keyframe already at that time. Stale playing AnimationTracks "
 			.. "are stopped first (noted in the result), and every batch-posed joint is READ BACK after "
 			.. "apply — a >2 deg mismatch errors and refuses the keyframe (no silent frozen snapshots). "
@@ -367,8 +371,9 @@ Animate.descriptors = {
 				},
 				weapon = {
 					type = "boolean",
-					description = "true = ALSO key the equipped Tool's Handle (the AgentEditGrip weapon "
-						.. "channel) so the clip animates the weapon itself.",
+					description = "true = ALSO key the equipped Tool's Handle plus its articulated "
+						.. "segment chain (the AgentEditGrip weapon channel + Tool-internal Motor6Ds) "
+						.. "so the clip animates the weapon itself.",
 				},
 			},
 		},

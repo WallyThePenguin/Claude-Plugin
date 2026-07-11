@@ -520,26 +520,55 @@ end)
 
 local AnimationClip = require(script.Parent.Parent.AnimationClip)
 
-register("joint_census", "EDIT_OK", "Joint inventory for rig {rig}: Motor6D vs AnimationConstraint vs Weld counts (the T-pose trap detector).", function(args)
+register("joint_census", "EDIT_OK", "Joint inventory for rig {rig}: BODY Motor6D vs AnimationConstraint vs Weld counts (the T-pose trap detector). WEAPON joints are FIRST-CLASS and reported separately as weapon_motor6d/weapon_motor_names (AgentEditGrip + any Motor6D inside a Tool — an articulated weapon's own joint chain). FAILs on duplicate pose-channel (Part1) names: the Animator matches poses by connected-part NAME, so a duplicate silently clobbers a channel.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
 	if rig == nil then
 		return unknown("rig not found")
 	end
-	local motors, constraints, welds = {}, {}, {}
+	local motors, weaponMotors, constraints, welds = {}, {}, {}, {}
+	local channelCounts: { [string]: number } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") then
-			table.insert(motors, d.Name)
+			-- weapon channel = the edit grip + Tool-internal chain joints (weapon-as-limb)
+			if d.Name == "AgentEditGrip" or d:FindFirstAncestorWhichIsA("Tool") ~= nil then
+				table.insert(weaponMotors, d.Name)
+			else
+				table.insert(motors, d.Name)
+			end
+			if d.Part0 ~= nil and d.Part1 ~= nil then
+				local n = (d.Part1 :: BasePart).Name
+				channelCounts[n] = (channelCounts[n] or 0) + 1
+			end
 		elseif d:IsA("AnimationConstraint") then
 			table.insert(constraints, d.Name)
 		elseif d:IsA("Weld") or d:IsA("WeldConstraint") then
 			table.insert(welds, d.Name)
 		end
 	end
-	local mag = { motor6d = #motors, animation_constraints = #constraints, welds = #welds, motor_names = motors, constraint_names = constraints }
-	if #motors > 0 and #constraints > 0 then
-		return fail("MIXED rig: " .. #motors .. " Motor6D + " .. #constraints .. " AnimationConstraint (animations will half-play)", mag)
+	local dupes = {}
+	for n, c in channelCounts do
+		if c > 1 then
+			table.insert(dupes, n)
+		end
 	end
-	if #motors == 0 and #constraints == 0 then
+	table.sort(dupes)
+	local mag = {
+		motor6d = #motors,
+		weapon_motor6d = #weaponMotors,
+		animation_constraints = #constraints,
+		welds = #welds,
+		motor_names = motors,
+		weapon_motor_names = weaponMotors,
+		constraint_names = constraints,
+		duplicate_channels = dupes,
+	}
+	if #dupes > 0 then
+		return fail("duplicate animation channel name(s): " .. table.concat(dupes, ", ") .. " — the Animator matches poses by connected-part NAME; a duplicate silently clobbers one channel (rename the part)", mag)
+	end
+	if (#motors + #weaponMotors) > 0 and #constraints > 0 then
+		return fail("MIXED rig: " .. (#motors + #weaponMotors) .. " Motor6D + " .. #constraints .. " AnimationConstraint (animations will half-play)", mag)
+	end
+	if #motors == 0 and #weaponMotors == 0 and #constraints == 0 then
 		return fail("no animatable joints at all", mag)
 	end
 	return pass(mag)
@@ -690,7 +719,7 @@ register("clip_arc_of", "EDIT_MISLEADS", "Samples clip {clip} on rig {rig} kinem
 	return if sweep >= minSweep then pass(mag) else fail("swing sweeps only " .. string.format("%.0f", sweep) .. " deg (min " .. minSweep .. ")", mag)
 end, 20000)
 
-register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIVES the weapon channel: >=2 keyframes must contain a Pose named after an AgentEditGrip Part1 (usually 'Handle') nested under the grip's Part0 Pose (usually 'RightHand'), AND the grip rotation must sweep > {min_swept_deg (default 10)} across keyframes. Catches scoped clips saved without add_keyframe {weapon=true} (a swing whose sword never moves).", function(args)
+register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIVES the weapon channel: >=2 keyframes must contain a Pose named after an AgentEditGrip Part1 (usually 'Handle') nested under the grip's Part0 Pose (usually 'RightHand'), AND the grip rotation must sweep > {min_swept_deg (default 10)} across keyframes. Catches scoped clips saved without add_keyframe {weapon=true} (a swing whose sword never moves). CHAIN-AWARE (weapon-as-limb): articulated joints reachable from the grip's Part1 (snake sword / flail segments) are measured first-class — magnitudes chain_joints/chain_channels/chain_posed_channels/chain_swept_deg; pass {require_chain=true} to ALSO require >=1 chain channel posed in >=2 keyframes sweeping > min_swept_deg.", function(args)
 	local rig = if typeof(args.rig) == "Instance" then args.rig else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
 	if rig == nil then
 		return unknown("rig not found")
@@ -705,6 +734,7 @@ register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIV
 	-- Animator matches poses by CONNECTED PART NAMES, so the clip must nest Part1 under Part0)
 	local gripPairs: { [string]: { [string]: boolean } } = {}
 	local gripCount = 0
+	local gripHandles: { Instance } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") and d.Name == "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
 			local p0 = (d.Part0 :: BasePart).Name
@@ -713,38 +743,114 @@ register("weapon_channel_of", "EDIT_OK", "Clip {clip} on rig {rig} actually DRIV
 			end
 			gripPairs[p0][(d.Part1 :: BasePart).Name] = true
 			gripCount += 1
+			table.insert(gripHandles, d.Part1 :: Instance)
 		end
 	end
 	if gripCount == 0 then
 		return unknown("no AgentEditGrip Motor6D under rig — grip_tool first (the weapon channel needs the edit grip joint)")
 	end
-	local keyframes = ks:GetKeyframes()
-	local handlePoses = 0
-	local handleCFs: { CFrame } = {}
-	for _, kf in keyframes do
-		for _, pose in (kf :: Keyframe):GetDescendants() do
-			local parent = pose.Parent
-			if pose:IsA("Pose") and parent ~= nil and parent:IsA("Pose") and gripPairs[parent.Name] ~= nil and gripPairs[parent.Name][pose.Name] == true then
-				handlePoses += 1
-				table.insert(handleCFs, pose.CFrame)
-				break -- one weapon pose per keyframe is enough for the census
+	-- the ARTICULATED CHAIN: (Part0 name -> Part1 name) pairs reachable from each grip's Part1
+	-- through further Motor6Ds (segments inside the Tool) — each is its own pose channel
+	local chainPairs: { [string]: { [string]: boolean } } = {}
+	local chainChannels: { string } = {}
+	do
+		local childrenOf = AnimationClip.adjacency(rig)
+		local seen: { [Instance]: boolean } = {}
+		local queue: { Instance } = {}
+		for _, h in gripHandles do
+			if not seen[h] then
+				seen[h] = true
+				table.insert(queue, h)
+			end
+		end
+		local head = 1
+		while head <= #queue do
+			local part = queue[head]
+			head += 1
+			for _, m in (childrenOf[part] or {}) do
+				local child = (m :: Motor6D).Part1 :: Instance
+				if not seen[child] then
+					seen[child] = true
+					local p0n = part.Name
+					if chainPairs[p0n] == nil then
+						chainPairs[p0n] = {}
+					end
+					chainPairs[p0n][child.Name] = true
+					table.insert(chainChannels, child.Name)
+					table.insert(queue, child)
+				end
 			end
 		end
 	end
-	local swept = 0
-	for i = 1, #handleCFs do
-		for j = i + 1, #handleCFs do
-			local _axis, angle = (handleCFs[i].Rotation:Inverse() * handleCFs[j].Rotation):ToAxisAngle()
-			swept = math.max(swept, math.deg(angle))
+	local keyframes = ks:GetKeyframes()
+	local handlePoses = 0
+	local handleCFs: { CFrame } = {}
+	local chainCFs: { [string]: { CFrame } } = {}
+	for _, kf in keyframes do
+		local gripSeen = false
+		local chainSeen: { [string]: boolean } = {}
+		for _, pose in (kf :: Keyframe):GetDescendants() do
+			local parent = pose.Parent
+			if pose:IsA("Pose") and parent ~= nil and parent:IsA("Pose") then
+				if not gripSeen and gripPairs[parent.Name] ~= nil and gripPairs[parent.Name][pose.Name] == true then
+					gripSeen = true
+					handlePoses += 1
+					table.insert(handleCFs, pose.CFrame)
+				elseif chainPairs[parent.Name] ~= nil and chainPairs[parent.Name][pose.Name] == true and not chainSeen[pose.Name] then
+					chainSeen[pose.Name] = true
+					if chainCFs[pose.Name] == nil then
+						chainCFs[pose.Name] = {}
+					end
+					table.insert(chainCFs[pose.Name], pose.CFrame)
+				end
+			end
 		end
 	end
+	local function maxPairwiseDeg(cfs: { CFrame }): number
+		local best = 0
+		for i = 1, #cfs do
+			for j = i + 1, #cfs do
+				local _axis, angle = (cfs[i].Rotation:Inverse() * cfs[j].Rotation):ToAxisAngle()
+				best = math.max(best, math.deg(angle))
+			end
+		end
+		return best
+	end
+	local swept = maxPairwiseDeg(handleCFs)
+	local chainSwept = 0
+	local chainPosedChannels = 0
+	for _, cfs in chainCFs do
+		if #cfs >= 2 then
+			chainPosedChannels += 1
+		end
+		chainSwept = math.max(chainSwept, maxPairwiseDeg(cfs))
+	end
 	local minSwept = tonumber(args.min_swept_deg) or 10
-	local mag = { keyframes = #keyframes, handle_poses = handlePoses, swept_deg = swept }
+	local mag = {
+		keyframes = #keyframes,
+		handle_poses = handlePoses,
+		swept_deg = swept,
+		chain_joints = #chainChannels,
+		chain_channels = chainChannels,
+		chain_posed_channels = chainPosedChannels,
+		chain_swept_deg = chainSwept,
+	}
 	if handlePoses < 2 then
 		return fail("weapon channel present in only " .. handlePoses .. "/" .. #keyframes .. " keyframes (need >=2 — save with add_keyframe {weapon=true})", mag)
 	end
 	if swept <= minSwept then
 		return fail("weapon channel exists but the grip rotation sweeps only " .. string.format("%.1f", swept) .. " deg across keyframes (min " .. minSwept .. ") — a static Handle pose", mag)
+	end
+	if args.require_chain == true then
+		if #chainChannels == 0 then
+			return fail("require_chain: the rig has NO articulated chain joints beyond the grip (segments must be Motor6D-jointed inside the Tool)", mag)
+		end
+		if chainPosedChannels == 0 then
+			return fail("require_chain: no chain channel is posed in >=2 keyframes (key segments via add_keyframe poses + weapon=true)", mag)
+		end
+		if chainSwept <= minSwept then
+			return fail("require_chain: chain channels exist but sweep only " .. string.format("%.1f", chainSwept) .. " deg across keyframes (min " .. minSwept .. ") — static segment poses", mag)
+		end
 	end
 	return pass(mag)
 end)

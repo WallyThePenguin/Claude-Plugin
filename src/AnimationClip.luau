@@ -162,17 +162,41 @@ local SCOPE_PRESETS: { [string]: { string } } = {
 	},
 }
 
--- The WEAPON channel (SP2c): child-part names driven by the edit grip joint(s) — Motor6Ds named
--- "AgentEditGrip" (ToolFactory.equip's playbook-API name, Part0=RightHand, Part1=Handle). The Animator
--- matches poses by CONNECTED PART NAMES, so a Pose named after Part1 ("Handle") nested under the
--- "RightHand" Pose animates the weapon itself. Full-body snapshots already include these (adjacency
--- walks ALL rig-descendant Motor6Ds); scoped snapshots need them appended explicitly. Returns {} when
--- no grip joint exists (not equipped / pre-SP2c Weld grip).
+-- The WEAPON channel (SP2c; chain walk 2026-07-11 "a weapon is a limb"): child-part names driven by
+-- the edit grip joint(s) — Motor6Ds named "AgentEditGrip" (ToolFactory.equip's playbook-API name,
+-- Part0=RightHand, Part1=Handle) — PLUS the whole articulated chain reachable from each grip's Part1
+-- (snake sword / flail: segments joined by Motor6Ds inside the Tool, each an animatable pose channel).
+-- The Animator matches poses by CONNECTED PART NAMES, so a Pose named after Part1 ("Handle", then each
+-- segment) nested under its Part0's Pose animates the weapon itself. Full-body snapshots already
+-- include these (adjacency walks ALL rig-descendant Motor6Ds); scoped snapshots need them appended
+-- explicitly. BFS order (Handle before its segments); the seen-set makes a pathological joint cycle
+-- terminate. Returns {} when no grip joint exists (not equipped / pre-SP2c Weld grip).
 function AnimationClip.weaponChildNames(rig: Instance): { string }
+	local childrenOf = AnimationClip.adjacency(rig)
 	local names: { string } = {}
+	local seen: { [Instance]: boolean } = {}
+	local queue: { Instance } = {}
 	for _, d in rig:GetDescendants() do
 		if d:IsA("Motor6D") and d.Name == "AgentEditGrip" and d.Part0 ~= nil and d.Part1 ~= nil then
-			table.insert(names, (d.Part1 :: Instance).Name)
+			local handle = d.Part1 :: Instance
+			if not seen[handle] then
+				seen[handle] = true
+				table.insert(names, handle.Name)
+				table.insert(queue, handle)
+			end
+		end
+	end
+	local head = 1
+	while head <= #queue do
+		local part = queue[head]
+		head += 1
+		for _, m in (childrenOf[part] or {}) do
+			local child = (m :: Motor6D).Part1 :: Instance
+			if not seen[child] then
+				seen[child] = true
+				table.insert(names, child.Name)
+				table.insert(queue, child)
+			end
 		end
 	end
 	return names

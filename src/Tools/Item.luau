@@ -57,8 +57,9 @@ local function runMakeTool(input: any, _context: any): (any, boolean)
 	end
 	local toolName = if type(args.name) == "string" then args.name else nil
 	local tool: Tool?, err: string?
+	local chainCount = 0
 	local function doToolify()
-		tool, err = ToolFactory.toolify(target :: Instance, handleHint, toolName)
+		tool, err, chainCount = ToolFactory.toolify(target :: Instance, handleHint, toolName)
 	end
 	if RunService:IsEdit() then
 		local rid = ChangeHistoryService:TryBeginRecording("make_tool")
@@ -79,12 +80,20 @@ local function runMakeTool(input: any, _context: any): (any, boolean)
 			partCount += 1
 		end
 	end
+	local chainNote = if chainCount > 0
+		then string.format(
+			" ARTICULATED: %d Motor6D chain joint(s) kept (fit as animatable pose channels — "
+				.. "key them via add_keyframe poses + weapon=true).",
+			chainCount
+		)
+		else ""
 	return string.format(
-		"make_tool OK: '%s' at %s (%d part(s): a Handle + %d welded, all unanchored). Equip + fit it with grip_tool.",
+		"make_tool OK: '%s' at %s (%d part(s): a Handle + %d welded/jointed, all unanchored).%s Equip + fit it with grip_tool.",
 		t.Name,
 		t:GetFullName(),
 		partCount,
-		math.max(0, partCount - 1)
+		math.max(0, partCount - 1),
+		chainNote
 	),
 		false
 end
@@ -239,7 +248,12 @@ local function runGripTool(input: any, context: any): (any, boolean)
 			tonumber(args.offhandOffset.z) or 0
 		)
 	end
+	local chainFitted, chainNames = 0, {} :: { string }
 	local function doEquipGrip()
+		-- Fit the articulated chain BEFORE the grip joint exists (weapon-as-limb): fitChain
+		-- freezes the tool's CURRENT geometry into the chain joints' C0/C1, so it must read the
+		-- built placement, not a hand-snapped one. Idempotent — already-fitted joints are kept.
+		chainFitted, chainNames = ToolFactory.fitChain(tool)
 		ToolFactory.equip(tool, theRig)
 		ToolFactory.applyGrip(tool, grip)
 		if type(args.offhand) == "boolean" then
@@ -256,12 +270,22 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	else
 		doEquipGrip()
 	end
+	local chainNote = if #chainNames > 0
+		then string.format(
+			" Weapon chain: %d joint(s) [%s]%s — each is an animatable pose channel "
+				.. "(add_keyframe poses + weapon=true keys them all).",
+			#chainNames,
+			table.concat(chainNames, ", "),
+			if chainFitted > 0 then string.format(" (%d newly fit from built geometry)", chainFitted) else ""
+		)
+		else ""
 	local note = string.format(
 		"grip_tool: equipped '%s' on %s, grip set. Adjust offset/rot and re-call until it sits right.",
 		tool.Name,
 		theRig.Name
 	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "")
 		.. (if poseReset then " (rig pose reset to neutral first)" else "")
+		.. chainNote
 		.. offhandNote
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
@@ -306,6 +330,9 @@ Item.descriptors = {
 	{
 		name = "grip_tool",
 		description = "EQUIP a Tool on a rig and FIT its grip, returning a capture so you SEE it in-hand. "
+			.. "ARTICULATED weapons (a Motor6D segment chain inside the Tool — snake sword/flail) are fit "
+			.. "automatically: each chain joint's C0/C1 freeze the built geometry (hinge at the segment base) "
+			.. "and become animatable pose channels named after their Part1. "
 			.. "Sets Tool.Grip from intuitive offset {x,y,z} (studs) + rot {rx,ry,rz} (degrees), then frames the "
 			.. "item and screenshots it. LOOK at the result and RE-CALL with adjusted offset/rot until the item "
 			.. "sits right in the fist (e.g. a sword's blade pointing out, gripped near the hilt). Inputs: tool "

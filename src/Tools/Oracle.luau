@@ -335,6 +335,87 @@ local function selftest(): any
 		expect("mismatch beats unstamped (a proven-stale clip FAILs)", "FAIL", OC.clipStampVerdict(stampNow, { { name = "idle" }, { name = "use", stamp = stampOld } }))
 		expect("no clips at all is UNKNOWN", "UNKNOWN", OC.clipStampVerdict(stampNow, {}))
 	end
+	-- weapon-chain first-class (weapon-as-limb, 2026-07-11): a mini RightHand->Handle->SegA rig
+	-- with the chain inside a real Tool, plus a fabricated 2-keyframe clip driving grip + segment.
+	do
+		local chainRig = Instance.new("Model")
+		chainRig.Name = "ChainRigFixture"
+		chainRig.Parent = folder
+		local function cpart(name: string, parent: Instance): Part
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Size = Vector3.new(1, 1, 1)
+			p.Anchored = true
+			p.Parent = parent
+			return p
+		end
+		local function cjoint(name: string, p0: BasePart, p1: BasePart): Motor6D
+			local m = Instance.new("Motor6D")
+			m.Name = name
+			m.Part0 = p0
+			m.Part1 = p1
+			m.Parent = p0
+			return m
+		end
+		local hand = cpart("RightHand", chainRig)
+		local toolInst = Instance.new("Tool")
+		toolInst.Name = "ChainTool"
+		toolInst.Parent = chainRig
+		local handle = cpart("Handle", toolInst)
+		local segA = cpart("SegA", toolInst)
+		cjoint("AgentEditGrip", hand, handle)
+		cjoint("SegA", handle, segA)
+		local jc = OracleChecks.run("joint_census", { rig = chainRig })
+		local jcOk = jc.verdict == "PASS" and jc.magnitudes.weapon_motor6d == 2 and jc.magnitudes.motor6d == 0
+		table.insert(results, { name = "census reports weapon-chain joints first-class (2 weapon / 0 body)", expected = "PASS w=2 b=0", got = jc.verdict .. " w=" .. tostring(jc.magnitudes.weapon_motor6d) .. " b=" .. tostring(jc.magnitudes.motor6d), ok = jcOk, reason = jc.reason })
+		-- fabricated clip: kf1 neutral, kf2 grip 40 deg + segment 30 deg
+		local saves = Instance.new("Folder")
+		saves.Name = "AnimSaves"
+		saves.Parent = chainRig
+		local ks = Instance.new("KeyframeSequence")
+		ks.Name = "ChainClip"
+		ks.Parent = saves
+		local function poseTree(handleCF: CFrame, segCF: CFrame): Keyframe
+			local kf = Instance.new("Keyframe")
+			local ph = Instance.new("Pose")
+			ph.Name = "RightHand"
+			ph.CFrame = CFrame.identity
+			ph.Parent = kf
+			local pHandle = Instance.new("Pose")
+			pHandle.Name = "Handle"
+			pHandle.CFrame = handleCF
+			pHandle.Parent = ph
+			local pSeg = Instance.new("Pose")
+			pSeg.Name = "SegA"
+			pSeg.CFrame = segCF
+			pSeg.Parent = pHandle
+			return kf
+		end
+		local kf1 = poseTree(CFrame.identity, CFrame.identity)
+		kf1.Time = 0
+		ks:AddKeyframe(kf1)
+		local kf2 = poseTree(CFrame.Angles(math.rad(40), 0, 0), CFrame.Angles(0, 0, math.rad(30)))
+		kf2.Time = 0.5
+		ks:AddKeyframe(kf2)
+		expect("weapon_channel_of passes on the driven grip (default)", "PASS", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" }))
+		local wc = OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip", require_chain = true })
+		local wcOk = wc.verdict == "PASS" and wc.magnitudes.chain_joints == 1 and math.abs((wc.magnitudes.chain_swept_deg or 0) - 30) < 1
+		table.insert(results, { name = "require_chain passes on a driven segment (chain_swept ~30)", expected = "PASS chain 30", got = wc.verdict .. " chain " .. tostring(wc.magnitudes.chain_swept_deg), ok = wcOk, reason = wc.reason })
+		-- freeze the segment -> require_chain FAILs while the default grip contract still passes
+		for _, kf in ks:GetKeyframes() do
+			local seg = (kf :: Keyframe):FindFirstChild("SegA", true)
+			if seg ~= nil and seg:IsA("Pose") then
+				seg.CFrame = CFrame.identity
+			end
+		end
+		expect("static segments still pass the grip-only contract", "PASS", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" }))
+		expect("require_chain fails a static segment chain", "FAIL", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip", require_chain = true }))
+		-- duplicate pose-channel name (a second SegA part): the Animator matches by part NAME,
+		-- so this silently clobbers a channel — census must FAIL loudly
+		local segDup = cpart("SegA", toolInst)
+		cjoint("SegADup", segA, segDup)
+		expect("census fails duplicate pose-channel names", "FAIL", OracleChecks.run("joint_census", { rig = chainRig }))
+	end
 	folder:Destroy()
 	local failures = 0
 	for _, r in results do
@@ -364,9 +445,11 @@ Oracle.descriptors = {
 			.. "Checks: intersects{a,b}, penetration_depth{a,b,max_depth}, gap_between{a,b,max_gap}, "
 			.. "alignment{target,dir,against,max_deg,length}, scale_ratio{target,expected,tolerance_frac}, "
 			.. "mesh_persisted{target}, "
-			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, tool_clip_current{tool}, joint_census{rig}, "
+			.. "anchored_ok{target}, frame_consistent{target}, grip_sane{tool,rig}, tool_clip_current{tool}, "
+			.. "joint_census{rig} (weapon-chain joints reported first-class; duplicate channel names FAIL), "
 			.. "rig_channel_check{rig,clip}, clip_arc_of{rig,tool,clip,samples,min_sweep}, "
-			.. "weapon_channel_of{rig,clip,min_swept_deg}, "
+			.. "weapon_channel_of{rig,clip,min_swept_deg,require_chain} (require_chain=true also demands the "
+			.. "articulated segment chain sweeps), "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth}, __selftest{}. "
 			.. "Verdicts: PASS|FAIL|UNKNOWN (UNKNOWN never counts as pass). Prefer these over captures for anything measurable.",
 		inputSchema = {
