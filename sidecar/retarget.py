@@ -364,8 +364,19 @@ KIMODO_SMPLX_CHAIN = [
 ]
 
 
-def retarget_kimodo_npz(npz_path, fps=30):
+# SMPL-X L/R joint-index swap (for mirroring a clip left<->right across the sagittal plane).
+_SMPLX_LR_SWAP = {1: 2, 2: 1, 4: 5, 5: 4, 7: 8, 8: 7, 10: 11, 11: 10, 13: 14, 14: 13,
+                  16: 17, 17: 16, 18: 19, 19: 18, 20: 21, 21: 20}
+KIMODO_SMPLX_CHAIN_MIRROR = [
+    (j, p, par, _SMPLX_LR_SWAP.get(si, si), _SMPLX_LR_SWAP.get(sj, sj), rest)
+    for (j, p, par, si, sj, rest) in KIMODO_SMPLX_CHAIN
+]
+
+
+def retarget_kimodo_npz(npz_path, fps=30, mirror=False):
     """Kimodo SMPL-X posed_joints -> R15 Motor6D Pose channels via direction-matching FK.
+    mirror=True reflects the clip left<->right (swap L/R source joints + flip the sagittal X):
+    Kimodo picks a handedness per clip, so a left-handed swing mirrors onto the sword's right hand.
     Returns {clip, duration_s, fps, joints: {R15Joint: {times, rot: [[qx,qy,qz,qw]...]}}}."""
     import numpy as np
 
@@ -373,12 +384,14 @@ def retarget_kimodo_npz(npz_path, fps=30):
     pj = d["posed_joints"]  # [T, 22, 3]
     total = int(pj.shape[0])
     times = [round(t / fps, 5) for t in range(total)]
-    tracks = {row[0]: [] for row in KIMODO_SMPLX_CHAIN}
+    chain = KIMODO_SMPLX_CHAIN_MIRROR if mirror else KIMODO_SMPLX_CHAIN
+    xsign = 1.0 if mirror else -1.0  # mirror negates X; RotY(pi) also negates X -> they cancel
+    tracks = {row[0]: [] for row in chain}
     for t in range(total):
         world = {"HumanoidRootPart": [0.0, 0.0, 0.0, 1.0]}  # accumulated R15 part world rotations
-        for joint, part, parent, si, sj, rest in KIMODO_SMPLX_CHAIN:
+        for joint, part, parent, si, sj, rest in chain:
             v = pj[t, sj] - pj[t, si]
-            src = [-float(v[0]), float(v[1]), -float(v[2])]  # SMPL-X world -> R15 world
+            src = [xsign * float(v[0]), float(v[1]), -float(v[2])]  # -> R15 world (+ optional mirror)
             m = math.sqrt(sum(c * c for c in src)) or 1.0
             src = [c / m for c in src]
             wpar = world[parent]
@@ -395,7 +408,7 @@ def retarget_kimodo_npz(npz_path, fps=30):
     }
 
 
-def retarget_reference_kimodo(filename, fps=30):
+def retarget_reference_kimodo(filename, fps=30, mirror=False):
     """Allowlisted assets/reference .npz entry point (the /animate/kimodo route)."""
     if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
         raise meshio.MeshError("bad filename")
@@ -404,7 +417,7 @@ def retarget_reference_kimodo(filename, fps=30):
     path = os.path.join(meshio.ASSET_DIR, filename)
     if not os.path.isfile(path):
         raise meshio.MeshError(f"no such reference clip: {filename}")
-    return retarget_kimodo_npz(path, fps=fps)
+    return retarget_kimodo_npz(path, fps=fps, mirror=mirror)
 
 
 def retarget_reference_clip(filename, clip_name, fps=30):

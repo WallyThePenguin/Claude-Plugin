@@ -273,7 +273,8 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     fps = 30
                 fps = max(5, min(60, fps))
-                return self._json(200, retarget.retarget_reference_kimodo(fname, fps=fps))
+                mirror = qs.get("mirror", ["0"])[0] not in ("0", "", "false", "no")
+                return self._json(200, retarget.retarget_reference_kimodo(fname, fps=fps, mirror=mirror))
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
