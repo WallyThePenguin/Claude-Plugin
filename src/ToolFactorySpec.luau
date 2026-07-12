@@ -51,6 +51,62 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("gripFromFrame: full frame align -> blade out hand -Z, edge down -Y, grip at attachment", function()
+		local rig = Instance.new("Model")
+		rig.Name = "TFGripRig"
+		local hand = Instance.new("Part")
+		hand.Name = "RightHand"
+		hand.Anchored = true
+		hand.Parent = rig
+		local gAtt = Instance.new("Attachment")
+		gAtt.Name = "RightGripAttachment"
+		gAtt.CFrame = CFrame.new(0, -0.158, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+		gAtt.Parent = hand
+
+		local tool = Instance.new("Tool")
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(1.6, 4.8, 0.7)
+		handle.Anchored = true
+		handle.Parent = tool
+		local sg = Instance.new("Attachment")
+		sg.Name = "Semantic_Grip"
+		sg.Position = Vector3.new(0, -1.8, 0)
+		sg.Parent = handle
+		handle:SetAttribute(
+			"SemanticFrame",
+			game:GetService("HttpService"):JSONEncode({
+				family = "melee-weapon",
+				dirs = { blade_dir = { x = 0, y = 1, z = 0 }, edge_dir = { x = 1, y = 0, z = 0 } },
+			})
+		)
+
+		local grip = ToolFactory.gripFromFrame(tool, rig)
+		local ok, err = (function(): (boolean, string?)
+			if grip == nil then
+				return false, "gripFromFrame returned nil"
+			end
+			-- equip convention: Handle-in-hand = RightGripAttachment.CFrame * Grip^-1
+			local hih = gAtt.CFrame * (grip :: CFrame):Inverse()
+			local bladeW = hih:VectorToWorldSpace(Vector3.new(0, 1, 0)) -- handle blade_dir -> hand space
+			local edgeW = hih:VectorToWorldSpace(Vector3.new(1, 0, 0)) -- handle edge_dir -> hand space
+			if (bladeW - Vector3.new(0, 0, -1)).Magnitude > 1e-3 then
+				return false, "blade not out hand -Z: " .. tostring(bladeW)
+			end
+			if (edgeW - Vector3.new(0, -1, 0)).Magnitude > 1e-3 then
+				return false, "edge not down -Y: " .. tostring(edgeW)
+			end
+			local gpW = hih:PointToWorldSpace(Vector3.new(0, -1.8, 0)) -- Semantic_Grip -> hand space
+			if (gpW - gAtt.CFrame.Position).Magnitude > 1e-3 then
+				return false, "grip point not seated at attachment: " .. tostring(gpW)
+			end
+			return true
+		end)()
+		rig:Destroy()
+		tool:Destroy()
+		return ok, err
+	end)
+
 	-- ---- articulated chain (weapon-as-limb, 2026-07-11) ----
 
 	local function cframesClose(a: CFrame, b: CFrame, eps: number): boolean

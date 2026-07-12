@@ -30,6 +30,15 @@ ToolFactory.REST_CANT_DEG = 50
 -- must stay under grip_sane's 0.6-stud grip_offset bound.
 ToolFactory.REST_FORWARD_STUDS = 0.4
 
+-- HOLD FRAME (user-validated 2026-07-12, "candidate 2"): when a mesh declares BOTH blade_dir and
+-- edge_dir, gripFromFrame aligns the FULL handle frame instead of the blade-only cant above — the
+-- blade projects out the hand's FRONT and the cutting edge faces DOWN toward the palm (the "D" /
+-- -Y face), Semantic_Grip point seated at the RightGripAttachment. Constraining the edge kills the
+-- free roll the cant left unfixed (the "sword on its side" bug — the hilt never sat right because
+-- roll was arbitrary). Hand-local unit directions:
+ToolFactory.HOLD_BLADE_DIR = Vector3.new(0, 0, -1) -- blade out the hand's front (-Z)
+ToolFactory.HOLD_EDGE_DIR = Vector3.new(0, -1, 0) -- cutting edge down toward the palm (-Y / D face)
+
 export type Vec3ish = { x: number?, y: number?, z: number? }
 export type Rotish = { rx: number?, ry: number?, rz: number? }
 
@@ -545,6 +554,38 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 		return nil
 	end
 	blade = blade.Unit
+
+	-- HOLD-FRAME path (candidate 2, 2026-07-12): if the mesh also declares edge_dir, constrain BOTH
+	-- axes (a full frame alignment) and return early. Only when edge_dir is ABSENT do we fall through
+	-- to the legacy blade-only cant below. This is the durable fix for "the sword is on its side":
+	-- the old path left roll free, so the edge landed wherever rotFromTo's minimal rotation put it.
+	local ed = decoded.dirs.edge_dir
+	if type(ed) == "table" then
+		local edge = Vector3.new(tonumber(ed.x) or 0, tonumber(ed.y) or 0, tonumber(ed.z) or 0)
+		edge = edge - blade * edge:Dot(blade) -- Gram-Schmidt: make edge orthogonal to blade
+		if edge.Magnitude > 1e-4 then
+			edge = edge.Unit
+			-- Attachment frame + grip point (stock R15 fallback when the rig/attachment is absent).
+			local attCF = CFrame.new(0, -0.158, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+			if rig ~= nil then
+				local hand = rig:FindFirstChild("RightHand", true)
+				local gripAtt = if hand ~= nil then hand:FindFirstChild("RightGripAttachment") else nil
+				if gripAtt ~= nil and gripAtt:IsA("Attachment") then
+					attCF = gripAtt.CFrame
+				end
+			end
+			-- R (handle-local -> hand-local) maps the handle's (edge=X, blade=Y) frame onto the
+			-- hand-local hold frame (HOLD_EDGE_DIR=X, HOLD_BLADE_DIR=Y).
+			local R = CFrame.fromMatrix(Vector3.zero, ToolFactory.HOLD_EDGE_DIR, ToolFactory.HOLD_BLADE_DIR)
+				* CFrame.fromMatrix(Vector3.zero, edge, blade):Inverse()
+			-- Seat the Semantic_Grip point at the attachment, then fold through equip's convention
+			-- (Handle-in-hand = attCF * Grip^-1) so bind_grip_motor + the runtime RightGrip keep
+			-- working unchanged: Grip = rel^-1 * attCF.
+			local rel = CFrame.new(attCF.Position - R:PointToWorldSpace(att.Position)) * R
+			return rel:Inverse() * attCF
+		end
+	end
+
 	-- INVARIANT (grip-fitter-axis-mapping, 2026-07-11): the fitted blade WORLD direction at
 	-- rest ~= the fist-up axis rotated REST_CANT_DEG forward, REGARDLESS of the mesh's local
 	-- blade axis. rotFromTo maps the declared blade_dir onto the canted target expressed in
