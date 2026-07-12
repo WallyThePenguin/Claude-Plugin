@@ -91,6 +91,63 @@ def main():
         fails += _check("tracks share the fixed-fps time grid",
                         joints["Root"]["times"][0] == 0.0 and len(joints["Root"]["times"]) == 11)
 
+    # ---- SOMA-77 Kimodo retarget (wrists + ankles) ----
+    try:
+        import numpy as np
+    except ImportError:
+        _check("SOMA test SKIPPED (numpy absent)", True)
+        print(("test_retarget: ALL GREEN" if fails == 0 else f"test_retarget: {fails} FAILURES"))
+        return fails
+
+    with tempfile.TemporaryDirectory() as d:
+        # synthetic posed_joints[2,77,3]: distinct baseline positions so every bone is off-rest,
+        # with the RIGHT hand chain placed to a KNOWN direction (Hand -> Middle1 points -Z).
+        arr = np.zeros((2, 77, 3), dtype=np.float32)
+        for i in range(77):
+            arr[:, i, 0] = math.sin(i * 0.5)
+            arr[:, i, 1] = math.cos(i * 0.3) + 1.5
+            arr[:, i, 2] = math.sin(i * 0.2)
+        hand = retarget.SOMA77_IX["RightHand"]
+        mid1 = retarget.SOMA77_IX["RightHandMiddle1"]
+        idx1 = retarget.SOMA77_IX["RightHandIndex1"]
+        arr[:, hand] = [1.0, 1.0, 0.0]
+        arr[:, mid1] = [1.0, 1.0, -0.7]   # Hand -> Middle1 = -Z  (the wrist should aim HERE)
+        arr[:, idx1] = [1.0, 1.3, 0.0]    # a DIFFERENT finger, so a wrong index would be caught
+        p = os.path.join(d, "soma.npz")
+        np.savez(p, posed_joints=arr)
+
+        out = retarget.retarget_kimodo_npz(p, fps=30)
+        joints = out["joints"]
+        fails += _check("SOMA-77 auto-detected", out.get("skeleton") == "soma77")
+        fails += _check("wrists + ankles now emit (the stuck-limbs fix)",
+                        all(j in joints for j in ("RightWrist", "LeftWrist", "RightAnkle", "LeftAnkle")))
+        fails += _check("all 15 R15 joints present",
+                        all(j in joints for j in (r[0] for r in retarget.KIMODO_SOMA_CHAIN)))
+
+        # re-accumulate world rotations from the emitted tracks; the R15 hand's world dir must
+        # equal the converted Hand->Middle1 source dir (not Index1) — pins the wrist index map.
+        rows = retarget._soma_rows(False)
+
+        def world_of(target_part, t):
+            world = {"HumanoidRootPart": [0.0, 0.0, 0.0, 1.0]}
+            for joint, part, parent, _si, _sj, _rest in rows:
+                ch = joints.get(joint)
+                qt = ch["rot"][t] if ch else [0.0, 0.0, 0.0, 1.0]
+                world[part] = retarget.q_norm(retarget.q_mul(world[parent], qt))
+            return world[target_part]
+
+        got = retarget.q_rot_vec(world_of("RightHand", 1), [0.0, -1.0, 0.0])
+        # convert(Hand->Middle1) = (-x, y, -z) of (0,0,-0.7) = (0,0,0.7) -> normalized (0,0,1)
+        exp = [0.0, 0.0, 1.0]
+        err = math.sqrt(sum((got[i] - exp[i]) ** 2 for i in range(3)))
+        fails += _check("RightWrist aims the hand along Hand->Middle1 (not Index1)", err < 1e-3)
+
+        # mirror swaps the SOURCE hand: the RightWrist row should then read the LEFT hand bones
+        mrows = retarget._soma_rows(True)
+        rw = next(r for r in mrows if r[0] == "RightWrist")
+        fails += _check("mirror swaps RightWrist source to the LEFT hand",
+                        rw[3] == retarget.SOMA77_IX["LeftHand"] and rw[4] == retarget.SOMA77_IX["LeftHandMiddle1"])
+
     print(("test_retarget: ALL GREEN" if fails == 0 else f"test_retarget: {fails} FAILURES"))
     return fails
 

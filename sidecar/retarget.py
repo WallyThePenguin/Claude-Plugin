@@ -373,38 +373,130 @@ KIMODO_SMPLX_CHAIN_MIRROR = [
 ]
 
 
-def retarget_kimodo_npz(npz_path, fps=30, mirror=False):
-    """Kimodo SMPL-X posed_joints -> R15 Motor6D Pose channels via direction-matching FK.
-    mirror=True reflects the clip left<->right (swap L/R source joints + flip the sagittal X):
-    Kimodo picks a handedness per clip, so a left-handed swing mirrors onto the sword's right hand.
-    Returns {clip, duration_s, fps, joints: {R15Joint: {times, rot: [[qx,qy,qz,qw]...]}}}."""
-    import numpy as np
+# ---- SOMA-77 (Kimodo-SOMA-RP-v1) -> R15: adds WRISTS + ANKLES the 22-joint SMPL-X lacked ----
+#
+# SOMA-77 has full finger + toe chains, so the hand can aim along Hand->HandMiddle1 (wrist flick)
+# and the foot along Foot->ToeBase (plant/point) — the "hands/feet stuck" fix. The bone ORDER is
+# the canonical kimodo `SOMASkeleton77.bone_order_names_with_parents` (index = position); the chain
+# is declared by NAME against it so a miscount can't silently mis-map a joint.
+SOMA77_BONES = [
+    "Hips", "Spine1", "Spine2", "Chest", "Neck1", "Neck2", "Head", "HeadEnd", "Jaw",
+    "LeftEye", "RightEye",
+    "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+    "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3", "LeftHandThumbEnd",
+    "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3", "LeftHandIndex4", "LeftHandIndexEnd",
+    "LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3", "LeftHandMiddle4", "LeftHandMiddleEnd",
+    "LeftHandRing1", "LeftHandRing2", "LeftHandRing3", "LeftHandRing4", "LeftHandRingEnd",
+    "LeftHandPinky1", "LeftHandPinky2", "LeftHandPinky3", "LeftHandPinky4", "LeftHandPinkyEnd",
+    "RightShoulder", "RightArm", "RightForeArm", "RightHand",
+    "RightHandThumb1", "RightHandThumb2", "RightHandThumb3", "RightHandThumbEnd",
+    "RightHandIndex1", "RightHandIndex2", "RightHandIndex3", "RightHandIndex4", "RightHandIndexEnd",
+    "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3", "RightHandMiddle4", "RightHandMiddleEnd",
+    "RightHandRing1", "RightHandRing2", "RightHandRing3", "RightHandRing4", "RightHandRingEnd",
+    "RightHandPinky1", "RightHandPinky2", "RightHandPinky3", "RightHandPinky4", "RightHandPinkyEnd",
+    "LeftLeg", "LeftShin", "LeftFoot", "LeftToeBase", "LeftToeEnd",
+    "RightLeg", "RightShin", "RightFoot", "RightToeBase", "RightToeEnd",
+]
+SOMA77_IX = {name: i for i, name in enumerate(SOMA77_BONES)}
 
-    d = np.load(npz_path, allow_pickle=True)
-    pj = d["posed_joints"]  # [T, 22, 3]
+# (R15 joint, R15 part, R15 parent part, SOMA from-bone, SOMA to-bone, R15 rest bone dir).
+# rest dirs: torso up (+Y), limbs down (-Y), feet forward (-Z). Wrist/ankle signs are the ones
+# to VERIFY LIVE (per the repo's axis-tuned-live history).
+KIMODO_SOMA_CHAIN = [
+    ("Root", "LowerTorso", "HumanoidRootPart", "Hips", "Chest", (0.0, 1.0, 0.0)),
+    ("Waist", "UpperTorso", "LowerTorso", "Chest", "Neck1", (0.0, 1.0, 0.0)),
+    ("Neck", "Head", "UpperTorso", "Neck1", "Head", (0.0, 1.0, 0.0)),
+    ("RightShoulder", "RightUpperArm", "UpperTorso", "RightArm", "RightForeArm", (0.0, -1.0, 0.0)),
+    ("RightElbow", "RightLowerArm", "RightUpperArm", "RightForeArm", "RightHand", (0.0, -1.0, 0.0)),
+    ("RightWrist", "RightHand", "RightLowerArm", "RightHand", "RightHandMiddle1", (0.0, -1.0, 0.0)),
+    ("LeftShoulder", "LeftUpperArm", "UpperTorso", "LeftArm", "LeftForeArm", (0.0, -1.0, 0.0)),
+    ("LeftElbow", "LeftLowerArm", "LeftUpperArm", "LeftForeArm", "LeftHand", (0.0, -1.0, 0.0)),
+    ("LeftWrist", "LeftHand", "LeftLowerArm", "LeftHand", "LeftHandMiddle1", (0.0, -1.0, 0.0)),
+    ("RightHip", "RightUpperLeg", "LowerTorso", "RightLeg", "RightShin", (0.0, -1.0, 0.0)),
+    ("RightKnee", "RightLowerLeg", "RightUpperLeg", "RightShin", "RightFoot", (0.0, -1.0, 0.0)),
+    ("RightAnkle", "RightFoot", "RightLowerLeg", "RightFoot", "RightToeBase", (0.0, 0.0, -1.0)),
+    ("LeftHip", "LeftUpperLeg", "LowerTorso", "LeftLeg", "LeftShin", (0.0, -1.0, 0.0)),
+    ("LeftKnee", "LeftLowerLeg", "LeftUpperLeg", "LeftShin", "LeftFoot", (0.0, -1.0, 0.0)),
+    ("LeftAnkle", "LeftFoot", "LeftLowerLeg", "LeftFoot", "LeftToeBase", (0.0, 0.0, -1.0)),
+]
+
+
+def _swap_lr(name):
+    """Left<->Right on a bone name ('RightArm'->'LeftArm'); other names unchanged."""
+    if name.startswith("Left"):
+        return "Right" + name[4:]
+    if name.startswith("Right"):
+        return "Left" + name[5:]
+    return name
+
+
+def _soma_rows(mirror):
+    """KIMODO_SOMA_CHAIN name-rows -> index-rows; mirror swaps the L/R SOURCE bones."""
+    rows = []
+    for joint, part, parent, sfrom, sto, rest in KIMODO_SOMA_CHAIN:
+        if mirror:
+            sfrom, sto = _swap_lr(sfrom), _swap_lr(sto)
+        rows.append((joint, part, parent, SOMA77_IX[sfrom], SOMA77_IX[sto], rest))
+    return rows
+
+
+def _smplx_rows(mirror):
+    chain = KIMODO_SMPLX_CHAIN_MIRROR if mirror else KIMODO_SMPLX_CHAIN
+    return list(chain)
+
+
+def _direction_fk(pj, fps, rows, xsign):
+    """Direction-matching FK: aim each R15 rest bone dir along its SOMA/SMPL-X bone's world
+    direction, accumulating parent world rotations. rows = index-tuples (joint, part, parent,
+    from_idx, to_idx, rest_dir) in PARENT-BEFORE-CHILD order. Returns (times, tracks)."""
     total = int(pj.shape[0])
     times = [round(t / fps, 5) for t in range(total)]
-    chain = KIMODO_SMPLX_CHAIN_MIRROR if mirror else KIMODO_SMPLX_CHAIN
-    xsign = 1.0 if mirror else -1.0  # mirror negates X; RotY(pi) also negates X -> they cancel
-    tracks = {row[0]: [] for row in chain}
+    tracks = {row[0]: [] for row in rows}
     for t in range(total):
         world = {"HumanoidRootPart": [0.0, 0.0, 0.0, 1.0]}  # accumulated R15 part world rotations
-        for joint, part, parent, si, sj, rest in chain:
+        for joint, part, parent, si, sj, rest in rows:
             v = pj[t, sj] - pj[t, si]
             src = [xsign * float(v[0]), float(v[1]), -float(v[2])]  # -> R15 world (+ optional mirror)
             m = math.sqrt(sum(c * c for c in src)) or 1.0
             src = [c / m for c in src]
             wpar = world[parent]
-            dlocal = q_rot_vec(q_inv(wpar), src)  # target dir expressed in the parent's animated frame
+            dlocal = q_rot_vec(q_inv(wpar), src)  # target dir in the parent's animated frame
             q = q_from_to(list(rest), dlocal)  # rotate the R15 rest bone dir onto the target
             tracks[joint].append([round(c, 5) for c in q])
             world[part] = q_norm(q_mul(wpar, q))
+    return times, tracks
+
+
+def retarget_kimodo_npz(npz_path, fps=30, mirror=False):
+    """Kimodo posed_joints -> R15 Motor6D Pose channels via direction-matching FK. Auto-detects
+    the skeleton from the joint count: 77 = SOMA (wrists + ankles articulate), 22 = SMPL-X body.
+    mirror=True reflects L<->R (Kimodo picks a handedness per clip). Returns {clip, duration_s,
+    fps, skeleton, joints: {R15Joint: {times, rot: [[qx,qy,qz,qw]...]}}}."""
+    import numpy as np
+
+    d = np.load(npz_path, allow_pickle=True)
+    pj = d["posed_joints"]  # [T, J, 3]
+    nj = int(pj.shape[1])
+    if nj >= 77:
+        rows, skel = _soma_rows(mirror), "soma77"
+    elif nj == 22:
+        rows, skel = _smplx_rows(mirror), "smplx22"
+    else:
+        raise meshio.MeshError(f"unsupported Kimodo joint count {nj} (need 22 or 77)")
+    xsign = 1.0 if mirror else -1.0  # mirror negates X; RotY(pi) also negates X -> they cancel
+    times, tracks = _direction_fk(pj, fps, rows, xsign)
+    total = int(pj.shape[0])
+
+    def moving(track):  # drop channels that never leave the R15 rest dir (identity every frame)
+        return any(abs(q[3]) < 0.99999 for q in track)
+
     return {
         "clip": "KimodoClip",
         "duration_s": round((total - 1) / fps, 5) if total > 1 else 0.0,
         "fps": fps,
+        "skeleton": skel,
         "source": os.path.basename(npz_path),
-        "joints": {row[0]: {"times": times, "rot": tracks[row[0]]} for row in KIMODO_SMPLX_CHAIN},
+        "joints": {r[0]: {"times": times, "rot": tracks[r[0]]} for r in rows if moving(tracks[r[0]])},
     }
 
 
