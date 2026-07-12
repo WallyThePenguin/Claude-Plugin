@@ -467,18 +467,164 @@ def _direction_fk(pj, fps, rows, xsign):
     return times, tracks
 
 
+# ---- SOMA-77 ROTATION retarget (v2): use global_rot_mats, not aim ----
+#
+# The aim-only FK above (q_from_to on bone DIRECTIONS) has an ANTIPODAL SINGULARITY: when a bone
+# points ~opposite its R15 rest axis (a raised arm vs the arms-down rest), the rotation axis is
+# noise and the bone FLIPS ~180deg/frame (measured 2026-07-12: RightElbow 125, RightWrist 178 on a
+# slash; the source rotations were smooth, max ~34 — the aim method MANUFACTURED the jank). It also
+# drops twist (a sword's edge can't roll). This path uses the clip's `global_rot_mats` (the real
+# per-joint world orientations) with the PROVEN world-rotation-delta + rest-alignment math from
+# retarget_clip: no singularity, keeps twist. Needs the SOMA rest pose (specs/soma77-rest.json,
+# extracted once via the kimodo skeleton's FK at the T-pose).
+SOMA_REST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "specs", "soma77-rest.json")
+
+# R15 joint -> (SOMA bone whose ORIENTATION drives it, SOMA bone of the R15 PARENT joint | None).
+KIMODO_SOMA_ROT_MAP = {
+    "Root": ("Hips", None),
+    "Waist": ("Chest", "Hips"),
+    "Neck": ("Head", "Chest"),
+    "RightShoulder": ("RightArm", "Chest"),
+    "RightElbow": ("RightForeArm", "RightArm"),
+    "RightWrist": ("RightHand", "RightForeArm"),
+    "LeftShoulder": ("LeftArm", "Chest"),
+    "LeftElbow": ("LeftForeArm", "LeftArm"),
+    "LeftWrist": ("LeftHand", "LeftForeArm"),
+    "RightHip": ("RightLeg", "Hips"),
+    "RightKnee": ("RightShin", "RightLeg"),
+    "RightAnkle": ("RightFoot", "RightShin"),
+    "LeftHip": ("LeftLeg", "Hips"),
+    "LeftKnee": ("LeftShin", "LeftLeg"),
+    "LeftAnkle": ("LeftFoot", "LeftShin"),
+}
+# SOMA bone -> child bone whose rest offset gives the bone's rest DIRECTION (for the alignment arc).
+SOMA_DIR_CHILD = {
+    "RightArm": "RightForeArm", "RightForeArm": "RightHand", "RightHand": "RightHandMiddle1",
+    "LeftArm": "LeftForeArm", "LeftForeArm": "LeftHand", "LeftHand": "LeftHandMiddle1",
+    "RightLeg": "RightShin", "RightShin": "RightFoot", "RightFoot": "RightToeBase",
+    "LeftLeg": "LeftShin", "LeftShin": "LeftFoot", "LeftFoot": "LeftToeBase",
+}
+# R15 rest bone direction per joint (from KIMODO_SOMA_CHAIN) + the joint->part map for landing.
+_R15_REST_DIR = {row[0]: row[5] for row in KIMODO_SOMA_CHAIN}
+
+_SOMA_REST_CACHE = None
+
+
+def _soma_rest():
+    global _SOMA_REST_CACHE
+    if _SOMA_REST_CACHE is None:
+        with open(SOMA_REST_PATH, "r", encoding="utf-8") as fh:
+            _SOMA_REST_CACHE = json.load(fh)
+    return _SOMA_REST_CACHE
+
+
+def _mat_to_quat(m):
+    """3x3 rotation matrix (nested lists) -> unit quaternion [x,y,z,w] (Shepperd's method)."""
+    m00, m01, m02 = m[0]
+    m10, m11, m12 = m[1]
+    m20, m21, m22 = m[2]
+    tr = m00 + m11 + m22
+    if tr > 0:
+        s = math.sqrt(tr + 1.0) * 2
+        w, x, y, z = 0.25 * s, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s
+    elif m00 > m11 and m00 > m22:
+        s = math.sqrt(1.0 + m00 - m11 - m22) * 2
+        w, x, y, z = (m21 - m12) / s, 0.25 * s, (m01 + m10) / s, (m02 + m20) / s
+    elif m11 > m22:
+        s = math.sqrt(1.0 + m11 - m00 - m22) * 2
+        w, x, y, z = (m02 - m20) / s, (m01 + m10) / s, 0.25 * s, (m12 + m21) / s
+    else:
+        s = math.sqrt(1.0 + m22 - m00 - m11) * 2
+        w, x, y, z = (m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, 0.25 * s
+    return q_norm([x, y, z, w])
+
+
+def retarget_kimodo_rot(npz_path, fps=30, mirror=False):
+    """SOMA-77 -> R15 via the world-rotation-delta method (global_rot_mats + the SOMA T-pose rest).
+    Same A_p^-1 * conv(D_p)^-1 * conv(D_b) * A_b math retarget_clip uses; no antipode singularity,
+    keeps twist. Returns the joints-JSON dict (keyed by R15 joint name)."""
+    import numpy as np
+
+    d = np.load(npz_path, allow_pickle=True)
+    G = d["global_rot_mats"]  # [T, J, 3, 3] world orientation per joint
+    total = int(G.shape[0])
+    times = [round(t / fps, 5) for t in range(total)]
+    rest = _soma_rest()
+    ix = {n: i for i, n in enumerate(rest["bones"])}
+    rrest, prest = rest["rest_global_rot"], rest["rest_pos"]
+
+    def sw(n):
+        return _swap_lr(n) if (mirror and n) else n
+
+    rmap = {j: (sw(b), sw(p)) for j, (b, p) in KIMODO_SOMA_ROT_MAP.items()}
+
+    # world deltas D_b(t) = W_anim(b,t) * W_rest(b)^-1  (quaternions), for every needed bone
+    needed = set()
+    for b, p in rmap.values():
+        needed.add(b)
+        if p is not None:
+            needed.add(p)
+    G = np.asarray(G).tolist()  # index as nested lists for _mat_to_quat
+    deltas = {}
+    for b in needed:
+        i = ix[b]
+        wr_inv = q_inv(_mat_to_quat(rrest[i]))
+        deltas[b] = [q_norm(q_mul(_mat_to_quat(G[t][i]), wr_inv)) for t in range(total)]
+
+    # per-bone rest-offset alignment: shortest arc R15 rest dir -> facing-converted SOMA rest dir
+    identity = [0.0, 0.0, 0.0, 1.0]
+    align = {}
+    for joint, (bone, _p) in rmap.items():
+        child = SOMA_DIR_CHILD.get(bone)
+        if child is None or child not in ix:
+            align[bone] = identity
+            continue
+        a, c = prest[ix[bone]], prest[ix[child]]
+        s = [c[k] - a[k] for k in range(3)]
+        m = math.sqrt(sum(v * v for v in s)) or 1.0
+        s = [-s[0] / m, s[1] / m, -s[2] / m]  # facing conversion (vector form)
+        align[bone] = q_from_to(list(_R15_REST_DIR[joint]), s)
+
+    joints = {}
+    for joint, (bone, pbone) in rmap.items():
+        a_b = align.get(bone, identity)
+        a_p = align.get(pbone, identity) if pbone is not None else identity
+        track = []
+        moving = False
+        for t in range(total):
+            db = _conv(deltas[bone][t])
+            dd = db
+            if pbone is not None:
+                dd = q_mul(q_inv(_conv(deltas[pbone][t])), db)
+            tf = q_norm(q_mul(q_inv(a_p), q_mul(dd, a_b)))
+            if abs(tf[3]) < 0.99999:
+                moving = True
+            track.append([round(c, 5) for c in tf])
+        if moving:
+            joints[joint] = {"times": times, "rot": track}
+    return {
+        "clip": "KimodoClip",
+        "duration_s": round((total - 1) / fps, 5) if total > 1 else 0.0,
+        "fps": fps,
+        "skeleton": "soma77rot",
+        "source": os.path.basename(npz_path),
+        "joints": joints,
+    }
+
+
 def retarget_kimodo_npz(npz_path, fps=30, mirror=False):
-    """Kimodo posed_joints -> R15 Motor6D Pose channels via direction-matching FK. Auto-detects
-    the skeleton from the joint count: 77 = SOMA (wrists + ankles articulate), 22 = SMPL-X body.
-    mirror=True reflects L<->R (Kimodo picks a handedness per clip). Returns {clip, duration_s,
-    fps, skeleton, joints: {R15Joint: {times, rot: [[qx,qy,qz,qw]...]}}}."""
+    """Kimodo -> R15. SOMA-77 uses the ROTATION-matrix retarget (global_rot_mats + rest) when the
+    rest spec + rotation data are present (no antipode singularity, keeps twist); otherwise falls
+    back to the aim-only direction FK. 22-joint SMPL-X uses aim FK. Auto-detects by joint count."""
     import numpy as np
 
     d = np.load(npz_path, allow_pickle=True)
     pj = d["posed_joints"]  # [T, J, 3]
     nj = int(pj.shape[1])
+    if nj >= 77 and "global_rot_mats" in getattr(d, "files", []) and os.path.isfile(SOMA_REST_PATH):
+        return retarget_kimodo_rot(npz_path, fps=fps, mirror=mirror)
     if nj >= 77:
-        rows, skel = _soma_rows(mirror), "soma77"
+        rows, skel = _soma_rows(mirror), "soma77aim"
     elif nj == 22:
         rows, skel = _smplx_rows(mirror), "smplx22"
     else:

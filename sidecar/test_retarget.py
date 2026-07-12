@@ -118,7 +118,8 @@ def main():
 
         out = retarget.retarget_kimodo_npz(p, fps=30)
         joints = out["joints"]
-        fails += _check("SOMA-77 auto-detected", out.get("skeleton") == "soma77")
+        # this synthetic npz has no global_rot_mats -> the aim fallback path
+        fails += _check("SOMA-77 auto-detected (aim fallback)", out.get("skeleton") == "soma77aim")
         fails += _check("wrists + ankles now emit (the stuck-limbs fix)",
                         all(j in joints for j in ("RightWrist", "LeftWrist", "RightAnkle", "LeftAnkle")))
         fails += _check("all 15 R15 joints present",
@@ -147,6 +148,44 @@ def main():
         rw = next(r for r in mrows if r[0] == "RightWrist")
         fails += _check("mirror swaps RightWrist source to the LEFT hand",
                         rw[3] == retarget.SOMA77_IX["LeftHand"] and rw[4] == retarget.SOMA77_IX["LeftHandMiddle1"])
+
+        # ---- v2 rotation retarget: _mat_to_quat + antipode smoothness (the jank fix) ----
+        # Rz(90deg) matrix -> quaternion [0,0,sin45,cos45]
+        rz90 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+        q = retarget._mat_to_quat(rz90)
+        fails += _check("_mat_to_quat(Rz90) = [0,0,.707,.707]",
+                        abs(q[0]) < 1e-4 and abs(q[1]) < 1e-4
+                        and abs(q[2] - 0.70710678) < 1e-4 and abs(q[3] - 0.70710678) < 1e-4)
+
+        if os.path.isfile(retarget.SOMA_REST_PATH):
+            # A right arm that SWEEPS 180deg (crosses the antipode of the arms-down rest) must stay
+            # SMOOTH under the rotation retarget — the aim method flipped ~180deg/frame here.
+            rest = retarget._soma_rest()
+            ixr = {n: i for i, n in enumerate(rest["bones"])}
+            J = len(rest["bones"])
+            T = 40
+            G = np.tile(np.eye(3, dtype=np.float32), (T, J, 1, 1))
+            for t in range(T):
+                a = math.pi * t / (T - 1)  # 0 -> 180 deg
+                c, s = math.cos(a), math.sin(a)
+                rx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=np.float32)
+                G[t, ixr["RightArm"]] = rx  # only the upper arm sweeps
+            rp = os.path.join(d, "rot.npz")
+            np.savez(rp, posed_joints=np.zeros((T, J, 3), dtype=np.float32), global_rot_mats=G)
+            rout = retarget.retarget_kimodo_rot(rp, fps=30)
+            fails += _check("rotation retarget selected (soma77rot)", rout.get("skeleton") == "soma77rot")
+
+            def qang(a, b):
+                dd = min(1.0, abs(sum(x * y for x, y in zip(a, b))))
+                return math.degrees(2 * math.acos(dd))
+
+            worst = 0.0
+            for jname in ("RightShoulder", "RightElbow"):
+                rr = rout["joints"].get(jname)
+                if rr:
+                    worst = max(worst, *[qang(rr["rot"][i], rr["rot"][i + 1]) for i in range(len(rr["rot"]) - 1)])
+            # 180deg over 39 frames ~ 4.6deg/frame smooth; a flip would be ~180. Guard well below.
+            fails += _check(f"no antipode flip through a 180deg sweep (worst={worst:.1f} deg/frame)", worst < 20.0)
 
     print(("test_retarget: ALL GREEN" if fails == 0 else f"test_retarget: {fails} FAILURES"))
     return fails
