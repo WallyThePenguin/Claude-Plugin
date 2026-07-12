@@ -91,6 +91,22 @@ Rules baked into the prompt AND enforced by the validator:
 - Not a replacement for Claude's own read: the first use is a BAKE-OFF (same frames, both
   models, Claude's diagnosis committed first) to measure whether Gemini's eyes add signal.
 
+## Amendment (same day, from the first live run)
+
+- **Digest gained `handle_joints` + `handle_anchored`**: an inventory of EVERY
+  joint/weld driving the Handle. Motivated by the live root cause — a stale runtime
+  `RightGrip` Weld (a `Humanoid:EquipTool` artifact) silently overriding every
+  AgentEditGrip edit. Two joints on one part make CFrame corrections useless; the
+  reviewer must be able to see that.
+- **Whitelist gained `("RightGrip", "Weld")`, op `delete` — delete-ONLY, and `RightGrip`
+  is ONLY deletable** (enforced both ways in `validate_corrections`). The narrow escape
+  hatch for exactly that stale-weld class; arms and everything else stay untouchable.
+- **Bake-off outcome (2026-07-12):** with the leveled context, Gemini independently found
+  the stale weld (confidence 1.0) and proposed valid corrections; its raw pixel-space
+  axis reads still erred (blade "backwards" vs the measured forward). Conclusion:
+  eyes + instruments (the digest) beats eyes alone for both models; corrections remain
+  advice for deterministic code to accept, supersede, or reject.
+
 ## Risks
 
 - **Antigravity OAuth volume**: per-iteration vision QA raises call volume on the user's primary

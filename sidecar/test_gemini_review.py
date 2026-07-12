@@ -87,17 +87,24 @@ def test_validate():
            "x": 999, "y": 0, "z": 0, "rationale": "teleport"}
     bad_set = {"target": "tool", "property": "Grip", "op": "set",
                "pos": [0, 0], "euler_deg": [0, 0, 0], "rationale": "malformed"}
+    ok_del = {"target": "RightGrip", "property": "Weld", "op": "delete",
+              "rationale": "stale runtime grip weld fights AgentEditGrip"}
+    bad_del = {"target": "AgentEditGrip", "property": "C0", "op": "delete",
+               "rationale": "nuke the motor"}
     acc, rej = gemini_review.validate_corrections(
-        [ok_rot, ok_tr, ok_set, arm, bad_op, huge, far, bad_set]
+        [ok_rot, ok_tr, ok_set, ok_del, arm, bad_op, huge, far, bad_set, bad_del]
     )
-    fails += _check("3 accepted", len(acc) == 3)
-    fails += _check("5 rejected", len(rej) == 5)
+    fails += _check("4 accepted", len(acc) == 4)
+    fails += _check("6 rejected", len(rej) == 6)
+    fails += _check("delete only valid for RightGrip weld",
+                    any(r["correction"] is bad_del for r in rej)
+                    and any(a is ok_del for a in acc))
     fails += _check("arm joint rejected (read-only rule)",
                     any(r["correction"]["target"] == "RightShoulder" for r in rej))
     fails += _check("every rejection carries a reason",
                     all(isinstance(r.get("reason"), str) and r["reason"] for r in rej))
     fails += _check("accepted preserve order",
-                    [a["op"] for a in acc] == ["rotate_local", "translate_local", "set"])
+                    [a["op"] for a in acc] == ["rotate_local", "translate_local", "set", "delete"])
     return fails
 
 
@@ -108,8 +115,12 @@ def test_to_luau():
          "axis": "Z", "deg": -90, "rationale": "r"},
         {"target": "tool", "property": "Grip", "op": "set",
          "pos": [0, -1.8, 0], "euler_deg": [0, 0, 90], "rationale": "r"},
+        {"target": "RightGrip", "property": "Weld", "op": "delete", "rationale": "r"},
     ])
     lua = gemini_review.to_luau(acc)
+    fails += _check("delete targets only the RightGrip weld by name+class",
+                    'FindFirstChild("RightGrip")' in lua and ":IsA(\"Weld\")" in lua
+                    and ":Destroy()" in lua)
     fails += _check("post-multiplies C0 for local rotate",
                     "grip.C0 = grip.C0 * CFrame.Angles" in lua)
     fails += _check("radians conversion present", "math.rad(-90" in lua)

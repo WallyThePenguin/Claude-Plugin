@@ -45,21 +45,29 @@ RULES = """OUTPUT CONTRACT — reply with ONLY this JSON object (no prose, no ma
 }
 RULES:
 1. Corrections may ONLY target: AgentEditGrip.C0, AgentEditGrip.C1, tool.Grip,
-   Semantic_Grip.CFrame. Arm/other joints are READ-ONLY context — discuss them in
+   Semantic_Grip.CFrame — plus {"target": "RightGrip", "property": "Weld",
+   "op": "delete"} IF AND ONLY IF the digest's handle_joints shows a Weld named
+   RightGrip alongside the AgentEditGrip Motor6D (a stale runtime weld that overrides
+   every grip edit). Arm/other joints are READ-ONLY context — discuss them in
    diagnosis, never in corrections.
-2. Ops: rotate_local (axis + deg), translate_local (x/y/z studs), set (pos + euler_deg).
-   Prefer relative ops. Values in studs / degrees per the primer.
+2. Ops: rotate_local (axis + deg), translate_local (x/y/z studs), set (pos + euler_deg),
+   delete (RightGrip.Weld only). Prefer relative ops. Values in studs / degrees per the
+   primer. NOTE: two joints driving one part means CFrame corrections are USELESS until
+   the stale weld is deleted — order the delete first.
 3. If a view is unreadable, add it to need_more_views — NEVER invent numbers.
 4. Every correction needs a rationale. You advise; deterministic code decides."""
 
 # (target, property) pairs corrections may touch — the grip surfaces, nothing else.
+# ("RightGrip", "Weld") is delete-ONLY: the stale runtime grip weld that fights
+# AgentEditGrip for the Handle (live-caught 2026-07-12; two joints, the Weld wins).
 WHITELIST = {
     ("AgentEditGrip", "C0"),
     ("AgentEditGrip", "C1"),
     ("tool", "Grip"),
     ("Semantic_Grip", "CFrame"),
+    ("RightGrip", "Weld"),
 }
-OPS = ("rotate_local", "translate_local", "set")
+OPS = ("rotate_local", "translate_local", "set", "delete")
 MAX_DEG = 360.0
 MAX_STUDS = 50.0
 
@@ -125,6 +133,14 @@ def validate_corrections(corrections):
             rejected.append({"correction": c, "reason": "target outside grip whitelist: %s.%s" % key})
             continue
         op = c.get("op")
+        # delete is ONLY the stale-RightGrip escape hatch; RightGrip is ONLY deletable.
+        if (op == "delete") != (key == ("RightGrip", "Weld")):
+            rejected.append({"correction": c,
+                             "reason": "delete is valid only for RightGrip.Weld (and vice versa)"})
+            continue
+        if op == "delete":
+            accepted.append(c)
+            continue
         if op == "rotate_local":
             if c.get("axis") not in ("X", "Y", "Z"):
                 rejected.append({"correction": c, "reason": "rotate_local needs axis X|Y|Z"})
@@ -210,6 +226,12 @@ def to_luau(accepted, rig_name="AgentRig"):
             # applyGrip convention: the edit-mode joint mirrors tool.Grip
             lines.append("grip.C1 = tool.Grip")
             lines.append('table.insert(applied, "tool.Grip %s")' % op)
+        elif tgt == "RightGrip":  # delete-only: purge the stale runtime grip weld
+            lines.append('local stale = hand:FindFirstChild("RightGrip")')
+            lines.append('if stale and stale:IsA("Weld") then')
+            lines.append("  stale:Destroy()")
+            lines.append('  table.insert(applied, "RightGrip Weld deleted")')
+            lines.append("end")
         else:  # Semantic_Grip.CFrame
             lines.append('local att = handle and handle:FindFirstChild("Semantic_Grip")')
             lines.append('if not att then return "no Semantic_Grip" end')

@@ -52,8 +52,23 @@ local digest = {
     C1 = cf(grip and grip.C1),
     tool_Grip = cf(tool and tool.Grip),
   },
+  handle_joints = {},
+  handle_anchored = handle and handle.Anchored,
   arm_readonly = {},
 }
+-- joint inventory: EVERY joint/weld driving the Handle (a second driver = grip edits useless)
+if handle then
+  for _, d in workspace:GetDescendants() do
+    if (d:IsA("JointInstance") or d:IsA("WeldConstraint"))
+      and ((d :: any).Part0 == handle or (d :: any).Part1 == handle) then
+      table.insert(digest.handle_joints, {
+        class = d.ClassName, name = d.Name,
+        part0 = (d :: any).Part0 and (d :: any).Part0.Name,
+        part1 = (d :: any).Part1 and (d :: any).Part1.Name,
+      })
+    end
+  end
+end
 for _, n in { "RightShoulder", "RightElbow", "RightWrist" } do
   local j = rig:FindFirstChild(n, true)
   if j and j:IsA("Motor6D") then

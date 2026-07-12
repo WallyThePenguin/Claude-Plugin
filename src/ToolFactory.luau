@@ -467,6 +467,14 @@ function ToolFactory.equip(tool: Tool, rig: Model)
 	if stale ~= nil then
 		stale:Destroy()
 	end
+	-- Purge a stale RUNTIME grip weld too (live-caught 2026-07-12): a `RightGrip` Weld left on
+	-- the hand by a Humanoid:EquipTool play cycle is RIGID and out-competes our Motor6D in the
+	-- edit-mode solve — every C0/C1 grip edit becomes a silent no-op (the sword rides the stock
+	-- attachment * tool.Grip pose instead). One Handle, one authority: AgentEditGrip.
+	local staleRuntime = hand:FindFirstChild("RightGrip")
+	if staleRuntime ~= nil and staleRuntime:IsA("Weld") then
+		staleRuntime:Destroy()
+	end
 	local att = hand:FindFirstChild("RightGripAttachment")
 	local weld = Instance.new("Motor6D")
 	weld.Name = "AgentEditGrip"
