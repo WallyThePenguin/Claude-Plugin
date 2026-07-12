@@ -260,6 +260,23 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 code = 400 if isinstance(exc, ValueError) else 500
                 return self._json(code, {"error": str(exc)})
+        if parsed.path == "/animate/kimodo":
+            # Kimodo SMPL-X motion .npz -> R15 Pose channels (direction-matching FK).
+            try:
+                import retarget
+
+                fname = qs.get("file", [""])[0]
+                if not fname:
+                    return self._json(400, {"error": "file parameter required (.npz in assets/reference)"})
+                try:
+                    fps = int(qs.get("fps", ["30"])[0])
+                except ValueError:
+                    fps = 30
+                fps = max(5, min(60, fps))
+                return self._json(200, retarget.retarget_reference_kimodo(fname, fps=fps))
+            except Exception as exc:  # noqa: BLE001
+                code = 400 if isinstance(exc, ValueError) else 500
+                return self._json(code, {"error": str(exc)})
         if parsed.path == "/animate/retarget":
             # Library clip -> R15 Motor6D Transform channels (retarget.py world-delta math).
             # {clip, duration_s, fps, joints: {R15Joint: {times, rot quats}}} — Luau builds the

@@ -335,6 +335,78 @@ def retarget_clip(glb_path, clip_name, fps=30, name_map=None, spec_path=None):
     }
 
 
+# ---- Kimodo (SMPL-X) -> R15 via direction-matching forward kinematics ----
+#
+# The world-delta/orientation approach fights the T-pose(SMPL-X) vs arms-down(R15) rest mismatch.
+# Direction matching sidesteps it: aim each R15 bone straight along the corresponding SMPL-X bone's
+# WORLD direction (from posed_joints), so the rig reproduces the source's limb DIRECTIONS frame by
+# frame regardless of rest pose. Loses bone-twist (a v2 concern); reads correct for locomotion/melee.
+#
+# SMPL-X world -> Roblox world (MEASURED live 2026-07-12 off the rig + the generated data): R15
+# faces -Z with +X=right; SMPL-X faces +Z with +X=left -> RotY(pi): (x,y,z)->(-x,y,-z).
+#
+# Each row: (R15 joint, R15 part, R15 parent part, SMPL-X from-joint, to-joint, R15 rest bone dir).
+# SMPL-X 22-joint indices: 0 pelvis 1 lhip 2 rhip 3 spine1 4 lknee 5 rknee 6 spine2 7 lankle 8 rankle
+# 9 spine3 10 lfoot 11 rfoot 12 neck 13 lcollar 14 rcollar 15 head 16 lsho 17 rsho 18 lelb 19 relb
+# 20 lwr 21 rwr.
+KIMODO_SMPLX_CHAIN = [
+    ("Root", "LowerTorso", "HumanoidRootPart", 0, 6, (0.0, 1.0, 0.0)),
+    ("Waist", "UpperTorso", "LowerTorso", 6, 12, (0.0, 1.0, 0.0)),
+    ("Neck", "Head", "UpperTorso", 12, 15, (0.0, 1.0, 0.0)),
+    ("RightShoulder", "RightUpperArm", "UpperTorso", 17, 19, (0.0, -1.0, 0.0)),
+    ("RightElbow", "RightLowerArm", "RightUpperArm", 19, 21, (0.0, -1.0, 0.0)),
+    ("LeftShoulder", "LeftUpperArm", "UpperTorso", 16, 18, (0.0, -1.0, 0.0)),
+    ("LeftElbow", "LeftLowerArm", "LeftUpperArm", 18, 20, (0.0, -1.0, 0.0)),
+    ("RightHip", "RightUpperLeg", "LowerTorso", 2, 5, (0.0, -1.0, 0.0)),
+    ("RightKnee", "RightLowerLeg", "RightUpperLeg", 5, 8, (0.0, -1.0, 0.0)),
+    ("LeftHip", "LeftUpperLeg", "LowerTorso", 1, 4, (0.0, -1.0, 0.0)),
+    ("LeftKnee", "LeftLowerLeg", "LeftUpperLeg", 4, 7, (0.0, -1.0, 0.0)),
+]
+
+
+def retarget_kimodo_npz(npz_path, fps=30):
+    """Kimodo SMPL-X posed_joints -> R15 Motor6D Pose channels via direction-matching FK.
+    Returns {clip, duration_s, fps, joints: {R15Joint: {times, rot: [[qx,qy,qz,qw]...]}}}."""
+    import numpy as np
+
+    d = np.load(npz_path, allow_pickle=True)
+    pj = d["posed_joints"]  # [T, 22, 3]
+    total = int(pj.shape[0])
+    times = [round(t / fps, 5) for t in range(total)]
+    tracks = {row[0]: [] for row in KIMODO_SMPLX_CHAIN}
+    for t in range(total):
+        world = {"HumanoidRootPart": [0.0, 0.0, 0.0, 1.0]}  # accumulated R15 part world rotations
+        for joint, part, parent, si, sj, rest in KIMODO_SMPLX_CHAIN:
+            v = pj[t, sj] - pj[t, si]
+            src = [-float(v[0]), float(v[1]), -float(v[2])]  # SMPL-X world -> R15 world
+            m = math.sqrt(sum(c * c for c in src)) or 1.0
+            src = [c / m for c in src]
+            wpar = world[parent]
+            dlocal = q_rot_vec(q_inv(wpar), src)  # target dir expressed in the parent's animated frame
+            q = q_from_to(list(rest), dlocal)  # rotate the R15 rest bone dir onto the target
+            tracks[joint].append([round(c, 5) for c in q])
+            world[part] = q_norm(q_mul(wpar, q))
+    return {
+        "clip": "KimodoClip",
+        "duration_s": round((total - 1) / fps, 5) if total > 1 else 0.0,
+        "fps": fps,
+        "source": os.path.basename(npz_path),
+        "joints": {row[0]: {"times": times, "rot": tracks[row[0]]} for row in KIMODO_SMPLX_CHAIN},
+    }
+
+
+def retarget_reference_kimodo(filename, fps=30):
+    """Allowlisted assets/reference .npz entry point (the /animate/kimodo route)."""
+    if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
+        raise meshio.MeshError("bad filename")
+    if not filename.lower().endswith(".npz"):
+        raise meshio.MeshError("only .npz files are supported")
+    path = os.path.join(meshio.ASSET_DIR, filename)
+    if not os.path.isfile(path):
+        raise meshio.MeshError(f"no such reference clip: {filename}")
+    return retarget_kimodo_npz(path, fps=fps)
+
+
 def retarget_reference_clip(filename, clip_name, fps=30):
     """Allowlisted assets/reference entry point (the /animate/retarget route)."""
     if not isinstance(filename, str) or "/" in filename or "\\" in filename or ".." in filename:
