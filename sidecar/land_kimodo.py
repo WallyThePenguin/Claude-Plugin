@@ -78,12 +78,18 @@ def bridge_luau(code, timeout_s=90):
     return {"ok": False, "error": "bridge luau timed out"}
 
 
-def land(npz_name, clip="KimodoSlash", mirror=False):
+def land(npz_name, clip="KimodoSlash", mirror=False, drop_parts=None):
+    """drop_parts: iterable of R15 PART names to OMIT (they hold their rest pose) — used to A/B
+    the wrist/ankle channels against a body-only landing."""
+    drop = set(drop_parts or ())
     out = retarget.retarget_reference_kimodo(npz_name, mirror=mirror)
     j2p = _joint_to_part()
     parts, times = {}, None
     for jname, ch in out["joints"].items():
-        parts[j2p.get(jname, jname)] = ch["rot"]
+        part = j2p.get(jname, jname)
+        if part in drop:
+            continue
+        parts[part] = ch["rot"]
         times = ch["times"]
     if not times:
         return {"ok": False, "error": "retarget produced no moving joints"}
@@ -98,8 +104,11 @@ def land(npz_name, clip="KimodoSlash", mirror=False):
     return res
 
 
+_BODY_DROP = {"RightHand", "LeftHand", "RightFoot", "LeftFoot"}  # the wrist/ankle-driven parts
+
 if __name__ == "__main__":
     npz = sys.argv[1] if len(sys.argv) > 1 else "kimodo-soma-slash.npz"
     clip = sys.argv[2] if len(sys.argv) > 2 else "KimodoSlash"
     mir = len(sys.argv) > 3 and sys.argv[3] not in ("0", "", "false", "no")
-    print(json.dumps(land(npz, clip, mir), indent=1))
+    drop = _BODY_DROP if (len(sys.argv) > 4 and sys.argv[4] == "body") else None
+    print(json.dumps(land(npz, clip, mir, drop_parts=drop), indent=1))
