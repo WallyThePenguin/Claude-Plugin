@@ -546,17 +546,28 @@ def retarget_kimodo_rot(npz_path, fps=30, mirror=False):
     import numpy as np
 
     d = np.load(npz_path, allow_pickle=True)
-    G = d["global_rot_mats"]  # [T, J, 3, 3] world orientation per joint
+    G = np.asarray(d["global_rot_mats"], dtype=float)  # [T, J, 3, 3] world orientation per joint
     total = int(G.shape[0])
     times = [round(t / fps, 5) for t in range(total)]
     rest = _soma_rest()
-    ix = {n: i for i, n in enumerate(rest["bones"])}
-    rrest, prest = rest["rest_global_rot"], rest["rest_pos"]
+    bones = rest["bones"]
+    ix = {n: i for i, n in enumerate(bones)}
+    rrest = np.asarray(rest["rest_global_rot"], dtype=float)  # [J,3,3]
+    prest = np.asarray(rest["rest_pos"], dtype=float)          # [J,3]
 
-    def sw(n):
-        return _swap_lr(n) if (mirror and n) else n
+    if mirror:
+        # TRUE sagittal mirror (right-handed fencing from a left-handed clip): swap L/R joints AND
+        # REFLECT every orientation + position across the SOMA sagittal plane (X_soma = lateral),
+        # R' = S R S with S = diag(-1,1,1). Just reading the opposite arm (no reflection) would keep
+        # the wrong chirality (a CW parry would stay CW instead of mirroring). Reflect the SOURCE
+        # up front, then retarget normally.
+        S = np.diag([-1.0, 1.0, 1.0])
+        swap = [ix[_swap_lr(n)] for n in bones]
+        G = np.einsum("ij,tsjk,kl->tsil", S, G[:, swap], S)
+        rrest = np.einsum("ij,sjk,kl->sil", S, rrest[swap], S)
+        prest = prest[swap] * np.array([-1.0, 1.0, 1.0])
 
-    rmap = {j: (sw(b), sw(p)) for j, (b, p) in KIMODO_SOMA_ROT_MAP.items()}
+    rmap = KIMODO_SOMA_ROT_MAP  # source already mirrored above when requested
 
     # world deltas D_b(t) = W_anim(b,t) * W_rest(b)^-1  (quaternions), for every needed bone
     needed = set()
@@ -564,7 +575,6 @@ def retarget_kimodo_rot(npz_path, fps=30, mirror=False):
         needed.add(b)
         if p is not None:
             needed.add(p)
-    G = np.asarray(G).tolist()  # index as nested lists for _mat_to_quat
     deltas = {}
     for b in needed:
         i = ix[b]

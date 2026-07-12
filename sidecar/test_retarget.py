@@ -187,6 +187,36 @@ def main():
             # 180deg over 39 frames ~ 4.6deg/frame smooth; a flip would be ~180. Guard well below.
             fails += _check(f"no antipode flip through a 180deg sweep (worst={worst:.1f} deg/frame)", worst < 20.0)
 
+            # mirror: a LEFT-arm-only source must move the RIGHT arm when mirror=True (true sagittal
+            # swap+reflect), and the left arm when mirror=False. Init every joint at its REST world
+            # orientation (so unchanged joints have identity delta), then animate LeftArm on top.
+            rest_g = np.asarray(rest["rest_global_rot"], dtype=np.float32)  # [J,3,3]
+            G2 = np.tile(rest_g[None], (T, 1, 1, 1))
+            la = ixr["LeftArm"]
+            for t in range(T):
+                a2 = math.radians(60) * t / (T - 1)
+                c2, s2 = math.cos(a2), math.sin(a2)
+                ry = np.array([[c2, 0, s2], [0, 1, 0], [-s2, 0, c2]], dtype=np.float32)
+                G2[t, la] = ry @ rest_g[la]  # animate the left arm relative to its rest
+            rp2 = os.path.join(d, "mir.npz")
+            np.savez(rp2, posed_joints=np.zeros((T, J, 3), dtype=np.float32), global_rot_mats=G2)
+            o0 = retarget.retarget_kimodo_rot(rp2, fps=30, mirror=False)
+            o1 = retarget.retarget_kimodo_rot(rp2, fps=30, mirror=True)
+
+            def travel(o, j):  # total frame-to-frame angular change of a joint's track (0 if absent)
+                ch = o["joints"].get(j)
+                if not ch:
+                    return 0.0
+                r = ch["rot"]
+                return sum(qang(r[i], r[i + 1]) for i in range(len(r) - 1))
+
+            l0, r0 = travel(o0, "LeftShoulder"), travel(o0, "RightShoulder")
+            l1, r1 = travel(o1, "LeftShoulder"), travel(o1, "RightShoulder")
+            fails += _check(f"mirror=False animates the LEFT arm (L={l0:.0f} R={r0:.0f} deg travel)",
+                            l0 > 10.0 and r0 < 1.0)
+            fails += _check(f"mirror=True animates the RIGHT arm (L={l1:.0f} R={r1:.0f} deg travel)",
+                            r1 > 10.0 and l1 < 1.0)
+
     print(("test_retarget: ALL GREEN" if fails == 0 else f"test_retarget: {fails} FAILURES"))
     return fails
 
