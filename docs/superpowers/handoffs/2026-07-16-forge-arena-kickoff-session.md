@@ -21,6 +21,14 @@ The zero-touch flagship run began (spec: `docs/superpowers/specs/2026-07-16-zero
 - Next on the conveyor: rig_weapon cleanup (`--canon long-y --target-studs 5 --smooth 5 --uv planar --uv-sides 2 --bake-ao`) → relief paint_atlas → EditableMesh import (contract mapped: `/assets/mesh?file=&textured=1`, 1-based faces; **importer Luau to be COMMITTED as a real tool this phase** — it was session-scratch three times, a residue-rule violation) → save_mesh+confirm_mesh → make_tool/stamp_frame/grip_tool → swing clip via retarget (UAL2 Sword_Regular family) → bind_hitbox.
 - NOTE: `sidecar/blender_scripts/rig_weapon.py` carries the rapier session's UNCOMMITTED `--remesh` flag + box/cyl UV modes (additive, default-off — usable as escalation if hole-counts are bad).
 
+## P2 weapon 1 — COMPLETE through persistence (late session)
+
+**The ForgeFalchion landed end-to-end**: ref (10s, eyeballed) → TRELLIS 1024 birefnet (150.4s) → rig_weapon cleanup (19,499 tris, extents 1.86×0.32×5.0, 923+385 holes closed, planar 2-sided UVs aspect 5.37, AO 1024²) → relief paint (10.1s — runic steel + molten edge channel + bronze guard, keeper first roll) → **`import_mesh` first production use** (11,171 verts, uvs+normals complete, atlas session-backed) → in-arena capture eyeballed → save_mesh: mesh `rbxassetid://103390730043911` + texture `rbxassetid://72913711270849`, moderation pending (confirm_mesh later). REMAINING: grip chain (edge-dir via render-candidates), swing clip, hitbox.
+
+**THE TRELLIS SAGA, FINAL DIAGNOSIS (supersedes the mid-session theories):** every "birefnet alloc" today was one of two causes — (a) NVIDIA VRAM tenancy (the user's Palworld 4.9GB + NVIDIA Overlay 2.3GB) leaving no 2.4GB contiguous buffer, or (b) the job landing on the **AMD iGPU**, whose driver caps single allocations below birefnet's 2.4GB request no matter the 33GB pool. The iGPU also runs flow stages 15-100x slow (wedged >45min at stage 3) — **falsified as a practical lane for generation**. A transient NVIDIA-ICD dropout right after the game exit produced one AMD-only enumeration; and the `[trellis] using VulkanN` log line is the ONLY trustworthy device signal — pin with BOTH `STUDIO_AGENT_TRELLIS_VK_DEVICES=0` and an explicit `GGML_VK_VISIBLE_DEVICES=0` export, and verify the device line before trusting a run (the server also has a native `--gpu N` flag, banked for belt-and-suspenders). Client timeouts ORPHAN finished server compute (no result cache) — tooling-issue #25.
+
+**Studio-restart doctrine reconfirmed twice today:** a fresh Studio boot runs a stale plugin generation even with the sidecar up — `reload` is step zero after ANY Studio (re)start; the tell is "unknown tool/command kind".
+
 ## Standing user errands (unchanged)
 
 Move Gemini OAuth off the primary Google account (ban risk, paint-path load-bearing); memtrace stays behind its tripwire (SP4 trigger conditions in the flagship spec).

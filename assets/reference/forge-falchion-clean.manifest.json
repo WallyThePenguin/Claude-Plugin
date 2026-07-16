@@ -1,0 +1,29 @@
+{
+ "mode": "cleanup",
+ "source": "forge-falchion.glb",
+ "verts_in": 42104,
+ "tris_in": 60466,
+ "verts": 9506,
+ "tris": 19499,
+ "extents_studs": [
+  1.862,
+  0.318,
+  5.0
+ ],
+ "target_studs": 5.0,
+ "smooth": 5,
+ "holes_closed_repair": 923,
+ "holes_closed_post_smooth": 385,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "XZ",
+ "uv_margin": 0.02,
+ "uv_sides": 2,
+ "uv_aspect": 5.3713,
+ "uv_layers": 1,
+ "ao": "forge-falchion-ao.png",
+ "ao_size": [
+  1024,
+  1024
+ ]
+}

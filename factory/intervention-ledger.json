@@ -19,6 +19,14 @@
       "class": "platform-gate",
       "what": "User opened Roblox Studio on a fresh Baseplate (Place2, placeId 71518658263588). Verified fresh via bridge probe before any edit.",
       "residue": "Sidecar startup shifted to the agent this run (was a user step); Studio-open remains the irreducible human gate."
+    },
+    {
+      "n": 2,
+      "date": "2026-07-16",
+      "class": "errand",
+      "status": "RESOLVED (user closed the game; falchion generated 150.4s on the freed card)",
+      "what": "GPU occupied by the user's Palworld session (4,856 MB) + NVIDIA Overlay replay buffer (2,303 MB) — TRELLIS generation ran 15-20x slow into timeouts on NVIDIA, and the iGPU lane wedged at the flow stage (falsified as a practical fallback). Armory mesh generation blocked until the card freed; agent did NOT kill the user's game session.",
+      "residue": "Conveyor preflight now includes per-process GPU attribution (Get-Counter GPU Process Memory) + explicit GGML_VK_VISIBLE_DEVICES=0 pin + device-line verification in every run. Full diagnosis chain (starvation -> transient ICD dropout -> AMD per-buffer cap -> pin drift) in the 2026-07-16 handoff + tooling-issue #25."
     }
   ]
 }
