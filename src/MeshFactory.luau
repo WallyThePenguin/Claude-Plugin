@@ -8,6 +8,7 @@
 local MeshFactory = {}
 
 local AssetService = game:GetService("AssetService")
+local HttpService = game:GetService("HttpService")
 
 export type Geometry = { vertices: { Vector3 }, triangles: { { number } } }
 
@@ -175,6 +176,106 @@ function MeshFactory.buildMeshPart(
 	mp.Color = color
 	mp.Material = material
 	return mp
+end
+
+export type ImportResult = {
+	part: MeshPart,
+	vertices: number,
+	faces: number,
+	uvs: number,
+	normals: number,
+	texApplied: boolean,
+	source: string,
+}
+
+-- Import a reference .glb (assets/reference, parsed sidecar-side by meshio) as a MeshPart via
+-- EditableMesh: geometry + per-vertex NORMALS when present (smooth shading — flat-shaded imports
+-- read "rocky") + per-vertex UVs when present (NO V-flip — glTF top-down passes 1:1 against a
+-- top-down-written EditableImage; proven both ways on the DivineRapier). atlasFile optionally
+-- applies a painted atlas (.png/.jpeg, or a .glb's embedded atlas) via the binary /assets/texture
+-- route as a session-backed TextureContent (SourceType "Object" — renders live in edit; save_mesh
+-- makes it durable). DoubleSided=true is the import DEFAULT: thin generated blades cull
+-- see-through from behind otherwise. THROWS on transport/engine failure; callers must pcall —
+-- Tools.dispatch does.
+function MeshFactory.importReferenceMesh(
+	sidecarBase: string,
+	file: string,
+	atlasFile: string?
+): ImportResult
+	local resp = HttpService:RequestAsync({
+		Url = sidecarBase .. "/assets/mesh?textured=1&file=" .. HttpService:UrlEncode(file),
+		Method = "GET",
+	})
+	if not resp.Success then
+		error(
+			string.format("mesh route HTTP %d: %s", resp.StatusCode, string.sub(resp.Body or "", 1, 200))
+		)
+	end
+	local data: any = HttpService:JSONDecode(resp.Body)
+	local verts = data.vertices :: { { number } }
+	local faces = data.faces :: { { number } }
+	local em = AssetService:CreateEditableMesh()
+	local vids: { number } = table.create(#verts)
+	for i, v in verts do
+		vids[i] = em:AddVertex(Vector3.new(v[1], v[2], v[3]))
+	end
+	local nids: { number }? = nil
+	if type(data.normals) == "table" and #data.normals == #verts then
+		local ids: { number } = table.create(#verts)
+		for i, n in data.normals :: { { number } } do
+			ids[i] = em:AddNormal(Vector3.new(n[1], n[2], n[3]))
+		end
+		nids = ids
+	end
+	local uvids: { number }? = nil
+	if type(data.uvs) == "table" and #data.uvs == #verts then
+		local ids: { number } = table.create(#verts)
+		for i, u in data.uvs :: { { number } } do
+			ids[i] = em:AddUV(Vector2.new(u[1], u[2]))
+		end
+		uvids = ids
+	end
+	for _, f in faces do
+		local fid = em:AddTriangle(vids[f[1]], vids[f[2]], vids[f[3]])
+		if nids ~= nil then
+			em:SetFaceNormals(fid, { nids[f[1]], nids[f[2]], nids[f[3]] })
+		end
+		if uvids ~= nil then
+			em:SetFaceUVs(fid, { uvids[f[1]], uvids[f[2]], uvids[f[3]] })
+		end
+	end
+	local mp = AssetService:CreateMeshPartAsync(Content.fromObject(em))
+	mp.Anchored = true
+	mp.DoubleSided = true
+	local texApplied = false
+	if atlasFile ~= nil and atlasFile ~= "" then
+		local tex = HttpService:RequestAsync({
+			Url = sidecarBase .. "/assets/texture?max=1024&file=" .. HttpService:UrlEncode(atlasFile),
+			Method = "GET",
+		})
+		if not tex.Success then
+			error(string.format("texture route HTTP %d", tex.StatusCode))
+		end
+		local xsize = tex.Headers["x-size"] or tex.Headers["X-Size"]
+		local w, h = string.match(tostring(xsize), "^(%d+),(%d+)$")
+		if w == nil or h == nil then
+			error("texture route: missing/bad X-Size header (" .. tostring(xsize) .. ")")
+		end
+		local wn, hn = tonumber(w) :: number, tonumber(h) :: number
+		local img = AssetService:CreateEditableImage({ Size = Vector2.new(wn, hn) })
+		img:WritePixelsBuffer(Vector2.zero, Vector2.new(wn, hn), buffer.fromstring(tex.Body))
+		mp.TextureContent = Content.fromObject(img)
+		texApplied = true
+	end
+	return {
+		part = mp,
+		vertices = #verts,
+		faces = #faces,
+		uvs = if uvids ~= nil then #uvids else 0,
+		normals = if nids ~= nil then #nids else 0,
+		texApplied = texApplied,
+		source = tostring(data.source),
+	}
 end
 
 export type PineParams = { height: number?, tiers: number?, color: Color3? }

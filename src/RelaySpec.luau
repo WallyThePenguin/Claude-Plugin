@@ -49,6 +49,7 @@ local EXPECTED_RELAY = {
 	"place_relative",
 	"generate_mesh",
 	"author_mesh",
+	"import_mesh",
 	"save_mesh",
 	"confirm_mesh",
 	"paint_texture",

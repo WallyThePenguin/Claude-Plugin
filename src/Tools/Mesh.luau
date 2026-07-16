@@ -752,6 +752,66 @@ local COLOR_SCHEMA = {
 	properties = { r = { type = "number" }, g = { type = "number" }, b = { type = "number" } },
 }
 
+-- import_mesh: a reference .glb (the TRELLIS/Blender conveyor output, parsed sidecar-side) ->
+-- EditableMesh MeshPart, with optional painted-atlas apply. The COMMITTED version of the importer
+-- that was session-scratch three times (residue rule: never re-derive it again).
+local function runImport(input: any, context: any): (string, boolean)
+	local args = if type(input) == "table" then input else {}
+	if type(args.file) ~= "string" or args.file == "" then
+		return "import_mesh requires { file = '<name>.glb' (in assets/reference), atlas?, name?, position? }",
+			true
+	end
+	local sidecarBase: string? = nil
+	if context ~= nil and context.config ~= nil then
+		pcall(function()
+			sidecarBase = context.config:getSidecarUrl()
+		end)
+	end
+	if sidecarBase == nil or sidecarBase == "" then
+		return "import_mesh: sidecar URL unavailable (the vision sidecar must be connected)", true
+	end
+	local atlas: string? = if type(args.atlas) == "string" and args.atlas ~= "" then args.atlas else nil
+	local ok, result = pcall(function(): MeshFactory.ImportResult
+		return MeshFactory.importReferenceMesh(sidecarBase :: string, args.file :: string, atlas)
+	end)
+	if not ok then
+		return "import_mesh: " .. tostring(result), true
+	end
+	local r = result :: MeshFactory.ImportResult
+	local mp = r.part
+	mp.Name = if type(args.name) == "string" and args.name ~= "" then args.name else "ImportedMesh"
+	local position = resolvePosition(args)
+	local grounded = CFrame.new(position + Vector3.new(0, mp.Size.Y / 2, 0))
+	if RunService:IsEdit() then
+		local rid = ChangeHistoryService:TryBeginRecording("import_mesh")
+		mp.CFrame = grounded
+		mp.Parent = workspace
+		if rid ~= nil then
+			ChangeHistoryService:FinishRecording(rid, Enum.FinishRecordingOperation.Commit)
+		end
+	else
+		mp.CFrame = grounded
+		mp.Parent = workspace
+	end
+	return string.format(
+		"import_mesh OK: '%s' from %s — %d verts / %d tris, uvs=%d normals=%d, DoubleSided, %s. "
+			.. "Size %.2f x %.2f x %.2f at %s. NEXT: save_mesh + confirm_mesh (standing rule — "
+			.. "session meshes blank out in Play).",
+		mp.Name,
+		r.source,
+		r.vertices,
+		r.faces,
+		r.uvs,
+		r.normals,
+		if r.texApplied then "painted atlas APPLIED (session-backed)" else "no atlas (gray)",
+		mp.Size.X,
+		mp.Size.Y,
+		mp.Size.Z,
+		mp:GetFullName()
+	),
+		false
+end
+
 Mesh.descriptors = {
 	{
 		name = "generate_mesh",
@@ -799,6 +859,35 @@ Mesh.descriptors = {
 		},
 		destructive = true,
 		run = runAuthor,
+	},
+	{
+		name = "import_mesh",
+		description = "IMPORT a reference .glb from assets/reference (the TRELLIS/Blender conveyor output) as "
+			.. "a MeshPart via EditableMesh — geometry + smooth NORMALS + per-vertex UVs (no V-flip), "
+			.. "DoubleSided by default (thin generated blades cull see-through from behind otherwise). "
+			.. "atlas? applies a painted atlas (.png/.jpeg, or a .glb's embedded bake) as a live "
+			.. "session-backed texture (EditableImage -> TextureContent). Serves the decoupled-texture "
+			.. "conveyor: rig_weapon.py authors UVs, paint_atlas paints them, this tool lands both in "
+			.. "Studio. ALWAYS follow with save_mesh + confirm_mesh (standing rule: session meshes blank "
+			.. "out in Play). Inputs: file (required), atlas?, name?, position?.",
+		inputSchema = {
+			type = "object",
+			properties = {
+				file = {
+					type = "string",
+					description = "GLB filename in assets/reference, e.g. 'forge-falchion-clean.glb'.",
+				},
+				atlas = {
+					type = "string",
+					description = "Optional atlas filename in assets/reference (.png/.jpeg painted, or .glb embedded).",
+				},
+				name = { type = "string", description = "Name for the MeshPart (default 'ImportedMesh')." },
+				position = POS_SCHEMA,
+			},
+			required = { "file" },
+		},
+		destructive = true,
+		run = runImport,
 	},
 	{
 		name = "save_mesh",
