@@ -1,0 +1,17 @@
+{
+ "src/ReplicatedStorage/ForgeConfig.luau": {
+  "baseHash": "0d9a46f9",
+  "className": "ModuleScript",
+  "instancePath": "game.ReplicatedStorage.ForgeConfig"
+ },
+ "src/ServerScriptService/ForgeRoundLoop.server.luau": {
+  "baseHash": "a91807b4",
+  "className": "Script",
+  "enabled": true,
+  "instancePath": "game.ServerScriptService.ForgeRoundLoop",
+  "runContext": "Legacy",
+  "testSymbols": [
+   "TestAutoKill"
+  ]
+ }
+}
