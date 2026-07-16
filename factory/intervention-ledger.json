@@ -1,0 +1,24 @@
+{
+  "run": "forge-arena-baseline-1",
+  "metric": "interventions-per-game",
+  "rule": "no intervention without residue",
+  "started": "2026-07-16",
+  "spec": "docs/superpowers/specs/2026-07-16-zero-touch-flagship-run-design.md",
+  "classes": ["quality-catch", "taste", "platform-gate", "errand", "direction"],
+  "entries": [
+    {
+      "n": 0,
+      "date": "2026-07-16",
+      "class": "direction",
+      "what": "User initiated the zero-touch flagship run and accepted interventions-per-game as the project metric (director-review session).",
+      "residue": "docs/superpowers/specs/2026-07-16-zero-touch-flagship-run-design.md"
+    },
+    {
+      "n": 1,
+      "date": "2026-07-16",
+      "class": "platform-gate",
+      "what": "User opened Roblox Studio on a fresh Baseplate (Place2, placeId 71518658263588). Verified fresh via bridge probe before any edit.",
+      "residue": "Sidecar startup shifted to the agent this run (was a user step); Studio-open remains the irreducible human gate."
+    }
+  ]
+}
