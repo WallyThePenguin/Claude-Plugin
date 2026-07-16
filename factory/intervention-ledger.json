@@ -27,6 +27,14 @@
       "status": "RESOLVED (user closed the game; falchion generated 150.4s on the freed card)",
       "what": "GPU occupied by the user's Palworld session (4,856 MB) + NVIDIA Overlay replay buffer (2,303 MB) — TRELLIS generation ran 15-20x slow into timeouts on NVIDIA, and the iGPU lane wedged at the flow stage (falsified as a practical fallback). Armory mesh generation blocked until the card freed; agent did NOT kill the user's game session.",
       "residue": "Conveyor preflight now includes per-process GPU attribution (Get-Counter GPU Process Memory) + explicit GGML_VK_VISIBLE_DEVICES=0 pin + device-line verification in every run. Full diagnosis chain (starvation -> transient ICD dropout -> AMD per-buffer cap -> pin drift) in the 2026-07-16 handoff + tooling-issue #25."
+    },
+    {
+      "n": 3,
+      "date": "2026-07-16",
+      "class": "quality-catch",
+      "status": "RESOLVED (root cause fixed in code; retextured + re-graded at close range; durable texture re-uploaded)",
+      "what": "User caught: ForgeFalchion texture quality is poor ON THE MESH ('mesh looks great, texture is not'). Agent had graded the flat atlas image + a distant in-arena capture only — never a close-up of the applied texture. ROOT CAUSE: rig_weapon's AO-bake sizing clamped canvas aspect with min(1.0, aspect), squaring every tall canvas — the 5.37 layout baked 1024x1024, so on-mesh texels stretched ~5.4x along the blade.",
+      "residue": "(a) CODE: bake sizing fixed (long side 1024, short side by uv_aspect; height:width semantics documented) — every future conveyor asset inherits it. (b) GATE: close-up texture grade (inspection-range capture + explicit criteria: no anisotropic smear, features legible, materials differentiated) is now a mandatory conveyor step BEFORE save_mesh — atlas-as-image grading is insufficient by doctrine. (c) Durable assets re-uploaded: mesh 103528640483692 + texture 74226553172942; the smeared pair 103390730043911/72913711270849 is ORPHANED (mesh-ledger follow-up)."
     }
   ]
 }

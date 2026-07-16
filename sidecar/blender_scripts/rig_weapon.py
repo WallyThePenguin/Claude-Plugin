@@ -38,7 +38,7 @@ ap.add_argument("--target-studs", dest="target_studs", type=float, default=4.5)
 ap.add_argument("--tri-budget", dest="tri_budget", type=int, default=19500)
 ap.add_argument("--segments", type=int, default=4, help="rigid mode: bone count (Grip + N-1 blade segments)")
 ap.add_argument("--grip-end", dest="grip_end", default="auto", choices=["auto", "min", "max"])
-ap.add_argument("--uv", default="none", choices=["none", "smart", "planar"],
+ap.add_argument("--uv", default="none", choices=["none", "smart", "planar", "box", "cyl"],
                 help="Clean unwrap after cleanup (the decoupled-texture architecture: shape from "
                      "TRELLIS, UVs authored once here, texture painted on these islands "
                      "downstream). smart = Smart UV Project — MEASURED UNPAINTABLE on voxel-shell "
@@ -62,6 +62,14 @@ ap.add_argument("--smooth", type=int, default=0,
                      "voxel-reconstruction bumps ('rocky' surfaces) with ~zero shrink. 0 = off. "
                      "(Plain Laplacian is BANNED here: its shrink pulled the non-watertight "
                      "shell's pinholes visibly open and thinned ornament.)")
+ap.add_argument("--remesh", type=int, default=0,
+                help="FORCE a voxel remesh at voxel_size = max_extent/VALUE BEFORE decimate — "
+                     "rebuilds ONE watertight manifold from TRELLIS shell-soup (the escalation "
+                     "path only fires when decimation floors ABOVE budget; a thin blade decimates "
+                     "UNDER budget while still full of holes, so it never triggers — this forces "
+                     "it). Higher VALUE = finer voxels = crisper ornament but a thinner blade risks "
+                     "splitting into separate watertight islands (still hole-free). 0 = off; "
+                     "~200-320 is the completeness sweet spot for a 5-stud blade.")
 ap.add_argument("--bake-ao", dest="bake_ao", default="",
                 help="PNG path: bake the mesh's OWN ambient occlusion into UV space (Cycles CPU) "
                      "at the canvas aspect — the relief map the texture PAINTER molds paint to "
@@ -157,6 +165,23 @@ def decimate_to(budget):
         attempts += 1
     return count
 
+
+# forced watertight remesh (user opt-in): rebuild ONE manifold from the shell-soup BEFORE
+# decimate so holes are closed at the source, not merely hidden. Collapse decimation on a
+# watertight manifold stays watertight, so the budget pass below keeps the closed surface.
+if args.remesh > 0:
+    rm = obj.modifiers.new("remesh", "REMESH")
+    rm.mode = "VOXEL"
+    rm.voxel_size = max(mesh_extents(obj)) / float(args.remesh)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=rm.name)
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.to_mesh(obj.data)
+    bm.free()
+    print(f"forced voxel remesh (divisor {args.remesh}, voxel "
+          f"{max(mesh_extents(obj)) / float(args.remesh):.4f}): {len(obj.data.polygons)} tris")
 
 tri_count = decimate_to(args.tri_budget)
 if tri_count > args.tri_budget:
@@ -283,15 +308,33 @@ elif args.uv == "planar":
         obj.data.uv_layers.remove(obj.data.uv_layers[0])
     mesh = obj.data
     dims = mesh_extents(obj)
-    order = sorted(range(3), key=lambda i: -dims[i])
-    ax_u, ax_v = order[0], order[1]
-    lo_u = min(v.co[ax_u] for v in mesh.vertices)
-    hi_u = max(v.co[ax_u] for v in mesh.vertices)
-    lo_v = min(v.co[ax_v] for v in mesh.vertices)
-    hi_v = max(v.co[ax_v] for v in mesh.vertices)
+    verts = mesh.vertices
+    # BLADE-AWARE axis pick (fix for the user-caught "blade 90 degrees wrong"): the plain
+    # 2-largest-EXTENTS plane is chosen by GLOBAL spread, which a chunky guard dominates — so it can
+    # keep the blade's THICKNESS axis and drop its WIDTH, projecting the blade edge-on (its broad
+    # face collapses to a UV sliver and everything downstream misaligns). Instead: V = the long
+    # axis; then measure the BLADE's own cross-section (the thinner half along the length) and DROP
+    # the blade's thinnest cross-axis (its true broad-face normal), keeping the wider one as U.
+    ax_v = max(range(3), key=lambda i: dims[i])  # length -> vertical in the atlas
+    perp = [i for i in range(3) if i != ax_v]
+    _mid = 0.5 * (min(v.co[ax_v] for v in verts) + max(v.co[ax_v] for v in verts))
+
+    def _cross(top):
+        pts = [v.co for v in verts if (v.co[ax_v] >= _mid) == top]
+        if not pts:
+            return (1e18, 1e18)
+        return tuple(max(p[a] for p in pts) - min(p[a] for p in pts) for a in perp)
+
+    _hi, _lo = _cross(True), _cross(False)
+    blade_cross = _hi if sum(_hi) < sum(_lo) else _lo  # the thinner half is the blade
+    ax_u = perp[0] if blade_cross[0] >= blade_cross[1] else perp[1]  # keep the blade's WIDE axis
+    ax_w = perp[1] if ax_u == perp[0] else perp[0]  # drop the blade's THIN axis (broad-face normal)
+    lo_u = min(v.co[ax_u] for v in verts)
+    hi_u = max(v.co[ax_u] for v in verts)
+    lo_v = min(v.co[ax_v] for v in verts)
+    hi_v = max(v.co[ax_v] for v in verts)
     span_u = max(hi_u - lo_u, 1e-9)
     span_v = max(hi_v - lo_v, 1e-9)
-    ax_w = order[2]  # the thin axis — face-normal sign along it decides front vs back
     m = max(0.0, min(0.2, args.uv_margin))
     usable_u = 1.0 - 2.0 * m
     # FULL-BOX per-axis normalization: the CANVAS carries the aspect, not the UVs — the
@@ -324,6 +367,66 @@ elif args.uv == "planar":
                 "uv_layers": len(mesh.uv_layers)}
     print(f"planar uv: axes={uv_stats['uv_axes']} sides={sides} margin={m} "
           f"canvas-aspect={uv_stats['uv_aspect']}")
+elif args.uv == "box":
+    # Cube projection: each face maps by its dominant-normal axis onto one of 6 planes, so ALL
+    # facets get real UV area — the fix for planar's 2-sides-only smear on a 3D cross-section
+    # (a diamond blade's edge facets are perpendicular to the planar plane and collapse to a
+    # line, sampling whatever texel sits there). pack_islands lays the 6 groups out without
+    # overlap so each paints/AO-bakes independently.
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    while obj.data.uv_layers:
+        obj.data.uv_layers.remove(obj.data.uv_layers[0])
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.cube_project(cube_size=1.0, correct_aspect=True)
+    bpy.ops.uv.pack_islands(margin=max(0.0, min(0.2, args.uv_margin)), rotate=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    uv_stats = {"uv": "box", "uv_margin": args.uv_margin, "uv_layers": len(obj.data.uv_layers)}
+    print(f"box uv: cube_project + pack, layers={len(obj.data.uv_layers)}")
+elif args.uv == "cyl":
+    # Deterministic CYLINDRICAL wrap around the LONG axis: U = angle around the axis, V = height.
+    # Position-based (not normal-based), so no micro-island shatter on voxel normals — the fix for
+    # planar's 2-sides-only AND box's confetti. One continuous band: both broad faces get large
+    # angular spans, the thin edges land near the seam/poles. All facets get real UV area.
+    import math as _math
+    while obj.data.uv_layers:
+        obj.data.uv_layers.remove(obj.data.uv_layers[0])
+    mesh = obj.data
+    dims = mesh_extents(obj)
+    long_ax = max(range(3), key=lambda i: dims[i])
+    a, b = [i for i in range(3) if i != long_ax]
+    verts = mesh.vertices
+    lo_h = min(v.co[long_ax] for v in verts)
+    hi_h = max(v.co[long_ax] for v in verts)
+    span_h = max(hi_h - lo_h, 1e-9)
+    ca = sum(v.co[a] for v in verts) / len(verts)
+    cb = sum(v.co[b] for v in verts) / len(verts)
+    mean_r = sum(_math.hypot(v.co[a] - ca, v.co[b] - cb) for v in verts) / len(verts)
+    circ = 2.0 * _math.pi * max(mean_r, 1e-6)
+    m = max(0.0, min(0.2, args.uv_margin))
+    usable = 1.0 - 2.0 * m
+    layer = mesh.uv_layers.new(name="UVMap")
+    for poly in mesh.polygons:
+        loops = []
+        for li in poly.loop_indices:
+            co = verts[mesh.loops[li].vertex_index].co
+            ang = (_math.atan2(co[b] - cb, co[a] - ca) + _math.pi) / (2.0 * _math.pi)  # 0..1
+            loops.append((li, co, ang))
+        # keep a face contiguous across the back seam: if it straddles, lift the low-U corners
+        umin = min(u for _, _, u in loops)
+        umax = max(u for _, _, u in loops)
+        if umax - umin > 0.5:
+            loops = [(li, co, (u + 1.0 if u < 0.5 else u)) for li, co, u in loops]
+        for li, co, u in loops:
+            vpos = (co[long_ax] - lo_h) / span_h
+            # seam-straddling corners keep u in [1, 1.5] (contiguous; wrap-samples the seam)
+            layer.data[li].uv = (m + u * usable, m + vpos * usable)
+    canvas_aspect = circ / span_h
+    uv_stats = {"uv": "cyl", "uv_margin": m, "uv_aspect": round(canvas_aspect, 4),
+                "uv_wrap_axis": "XYZ"[long_ax], "uv_layers": 1}
+    print(f"cyl uv: wrap={'XYZ'[long_ax]} circ={circ:.3f} len={span_h:.3f} aspect={canvas_aspect:.4f}")
 
 bones_manifest = []
 if args.mode == "rigid":
@@ -413,8 +516,18 @@ if args.bake_ao:
     else:
         spans = sorted(mesh_extents(obj), reverse=True)
         aspect = (spans[1] / spans[0]) if spans[0] > 1e-9 else 1.0
-    bw = 1024
-    bh = max(16, round(bw * max(0.05, min(1.0, aspect))))
+    # uv_aspect is HEIGHT:WIDTH (planar_uv: canvas_aspect = bands*span_v/span_u — V carries the
+    # blade's LENGTH). The canvas must CARRY that aspect for square on-mesh texels: long side
+    # 1024, short side scaled. The old min(1.0, aspect) clamp squared every aspect>1 canvas —
+    # ForgeFalchion live-caught: a 5.37 layout baked 1024x1024 stretched texels ~5.4x along the
+    # blade (user: "mesh great, texture not").
+    aspect = max(0.05, aspect)
+    if aspect >= 1.0:
+        bh = 1024
+        bw = max(16, round(bh / aspect))
+    else:
+        bw = 1024
+        bh = max(16, round(bw * aspect))
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
@@ -441,6 +554,17 @@ if args.bake_ao:
 
 out_dir = os.path.dirname(os.path.abspath(args.out_glb))
 os.makedirs(out_dir, exist_ok=True)
+# FINAL winding pass: decimation (no-smooth path) and voxel remesh both leave FLIPPED faces on
+# the mesh they hand off — line 142's recalc runs BEFORE decimate, so nothing fixes the final
+# topology otherwise. Roblox MeshParts render single-sided, so a flipped face = a see-through
+# HOLE in Studio (user-caught: "the mesh has a lot of holes"; the geometry was complete, the
+# winding was mixed). One consistent-outward recalc here makes the exported mesh render solid.
+_bm = bmesh.new()
+_bm.from_mesh(obj.data)
+bmesh.ops.recalc_face_normals(_bm, faces=_bm.faces[:])
+_bm.to_mesh(obj.data)
+_bm.free()
+
 bpy.ops.export_scene.gltf(filepath=args.out_glb, export_format="GLB")
 
 final_tris = len(obj.data.polygons)
