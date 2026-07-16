@@ -251,6 +251,17 @@
    "resolution": "PENDING - grip_tool must snapshot the pre-hold C0 values (attributes on the joints) and restore them on unequip/release; alternatively implement the hold via the Animator channel (Transform) so it cannot persist. Pair with the fitter axis-mapping fix (grip-fitter-axis-mapping).",
    "filedAt": "2026-07-11T02:56:32",
    "filedBy": "hands-on session 2026-07-11 night (user screenshot: \"why is the user holding it like this\")"
+  },
+  {
+   "title": "trellis.generate has no starvation detection or result salvage: a VRAM-starved NVIDIA run computes 15-20x slow into a client timeout, and the finished GLB is discarded (dead socket)",
+   "symptom": "forge-falchion 2026-07-16: res-1024 AND res-512 (measured-87s config) both ran past the 1200s client timeout at 82-91% GPU util with 7.1/8.2GB VRAM used (Studio + desktop tenants); two server jobs completed into dead sockets, zero GLBs landed, ~45 min wasted. Recovery that worked: kill trellis-server, relaunch with STUDIO_AGENT_TRELLIS_VK_DEVICES='' (the 33GB AMD iGPU lane), regenerate.",
+   "suspectFiles": [
+    "sidecar/trellis.py"
+   ],
+   "repro": "fill NVIDIA VRAM to ~7GB (Studio open + browser/streaming tenants), trellis.generate(resolution=512) -> observe wall >> 87s norm and eventual urllib timeout while nvidia-smi shows high util",
+   "seenCount": 1,
+   "lastSeenAt": 1784228071,
+   "resolution": "PENDING - driver should (a) measure wall-vs-norm and surface a starvation warning naming the iGPU lane, (b) auto-fall-back to VK_DEVICES='' on a starved timeout, (c) ideally the server writes the GLB to disk so a client timeout does not orphan finished compute (needs a trellis.cpp flag probe)."
   }
  ]
 }
