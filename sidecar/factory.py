@@ -59,11 +59,12 @@ def _rung_query(rung) -> str:
 
 def _learned_block(family, query_text=None) -> str:
     """Factory-method lessons + the family's quality lessons as a prompt block.
-    Selection is newest-K by default; STUDIO_AGENT_LESSON_RETRIEVAL=scored picks the same
-    K slots by relevance+tier+recency over active+archive instead (SP5 — flip gated on a
-    live A/B, spec 2026-07-25). Missing/corrupt files mean no block — never fails a run."""
+    Selection is SCORED by default (relevance+tier+recency over active+archive — SP5,
+    default flipped 2026-07-25 after the live A/B PASSED on weapon-sword);
+    STUDIO_AGENT_LESSON_RETRIEVAL=newest is the rollback lever (tail-slice, active only).
+    Missing/corrupt files mean no block — never fails a run."""
     scored = os.environ.get(
-        "STUDIO_AGENT_LESSON_RETRIEVAL", "newest").strip().lower() == "scored"
+        "STUDIO_AGENT_LESSON_RETRIEVAL", "scored").strip().lower() == "scored"
     picks = []
     sources = [("factory-methods.json", 8)]
     bucket = _FAMILY_BUCKET.get(family or "")
@@ -454,7 +455,11 @@ class FactoryRunner:
         # teardown finally ran), its scripts are still disabled — re-enable them before we build,
         # so the game isn't left broken across runs.
         self._bridge.call({"kind": "luau", "code": _SANDBOX_OFF_LUAU}, GATE_TIMEOUT)
-        result = {"rung": rung_id, "sabotage": sabotage, "family": rung.get("family")}
+        result = {"rung": rung_id, "sabotage": sabotage, "family": rung.get("family"),
+                  # SP5 A/B receipt: which lesson-selection mode this run's prompts used.
+                  "lessonRetrieval": os.environ.get(
+                      "STUDIO_AGENT_LESSON_RETRIEVAL", "scored").strip().lower()}
+        self._set(lessonRetrieval=result["lessonRetrieval"])  # visible from the first poll
         self._narrate(
             f"BUILD {rung_id} ({rung.get('family')}): " + str(rung.get("brief") or "")[:140]
         )

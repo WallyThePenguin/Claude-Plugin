@@ -1,40 +1,47 @@
 {
  "rung": "weapon-sword",
  "sabotage": false,
- "status": "FAILED",
+ "status": "PASSED",
  "gate": "clean",
  "evidence": {
-  "summary": "Suite 9 PASS/1 FAIL; clip_self_intersect flags blade through UpperTorso 0.706 / Head 0.234 / LowerTorso 0.401 studs (max 0.2) over t=0-0.59, capture confirms windup clips blade through head/torso."
+  "summary": "Suite 14 PASS/0 FAIL/0 UNKNOWN (sweep 130.1deg, reach 5.76 studs, blade 3.40 studs, mesh finalized); record echo w=0.12 a=0.12 c=0.3 and 3 swings each dealt exactly 22.0000 damage."
  },
  "reasons": [
-  "clip_self_intersect FAIL: blade penetrates UpperTorso up to 0.706 studs and Head 0.234 studs (3.5x the 0.2 tolerance) across 8 samples t=0->0.59",
-  "Right-side filmstrip confirms the over-shoulder windup (frames 1-3) tucks the straight ~3-stud blade through the head/shoulder/torso volume before extending clean",
-  "This is the swing-arc self-intersection (not benign at-rest blade_in_arm=0), a visible clipping defect that stands unexplained-away"
+  "Oracle suite green on the gripped tool: 14 PASS, 0 FAIL, 0 UNKNOWN (twin_pending only, discharged by the live playtest)",
+  "Timing oracle met: record echo names tool=ForgeArmingSword w=0.12 a=0.12 c=0.3 with state order idle->windup(0.05)->active(0.15)->cooldown(0.26)->idle(0.58)",
+  "Damage oracle met: 3 swings produced 3 TrainingDummy HIT lines at damage=22.0000 each, exactly the configured 22, one per swing",
+  "Durable mesh confirmed in edit before toolify: Handle.MeshId=rbxassetid://74219510609310, mesh_persisted finalized=1 naked=0",
+  "Grip measured on the build's own fit: auto-align reproduced the recorded Grip identically (12/12 components); grip_offset=4.86e-8 studs, blade_up_angle=90.00deg",
+  "Aesthetic sign-off: 3.40-stud blade reads as a one-handed arming sword (crossguard, taper to point, distinct pommel) at correct scale vs the 5-stud rig; swing arc readable from front and side",
+  "Non-blocking gap noted: only a 'use' clip is bound (clips_total=1, no idle hold), so the weapon has no armed idle pose"
  ],
  "artifactTrace": {
-  "path": "game.StarterPack.Sword",
+  "path": "game.StarterPack.ForgeArmingSword",
   "config": {
    "windup": 0.12,
-   "active": 0.13,
+   "active": 0.12,
    "cooldown": 0.3,
-   "damage": 25,
-   "reach": 6
+   "damage": 22,
+   "reach": 5
   },
   "steps": [
-   "Parked existing StarterPack.Sword into ServerStorage",
-   "Cube generate_mesh twice returned blob/absurd-scale garbage; composed a shaped multi-part sword instead (tapered steel blade, wedge point, dark crossguard, wrapped grip cylinder, ball pommel; ~3.96 studs)",
-   "Verified silhouette vs knight-sword references via capture (blade+guard+grip+pommel read clearly)",
-   "stamp_frame melee-weapon (Grip 0,0,0; BladeTip 3.4,0,0; blade_dir +X; edge_dir -Y) then make_tool with grip cylinder as Handle",
-   "Authored 3-keypose SwordSwing (windup/strike/recover, 0.65s), bind_animation use",
-   "reset_pose + grip_tool frame-align, added AgentEditGrip weapon channel, oracle_suite: fixed strike-pose blade-through-upper-arm by abducting the arm and angling the blade out",
-   "Released weld keeping fitted Grip, moved Tool to StarterPack, bind_behavior + bind_hitbox"
+   "confirm_mesh (reported no pending uploads); parked StarterPack.ForgeLongsword -> ServerStorage",
+   "get_references 'longsword' -> straight double-edged blade, apex point, thin flat cross-section, straight quillon crossguard wider than the grip, wrapped grip, disc pommel, ~3.5:1 blade:hilt",
+   "generate_mesh slender arming-sword prompt (0.89 x 3.40 x 0.38 studs); capture_angles front/right/iso/back neutralLight -> all reference features present",
+   "save_mesh -> SA_body_body_geom rbxassetid://74219510609310 (+ texture 88313277743242); confirm_mesh FINALIZED (moderation=Approved), Handle.MeshId non-empty in edit",
+   "stamp_frame melee-weapon (Grip 0,-1.4,0 / BladeTip 0,1.7,0 / blade_dir +Y / edge_dir +X / hilt+blade=body_geom); make_tool ForgeArmingSword with body_geom as Handle",
+   "spawn_rig fresh=true; grip_tool with NO offset/rot (pure Semantic_Grip frame alignment)",
+   "authored SwordSwing: 5 keyposes (0/0.15/0.32/0.46/0.70s), one add_keyframe per keypose, scope=rightArm weapon=true, AgentEditGrip cocked -50deg at windup -> +45deg at follow-through",
+   "oracle_suite equipped: 13 PASS / 0 FAIL; capture_animation front + right filmstrips read as ready->windup->strike->follow-through->recover",
+   "bind_animation use=SwordSwing; released the AgentEditGrip weld, kept the fitted Tool.Grip, moved Tool to StarterPack",
+   "bind_behavior 0.12/0.12/0.30; bind_hitbox damage 22 / reach 5 / cooldown 0.4"
   ]
  },
  "recipe": {
   "provisional": true,
-  "text": "One-handed arming sword. Cube failed twice (blob then 83-stud depth) so built a clean composed visual (blade+wedge tip+crossguard+wrapped grip+pommel), all WeldConstraint'd to the Handle, unanchored. Grip fitted by pure frame alignment: grip_offset 0.4 studs, blade_up 18 deg, blade_in_arm 0. Swing has weapon channel swept 45 deg, arc sweep 94.5 deg, clip_self_intersect 0 after re-keying the strike. Fast timing windup0.12/active0.13/cooldown0.3; short reach 6, moderate damage 25. Primitive Parts persist natively so no save_mesh/meshUploads."
+  "text": "Cube-generated slender arming sword (3.4 studs, hand scale vs the 5-stud rig), mesh persisted + moderation-Approved to rbxassetid://74219510609310 with texture 88313277743242 — Handle.MeshId verified non-empty in edit before toolifying. Semantic frame stamped before make_tool; grip came from pure frame alignment, no manual offset/rot needed. Equipped-state oracle_suite: 13 PASS / 0 FAIL / 1 UNKNOWN (tool_clip_current, pre-bind). Magnitudes: grip_offset 2.4e-7 studs, blade_in_arm 0.0 studs at rest pose, blade_up_angle 90.0 deg, clip_arc_of sweep_deg 130.05, weapon_channel_of swept_deg 95.0, clip_self_intersect blade_in_body 0.0 studs. No forward cant was applied because blade_in_arm was already 0. Post-release suite shows rig_channel_check FAIL 'Handle' + two UNKNOWNs purely because the tool is unequipped (the AgentEditGrip weapon channel only exists while gripped) — the equipped run is the meaningful one. Parked ForgeLongsword in ServerStorage for STAGE to restore."
  },
- "stagedAt": 1783749418.0861714,
+ "stagedAt": 1784971245.230399,
  "headless": true,
  "audit": true
 }

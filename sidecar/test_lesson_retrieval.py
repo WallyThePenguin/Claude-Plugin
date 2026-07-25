@@ -135,25 +135,27 @@ def main():
            [_e("blade needs converging apex thin cross-section")], category="weapons")
 
     blk_default = factory._learned_block("melee-weapon", query)
-    fails += _check("default (no env) stays newest-K: archive invisible",
-                    gold not in blk_default and "recent filler method 8" in blk_default)
-    os.environ["STUDIO_AGENT_LESSON_RETRIEVAL"] = "scored"
-    blk_scored = factory._learned_block("melee-weapon", query)
-    fails += _check("scored: the archived gold lesson is retrieved",
-                    gold in blk_scored and "[capture-confirmed]" in blk_scored)
-    fails += _check("scored: family bucket still contributes",
-                    "converging apex" in blk_scored)
-    fails += _check("scored: header + tier rule preserved",
-                    blk_scored.startswith("LEARNED METHODS") and "Tier rule:" in blk_scored)
+    fails += _check("default is SCORED (flipped 2026-07-25): archived gold retrieved",
+                    gold in blk_default and "[capture-confirmed]" in blk_default)
+    fails += _check("default scored: family bucket still contributes",
+                    "converging apex" in blk_default)
+    fails += _check("default scored: header + tier rule preserved",
+                    blk_default.startswith("LEARNED METHODS") and "Tier rule:" in blk_default)
+    os.environ["STUDIO_AGENT_LESSON_RETRIEVAL"] = "newest"
+    blk_newest = factory._learned_block("melee-weapon", query)
+    fails += _check("=newest rollback lever: archive invisible, tail-slice kept",
+                    gold not in blk_newest and "recent filler method 8" in blk_newest)
+    os.environ.pop("STUDIO_AGENT_LESSON_RETRIEVAL", None)
     # fail-open: corrupt active file must not raise in either mode
     with open(fm, "w", encoding="utf-8") as fh:
         fh.write("{ not json")
-    blk_corrupt = factory._learned_block("melee-weapon", query)
-    fails += _check("scored + corrupt active: archive still serves, no crash",
-                    gold in blk_corrupt)
-    os.environ.pop("STUDIO_AGENT_LESSON_RETRIEVAL", None)
+    fails += _check("scored default + corrupt active: archive still serves, no crash",
+                    gold in factory._learned_block("melee-weapon", query))
+    os.environ["STUDIO_AGENT_LESSON_RETRIEVAL"] = "newest"
     fails += _check("newest + corrupt active: falls back to bucket only",
                     "converging apex" in factory._learned_block("melee-weapon", query))
+    os.environ.pop("STUDIO_AGENT_LESSON_RETRIEVAL", None)
+    factory.LEARNINGS_DIR = tempfile.mkdtemp()  # a truly empty store
     fails += _check("no sources at all -> empty block",
                     factory._learned_block(None, None) == "")
 
