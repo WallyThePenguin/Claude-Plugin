@@ -25,9 +25,40 @@ def island_mask_luminance(rgb: np.ndarray, threshold: int) -> np.ndarray:
 
 
 def island_mask_from_uv(glb_path: str, w: int, h: int) -> np.ndarray:
-    # Rasterize UV triangles (exact mask). Lazy import; only needed for --mask-from-uv.
-    from pygltflib import GLTF2  # noqa: F401  (meshio-side helpers could replace this)
-    raise SystemExit("--mask-from-uv not implemented yet; use the luminance mask")
+    """Exact island mask: rasterize the mesh's UV triangles (meshio convention — glTF top-down
+    V, NO flip, so v maps straight to the row index). Needed when painted CONTENT is
+    legitimately dark (dark guards/grips) and the luminance threshold would flood it."""
+    import meshio
+
+    data = meshio.parse_glb_textured(glb_path)
+    uvs = np.asarray(data.get("uvs") or [], dtype=np.float64)
+    faces = np.asarray(data.get("faces") or [], dtype=np.int64)
+    if uvs.size == 0 or faces.size == 0:
+        raise SystemExit("PAD_ATLAS_FAIL glb has no UVs/faces for --mask-from-uv")
+    if faces.min() >= 1:  # meshio emits 1-based faces (the Luau import contract)
+        faces = faces - 1
+    mask = np.zeros((h, w), dtype=bool)
+    tris = uvs[faces] * np.array([w, h], dtype=np.float64)  # (T,3,2) pixel space
+    for t in tris:
+        x0 = max(int(np.floor(t[:, 0].min())) - 1, 0)
+        x1 = min(int(np.ceil(t[:, 0].max())) + 1, w - 1)
+        y0 = max(int(np.floor(t[:, 1].min())) - 1, 0)
+        y1 = min(int(np.ceil(t[:, 1].max())) + 1, h - 1)
+        if x1 < x0 or y1 < y0:
+            continue
+        xs = np.arange(x0, x1 + 1, dtype=np.float64) + 0.5
+        ys = np.arange(y0, y1 + 1, dtype=np.float64) + 0.5
+        gx, gy = np.meshgrid(xs, ys)
+
+        def edge(ax, ay, bx, by):
+            return (gx - ax) * (by - ay) - (gy - ay) * (bx - ax)
+
+        e0 = edge(t[0, 0], t[0, 1], t[1, 0], t[1, 1])
+        e1 = edge(t[1, 0], t[1, 1], t[2, 0], t[2, 1])
+        e2 = edge(t[2, 0], t[2, 1], t[0, 0], t[0, 1])
+        inside = ((e0 >= 0) & (e1 >= 0) & (e2 >= 0)) | ((e0 <= 0) & (e1 <= 0) & (e2 <= 0))
+        mask[y0:y1 + 1, x0:x1 + 1] |= inside
+    return ndimage.binary_dilation(mask, iterations=1)
 
 
 def pad(rgb: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, int]:
@@ -46,16 +77,24 @@ def main() -> None:
     if not args:
         raise SystemExit(__doc__ or "usage: pad_atlas.py <in> [out]")
     threshold = 60
+    mask_glb = None
+    skip = set()
     for i, a in enumerate(sys.argv):
         if a == "--threshold":
             threshold = int(sys.argv[i + 1])
+            skip.add(sys.argv[i + 1])
         if a == "--mask-from-uv":
-            raise SystemExit("--mask-from-uv not implemented yet; use the luminance mask")
+            mask_glb = sys.argv[i + 1]
+            skip.add(mask_glb)
+    args = [a for a in args if a not in skip]
     src = args[0]
     dst = args[1] if len(args) > 1 else src
     im = Image.open(src).convert("RGB")
     rgb = np.asarray(im)
-    mask = island_mask_luminance(rgb, threshold)
+    if mask_glb:
+        mask = island_mask_from_uv(mask_glb, rgb.shape[1], rgb.shape[0])
+    else:
+        mask = island_mask_luminance(rgb, threshold)
     if mask.mean() < 0.02:
         raise SystemExit(f"PAD_ATLAS_FAIL island mask covers {mask.mean():.1%} — wrong threshold?")
     out, changed = pad(rgb, mask)
