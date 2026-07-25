@@ -1,0 +1,17 @@
+divine-rapier-ref.jpeg — generation provenance (2026-07-12)
+Engine: Gemini text->image via CLIProxyAPI (sidecar/gemini_image.py, model gemini-3.1-flash-image)
+Chosen from a 3-candidate bake-off (a-goldenorder / b-weathered / c-radiant); user picked C.
+Art direction: Elden Ring "divine" (Golden Order / Erdtree-gold), biased toward a SUBSTANTIAL blade +
+SOLID-relief ornament so TRELLIS.2 doesn't fragment it the way the prior thin-blade/openwork rapier did.
+
+PROMPT (raw_prompt passed to generate()):
+A divine rapier in the style of Elden Ring dark fantasy: a radiant sacred thrusting sword at the height
+of its holy power. A slender, sturdy tapering thrusting blade of luminous silver-gold steel with a
+diamond cross-section and central fuller, its engraved sacred runes burning with bright golden
+incandescence. A resplendent gilded swept cup-hilt of ornate Erdtree-gold filigree carved in solid
+relief — flowing branch-and-flame motifs and swept bars — over a grip bound in white and gold. A golden
+pommel set with a large brilliant glowing amber gemstone casting warm rays. Majestic, sacred, luminous —
+a divine artifact ablaze with light. Presented as a single hero object in a three-quarter front view,
+the whole weapon from blade tip to pommel fully within frame with clear margin on every side, on a pure
+seamless white background, soft even studio lighting, crisp product-photograph focus, photorealistic PBR
+metal materials, no hands, no people, no text, no watermark, no other objects.

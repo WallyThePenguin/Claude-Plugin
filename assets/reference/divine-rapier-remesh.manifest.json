@@ -1,0 +1,18 @@
+{
+ "mode": "cleanup",
+ "source": "divine-rapier-gen.glb",
+ "verts_in": 27322,
+ "tris_in": 29203,
+ "verts": 9286,
+ "tris": 17028,
+ "extents_studs": [
+  1.937,
+  1.523,
+  5.0
+ ],
+ "target_studs": 5.0,
+ "smooth": 0,
+ "holes_closed_repair": 957,
+ "holes_closed_post_smooth": 0,
+ "bones": []
+}

@@ -1,0 +1,29 @@
+{
+ "mode": "cleanup",
+ "source": "divine-rapier-gen1024.glb",
+ "verts_in": 51212,
+ "tris_in": 55829,
+ "verts": 8582,
+ "tris": 19495,
+ "extents_studs": [
+  1.442,
+  0.835,
+  5.0
+ ],
+ "target_studs": 5.0,
+ "smooth": 5,
+ "holes_closed_repair": 1579,
+ "holes_closed_post_smooth": 803,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "XZ",
+ "uv_margin": 0.02,
+ "uv_sides": 2,
+ "uv_aspect": 6.9342,
+ "uv_layers": 1,
+ "ao": "divine-rapier-ao.png",
+ "ao_size": [
+  148,
+  1024
+ ]
+}
