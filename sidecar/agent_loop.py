@@ -134,7 +134,9 @@ class ModelClient:
 
 # When the primary model's subscription credential rate-limits ("cooling down"), fall through this
 # chain — rate limits are PER-MODEL on this account, so a different model keeps the loop running.
-MODEL_FALLBACKS = ["claude-opus-4-8", "claude-opus-4-7"]
+# opus-5 leads (2026-07-24: verified served by hecate; separate rate-limit bucket from the 4.x pool,
+# so it is a real extra lane whichever model is primary). The active model is filtered out below.
+MODEL_FALLBACKS = ["claude-opus-5", "claude-opus-4-8", "claude-opus-4-7"]
 
 
 def is_rate_limited(res: dict) -> bool:

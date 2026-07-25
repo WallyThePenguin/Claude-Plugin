@@ -14,7 +14,13 @@ export type ConfigValue = string | number | boolean
 -- 2026-07-04: default model switched to claude-opus-4-8 at the user's request (do NOT use
 -- fable-5 as the primary). The fallback chain (agent_loop MODEL_FALLBACKS) filters out the
 -- active model, so with opus-4-8 primary the only fallback left is opus-4-7 — fable-5 is out
--- of the loop entirely. NOTE: every
+-- of the loop entirely.
+-- 2026-07-24: default switched to claude-opus-5 (user request; live-verified through hecate —
+-- /v1/models lists it and POSTs return end_turn). Opus 5 THINKS BY DEFAULT and thinking shares
+-- the max_tokens cap with the visible reply, so the default maxTokens moves 8192 -> 16384
+-- (probed OK at 16384 through the subscription proxy; the old "large values 400" note predates
+-- this model). Opus 5 also sits in its OWN rate-limit bucket, separate from the opus-4.x pool,
+-- so the fallback chain gains a genuinely independent cooldown lane. NOTE: every
 -- CLIProxyAPI subscription-OAuth daemon (hecate's AND a fresh local one) STRIPS the client `system`
 -- field and injects its own Claude Code prompt — verified live. So the plugin delivers its
 -- SystemPrompt + recalled memory as a LEADING MESSAGE instead (AgentLoop), which passes through any
@@ -22,8 +28,8 @@ export type ConfigValue = string | number | boolean
 local DEFAULTS = {
 	baseUrl = "http://127.0.0.1:8318",
 	proxyKey = "",
-	model = "claude-opus-4-8",
-	maxTokens = 8192,
+	model = "claude-opus-5",
+	maxTokens = 16384, -- opus-5 thinking shares this cap; 8192 risked truncated turns
 	-- Step budget per Send. Vision tasks ("build, capture, adjust, capture again…") burn several
 	-- steps per iterate-cycle, so this is generous; hitting it now ends gracefully + resumable
 	-- (say "continue") rather than discarding the turn.
@@ -72,7 +78,7 @@ local DEFAULTS = {
 }
 
 -- Allowed models. Never Haiku.
-local MODELS = { "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6" }
+local MODELS = { "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6" }
 
 local KEY_PREFIX = "StudioAgent_"
 

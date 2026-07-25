@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 
+import agent_loop
 import sdk_loop
 
 DESCRIBE = {
@@ -330,7 +331,7 @@ def main():
     r8.start("job")
     st = _wait_done(r8)
     fails += _check("rate-limit falls back to next model",
-                    st["state"] == "done" and attempts == ["claude-test", "claude-opus-4-8"])
+                    st["state"] == "done" and attempts == ["claude-test", agent_loop.MODEL_FALLBACKS[0]])
 
     # --- transcript JSONL: same event names as legacy ---
     files = sorted(os.listdir(tmp))
