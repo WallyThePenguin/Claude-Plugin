@@ -12,6 +12,10 @@
 --   rebuilds via CFrame.new(table.unpack(c)). The GetComponents order and the 12-arg constructor
 --   order MUST match (verify against docs).
 -- - Color3 -> {__t="Color3", r=v.R, g=v.G, b=v.B}  (components in 0..1).
+-- - BrickColor -> {__t="BrickColor", name=v.Name, number=v.Number}. Decode rebuilds by name first,
+--   then by palette number. BrickColor.new NEVER throws on an unknown name/number -- it warns and
+--   silently returns Medium stone grey -- so Decode echo-verifies the produced entry against the
+--   requested field (.Name/.Number must match) and treats a mismatch as a miss (nil).
 -- - UDim2 -> {__t="UDim2", xs,xo,ys,yo}; UDim -> {__t="UDim", s,o}.
 -- - EnumItem -> {__t="EnumItem", enum=<bare type name, e.g. "Material", strip a leading "Enum." via
 --   gsub("^Enum%.","")>, item=v.Name, value=v.Value}. Decode resolves the EnumItem from enum+item.
@@ -195,6 +199,9 @@ function encodeValue(value: any, depth: number, ctx: Ctx): any
 	elseif t == "Color3" then
 		local v = value :: Color3
 		return { __t = "Color3", r = v.R, g = v.G, b = v.B }
+	elseif t == "BrickColor" then
+		local v = value :: BrickColor
+		return { __t = "BrickColor", name = v.Name, number = v.Number }
 	elseif t == "UDim2" then
 		local v = value :: UDim2
 		return { __t = "UDim2", xs = v.X.Scale, xo = v.X.Offset, ys = v.Y.Scale, yo = v.Y.Offset }

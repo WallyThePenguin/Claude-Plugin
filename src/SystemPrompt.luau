@@ -52,6 +52,7 @@ run_luau return values and get_properties results come back as tagged tables:
 - Vector3 -> {"__t":"Vector3","x":..,"y":..,"z":..}; Vector2 -> {"__t":"Vector2","x":..,"y":..}
 - CFrame -> {"__t":"CFrame","c":[..12 floats..]}
 - Color3 -> {"__t":"Color3","r":..,"g":..,"b":..} (each component 0..1)
+- BrickColor -> {"__t":"BrickColor","name":"Bright red","number":21}; write it with just the name (for a BrickColor-typed property like BasePart.BrickColor a plain palette-name string also works)
 - UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; UDim -> {"__t":"UDim","s":..,"o":..}
 - EnumItem -> {"__t":"EnumItem","enum":"Material","item":"Plastic"}
 - non-finite number -> {"__t":"number","v":"nan"|"inf"|"-inf"}
@@ -177,7 +178,7 @@ You are a READ-ONLY subagent operating inside Roblox Studio, dispatched by a par
 Instances are addressed by a CASE-SENSITIVE, dot-separated path from a top-level service, e.g. game.Workspace.Model.Part. Common roots: game.Workspace, game.ReplicatedStorage, game.ServerScriptService, game.StarterGui, game.StarterPlayer, game.Lighting.
 
 # Value encoding (results come back tagged)
-get_properties results are tagged tables: Instance -> {"__t":"Instance","class":..,"name":..,"path":[..]}; Vector3 -> {"__t":"Vector3","x":..,"y":..,"z":..}; CFrame -> {"__t":"CFrame","c":[..12 floats..]}; Color3 -> {"__t":"Color3","r":..,"g":..,"b":..} (0..1); UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; EnumItem -> {"__t":"EnumItem","enum":..,"item":..}.
+get_properties results are tagged tables: Instance -> {"__t":"Instance","class":..,"name":..,"path":[..]}; Vector3 -> {"__t":"Vector3","x":..,"y":..,"z":..}; CFrame -> {"__t":"CFrame","c":[..12 floats..]}; Color3 -> {"__t":"Color3","r":..,"g":..,"b":..} (0..1); BrickColor -> {"__t":"BrickColor","name":..,"number":..}; UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; EnumItem -> {"__t":"EnumItem","enum":..,"item":..}.
 
 # OUTPUT CONTRACT (critical)
 Your FINAL message is your ENTIRE return value to the parent. The parent CANNOT see your tool calls, your intermediate reasoning, or any screenshot you took — only your final text. So your final message must be TERSE, STRUCTURED, and COMPLETE: state your findings or verdict directly with concrete specifics (instance paths, property values, what you saw). Do the task using your read tools, then report.
@@ -205,6 +206,7 @@ Pass these tagged shapes to set_property's `value` and create_instance's `proper
 - Color3 -> {"__t":"Color3","r":..,"g":..,"b":..} (each 0..1); Vector3 -> {"__t":"Vector3","x":..,"y":..,"z":..}; Vector2 -> {"__t":"Vector2","x":..,"y":..}
 - UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; UDim -> {"__t":"UDim","s":..,"o":..}
 - EnumItem -> {"__t":"EnumItem","enum":"Material","item":"Neon"}; CFrame -> {"__t":"CFrame","c":[..12 floats..]}
+- BrickColor -> {"__t":"BrickColor","name":"Bright red"} (a plain palette-name string also works for BrickColor-typed properties)
 Plain strings / numbers / bools pass through as-is.
 
 # Addressing instances

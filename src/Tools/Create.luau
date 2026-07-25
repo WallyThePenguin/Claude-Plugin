@@ -12,6 +12,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 
 local Decode = require(script.Parent.Parent.Decode)
 local Path = require(script.Parent.Path)
+local PropertyCatalog = require(script.Parent.PropertyCatalog)
 local RegionGuard = require(script.Parent.RegionGuard)
 
 local Create = {}
@@ -91,6 +92,7 @@ local function runCreate(input: any, context: any): (string, boolean)
 	local applied: { string } = {}
 	local failed: { string } = {}
 	if type(args.properties) == "table" then
+		local catalog = PropertyCatalog.get(instance)
 		for propName, rawValue in args.properties do
 			if tostring(propName) == "Parent" then
 				-- The authoritative, region-guarded parent is args.parent (applied below). Ignore a
@@ -101,6 +103,20 @@ local function runCreate(input: any, context: any): (string, boolean)
 			end
 			local okDecode, decoded = pcall(Decode.decode, rawValue)
 			if okDecode then
+				-- Plain-spelling BrickColor coercion (parity with set_property): the natural way to
+				-- write a BrickColor is its palette name ("Bright red"), which the engine never
+				-- accepts raw. Promote a resolving palette name/number when the catalog types this
+				-- property as BrickColor; a non-palette string falls through so the engine's own
+				-- rejection still reports typos in `failed`.
+				if
+					(type(decoded) == "string" or type(decoded) == "number")
+					and catalog[tostring(propName)] == "BrickColor"
+				then
+					local coerced = Decode.coerceBrickColor(decoded)
+					if coerced ~= nil then
+						decoded = coerced
+					end
+				end
 				local okSet = pcall(function()
 					(instance :: any)[propName] = decoded
 				end)
@@ -167,7 +183,10 @@ Create.descriptors = {
 					type = "object",
 					description = "Optional map of propertyName -> structured JSON value, e.g. "
 						.. '{ "Anchored": true, "Color": {"__t":"Color3","r":1,"g":0,"b":0}, '
-						.. '"Size": {"__t":"Vector3","x":4,"y":1,"z":2} }.',
+						.. '"Size": {"__t":"Vector3","x":4,"y":1,"z":2}, '
+						.. '"BrickColor": {"__t":"BrickColor","name":"Bright red"} }. '
+						.. "For a BrickColor-typed property a plain palette-name string (e.g. "
+						.. '"Bright red") is also accepted.',
 				},
 			},
 			required = { "className" },

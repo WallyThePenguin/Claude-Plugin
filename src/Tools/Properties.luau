@@ -88,11 +88,12 @@ local function runGetProperties(input: any): (string, boolean)
 	return encodeResult(payload), false
 end
 
--- Does the supplied raw value carry a serializer tag whose decode is a best-effort LIVE LOOKUP that
--- can legitimately return nil on a miss (an Instance reference, or an EnumItem)? Such a value
--- decoding to nil means the reference DID NOT RESOLVE, not that nil was the intended assignment —
--- assigning that nil (e.g. to Parent or PrimaryPart) would silently deparent/clear the target and
--- commit a surprising "success". set_property refuses that case below.
+-- Does the supplied raw value carry a serializer tag whose decode is a best-effort LOOKUP that
+-- can legitimately return nil on a miss (an Instance reference, an EnumItem, or a BrickColor
+-- palette entry)? Such a value decoding to nil means the lookup DID NOT RESOLVE, not that nil was
+-- the intended assignment — assigning that nil would either silently deparent/clear the target
+-- (Parent, PrimaryPart) and commit a surprising "success", or throw the engine's cryptic
+-- type-mismatch error (BrickColor). set_property refuses the case up front with a clear message.
 local function isUnresolvableReference(rawValue: any, decoded: any): boolean
 	if decoded ~= nil then
 		return false
@@ -101,7 +102,7 @@ local function isUnresolvableReference(rawValue: any, decoded: any): boolean
 		return false
 	end
 	local tag = rawValue.__t
-	return tag == "Instance" or tag == "EnumItem"
+	return tag == "Instance" or tag == "EnumItem" or tag == "BrickColor"
 end
 
 -- set_property: decode a structured JSON value and assign it under an undoable recording.
@@ -150,6 +151,20 @@ local function runSetProperty(input: any, context: any): (string, boolean)
 	-- the engine, which rejects type-mismatched nils via the pcall'd assignment below.)
 	if isUnresolvableReference(args.value, decoded) then
 		return encodeResult({ ok = false, error = "value reference did not resolve" }), true
+	end
+
+	-- Plain-spelling BrickColor coercion (parity with create_instance): the natural way to write a
+	-- BrickColor is its palette name ("Bright red"), which the engine never accepts raw. Promote a
+	-- resolving palette name/number when the catalog types this property as BrickColor; a
+	-- non-palette string falls through so the engine's own rejection still surfaces the typo.
+	if
+		(type(decoded) == "string" or type(decoded) == "number")
+		and PropertyCatalog.get(target)[name] == "BrickColor"
+	then
+		local coerced = Decode.coerceBrickColor(decoded)
+		if coerced ~= nil then
+			decoded = coerced
+		end
 	end
 
 	-- Parent guard for a confined writer: a writer must not move an in-region instance OUT of its
@@ -227,7 +242,9 @@ local STRUCTURED_VALUE_NOTE = "value is a structured JSON value matching the "
 	.. "serializer tag scheme, e.g. a plain string/number/bool, or "
 	.. '{"__t":"Color3","r":1,"g":0,"b":0}, '
 	.. '{"__t":"Vector3","x":..,"y":..,"z":..}, '
-	.. '{"__t":"EnumItem","enum":"Material","item":"Plastic"}.'
+	.. '{"__t":"EnumItem","enum":"Material","item":"Plastic"}, '
+	.. '{"__t":"BrickColor","name":"Bright red"}. For a BrickColor-typed property a plain '
+	.. "palette-name string is also accepted."
 
 -- Exported descriptor list; init.luau concatenates it into the master registry.
 Properties.descriptors = {

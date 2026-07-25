@@ -12,6 +12,10 @@
 --   rebuilds via CFrame.new(table.unpack(c)). The GetComponents order and the 12-arg constructor
 --   order MUST match (verify against docs).
 -- - Color3 -> {__t="Color3", r=v.R, g=v.G, b=v.B}  (components in 0..1).
+-- - BrickColor -> {__t="BrickColor", name=v.Name, number=v.Number}. Decode rebuilds by name first,
+--   then by palette number. BrickColor.new NEVER throws on an unknown name/number -- it warns and
+--   silently returns Medium stone grey -- so Decode echo-verifies the produced entry against the
+--   requested field (.Name/.Number must match) and treats a mismatch as a miss (nil).
 -- - UDim2 -> {__t="UDim2", xs,xo,ys,yo}; UDim -> {__t="UDim", s,o}.
 -- - EnumItem -> {__t="EnumItem", enum=<bare type name, e.g. "Material", strip a leading "Enum." via
 --   gsub("^Enum%.","")>, item=v.Name, value=v.Value}. Decode resolves the EnumItem from enum+item.
@@ -29,11 +33,12 @@
 local M = {}
 
 -- Run a constructor under pcall, returning the produced value on success or nil on any error.
--- Roblox geometric constructors (Vector3.new, Vector2.new, Color3.new, UDim.new, UDim2.new,
--- CFrame.new) raise a type error when handed a non-number argument, and JSONDecode never coerces
--- JSON strings to numbers. Decode input is arbitrary proxy/agent JSON, so a malformed payload such
--- as {__t="Color3", r="x"} would otherwise escape M.decode. Routing every reconstructor through
--- this helper preserves the documented "decode is TOTAL (never throws)" contract.
+-- ENGINE NOTE (verified live 2026-07-25): the geometric constructors (Vector3/Vector2/Color3/
+-- UDim/UDim2/CFrame .new) NO LONGER throw on non-number args -- numeric strings coerce ("1" -> 1)
+-- and other garbage/missing args become 0 -- so for those try() rarely fires anymore. It REMAINS
+-- the totality backstop: decode input is arbitrary proxy/agent JSON, some constructors still do
+-- throw (e.g. BrickColor.new on a table), and the documented "decode is TOTAL (never throws)"
+-- contract must hold regardless of engine behavior drift.
 local function try<T>(fn: (...any) -> T, ...: any): T?
 	local ok, result = pcall(fn, ...)
 	if ok then
@@ -54,6 +59,27 @@ local function tokenToNumber(token: string): number
 		-- Defensive: unknown token decodes to NaN rather than throwing.
 		return 0 / 0
 	end
+end
+
+-- Echo-verified BrickColor constructor from a palette name (string) or palette number (number).
+-- BrickColor.new NEVER throws on an unknown name/number -- it warns and silently returns Medium
+-- stone grey -- so a successful construction alone proves nothing. Verify the produced entry
+-- echoes the requested field; a mismatch is a palette miss (nil), never a silently-wrong color.
+-- Exposed as M.coerceBrickColor: set_property/create_instance also use it to promote a PLAIN
+-- palette-name string (the natural spelling, e.g. "Bright red") for BrickColor-typed properties.
+local function brickColorFrom(key: any): BrickColor?
+	if type(key) == "string" then
+		local bc = try(BrickColor.new, key)
+		if bc ~= nil and (bc :: BrickColor).Name == key then
+			return bc
+		end
+	elseif type(key) == "number" then
+		local bc = try(BrickColor.new, key)
+		if bc ~= nil and (bc :: BrickColor).Number == key then
+			return bc
+		end
+	end
+	return nil
 end
 
 -- Best-effort resolution of an EnumItem from its bare enum type name and item name. Returns nil
@@ -148,6 +174,15 @@ function decodeValue(value: any): any
 		return CFrame.new()
 	elseif tag == "Color3" then
 		return try(Color3.new, value.r, value.g, value.b)
+	elseif tag == "BrickColor" then
+		-- Name first (unique + human-readable), then palette number; nil when neither resolves.
+		if type(value.name) == "string" then
+			local byName = brickColorFrom(value.name)
+			if byName ~= nil then
+				return byName
+			end
+		end
+		return brickColorFrom(value.number)
 	elseif tag == "UDim2" then
 		return try(UDim2.new, value.xs, value.xo, value.ys, value.yo)
 	elseif tag == "UDim" then
@@ -183,6 +218,13 @@ end
 -- Public entry point. TOTAL: never throws. Inverse of Serialize.encode where reconstructible.
 function M.decode(value: any): any
 	return decodeValue(value)
+end
+
+-- Public echo-verified BrickColor coercion (palette name string or palette number). TOTAL: nil on
+-- any miss or non-string/number input. The write tools use it to accept the plain palette-name
+-- spelling for properties the catalog types as "BrickColor".
+function M.coerceBrickColor(key: any): BrickColor?
+	return brickColorFrom(key)
 end
 
 return M

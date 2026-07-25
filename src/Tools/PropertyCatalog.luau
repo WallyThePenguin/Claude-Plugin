@@ -40,6 +40,7 @@ M.byClass = {
 		Anchored = "boolean",
 		CanCollide = "boolean",
 		Color = "Color3",
+		BrickColor = "BrickColor", -- palette entry; the write tools coerce a plain palette name
 		Material = "EnumItem", -- Enum.Material
 		Transparency = "number",
 	} :: ClassProps,
@@ -214,6 +215,7 @@ M.byClass = {
 	SpawnLocation = {
 		Neutral = "boolean",
 		Duration = "number",
+		TeamColor = "BrickColor",
 	} :: ClassProps,
 
 	Tool = {

@@ -96,6 +96,10 @@ function deepEqual(a: any, b: any, eps: number): boolean
 		local x = a :: Color3
 		local y = b :: Color3
 		return componentsEqual({ x.R, x.G, x.B }, { y.R, y.G, y.B }, eps)
+	elseif ta == "BrickColor" then
+		-- The palette number fully determines the entry; compare it directly rather than relying
+		-- on userdata __eq.
+		return (a :: BrickColor).Number == (b :: BrickColor).Number
 	elseif ta == "UDim2" then
 		local x = a :: UDim2
 		local y = b :: UDim2
@@ -193,6 +197,10 @@ local function buildSamples(): { Sample }
 	add("color3-new", Color3.new(0.25, 0.5, 0.75))
 	add("color3-fromRGB", Color3.fromRGB(128, 64, 200))
 
+	-- BrickColors: by palette name and by palette number.
+	add("brickcolor-name", BrickColor.new("Bright red"))
+	add("brickcolor-number", BrickColor.new(26))
+
 	-- UDim types.
 	add("udim2", UDim2.new(0.5, 10, 0.25, -5))
 	add("udim", UDim.new(0.75, 12))
@@ -247,12 +255,24 @@ local function buildSamples(): { Sample }
 	end)
 
 	-- Instance with a dotted name. We create it under workspace, encode, then verify the live
-	-- lookup resolves (the path array must NOT treat the dot as a separator).
+	-- lookup resolves (the path array must NOT treat the dot as a separator). Pre-clean fixtures
+	-- leaked by prior runs -- FindFirstChild returns the FIRST name match, so a stale duplicate
+	-- would win the lookup and break the identity compare -- and destroy the fresh fixture inside
+	-- expect once the comparison is made, so repeat runs stay clean.
+	while true do
+		local stale = workspace:FindFirstChild("weird.name.with.dots")
+		if stale == nil then
+			break
+		end
+		stale:Destroy()
+	end
 	local dotted = Instance.new("Folder")
 	dotted.Name = "weird.name.with.dots"
 	dotted.Parent = workspace
 	add("instance-dotted", dotted, function(decoded: any): boolean
-		return decoded == dotted
+		local hit = decoded == dotted
+		dotted:Destroy()
+		return hit
 	end)
 
 	-- User table literally carrying a "__t" key: must round-trip via the {__t="table"} escape.
@@ -275,30 +295,108 @@ local function buildSamples(): { Sample }
 
 	-- Adversarial/malformed tagged payloads. These mimic hostile proxy/agent JSON that the encoder
 	-- would never produce: tagged geometric values whose numeric fields arrived as strings (or are
-	-- missing). JSONDecode never coerces JSON strings to numbers, so the raw string reaches the
-	-- reconstructor; Roblox geometric constructors throw on non-number args. Decode must remain
-	-- TOTAL: it should swallow the error and yield nil rather than propagating a throw. These run
+	-- missing). ENGINE DRIFT (verified live 2026-07-25): the geometric constructors NO LONGER throw
+	-- on non-number args -- numeric strings coerce ("1" -> 1) and other garbage/missing args become
+	-- 0 -- so these decode to the engine's coerced value now, not nil. The samples pin BOTH current
+	-- contracts: Decode stays TOTAL (the harness pcalls it), and engine coercion passes through
+	-- unchanged. (BrickColor is the deliberate exception below: ITS constructor's failure mode is a
+	-- silently-wrong palette entry, so Decode echo-verifies and yields nil on a miss.) These run
 	-- decode-only (no encode/JSON round-trip) since the encoder cannot emit them.
 	local function isNil(decoded: any): boolean
 		return decoded == nil
 	end
 
-	addDecodeOnly("malformed-vector3-string", { __t = "Vector3", x = "1", y = 2, z = 3 }, isNil)
-	addDecodeOnly("malformed-vector2-string", { __t = "Vector2", x = "a", y = 2 }, isNil)
-	addDecodeOnly("malformed-color3-string", { __t = "Color3", r = "x", g = 0.5, b = 0.5 }, isNil)
-	addDecodeOnly("malformed-udim-string", { __t = "UDim", s = "scale", o = 0 }, isNil)
+	local function expectVector3(x: number, y: number, z: number): (any) -> boolean
+		return function(decoded: any): boolean
+			return typeof(decoded) == "Vector3"
+				and componentsEqual({ decoded.X, decoded.Y, decoded.Z }, { x, y, z }, EPS)
+		end
+	end
+
+	addDecodeOnly(
+		"malformed-vector3-string",
+		{ __t = "Vector3", x = "1", y = 2, z = 3 },
+		-- The numeric string coerces to its value.
+		expectVector3(1, 2, 3)
+	)
+	addDecodeOnly(
+		"malformed-vector2-string",
+		{ __t = "Vector2", x = "a", y = 2 },
+		function(decoded: any): boolean
+			return typeof(decoded) == "Vector2"
+				and componentsEqual({ decoded.X, decoded.Y }, { 0, 2 }, EPS)
+		end
+	)
+	addDecodeOnly(
+		"malformed-color3-string",
+		{ __t = "Color3", r = "x", g = 0.5, b = 0.5 },
+		function(decoded: any): boolean
+			return typeof(decoded) == "Color3"
+				and componentsEqual({ decoded.R, decoded.G, decoded.B }, { 0, 0.5, 0.5 }, EPS)
+		end
+	)
+	addDecodeOnly(
+		"malformed-udim-string",
+		{ __t = "UDim", s = "scale", o = 0 },
+		function(decoded: any): boolean
+			return typeof(decoded) == "UDim" and decoded.Scale == 0 and decoded.Offset == 0
+		end
+	)
 	addDecodeOnly(
 		"malformed-udim2-string",
 		{ __t = "UDim2", xs = 0, xo = 0, ys = 0, yo = "off" },
-		isNil
+		function(decoded: any): boolean
+			return typeof(decoded) == "UDim2"
+				and componentsEqual(
+					{ decoded.X.Scale, decoded.X.Offset, decoded.Y.Scale, decoded.Y.Offset },
+					{ 0, 0, 0, 0 },
+					EPS
+				)
+		end
 	)
 	addDecodeOnly(
 		"malformed-cframe-string",
 		{ __t = "CFrame", c = { "x", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } },
+		function(decoded: any): boolean
+			-- The garbage x coerces to 0: identity rotation at the origin.
+			return typeof(decoded) == "CFrame"
+				and componentsEqual(
+					{ (decoded :: CFrame):GetComponents() },
+					{ 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 },
+					EPS
+				)
+		end
+	)
+	-- Missing fields decode as nil constructor args, which the engine also zero-fills now.
+	addDecodeOnly("malformed-vector3-missing", { __t = "Vector3" }, expectVector3(0, 0, 0))
+
+	-- BrickColor's constructor quirk: BrickColor.new NEVER throws on an unknown name/number -- it
+	-- warns and silently returns Medium stone grey. Decode must echo-verify the produced entry and
+	-- yield nil on a miss, NOT commit the silently-wrong grey.
+	addDecodeOnly(
+		"malformed-brickcolor-unknown-name",
+		{ __t = "BrickColor", name = "Not A Color" },
 		isNil
 	)
-	-- Missing fields decode to nil-typed constructor args, which also throw -> nil.
-	addDecodeOnly("malformed-vector3-missing", { __t = "Vector3" }, isNil)
+	addDecodeOnly("malformed-brickcolor-bad-number", { __t = "BrickColor", number = 424242 }, isNil)
+	addDecodeOnly("malformed-brickcolor-missing", { __t = "BrickColor" }, isNil)
+
+	-- A resolving name takes priority over a (valid, different) palette number...
+	addDecodeOnly(
+		"brickcolor-name-priority",
+		{ __t = "BrickColor", name = "Bright red", number = 1 },
+		function(decoded: any): boolean
+			return typeof(decoded) == "BrickColor" and (decoded :: BrickColor).Name == "Bright red"
+		end
+	)
+	-- ...and a name miss falls back to the palette number.
+	addDecodeOnly(
+		"brickcolor-number-fallback",
+		{ __t = "BrickColor", name = "Not A Color", number = 21 },
+		function(decoded: any): boolean
+			return typeof(decoded) == "BrickColor" and (decoded :: BrickColor).Number == 21
+		end
+	)
 
 	return samples
 end
