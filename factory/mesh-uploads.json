@@ -64,12 +64,12 @@
   },
   {
    "assetId": 74219510609310,
-   "partPath": "game.StarterPack.ForgeArmingSword.Handle",
+   "partPath": "game.ServerStorage.FactoryStaging.weapon_sword.Handle",
    "rung": "weapon-sword",
    "uploadedAt": 1784970982,
    "status": "active",
    "imageId": 88313277743242,
-   "note": "ForgeArmingSword - the SP5 scored-A/B factory cycle's artifact (confirm_mesh FINALIZED, moderation Approved, per the staged record)"
+   "note": "ForgeArmingSword mesh - the SP5 scored-A/B cycle's artifact (FINALIZED/Approved); STAGE parked the Tool as FactoryStaging.weapon_sword (propose-only). Honest suite verdict after the arm-gate fix: 13/1/0 (0.44-stud forearm graze at t=0.45, recorded, fixup pending human call)"
   }
  ]
 }

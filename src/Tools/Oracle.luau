@@ -818,7 +818,7 @@ Oracle.descriptors = {
 			.. "rig_channel_check{rig,clip}, clip_arc_of{rig,tool,clip,samples,min_sweep}, "
 			.. "weapon_channel_of{rig,clip,min_swept_deg,require_chain} (an articulated weapon's UNKEYED "
 			.. "chain FAILs by default; require_chain=true demands every channel keyed AND sweeping), "
-			.. "clip_self_intersect{rig,tool,clip,samples,max_depth}, __selftest{}. "
+			.. "clip_self_intersect{rig,tool,clip,samples,max_depth,max_blade_in_arm,max_blade_in_body}, __selftest{}. "
 			.. "Verdicts: PASS|FAIL|UNKNOWN (UNKNOWN never counts as pass). Prefer these over captures for anything measurable.",
 		inputSchema = {
 			type = "object",

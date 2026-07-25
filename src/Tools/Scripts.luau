@@ -16,7 +16,6 @@
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 
 local Path = require(script.Parent.Path)
@@ -210,7 +209,8 @@ local function runListScripts(input: any): (string, boolean)
 		returned = #entries,
 		truncated = #all > #entries,
 		scripts = entries,
-	}), false
+	}),
+		false
 end
 
 -- ---- get_script ----
@@ -302,7 +302,13 @@ local function runGrepSource(input: any): (string, boolean)
 	end
 	local header = tostring(#out)
 		.. " match(es)"
-		.. (if truncated then " (capped at " .. tostring(maxResults) .. " — narrow the pattern or pass maxResults)" else "")
+		.. (
+			if truncated
+				then " (capped at "
+					.. tostring(maxResults)
+					.. " — narrow the pattern or pass maxResults)"
+				else ""
+		)
 	return header .. "\n" .. table.concat(out, "\n"), false
 end
 
@@ -335,7 +341,7 @@ local function runEditScript(input: any): (string, boolean)
 		summary = "find/replace ×" .. tostring(count or 0)
 	elseif args.startLine ~= nil then
 		if type(args.replace) ~= "string" then
-			return "edit_script: range mode needs replace (string; \"\" deletes the range)", true
+			return 'edit_script: range mode needs replace (string; "" deletes the range)', true
 		end
 		local s = numberOr(args.startLine, 0)
 		local e = numberOr(args.endLine, s)
@@ -399,7 +405,8 @@ local function runEditScript(input: any): (string, boolean)
 		.. " of "
 		.. tostring(window.total)
 		.. " now:\n"
-		.. numbered, false
+		.. numbered,
+		false
 end
 
 Scripts.descriptors = {
@@ -428,7 +435,10 @@ Scripts.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				path = { type = "string", description = "Path to the Script/LocalScript/ModuleScript." },
+				path = {
+					type = "string",
+					description = "Path to the Script/LocalScript/ModuleScript.",
+				},
 				startLine = { type = "number", description = "First line to show (1-based)." },
 				endLine = { type = "number", description = "Last line to show (inclusive)." },
 			},
@@ -446,13 +456,22 @@ Scripts.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				pattern = { type = "string", description = "Text (default) or Lua pattern to find." },
-				root = { type = "string", description = "Path to scan under. Omit for all containers." },
+				pattern = {
+					type = "string",
+					description = "Text (default) or Lua pattern to find.",
+				},
+				root = {
+					type = "string",
+					description = "Path to scan under. Omit for all containers.",
+				},
 				plain = {
 					type = "boolean",
 					description = "true (default) = literal text; false = Lua pattern matching.",
 				},
-				maxResults = { type = "number", description = "Cap on matches returned (default 50)." },
+				maxResults = {
+					type = "number",
+					description = "Cap on matches returned (default 50).",
+				},
 			},
 			required = { "pattern" },
 		},
@@ -463,20 +482,35 @@ Scripts.descriptors = {
 		name = "edit_script",
 		description = "PATCH a script's source. Modes (pass exactly one): find+replace — replace a "
 			.. "UNIQUE literal snippet (pass all=true to replace every occurrence); startLine(+endLine)"
-			.. "+replace — splice a line range (\"\" deletes; endLine=startLine-1 inserts before "
+			.. '+replace — splice a line range ("" deletes; endLine=startLine-1 inserts before '
 			.. "startLine); source — replace the whole file. The result is COMPILE-CHECKED with "
 			.. "loadstring first: a syntax error is rejected and NOT applied. Prefer small find/replace "
 			.. "edits over whole-source rewrites; get_script first so the find text matches exactly.",
 		inputSchema = {
 			type = "object",
 			properties = {
-				path = { type = "string", description = "Path to the Script/LocalScript/ModuleScript." },
-				find = { type = "string", description = "Literal text to replace (must match uniquely unless all=true)." },
+				path = {
+					type = "string",
+					description = "Path to the Script/LocalScript/ModuleScript.",
+				},
+				find = {
+					type = "string",
+					description = "Literal text to replace (must match uniquely unless all=true).",
+				},
 				replace = { type = "string", description = "Replacement text (find/range modes)." },
-				all = { type = "boolean", description = "find mode: replace ALL occurrences (default false)." },
+				all = {
+					type = "boolean",
+					description = "find mode: replace ALL occurrences (default false).",
+				},
 				startLine = { type = "number", description = "Range mode: first line (1-based)." },
-				endLine = { type = "number", description = "Range mode: last line (inclusive; default startLine)." },
-				source = { type = "string", description = "Whole-file mode: the complete new source." },
+				endLine = {
+					type = "number",
+					description = "Range mode: last line (inclusive; default startLine).",
+				},
+				source = {
+					type = "string",
+					description = "Whole-file mode: the complete new source.",
+				},
 			},
 			required = { "path" },
 		},
