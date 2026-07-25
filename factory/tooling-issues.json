@@ -297,6 +297,17 @@
    "seenCount": 1,
    "lastSeenAt": 1784971243,
    "resolution": "RESOLVED 2026-07-25 - BOTH halves confirmed real, plus a bonus bug the fix exposed. (1) 'right is Left': subject-relative preset yaws were ADDED to the rig's facing, which mirrors handedness (a subject facing the camera has its right on the viewer's left) - empirically proven with a neon marker on the rig's true right: BEFORE shot shows viewcube 'Left' + the L-skinned flank + marker hidden; AFTER (CaptureCore.composeYaw = facing MINUS preset, wired into capture_angles AND capture_animation) shows viewcube 'Right' + R flank + marker foreground. (2) Occluded sign-off angles: NEW check capture_vantage (EDIT_OK, in the melee suite) raycasts from each angle's framed camera to 12 declared-centerline samples; visible_frac under min_visible_frac (0.3) FAILs naming the first blocker. Live both-branch: front/right/left PASS 0.92/0.83/0.83; back FAILs at 0.00 (the audit's zero-information angle, mechanized). (3) BONUS (exposed by suite integration): scrubClip restored Motor6D.Transforms but never re-solved joints, so every check AFTER a clip check measured the LAST SCRUBBED POSE, not rest (the applyPose fact) - fixed with a fresh Animator:StepAnimations(0) after restore. Suite on weapon_sword: 14 PASS / 1 FAIL (only the honest arm graze)."
+  },
+  {
+   "title": "ORACLE GAP: clip_arc_of min_sweep is a SLASH prior - thrust clips fail on the wrong axis",
+   "symptom": "RapierThrust (a healthy fencing thrust: reach 5.65 studs, path 11.5 studs) FAILs clip_arc_of at sweep 34.2 deg vs the min_sweep=60 default; a thrust's payoff is REACH/path (linear), not angular sweep. The melee suite hardcodes the slash-shaped assertion for every clip.",
+   "suspectFiles": [
+    "src/Tools/Oracle.luau",
+    "src/Tools/OracleChecks.luau"
+   ],
+   "repro": "oracle_suite {family:melee-weapon, target:DivineRapier, clip:RapierThrust, allow_static_grip:true} - fleet re-grade 2026-07-25",
+   "seenCount": 1,
+   "lastSeenAt": 1784975000
   }
  ]
 }
