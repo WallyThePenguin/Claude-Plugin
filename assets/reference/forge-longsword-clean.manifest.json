@@ -1,0 +1,29 @@
+{
+ "mode": "cleanup",
+ "source": "forge-longsword-gen1024.glb",
+ "verts_in": 28739,
+ "tris_in": 39829,
+ "verts": 6048,
+ "tris": 19499,
+ "extents_studs": [
+  1.22,
+  0.268,
+  5.0
+ ],
+ "target_studs": 5.0,
+ "smooth": 5,
+ "holes_closed_repair": 615,
+ "holes_closed_post_smooth": 364,
+ "bones": [],
+ "uv": "planar",
+ "uv_axes": "XZ",
+ "uv_margin": 0.02,
+ "uv_sides": 2,
+ "uv_aspect": 8.1975,
+ "uv_layers": 1,
+ "ao": "forge-longsword-ao.png",
+ "ao_size": [
+  125,
+  1024
+ ]
+}
