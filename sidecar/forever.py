@@ -24,6 +24,7 @@ import time
 
 import agent_loop
 import factory as factory_mod
+import lesson_retrieval
 
 PROPOSALS_JSON_RE = re.compile(r"FACTORY_PROPOSALS_JSON:\s*(\[.*\])", re.DOTALL)
 RETRO_JSON_RE = re.compile(r"FACTORY_RETRO_JSON:\s*(\{.*\})", re.DOTALL)
@@ -467,7 +468,8 @@ class ForeverRunner:
     def _append_method_lessons(self, lessons) -> int:
         """Append deduped tiered method lessons to the factory-methods learnings bucket (same
         schema as the plugin's quality learnings, plus a verification tier per entry). Capped;
-        newest survive. Returns how many were added."""
+        newest stay active, overflow spills to the -archive file (SP5 — retrieval reads both).
+        Returns how many were added."""
         if not lessons:
             return 0
         try:
@@ -493,7 +495,9 @@ class ForeverRunner:
             })
             known.add(t)
             added += 1
-        del entries[:-MAX_METHOD_LESSONS]
+        # SP5: the cap ARCHIVES instead of deleting — overflow moves to the sibling
+        # -archive.json (scored retrieval reads both; the loop stops forgetting).
+        lesson_retrieval.spill_overflow(data, self._learnings_path, MAX_METHOD_LESSONS)
         os.makedirs(os.path.dirname(self._learnings_path), exist_ok=True)
         with open(self._learnings_path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=1)

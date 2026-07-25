@@ -7,6 +7,7 @@ import tempfile
 import time
 
 import forever
+import lesson_retrieval
 
 
 def _check(name, cond):
@@ -336,6 +337,20 @@ def main():
     fails += _check("blank tiered lesson dropped", len(entries) == 3)
     fails += _check("retro prompt asks for tier objects",
                     any('"tier":"symbolic-only|capture-confirmed|playtest-confirmed"' in p for p in loop.prompts))
+
+    # --- SP5: the 40-cap ARCHIVES overflow instead of deleting it ---
+    r, _ = _runner(FakeFactory("PASSED"), FakeLoop([]))
+    n = r._append_method_lessons(
+        forever._normalize_lessons(["cap lesson %02d" % i for i in range(45)]))
+    data = json.load(open(r._learnings_path))
+    arch = json.load(open(lesson_retrieval.archive_path_for(r._learnings_path)))
+    fails += _check("SP5 cap: all 45 accepted, active trimmed to the 40 newest",
+                    n == 45 and len(data["entries"]) == forever.MAX_METHOD_LESSONS
+                    and data["entries"][0]["text"] == "cap lesson 05")
+    fails += _check("SP5 cap: the 5 oldest archived verbatim, not deleted",
+                    [e["text"] for e in arch["entries"]]
+                    == ["cap lesson %02d" % i for i in range(5)]
+                    and arch["category"] == "factory-methods-archive")
 
     # --- proven mechanic fix is committed (backstop) + regression auto-reverts it ---
     class SeqFactory(FakeFactory):

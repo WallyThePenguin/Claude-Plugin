@@ -1,7 +1,10 @@
 # SP5 — learnings retrieval upgrade (draft for user review)
 
-Date: 2026-07-25. Status: DRAFT — researched + designed autonomously; awaiting user review
-before implementation. Materials: the live machinery (`sidecar/factory.py` `_learned_block`,
+Date: 2026-07-25. Status: **IMPLEMENTED phase 1** (same day — user green-lit after review;
+`sidecar/lesson_retrieval.py` + knob wiring + archive spill live, 29+2 tests green, offline
+A/B passed: one on-topic save_mesh lesson recovered, one off-topic wall-lintel lesson
+displaced, 13/14 stable). Knob default stays `newest`; the flip gate is one live factory
+cycle under `scored` per §3.4. Materials: the live machinery (`sidecar/factory.py` `_learned_block`,
 `sidecar/forever.py` `_append_method_lessons`), the store (`sidecar/store/learnings/*.json`,
 68 entries / 8 files today), and the 2026-07-16 memory-stack brainstorm
 (`docs/superpowers/notes/2026-07-16-memory-stack-brainstorm-transcript.txt`).

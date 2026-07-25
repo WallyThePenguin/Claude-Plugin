@@ -26,6 +26,8 @@ import threading
 import time
 import zlib
 
+import lesson_retrieval
+
 BUILD_JSON_RE = re.compile(r"FACTORY_BUILD_JSON:\s*(\{.*\})", re.DOTALL)
 VERIFY_JSON_RE = re.compile(r"FACTORY_VERIFY_JSON:\s*(\{.*\})", re.DOTALL)
 
@@ -50,21 +52,38 @@ _FAMILY_BUCKET = {
 }
 
 
-def _learned_block(family) -> str:
-    """Newest factory-method lessons + the family's quality lessons as a prompt block.
-    Missing/corrupt files mean no block — this must never fail a run."""
+def _rung_query(rung) -> str:
+    """Retrieval query for scored lesson selection: the rung's own words (SP5)."""
+    return " ".join(str(rung.get(k) or "") for k in ("family", "category", "brief", "oracle"))
+
+
+def _learned_block(family, query_text=None) -> str:
+    """Factory-method lessons + the family's quality lessons as a prompt block.
+    Selection is newest-K by default; STUDIO_AGENT_LESSON_RETRIEVAL=scored picks the same
+    K slots by relevance+tier+recency over active+archive instead (SP5 — flip gated on a
+    live A/B, spec 2026-07-25). Missing/corrupt files mean no block — never fails a run."""
+    scored = os.environ.get(
+        "STUDIO_AGENT_LESSON_RETRIEVAL", "newest").strip().lower() == "scored"
     picks = []
     sources = [("factory-methods.json", 8)]
     bucket = _FAMILY_BUCKET.get(family or "")
     if bucket:
         sources.append((bucket + ".json", 6))
     for fname, count in sources:
+        path = os.path.join(LEARNINGS_DIR, fname)
         try:
-            with open(os.path.join(LEARNINGS_DIR, fname), encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 entries = json.load(fh).get("entries") or []
         except (OSError, ValueError):
-            continue
-        for e in entries[-count:]:
+            entries = []
+        chosen = entries[-count:]
+        if scored:
+            try:
+                chosen = lesson_retrieval.select(
+                    lesson_retrieval.load_pool(path), query_text or family or "", count)
+            except Exception:
+                pass  # scored selection must never fail a run — newest-K already in hand
+        for e in chosen:
             e = e if isinstance(e, dict) else {}
             t = str(e.get("text") or "").strip()
             if not t:
@@ -1200,7 +1219,7 @@ def _build_prompt(rung, sabotage: bool, playbook: dict, variant_hint=None,
         "(extra animations, polish passes, unrelated systems), do NOT playtest (that is VERIFY's "
         "job)  -  over-building burns the iteration budget and FAILS the run. Never create anything "
         "named or attributed StudioAgentTest_* or TestAutoKill.\n\n"
-        + _learned_block(rung.get("family"))
+        + _learned_block(rung.get("family"), _rung_query(rung))
         + (f"{_VISION_BUILD}\n\n" if playbook.get("vision", True) else "")
         + (f"{mesh_policy}\n\n" if playbook.get("vision", True) else "")
         + (_ORACLE_BUILD % playbook["oracleFamily"] + "\n\n" if playbook.get("oracleFamily") else "")
@@ -1248,7 +1267,7 @@ def _verify_prompt(rung, build, playbook: dict, audit: bool = False) -> str:
         f"is to find reasons to FAIL. Artifact: {build.get('artifactPath')} "
         f"(kind: {build.get('artifactKind', '?')}). Config: {json.dumps(build.get('config'))}.\n"
         f"ORACLE: {rung.get('oracle', '')}\n\n"
-        + _learned_block(rung.get("family"))
+        + _learned_block(rung.get("family"), _rung_query(rung))
         + oracle_block
         + audit_block
         + "EDIT-MODE FIRST (standing rule): before ANY playtest_start, enumerate the edit-mode "
