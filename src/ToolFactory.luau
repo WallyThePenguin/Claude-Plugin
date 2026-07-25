@@ -30,14 +30,19 @@ ToolFactory.REST_CANT_DEG = 50
 -- must stay under grip_sane's 0.6-stud grip_offset bound.
 ToolFactory.REST_FORWARD_STUDS = 0.4
 
--- HOLD FRAME (user-validated 2026-07-12, "candidate 2"): when a mesh declares BOTH blade_dir and
--- edge_dir, gripFromFrame aligns the FULL handle frame instead of the blade-only cant above — the
--- blade projects out the hand's FRONT and the cutting edge faces DOWN toward the palm (the "D" /
--- -Y face), Semantic_Grip point seated at the RightGripAttachment. Constraining the edge kills the
--- free roll the cant left unfixed (the "sword on its side" bug — the hilt never sat right because
--- roll was arbitrary). Hand-local unit directions:
-ToolFactory.HOLD_BLADE_DIR = Vector3.new(0, 0, -1) -- blade out the hand's front (-Z)
-ToolFactory.HOLD_EDGE_DIR = Vector3.new(0, -1, 0) -- cutting edge down toward the palm (-Y / D face)
+-- HOLD FRAME (user-validated 2026-07-25, "candidate B" — supersedes the 07-12 "candidate 2"
+-- knuckles hold): when a mesh declares BOTH blade_dir and edge_dir, gripFromFrame aligns the FULL
+-- handle frame — blade UP-FORWARD 45 deg out of the fist (the classic Roblox carry), cutting edge
+-- forward-down, Semantic_Grip seated at the RightGripAttachment. WHY the change: the knuckles
+-- hold was picked from STATIC candidates and read fine at rest, but under RETARGETED swing clips
+-- the knuckles face BACKWARD in guard/cut phases, so the blade aimed behind the character (user:
+-- "feels like the opposite direction" — confirmed on the side-view filmstrip comparison; the
+-- animation-compatible hold keeps the blade forward through the arc). Method, again: render
+-- candidates under the ACTUAL CLIP, let the user point. Constraining the edge still kills free
+-- roll (the "sword on its side" bug). Hand-local unit directions (one source of truth —
+-- grip_sane asserts THESE):
+ToolFactory.HOLD_BLADE_DIR = Vector3.new(0, 1, -1).Unit -- blade up-forward 45 out of the fist
+ToolFactory.HOLD_EDGE_DIR = Vector3.new(0, -1, -1).Unit -- edge forward-down (orthogonal to blade)
 
 export type Vec3ish = { x: number?, y: number?, z: number? }
 export type Rotish = { rx: number?, ry: number?, rz: number? }
@@ -521,13 +526,22 @@ local function rotFromTo(a: Vector3, b: Vector3): CFrame
 		return CFrame.new()
 	end
 	if d < -0.9999 then
-		local axis = if math.abs(a.X) < 0.9 then a:Cross(Vector3.xAxis).Unit else a:Cross(Vector3.yAxis).Unit
+		local axis = if math.abs(a.X) < 0.9
+			then a:Cross(Vector3.xAxis).Unit
+			else a:Cross(Vector3.yAxis).Unit
 		return CFrame.fromAxisAngle(axis, math.pi)
 	end
 	return CFrame.fromAxisAngle(a:Cross(b).Unit, math.acos(d))
 end
 
-function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
+-- holdBlade/holdEdge: optional HAND-LOCAL overrides of the HOLD convention (candidate-rendering
+-- seam, 2026-07-25 — "render candidates, let the user point"; omit for the doctrine constants).
+function ToolFactory.gripFromFrame(
+	tool: Tool,
+	rig: Model?,
+	holdBlade: Vector3?,
+	holdEdge: Vector3?
+): CFrame?
 	local handle = tool:FindFirstChild("Handle")
 	if handle == nil or not handle:IsA("BasePart") then
 		return nil
@@ -545,7 +559,12 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 	local okDecode, decoded = pcall(function()
 		return game:GetService("HttpService"):JSONDecode(raw)
 	end)
-	if not okDecode or type(decoded) ~= "table" or type(decoded.dirs) ~= "table" or type(decoded.dirs.blade_dir) ~= "table" then
+	if
+		not okDecode
+		or type(decoded) ~= "table"
+		or type(decoded.dirs) ~= "table"
+		or type(decoded.dirs.blade_dir) ~= "table"
+	then
 		return nil
 	end
 	local d = decoded.dirs.blade_dir
@@ -569,14 +588,19 @@ function ToolFactory.gripFromFrame(tool: Tool, rig: Model?): CFrame?
 			local attCF = CFrame.new(0, -0.158, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
 			if rig ~= nil then
 				local hand = rig:FindFirstChild("RightHand", true)
-				local gripAtt = if hand ~= nil then hand:FindFirstChild("RightGripAttachment") else nil
+				local gripAtt = if hand ~= nil
+					then hand:FindFirstChild("RightGripAttachment")
+					else nil
 				if gripAtt ~= nil and gripAtt:IsA("Attachment") then
 					attCF = gripAtt.CFrame
 				end
 			end
 			-- R (handle-local -> hand-local) maps the handle's (edge=X, blade=Y) frame onto the
-			-- hand-local hold frame (HOLD_EDGE_DIR=X, HOLD_BLADE_DIR=Y).
-			local R = CFrame.fromMatrix(Vector3.zero, ToolFactory.HOLD_EDGE_DIR, ToolFactory.HOLD_BLADE_DIR)
+			-- hand-local hold frame (HOLD_EDGE_DIR=X, HOLD_BLADE_DIR=Y), overridable per call.
+			local hb = (holdBlade or ToolFactory.HOLD_BLADE_DIR).Unit
+			local he = holdEdge or ToolFactory.HOLD_EDGE_DIR
+			he = (he - hb * he:Dot(hb)).Unit -- keep the hold frame orthonormal too
+			local R = CFrame.fromMatrix(Vector3.zero, he, hb)
 				* CFrame.fromMatrix(Vector3.zero, edge, blade):Inverse()
 			-- Seat the Semantic_Grip point at the attachment, then fold through equip's convention
 			-- (Handle-in-hand = attCF * Grip^-1) so bind_grip_motor + the runtime RightGrip keep
@@ -680,7 +704,11 @@ function ToolFactory.setOffHand(
 	ik.EndEffector = endEffector
 	ik.Target = theAtt
 	ik.Parent = humanoid
-	return "off-hand IK: LeftHand reaches " .. theAtt:GetFullName() .. " (IKControl '" .. OFFHAND_IK .. "' under the Humanoid).",
+	return "off-hand IK: LeftHand reaches "
+		.. theAtt:GetFullName()
+		.. " (IKControl '"
+		.. OFFHAND_IK
+		.. "' under the Humanoid).",
 		true
 end
 

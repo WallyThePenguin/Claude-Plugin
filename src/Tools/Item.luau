@@ -137,7 +137,8 @@ local function captureTail(note: string, theRig: Model, context: any): (any, boo
 		end)
 	end)
 	if not shotOk then
-		return note .. " (CaptureService produced no screenshot — focus Studio and re-call)", false
+		return note .. " (CaptureService produced no screenshot — focus Studio and re-call)",
+			false
 	end
 	CaptureCore.settle(2)
 	local config = if type(context) == "table" then context.config else nil
@@ -228,8 +229,25 @@ local function runGripTool(input: any, context: any): (any, boolean)
 	-- Purge playing tracks BEFORE fitting/resetting (doctrine; a playing track would re-stamp
 	-- its pose over the T-pose reset and the capture below).
 	stopPlayingTracks(theRig)
-	local frameGrip = if args.offset == nil and args.rot == nil then ToolFactory.gripFromFrame(tool, theRig) else nil
-	local grip = if frameGrip ~= nil then frameGrip else ToolFactory.gripCFrame(args.offset, args.rot)
+	-- Optional HAND-LOCAL hold overrides (candidate rendering): {x,y,z} unit-ish vectors.
+	local function vec3Arg(v: any): Vector3?
+		if type(v) ~= "table" then
+			return nil
+		end
+		local out = Vector3.new(tonumber(v.x) or 0, tonumber(v.y) or 0, tonumber(v.z) or 0)
+		return if out.Magnitude > 1e-4 then out else nil
+	end
+	local frameGrip = if args.offset == nil and args.rot == nil
+		then ToolFactory.gripFromFrame(
+			tool,
+			theRig,
+			vec3Arg(args.holdBlade),
+			vec3Arg(args.holdEdge)
+		)
+		else nil
+	local grip = if frameGrip ~= nil
+		then frameGrip
+		else ToolFactory.gripCFrame(args.offset, args.rot)
 	-- T-pose-first (SP2c): frame auto-alignment must fit against the canonical NEUTRAL pose —
 	-- C0/C1 frozen on a posed rig would offset every authored clip by the pose delta.
 	local poseReset = false
@@ -282,9 +300,14 @@ local function runGripTool(input: any, context: any): (any, boolean)
 				.. "(add_keyframe poses + weapon=true keys them all).",
 			#chainNames,
 			table.concat(chainNames, ", "),
-			if chainFitted > 0 then string.format(" (%d newly fit from built geometry)", chainFitted) else "",
+			if chainFitted > 0
+				then string.format(" (%d newly fit from built geometry)", chainFitted)
+				else "",
 			if chainFlipped > 0
-				then string.format(" (%d joint(s) FLIPPED hilt-outward so the Animator can drive them)", chainFlipped)
+				then string.format(
+					" (%d joint(s) FLIPPED hilt-outward so the Animator can drive them)",
+					chainFlipped
+				)
 				else ""
 		)
 		else ""
@@ -292,10 +315,9 @@ local function runGripTool(input: any, context: any): (any, boolean)
 		"grip_tool: equipped '%s' on %s, grip set. Adjust offset/rot and re-call until it sits right.",
 		tool.Name,
 		theRig.Name
-	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "")
-		.. (if poseReset then " (rig pose reset to neutral first)" else "")
-		.. chainNote
-		.. offhandNote
+	) .. (if frameGrip ~= nil then " (aligned to Semantic_Grip frame)" else "") .. (if poseReset
+		then " (rig pose reset to neutral first)"
+		else "") .. chainNote .. offhandNote
 	-- frame the RIG (the held pose) + capture so the agent SEES the grip in context. (Framing the tiny
 	-- Handle part gives an unusable extreme close-up — verified live; the whole-rig shot shows the arm +
 	-- item so the grip is assessable; the agent can camera_orbit/zoom for detail.)
@@ -364,6 +386,27 @@ Item.descriptors = {
 				},
 				offset = VEC3_SCHEMA,
 				rot = ROT_SCHEMA,
+				holdBlade = {
+					type = "object",
+					description = "HAND-LOCAL blade direction override for the auto-align "
+						.. "({x,y,z}; default ToolFactory.HOLD_BLADE_DIR = 0,0,-1 out the "
+						.. "knuckles). Candidate-rendering seam — omit for the doctrine hold.",
+					properties = {
+						x = { type = "number" },
+						y = { type = "number" },
+						z = { type = "number" },
+					},
+				},
+				holdEdge = {
+					type = "object",
+					description = "HAND-LOCAL edge direction override ({x,y,z}; default "
+						.. "0,-1,0 toward the palm). Orthogonalized against holdBlade.",
+					properties = {
+						x = { type = "number" },
+						y = { type = "number" },
+						z = { type = "number" },
+					},
+				},
 				offhand = {
 					type = "boolean",
 					description = "true = two-handed hold: stamp/reuse a Semantic_OffHand attachment "
