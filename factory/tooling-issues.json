@@ -273,6 +273,28 @@
    "seenCount": 1,
    "lastSeenAt": 1784000000,
    "resolution": "RESOLVED 2026-07-25 - FindFirstChild('Handle', true) was returning a POSE instance: the rig's AnimSaves clips carry weapon-channel Pose objects NAMED 'Handle', and the recursive search matched one before the real part (not a BasePart -> 'not found'). The census never tripped because it resolves a full PATH. Fix: walk GetDescendants, BaseParts only (src/PlayBridge.luau, 6b51f11). Live-verified: tracked Workspace.AgentRig.ForgeLongsword.Handle, full-clip runtime playback, sweep 124.2 deg over 600 samples; the melee suite then hit its FIRST green=true (14/0/0, both twins sidecar-witnessed, session 6)."
+  },
+  {
+   "title": "ORACLE BUG: clip_self_intersect - suite vs capture disagree (weapon-sword)",
+   "symptom": "suite said: PASS with blade_in_body_max=0 studs, but reports blade_in_arm_max_studs=0.4392 against its own stated max_allowed_depth=0.2 | capture showed: Front strip t=0.56 and left strip t=0.42 show the blade grazing/overlapping the right forearm; the check reports an arm threshold it never enforces, so a 2.2x-over-allowance arm penetration passes sil",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau",
+    "src/Tools/Oracle.luau"
+   ],
+   "repro": "oracle_suite on game.StarterPack.ForgeArmingSword vs a full capture review (audit run, rung weapon-sword)",
+   "seenCount": 1,
+   "lastSeenAt": 1784971243
+  },
+  {
+   "title": "ORACLE BUG: capture framing (suite blindspot) - suite vs capture disagree (weapon-sword)",
+   "symptom": "suite said: no suite row asserts capture readability | capture showed: capture_angles angle 4/4 (270deg) was fully occluded by the torso and angle 'right' rendered from the Left viewcube, so one of four sign-off angles carried zero information",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau",
+    "src/Tools/Oracle.luau"
+   ],
+   "repro": "oracle_suite on game.StarterPack.ForgeArmingSword vs a full capture review (audit run, rung weapon-sword)",
+   "seenCount": 1,
+   "lastSeenAt": 1784971243
   }
  ]
 }
