@@ -545,7 +545,9 @@ if args.bake_ao:
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.bake(type="AO", margin=8)
     os.makedirs(os.path.dirname(os.path.abspath(args.bake_ao)), exist_ok=True)
-    img.filepath_raw = args.bake_ao
+    # abspath REQUIRED: Blender's image saver resolves bare relative paths blend-relative
+    # (undefined headless — the save silently lands nowhere), unlike the cwd-relative Python side.
+    img.filepath_raw = os.path.abspath(args.bake_ao)
     img.file_format = "PNG"
     img.save()
     obj.data.materials.clear()
