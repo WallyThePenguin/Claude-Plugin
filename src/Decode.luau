@@ -17,6 +17,13 @@
 --   silently returns Medium stone grey -- so Decode echo-verifies the produced entry against the
 --   requested field (.Name/.Number must match) and treats a mismatch as a miss (nil).
 -- - UDim2 -> {__t="UDim2", xs,xo,ys,yo}; UDim -> {__t="UDim", s,o}.
+-- - STRICT NUMERIC FIELDS (2026-07 engine drift): the geometric constructors no longer throw on
+--   non-number args (numeric strings coerce, other garbage/missing args become 0), so Decode
+--   itself validates type(field)=="number" for EVERY numeric field of the six geometric tags
+--   (Vector3/Vector2/CFrame/Color3/UDim2/UDim) and decodes the whole tag to nil on any mismatch
+--   -- numeric STRINGS included -- restoring the original nil-on-malformed contract engine-side.
+--   For CFrame a missing/non-table c is likewise nil. A malformed payload can therefore never
+--   land a silently-zero-coerced value in a real property (write tools refuse the nil up front).
 -- - EnumItem -> {__t="EnumItem", enum=<bare type name, e.g. "Material", strip a leading "Enum." via
 --   gsub("^Enum%.","")>, item=v.Name, value=v.Value}. Decode resolves the EnumItem from enum+item.
 -- - table -> recursively encoded, preserving array-vs-dict shape. ESCAPE user tables that
@@ -35,9 +42,11 @@ local M = {}
 -- Run a constructor under pcall, returning the produced value on success or nil on any error.
 -- ENGINE NOTE (verified live 2026-07-25): the geometric constructors (Vector3/Vector2/Color3/
 -- UDim/UDim2/CFrame .new) NO LONGER throw on non-number args -- numeric strings coerce ("1" -> 1)
--- and other garbage/missing args become 0 -- so for those try() rarely fires anymore. It REMAINS
--- the totality backstop: decode input is arbitrary proxy/agent JSON, some constructors still do
--- throw (e.g. BrickColor.new on a table), and the documented "decode is TOTAL (never throws)"
+-- and other garbage/missing args become 0 -- so constructor errors can no longer be the
+-- malformed-payload rejector. decodeValue now STRICTLY pre-validates numeric fields for the six
+-- geometric tags (see allNumbers below); try() is only the totality backstop: decode input is
+-- arbitrary proxy/agent JSON, some constructors still do throw (e.g. BrickColor.new on a table,
+-- CFrame.new on an unsupported arity), and the documented "decode is TOTAL (never throws)"
 -- contract must hold regardless of engine behavior drift.
 local function try<T>(fn: (...any) -> T, ...: any): T?
 	local ok, result = pcall(fn, ...)
@@ -45,6 +54,23 @@ local function try<T>(fn: (...any) -> T, ...: any): T?
 		return result
 	end
 	return nil
+end
+
+-- STRICT NUMERIC PRE-VALIDATION for the six geometric tags: every numeric field must already BE
+-- a number. Post-drift (see ENGINE NOTE above) the constructors would otherwise coerce a
+-- malformed field to 0 (or parse a numeric string) and hand back a plausible-but-wrong value
+-- that lands in real properties -- the same silent-wrong-value class brickColorFrom's
+-- echo-verification exists for. nil fails the check too, so a MISSING field refuses the whole
+-- tag rather than zero-filling. Numeric strings refuse deliberately: the encoder emits real JSON
+-- numbers, so a string here always means a malformed producer, and accepting it would pin decode
+-- to the engine's (drifting, unowned) coercion grammar.
+local function allNumbers(...: any): boolean
+	for i = 1, select("#", ...) do
+		if type((select(i, ...))) ~= "number" then
+			return false
+		end
+	end
+	return true
 end
 
 -- Rebuild a non-finite number from its sentinel token.
@@ -160,19 +186,34 @@ function decodeValue(value: any): any
 	if tag == "number" then
 		return tokenToNumber(tostring(value.v))
 	elseif tag == "Vector3" then
-		-- Guarded: non-number fields from hostile JSON would otherwise throw.
+		-- Strict per-field validation (allNumbers): any non-number field decodes the tag to nil.
+		if not allNumbers(value.x, value.y, value.z) then
+			return nil
+		end
 		return try(Vector3.new, value.x, value.y, value.z)
 	elseif tag == "Vector2" then
+		if not allNumbers(value.x, value.y) then
+			return nil
+		end
 		return try(Vector2.new, value.x, value.y)
 	elseif tag == "CFrame" then
+		-- Strict: c must be a table of numbers. A missing/non-table c is nil -- NOT the old
+		-- identity-CFrame fallback, which could silently teleport a part to the world origin.
+		-- Which arities build stays the constructor's own overload rule (try() nils an arity miss).
 		local c = value.c
-		if type(c) == "table" then
-			return try(function(): CFrame
-				return CFrame.new(table.unpack(c :: { number }))
-			end)
+		if type(c) ~= "table" then
+			return nil
 		end
-		return CFrame.new()
+		if not allNumbers(table.unpack(c :: { any })) then
+			return nil
+		end
+		return try(function(): CFrame
+			return CFrame.new(table.unpack(c :: { number }))
+		end)
 	elseif tag == "Color3" then
+		if not allNumbers(value.r, value.g, value.b) then
+			return nil
+		end
 		return try(Color3.new, value.r, value.g, value.b)
 	elseif tag == "BrickColor" then
 		-- Name first (unique + human-readable), then palette number; nil when neither resolves.
@@ -184,8 +225,14 @@ function decodeValue(value: any): any
 		end
 		return brickColorFrom(value.number)
 	elseif tag == "UDim2" then
+		if not allNumbers(value.xs, value.xo, value.ys, value.yo) then
+			return nil
+		end
 		return try(UDim2.new, value.xs, value.xo, value.ys, value.yo)
 	elseif tag == "UDim" then
+		if not allNumbers(value.s, value.o) then
+			return nil
+		end
 		return try(UDim.new, value.s, value.o)
 	elseif tag == "EnumItem" then
 		-- Returns the resolved EnumItem, or nil on miss (best-effort).

@@ -14,6 +14,7 @@ local Decode = require(script.Parent.Parent.Decode)
 local Path = require(script.Parent.Path)
 local PropertyCatalog = require(script.Parent.PropertyCatalog)
 local RegionGuard = require(script.Parent.RegionGuard)
+local ValueGuard = require(script.Parent.ValueGuard)
 
 local Create = {}
 
@@ -117,6 +118,13 @@ local function runCreate(input: any, context: any): (string, boolean)
 						decoded = coerced
 					end
 				end
+				-- Guarded-tag nil decode (ValueGuard): an unresolved reference or a strict-validation
+				-- refusal of a malformed geometric payload. Without this, a nil-ASSIGNABLE property
+				-- (Adornee, ObjectValue.Value) would silently apply the nil and report success.
+				if ValueGuard.nilDecodeRefusal(rawValue, decoded) ~= nil then
+					table.insert(failed, tostring(propName))
+					continue
+				end
 				local okSet = pcall(function()
 					(instance :: any)[propName] = decoded
 				end)
@@ -186,7 +194,8 @@ Create.descriptors = {
 						.. '"Size": {"__t":"Vector3","x":4,"y":1,"z":2}, '
 						.. '"BrickColor": {"__t":"BrickColor","name":"Bright red"} }. '
 						.. "For a BrickColor-typed property a plain palette-name string (e.g. "
-						.. '"Bright red") is also accepted.',
+						.. '"Bright red") is also accepted. Numeric fields of tagged values must be '
+						.. "JSON numbers, not strings ('1' is refused, never coerced).",
 				},
 			},
 			required = { "className" },

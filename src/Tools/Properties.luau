@@ -16,6 +16,7 @@ local Decode = require(script.Parent.Parent.Decode)
 local Path = require(script.Parent.Path)
 local PropertyCatalog = require(script.Parent.PropertyCatalog)
 local RegionGuard = require(script.Parent.RegionGuard)
+local ValueGuard = require(script.Parent.ValueGuard)
 
 local Properties = {}
 
@@ -88,23 +89,6 @@ local function runGetProperties(input: any): (string, boolean)
 	return encodeResult(payload), false
 end
 
--- Does the supplied raw value carry a serializer tag whose decode is a best-effort LOOKUP that
--- can legitimately return nil on a miss (an Instance reference, an EnumItem, or a BrickColor
--- palette entry)? Such a value decoding to nil means the lookup DID NOT RESOLVE, not that nil was
--- the intended assignment — assigning that nil would either silently deparent/clear the target
--- (Parent, PrimaryPart) and commit a surprising "success", or throw the engine's cryptic
--- type-mismatch error (BrickColor). set_property refuses the case up front with a clear message.
-local function isUnresolvableReference(rawValue: any, decoded: any): boolean
-	if decoded ~= nil then
-		return false
-	end
-	if type(rawValue) ~= "table" then
-		return false
-	end
-	local tag = rawValue.__t
-	return tag == "Instance" or tag == "EnumItem" or tag == "BrickColor"
-end
-
 -- set_property: decode a structured JSON value and assign it under an undoable recording.
 local function runSetProperty(input: any, context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
@@ -144,13 +128,15 @@ local function runSetProperty(input: any, context: any): (string, boolean)
 		return encodeResult({ ok = false, error = "value decode failed" }), true
 	end
 
-	-- Guard the "decoded successfully TO nil" case for reference-typed tags: a tagged Instance or
-	-- EnumItem value that resolves to nil means the reference did not resolve. Assigning that nil
-	-- (e.g. Parent = nil, PrimaryPart = nil) would deparent/clear the target and commit a misleading
-	-- {ok=true}; refuse instead. (Plain JSON nil for a non-reference value still passes through to
-	-- the engine, which rejects type-mismatched nils via the pcall'd assignment below.)
-	if isUnresolvableReference(args.value, decoded) then
-		return encodeResult({ ok = false, error = "value reference did not resolve" }), true
+	-- Guard the "decoded successfully TO nil" case for guarded tags (ValueGuard): an unresolved
+	-- reference (Instance/EnumItem/BrickColor) or a strict-validation refusal of a malformed
+	-- geometric payload. Assigning that nil would either silently deparent/clear the target
+	-- (Parent, PrimaryPart) and commit a misleading {ok=true}, or throw the engine's cryptic
+	-- type-mismatch error; refuse up front with the actionable message instead. (Plain JSON nil
+	-- for an untagged value still passes through to the pcall'd assignment below.)
+	local refusal = ValueGuard.nilDecodeRefusal(args.value, decoded)
+	if refusal ~= nil then
+		return encodeResult({ ok = false, error = refusal }), true
 	end
 
 	-- Plain-spelling BrickColor coercion (parity with create_instance): the natural way to write a
@@ -244,7 +230,8 @@ local STRUCTURED_VALUE_NOTE = "value is a structured JSON value matching the "
 	.. '{"__t":"Vector3","x":..,"y":..,"z":..}, '
 	.. '{"__t":"EnumItem","enum":"Material","item":"Plastic"}, '
 	.. '{"__t":"BrickColor","name":"Bright red"}. For a BrickColor-typed property a plain '
-	.. "palette-name string is also accepted."
+	.. "palette-name string is also accepted. Numeric fields of tagged values must be JSON "
+	.. "numbers, not strings ('1' is refused, never coerced)."
 
 -- Exported descriptor list; init.luau concatenates it into the master registry.
 Properties.descriptors = {

@@ -56,7 +56,7 @@ run_luau return values and get_properties results come back as tagged tables:
 - UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; UDim -> {"__t":"UDim","s":..,"o":..}
 - EnumItem -> {"__t":"EnumItem","enum":"Material","item":"Plastic"}
 - non-finite number -> {"__t":"number","v":"nan"|"inf"|"-inf"}
-Pass the SAME shapes to set_property's `value`. Examples: red = {"__t":"Color3","r":1,"g":0,"b":0}; neon = {"__t":"EnumItem","enum":"Material","item":"Neon"}; a position = {"__t":"Vector3","x":0,"y":5,"z":0}.
+Pass the SAME shapes to set_property's `value`. Examples: red = {"__t":"Color3","r":1,"g":0,"b":0}; neon = {"__t":"EnumItem","enum":"Material","item":"Neon"}; a position = {"__t":"Vector3","x":0,"y":5,"z":0}. Numeric fields must be JSON numbers, not strings ("1" is refused, never coerced).
 
 # Build capabilities and patterns
 SCRIPTING: place server scripts under game.ServerScriptService (or Workspace), client scripts under game.StarterPlayer.StarterPlayerScripts or game.StarterGui, and modules under game.ReplicatedStorage. Scripts you create RUN during a playtest (Play), not in edit mode. Create a new script with create_instance (className "Script"/"LocalScript"/"ModuleScript") then write its body with edit_script (source=...); work on EXISTING code with the script tools per "Working with scripts" — never overwrite a .Source you haven't read.
@@ -207,7 +207,7 @@ Pass these tagged shapes to set_property's `value` and create_instance's `proper
 - UDim2 -> {"__t":"UDim2","xs":..,"xo":..,"ys":..,"yo":..}; UDim -> {"__t":"UDim","s":..,"o":..}
 - EnumItem -> {"__t":"EnumItem","enum":"Material","item":"Neon"}; CFrame -> {"__t":"CFrame","c":[..12 floats..]}
 - BrickColor -> {"__t":"BrickColor","name":"Bright red"} (a plain palette-name string also works for BrickColor-typed properties)
-Plain strings / numbers / bools pass through as-is.
+Plain strings / numbers / bools pass through as-is. Numeric fields must be JSON numbers, not strings ("1" is refused, never coerced).
 
 # Addressing instances
 Case-sensitive, dot-separated paths from a top-level service, e.g. game.StarterGui.Shop.Frame.

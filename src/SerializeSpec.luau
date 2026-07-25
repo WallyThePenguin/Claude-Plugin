@@ -297,87 +297,38 @@ local function buildSamples(): { Sample }
 	-- would never produce: tagged geometric values whose numeric fields arrived as strings (or are
 	-- missing). ENGINE DRIFT (verified live 2026-07-25): the geometric constructors NO LONGER throw
 	-- on non-number args -- numeric strings coerce ("1" -> 1) and other garbage/missing args become
-	-- 0 -- so these decode to the engine's coerced value now, not nil. The samples pin BOTH current
-	-- contracts: Decode stays TOTAL (the harness pcalls it), and engine coercion passes through
-	-- unchanged. (BrickColor is the deliberate exception below: ITS constructor's failure mode is a
-	-- silently-wrong palette entry, so Decode echo-verifies and yields nil on a miss.) These run
-	-- decode-only (no encode/JSON round-trip) since the encoder cannot emit them.
+	-- 0 -- so constructor errors can no longer reject these; unguarded, {__t="Vector3",x="a",y=2,
+	-- z=3} would decode to Vector3(0,2,3) and land in real properties as a silently-wrong value.
+	-- Decode therefore STRICTLY pre-validates type(field)=="number" for every numeric field of the
+	-- six geometric tags, restoring the original nil-on-malformed contract engine-side. The samples
+	-- pin BOTH contracts: Decode stays TOTAL (the harness pcalls it), and every malformed payload
+	-- decodes to nil, never a coerced value. (BrickColor reaches the same doctrine below via
+	-- echo-verification, since ITS constructor's failure mode is a silently-wrong palette entry.)
+	-- These run decode-only (no encode/JSON round-trip) since the encoder cannot emit them.
 	local function isNil(decoded: any): boolean
 		return decoded == nil
 	end
 
-	local function expectVector3(x: number, y: number, z: number): (any) -> boolean
-		return function(decoded: any): boolean
-			return typeof(decoded) == "Vector3"
-				and componentsEqual({ decoded.X, decoded.Y, decoded.Z }, { x, y, z }, EPS)
-		end
-	end
-
-	addDecodeOnly(
-		"malformed-vector3-string",
-		{ __t = "Vector3", x = "1", y = 2, z = 3 },
-		-- The numeric string coerces to its value.
-		expectVector3(1, 2, 3)
-	)
-	addDecodeOnly(
-		"malformed-vector2-string",
-		{ __t = "Vector2", x = "a", y = 2 },
-		function(decoded: any): boolean
-			return typeof(decoded) == "Vector2"
-				and componentsEqual({ decoded.X, decoded.Y }, { 0, 2 }, EPS)
-		end
-	)
-	addDecodeOnly(
-		"malformed-color3-string",
-		{ __t = "Color3", r = "x", g = 0.5, b = 0.5 },
-		function(decoded: any): boolean
-			return typeof(decoded) == "Color3"
-				and componentsEqual({ decoded.R, decoded.G, decoded.B }, { 0, 0.5, 0.5 }, EPS)
-		end
-	)
-	addDecodeOnly(
-		"malformed-udim-string",
-		{ __t = "UDim", s = "scale", o = 0 },
-		function(decoded: any): boolean
-			return typeof(decoded) == "UDim" and decoded.Scale == 0 and decoded.Offset == 0
-		end
-	)
-	addDecodeOnly(
-		"malformed-udim2-string",
-		{ __t = "UDim2", xs = 0, xo = 0, ys = 0, yo = "off" },
-		function(decoded: any): boolean
-			return typeof(decoded) == "UDim2"
-				and componentsEqual(
-					{ decoded.X.Scale, decoded.X.Offset, decoded.Y.Scale, decoded.Y.Offset },
-					{ 0, 0, 0, 0 },
-					EPS
-				)
-		end
-	)
-	addDecodeOnly(
-		"malformed-cframe-string",
-		{ __t = "CFrame", c = { "x", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } },
-		function(decoded: any): boolean
-			-- The garbage x coerces to 0: identity rotation at the origin.
-			return typeof(decoded) == "CFrame"
-				and componentsEqual(
-					{ (decoded :: CFrame):GetComponents() },
-					{ 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 },
-					EPS
-				)
-		end
-	)
-	-- Missing fields decode as nil constructor args, which the engine also zero-fills now.
-	addDecodeOnly("malformed-vector3-missing", { __t = "Vector3" }, expectVector3(0, 0, 0))
+	-- Even a NUMERIC string ("1") refuses: the encoder emits real JSON numbers, so a string here
+	-- always means a malformed producer, and accepting it would pin decode to engine coercion.
+	addDecodeOnly("malformed-vector3-string", { __t = "Vector3", x = "1", y = 2, z = 3 }, isNil)
+	addDecodeOnly("malformed-vector2-string", { __t = "Vector2", x = "a", y = 2 }, isNil)
+	addDecodeOnly("malformed-color3-string", { __t = "Color3", r = "x", g = 0.5, b = 0.5 }, isNil)
+	addDecodeOnly("malformed-udim-string", { __t = "UDim", s = "scale", o = 0 }, isNil)
+	addDecodeOnly("malformed-udim2-string", { __t = "UDim2", xs = 0, xo = 0, ys = 0, yo = "off" }, isNil)
+	addDecodeOnly("malformed-cframe-string", { __t = "CFrame", c = { "x", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }, isNil)
+	-- Missing fields refuse too (nil is not a number): no zero-filled phantom values.
+	addDecodeOnly("malformed-vector3-missing", { __t = "Vector3" }, isNil)
+	addDecodeOnly("malformed-udim2-partial", { __t = "UDim2", xs = 0.5 }, isNil)
+	-- CFrame's container: a missing or non-table c is nil as well -- NOT the old identity-CFrame
+	-- fallback, which could silently teleport a part to the world origin.
+	addDecodeOnly("malformed-cframe-missing", { __t = "CFrame" }, isNil)
+	addDecodeOnly("malformed-cframe-nontable", { __t = "CFrame", c = "garbage" }, isNil)
 
 	-- BrickColor's constructor quirk: BrickColor.new NEVER throws on an unknown name/number -- it
 	-- warns and silently returns Medium stone grey. Decode must echo-verify the produced entry and
 	-- yield nil on a miss, NOT commit the silently-wrong grey.
-	addDecodeOnly(
-		"malformed-brickcolor-unknown-name",
-		{ __t = "BrickColor", name = "Not A Color" },
-		isNil
-	)
+	addDecodeOnly("malformed-brickcolor-unknown-name", { __t = "BrickColor", name = "Not A Color" }, isNil)
 	addDecodeOnly("malformed-brickcolor-bad-number", { __t = "BrickColor", number = 424242 }, isNil)
 	addDecodeOnly("malformed-brickcolor-missing", { __t = "BrickColor" }, isNil)
 

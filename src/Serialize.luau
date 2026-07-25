@@ -17,6 +17,13 @@
 --   silently returns Medium stone grey -- so Decode echo-verifies the produced entry against the
 --   requested field (.Name/.Number must match) and treats a mismatch as a miss (nil).
 -- - UDim2 -> {__t="UDim2", xs,xo,ys,yo}; UDim -> {__t="UDim", s,o}.
+-- - STRICT NUMERIC FIELDS (2026-07 engine drift): the geometric constructors no longer throw on
+--   non-number args (numeric strings coerce, other garbage/missing args become 0), so Decode
+--   itself validates type(field)=="number" for EVERY numeric field of the six geometric tags
+--   (Vector3/Vector2/CFrame/Color3/UDim2/UDim) and decodes the whole tag to nil on any mismatch
+--   -- numeric STRINGS included -- restoring the original nil-on-malformed contract engine-side.
+--   For CFrame a missing/non-table c is likewise nil. A malformed payload can therefore never
+--   land a silently-zero-coerced value in a real property (write tools refuse the nil up front).
 -- - EnumItem -> {__t="EnumItem", enum=<bare type name, e.g. "Material", strip a leading "Enum." via
 --   gsub("^Enum%.","")>, item=v.Name, value=v.Value}. Decode resolves the EnumItem from enum+item.
 -- - table -> recursively encoded, preserving array-vs-dict shape. ESCAPE user tables that
