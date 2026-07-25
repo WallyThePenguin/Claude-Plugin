@@ -761,9 +761,20 @@ ORACLE_TWINS.played_arc_of = function(args)
 		return { verdict = "UNKNOWN", reason = "clip not found under rig/AnimSaves: " .. clipName, magnitudes = {} }
 	end
 	local partName = tostring(args.part or "Handle")
-	local tracked = rig:FindFirstChild(partName, true)
-	if tracked == nil or not tracked:IsA("BasePart") then
-		return { verdict = "UNKNOWN", reason = "tracked part '" .. partName .. "' not found under rig", magnitudes = {} }
+	-- FindFirstChild(name, true) is a TRAP here: the rig's AnimSaves clips carry Pose instances
+	-- NAMED "Handle" (the weapon channel), and the recursive search returns whichever descendant
+	-- matches first — a Pose is not a BasePart, so the twin read "part not found" while the real
+	-- Handle sat equipped under the Tool (tooling-issue #26, live-diagnosed 2026-07-25: the
+	-- census saw the tool before AND after the failing call). Walk descendants, BaseParts only.
+	local tracked: BasePart? = nil
+	for _, d in rig:GetDescendants() do
+		if d.Name == partName and d:IsA("BasePart") then
+			tracked = d
+			break
+		end
+	end
+	if tracked == nil then
+		return { verdict = "UNKNOWN", reason = "tracked BasePart '" .. partName .. "' not found under rig", magnitudes = {} }
 	end
 	local humanoid = rig:FindFirstChildWhichIsA("Humanoid")
 	if humanoid == nil then
@@ -1226,16 +1237,13 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 						injectTestScripts(base, mode)
 						-- POST the ack BEFORE the spawn: Execute*ModeAsync yields the whole edit DM, so
 						-- a post after it would not flush until the test ends.
-						httpPostJson(
-							base .. "/play/result",
-							{
-								id = c.id,
-								ok = true,
-								result = if mode == "run"
-									then "run starting (ExecuteRunModeAsync)"
-									else "play starting (ExecutePlayModeAsync)",
-							}
-						)
+						httpPostJson(base .. "/play/result", {
+							id = c.id,
+							ok = true,
+							result = if mode == "run"
+								then "run starting (ExecuteRunModeAsync)"
+								else "play starting (ExecutePlayModeAsync)",
+						})
 						task.spawn(function()
 							local StudioTestService = game:GetService("StudioTestService")
 							local okRun, result = pcall(function()
@@ -1262,14 +1270,11 @@ function PlayBridge.startEditLoop(deps: any, lifecycle: any)
 							})
 						end)
 					else
-						httpPostJson(
-							base .. "/play/result",
-							{
-								id = c.id,
-								ok = false,
-								error = "no active test — run `play start` first",
-							}
-						)
+						httpPostJson(base .. "/play/result", {
+							id = c.id,
+							ok = false,
+							error = "no active test — run `play start` first",
+						})
 					end
 				end
 			end
