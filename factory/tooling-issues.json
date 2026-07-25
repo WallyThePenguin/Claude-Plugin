@@ -272,7 +272,7 @@
    "repro": "Equip a stamped Tool on workspace.AgentRig (grip_tool), play start, then `play oracle {check:'played_arc_of', args:{rig:'Workspace.AgentRig', clip:'SwordSlash'}}`",
    "seenCount": 1,
    "lastSeenAt": 1784000000,
-   "resolution": "PENDING - likely a non-recursive FindFirstChild or a tool-reparent assumption in the run-mode server's played_arc_of; the edit-side sibling resolves the Handle via OracleFrames.handleOf(tool)."
+   "resolution": "RESOLVED 2026-07-25 - FindFirstChild('Handle', true) was returning a POSE instance: the rig's AnimSaves clips carry weapon-channel Pose objects NAMED 'Handle', and the recursive search matched one before the real part (not a BasePart -> 'not found'). The census never tripped because it resolves a full PATH. Fix: walk GetDescendants, BaseParts only (src/PlayBridge.luau, 6b51f11). Live-verified: tracked Workspace.AgentRig.ForgeLongsword.Handle, full-clip runtime playback, sweep 124.2 deg over 600 samples; the melee suite then hit its FIRST green=true (14/0/0, both twins sidecar-witnessed, session 6)."
   }
  ]
 }
