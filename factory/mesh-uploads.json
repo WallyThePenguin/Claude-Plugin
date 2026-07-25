@@ -7,6 +7,60 @@
    "uploadedAt": 1783749963,
    "status": "pending",
    "imageId": 106662526311428
+  },
+  {
+   "assetId": 103390730043911,
+   "imageId": 72913711270849,
+   "partPath": "game.Workspace.ForgeFalchion",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "orphaned",
+   "note": "07-16 SMEARED pair (pre-aspect-fix atlas) - superseded by 103528640483692"
+  },
+  {
+   "assetId": 103528640483692,
+   "imageId": 74226553172942,
+   "partPath": "game.Workspace.ForgeFalchion",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "active",
+   "note": "falchion post-fix retexture; finalized 2026-07-25 by the confirm sweep"
+  },
+  {
+   "assetId": 80737499963840,
+   "imageId": 96547710805302,
+   "partPath": "game.Workspace.DivineRapier",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "orphaned",
+   "note": "rapier upload 1 (dark-cup atlas) - superseded same-day"
+  },
+  {
+   "assetId": 94092689613034,
+   "imageId": 106677572470921,
+   "partPath": "game.Workspace.DivineRapier",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "orphaned",
+   "note": "rapier upload 2 (all-gold, unpadded) - superseded same-day by the padded atlas"
+  },
+  {
+   "assetId": 112540789750230,
+   "imageId": 75545697883633,
+   "partPath": "game.Workspace.DivineRapier",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "active",
+   "note": "rapier FINAL (padded atlas), moderation-approved"
+  },
+  {
+   "assetId": 115045741618708,
+   "imageId": 124096626278117,
+   "partPath": "game.Workspace.AgentRig.ForgeLongsword.Handle",
+   "rung": "armory-conveyor",
+   "uploadedAt": 1784967647,
+   "status": "active",
+   "note": "ForgeLongsword (the user-directed normal sword), in StarterPack too"
   }
  ]
 }
