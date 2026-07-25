@@ -6,6 +6,7 @@
 -- errors become UNKNOWN(internal).
 local RunService = game:GetService("RunService")
 
+local CaptureCore = require(script.Parent.CaptureCore)
 local Path = require(script.Parent.Path)
 local OracleFrames = require(script.Parent.OracleFrames)
 local ToolFactory = require(script.Parent.Parent.ToolFactory)
@@ -946,10 +947,19 @@ local function scrubClip(
 	end
 	track:Stop(0)
 	-- destroy unconditionally: a stopped edit-mode track lingers and overrides manual poses (live-verified capture_animation pattern)
+	local animParent = animator.Parent
 	animator:Destroy()
 	for motor, transform in saved do
 		motor.Transform = transform
 	end
+	-- Restoring Transforms alone does NOT move PART CFRAMES in edit (the applyPose fact) —
+	-- without a joint solve the rig stays frozen at the LAST SCRUBBED POSE for every check
+	-- that runs after this one (live-caught 2026-07-25: capture_vantage in the suite read
+	-- the follow-through pose and FAILed while passing standalone at rest).
+	local fresh = Instance.new("Animator")
+	fresh.Parent = animParent
+	fresh:StepAnimations(0)
+	fresh:Destroy()
 	return err
 end
 
@@ -1465,6 +1475,92 @@ register(
 		return pass(mag)
 	end,
 	20000
+)
+
+register(
+	"capture_vantage",
+	"EDIT_OK",
+	"Does each sign-off angle actually SHOW the weapon? For every angle in {angles (default front,right,left)} of the standard orbit framing {rig} (subject-relative via composeYaw), raycasts from the framed camera to 12 declared-centerline samples of tool {tool}; an angle whose visible fraction is under {min_visible_frac (default 0.3)} carries ~no information (a torso-occluded sign-off angle passed silently — audit-caught 2026-07-25) and FAILs, naming its first blocker.",
+	function(args)
+		local rig = if typeof(args.rig) == "Instance"
+			then args.rig
+			else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+		local tool = if typeof(args.tool) == "Instance"
+			then args.tool
+			else select(1, Path.resolve(tostring(args.tool)))
+		if rig == nil or tool == nil then
+			return unknown("rig/tool not found")
+		end
+		local frame = select(1, OracleFrames.read(tool))
+		if frame == nil or frame.points.Grip == nil or frame.points.BladeTip == nil then
+			return unknown("no Grip/BladeTip points — stamp_frame first")
+		end
+		local handle = OracleFrames.handleOf(tool)
+		if handle == nil then
+			return unknown("tool has no Handle part")
+		end
+		local center, size, terr, facing = CaptureCore.resolveTarget(rig:GetFullName())
+		if center == nil or size == nil then
+			return unknown("cannot frame the rig: " .. tostring(terr))
+		end
+		local names = if type(args.angles) == "table"
+			then args.angles
+			else { "front", "right", "left" }
+		local minFrac = tonumber(args.min_visible_frac) or 0.3
+		local gripPt, tipPt = frame.points.Grip :: Vector3, frame.points.BladeTip :: Vector3
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = {}
+		local perAngle = {}
+		local failed = {}
+		for _, n in names do
+			local preset = CaptureCore.PRESETS[string.lower(tostring(n))]
+			if preset == nil then
+				continue
+			end
+			local cam = CaptureCore.frameCFrame(
+				center :: Vector3,
+				size :: Vector3,
+				CaptureCore.composeYaw(preset.yaw, facing),
+				preset.pitch,
+				1
+			)
+			local samples = 12
+			local visible, blocker = 0, ""
+			for i = 1, samples do
+				local frac = (i - 1) / (samples - 1)
+				local pt = handle.CFrame:PointToWorldSpace(gripPt:Lerp(tipPt, frac))
+				local dir = pt - cam.Position
+				local hit = workspace:Raycast(cam.Position, dir + dir.Unit * 0.1, params)
+				-- First surface on the segment: the tool itself (or clear air) = this sample
+				-- is visible from the angle; any other part = something occludes it.
+				if hit == nil or hit.Instance:IsDescendantOf(tool) then
+					visible += 1
+				elseif blocker == "" then
+					blocker = hit.Instance.Name
+				end
+			end
+			local vf = visible / samples
+			table.insert(
+				perAngle,
+				{ angle = tostring(n), visible_frac = vf, first_blocker = blocker }
+			)
+			if vf < minFrac then
+				table.insert(failed, tostring(n) .. " (" .. string.format("%.2f", vf) .. ")")
+			end
+		end
+		if #perAngle == 0 then
+			return unknown("no valid angle names (use front/back/left/right/top/bottom/iso)")
+		end
+		local mag = { per_angle = perAngle, min_visible_frac = minFrac }
+		if #failed > 0 then
+			return fail(
+				"sign-off angle(s) carry ~no weapon pixels: " .. table.concat(failed, ", "),
+				mag
+			)
+		end
+		return pass(mag)
+	end
 )
 
 -- ---- texture vocabulary (2026-07-25 sprint: the falchion/rapier texture failures, mechanized;

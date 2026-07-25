@@ -85,8 +85,8 @@ local function runAngles(input: any, context: any): (any, boolean)
 	local distScale = if type(args.distance) == "number" and args.distance > 0
 		then args.distance
 		else 1
-	-- Subject-relative presets: for a Model with a facing (rigs, NPCs), "front" means ITS front.
-	local baseYaw = facingYaw or 0
+	-- Subject-relative presets: for a Model with a facing (rigs, NPCs), "front" means ITS front
+	-- and "right" means ITS right flank (composeYaw mirrors; world targets match the viewcube).
 	local saved = CaptureCore.saveCamera()
 	local since = os.time() - 2
 	local triggered = 0
@@ -96,7 +96,7 @@ local function runAngles(input: any, context: any): (any, boolean)
 				CaptureCore.frameCFrame(
 					center :: Vector3,
 					size :: Vector3,
-					shot.yaw + baseYaw,
+					CaptureCore.composeYaw(shot.yaw, facingYaw),
 					shot.pitch,
 					distScale
 				)
@@ -325,7 +325,7 @@ local function runAnimation(input: any, context: any): (any, boolean)
 		CaptureCore.frameCFrame(
 			sweptCenter :: Vector3,
 			sweptSize :: Vector3,
-			preset.yaw + (CaptureCore.facingYaw(rig) or 0),
+			CaptureCore.composeYaw(preset.yaw, CaptureCore.facingYaw(rig)),
 			preset.pitch,
 			zoom
 		)

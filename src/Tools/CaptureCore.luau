@@ -122,8 +122,20 @@ function CaptureCore.facingYaw(target: Instance?): number?
 	end
 	local lv = root.CFrame.LookVector
 	-- frameCFrame places the camera at yaw 0 = +Z looking back at the center, which FACES a
-	-- subject whose LookVector is +Z. Solve the subject's world yaw so preset yaws add onto it.
+	-- subject whose LookVector is +Z. Solve the subject's world yaw so preset yaws compose.
 	return math.deg(math.atan2(lv.X, lv.Z))
+end
+
+-- Compose a preset/relative yaw with a subject's facing. World-relative (facing nil): the yaw
+-- is used as-is and matches the Studio viewcube. Subject-relative: MIRROR the preset
+-- (facing - yaw) so "right" means the SUBJECT's right flank — ADDING flips handedness because
+-- a subject facing the camera has its right on the viewer's left (live-caught 2026-07-25:
+-- preset "right" on a rig filmed the L-skinned flank with the viewcube reading "Left").
+function CaptureCore.composeYaw(presetYaw: number, facing: number?): number
+	if facing == nil then
+		return presetYaw
+	end
+	return facing - presetYaw
 end
 
 -- Bright, shadow-free lighting for RIG/ITEM captures: backlit subjects render as near-black
