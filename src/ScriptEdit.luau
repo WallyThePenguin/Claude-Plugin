@@ -47,7 +47,11 @@ end
 -- Render a 1-based [startLine, endLine] window of the source with "  N| " prefixes. Bounds are
 -- clamped into range; endLine defaults to startLine + DEFAULT_WINDOW - 1. Returns the numbered
 -- text plus the effective window (truncated = lines exist past endLine).
-function ScriptEdit.numberLines(source: string, startLine: number?, endLine: number?): (string, Window)
+function ScriptEdit.numberLines(
+	source: string,
+	startLine: number?,
+	endLine: number?
+): (string, Window)
 	local lines = ScriptEdit.splitLines(source)
 	local total = #lines
 	if total == 0 then
@@ -59,7 +63,8 @@ function ScriptEdit.numberLines(source: string, startLine: number?, endLine: num
 	for i = s, e do
 		table.insert(out, string.format("%4d| %s", i, lines[i]))
 	end
-	return table.concat(out, "\n"), { total = total, startLine = s, endLine = e, truncated = e < total }
+	return table.concat(out, "\n"),
+		{ total = total, startLine = s, endLine = e, truncated = e < total }
 end
 
 -- Count non-overlapping PLAIN (no Lua patterns) occurrences of `find` in `source`.
@@ -138,17 +143,14 @@ function ScriptEdit.applyRange(
 	local s = math.floor(startLine)
 	local e = math.floor(endLine)
 	if s < 1 or s > total + 1 then
-		return nil, "startLine " .. tostring(s) .. " out of range (1.." .. tostring(total + 1) .. ")"
+		return nil,
+			"startLine " .. tostring(s) .. " out of range (1.." .. tostring(total + 1) .. ")"
 	end
 	if e < s - 1 or e > total then
 		return nil,
-			"endLine "
-				.. tostring(e)
-				.. " out of range ("
-				.. tostring(s - 1)
-				.. ".."
-				.. tostring(total)
-				.. "); endLine = startLine-1 inserts before startLine"
+			"endLine " .. tostring(e) .. " out of range (" .. tostring(s - 1) .. ".." .. tostring(
+				total
+			) .. "); endLine = startLine-1 inserts before startLine"
 	end
 	local out: { string } = {}
 	for i = 1, s - 1 do

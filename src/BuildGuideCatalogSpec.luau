@@ -15,7 +15,9 @@ local function goodRaw(): any
 		version = "1.0",
 		rubric_version = "1.0",
 		overview = "Build a velocity-driven blend system.",
-		killer_systems = { { name = "blend tree", what = "speed/dir warp", how = "2D blend space" } },
+		killer_systems = {
+			{ name = "blend tree", what = "speed/dir warp", how = "2D blend space" },
+		},
 		common_pitfalls = { "single forward loop" },
 		tiers = {
 			{
@@ -36,7 +38,11 @@ local function goodRaw(): any
 				tier = "baseline",
 				goal = "it moves",
 				steps = {
-					{ id = "loco-loops", order_index = 1, instruction = "Make idle/walk/run loops." },
+					{
+						id = "loco-loops",
+						order_index = 1,
+						instruction = "Make idle/walk/run loops.",
+					},
 				},
 			},
 		},
@@ -117,7 +123,10 @@ local function buildCases(): { Case }
 	add("saveInto inserts a new user guide", function()
 		local g = guideWithModule("myguide")
 		local out, note, ok = BuildGuideCatalog.saveInto({}, g, {})
-		return ok and #out == 1 and out[1].module == "myguide" and string.find(note, "saved", 1, true) ~= nil
+		return ok
+			and #out == 1
+			and out[1].module == "myguide"
+			and string.find(note, "saved", 1, true) ~= nil
 	end)
 
 	add("saveInto rejects a reserved (built-in) module", function()
@@ -132,7 +141,10 @@ local function buildCases(): { Case }
 		local second = guideWithModule("dup")
 		second.overview = "v2"
 		local out, note, ok = BuildGuideCatalog.saveInto(list, second, {})
-		return ok and #out == 1 and out[1].overview == "v2" and string.find(note, "updated", 1, true) ~= nil
+		return ok
+			and #out == 1
+			and out[1].overview == "v2"
+			and string.find(note, "updated", 1, true) ~= nil
 	end)
 
 	add("saveInto FIFO-drops oldest past MAX_USER_GUIDES", function()

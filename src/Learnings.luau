@@ -103,11 +103,9 @@ function Learnings.addTo(entries: { Entry }, text: any, now: number): ({ Entry }
 	end
 	local note = "learned (#" .. tostring(newId) .. "); " .. tostring(#out) .. " stored"
 	if dropped > 0 then
-		note ..= "; rotated "
-			.. tostring(dropped)
-			.. " oldest out of the always-on window (cap "
-			.. tostring(MAX_PER_CATEGORY)
-			.. "; still in the archive — recall_learnings)"
+		note ..= "; rotated " .. tostring(dropped) .. " oldest out of the always-on window (cap " .. tostring(
+			MAX_PER_CATEGORY
+		) .. "; still in the archive — recall_learnings)"
 	end
 	return out, note, newId
 end

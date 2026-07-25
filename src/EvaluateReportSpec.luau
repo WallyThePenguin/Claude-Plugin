@@ -110,40 +110,43 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("tierVerdict targets the lowest unmet tier and reports BAR CLEARED when all pass", function()
-		-- baseline pass, good fail -> next target is the good tier
-		local v1 = EvaluateReport.validateGrades({
-			grades = {
-				{ id = "c-base", tier = "pass", evidence = "e" },
-				{ id = "c-killer", tier = "fail", evidence = "e" },
-			},
-		}, RUBRIC :: any)
-		local tv1 = EvaluateReport.tierVerdict(RUBRIC :: any, v1)
-		if tv1.nextTier ~= "good" or tv1.allPass ~= false then
-			return false, "expected next target 'good', got " .. tostring(tv1.nextTier)
+	add(
+		"tierVerdict targets the lowest unmet tier and reports BAR CLEARED when all pass",
+		function()
+			-- baseline pass, good fail -> next target is the good tier
+			local v1 = EvaluateReport.validateGrades({
+				grades = {
+					{ id = "c-base", tier = "pass", evidence = "e" },
+					{ id = "c-killer", tier = "fail", evidence = "e" },
+				},
+			}, RUBRIC :: any)
+			local tv1 = EvaluateReport.tierVerdict(RUBRIC :: any, v1)
+			if tv1.nextTier ~= "good" or tv1.allPass ~= false then
+				return false, "expected next target 'good', got " .. tostring(tv1.nextTier)
+			end
+			if string.find(tv1.line, "Baseline 1/1 CLEARED", 1, true) == nil then
+				return false, "baseline-cleared not reported: " .. tv1.line
+			end
+			if string.find(tv1.line, "c%-killer") == nil then
+				return false, "unmet good criterion id not named: " .. tv1.line
+			end
+			-- all pass -> bar cleared, no next tier
+			local v2 = EvaluateReport.validateGrades({
+				grades = {
+					{ id = "c-base", tier = "pass", evidence = "e" },
+					{ id = "c-killer", tier = "pass", evidence = "e" },
+				},
+			}, RUBRIC :: any)
+			local tv2 = EvaluateReport.tierVerdict(RUBRIC :: any, v2)
+			if tv2.allPass ~= true or tv2.nextTier ~= nil then
+				return false, "expected BAR CLEARED with no next tier"
+			end
+			if string.find(tv2.line, "BAR CLEARED", 1, true) == nil then
+				return false, "bar-cleared line missing: " .. tv2.line
+			end
+			return true
 		end
-		if string.find(tv1.line, "Baseline 1/1 CLEARED", 1, true) == nil then
-			return false, "baseline-cleared not reported: " .. tv1.line
-		end
-		if string.find(tv1.line, "c%-killer") == nil then
-			return false, "unmet good criterion id not named: " .. tv1.line
-		end
-		-- all pass -> bar cleared, no next tier
-		local v2 = EvaluateReport.validateGrades({
-			grades = {
-				{ id = "c-base", tier = "pass", evidence = "e" },
-				{ id = "c-killer", tier = "pass", evidence = "e" },
-			},
-		}, RUBRIC :: any)
-		local tv2 = EvaluateReport.tierVerdict(RUBRIC :: any, v2)
-		if tv2.allPass ~= true or tv2.nextTier ~= nil then
-			return false, "expected BAR CLEARED with no next tier"
-		end
-		if string.find(tv2.line, "BAR CLEARED", 1, true) == nil then
-			return false, "bar-cleared line missing: " .. tv2.line
-		end
-		return true
-	end)
+	)
 
 	return cases
 end

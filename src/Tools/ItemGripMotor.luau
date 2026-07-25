@@ -124,7 +124,8 @@ local AXES = { X = true, Y = true, Z = true }
 
 local function findTool(args: any): (Tool?, string?)
 	if type(args.tool) ~= "string" or args.tool == "" then
-		return nil, "bind_grip_motor requires { tool = <path to a Tool>, spinSpeed?, spinAxis?, spin? }"
+		return nil,
+			"bind_grip_motor requires { tool = <path to a Tool>, spinSpeed?, spinAxis?, spin? }"
 	end
 	local inst = Path.resolve(args.tool)
 	if inst == nil or not inst:IsA("Tool") then
@@ -197,9 +198,9 @@ local function runBind(input: any, context: any): (any, boolean)
 		axis,
 		speed
 	)
-	msg ..= " ["
-		.. (if libOk then libNote else "runtime library unavailable -- stamped the legacy full source (" .. libNote .. ")")
-		.. "]"
+	msg ..= " [" .. (if libOk
+		then libNote
+		else "runtime library unavailable -- stamped the legacy full source (" .. libNote .. ")") .. "]"
 	return msg, false
 end
 

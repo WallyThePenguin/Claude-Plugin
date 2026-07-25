@@ -92,7 +92,8 @@ local function execute(input: Input): Output
 	if RunService:IsEdit() then
 		rid = ChangeHistoryService:TryBeginRecording("run_luau")
 		if rid == nil then
-			recWarn = "[no undo recording: a stale recording is stuck open; changes applied unrecorded]"
+			recWarn =
+				"[no undo recording: a stale recording is stuck open; changes applied unrecorded]"
 		end
 	end
 

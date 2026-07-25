@@ -29,7 +29,9 @@ local function buildCases(): { Case }
 				return false, "not sorted at " .. tostring(i)
 			end
 		end
-		return IconFactory.hasKind(kinds[1]) and not IconFactory.hasKind("nope") and not IconFactory.hasKind(5)
+		return IconFactory.hasKind(kinds[1])
+			and not IconFactory.hasKind("nope")
+			and not IconFactory.hasKind(5)
 	end)
 
 	add("glyphToOps: known kind -> white rect ops inside the canvas; unknown -> {}", function()
@@ -41,7 +43,12 @@ local function buildCases(): { Case }
 			if op.color ~= Color3.new(1, 1, 1) then
 				return false, "op not white"
 			end
-			if op.pos.X < 0 or op.pos.Y < 0 or op.pos.X + op.size.X > 256.001 or op.pos.Y + op.size.Y > 256.001 then
+			if
+				op.pos.X < 0
+				or op.pos.Y < 0
+				or op.pos.X + op.size.X > 256.001
+				or op.pos.Y + op.size.Y > 256.001
+			then
 				return false, "op out of canvas"
 			end
 		end

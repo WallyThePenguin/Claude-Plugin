@@ -160,7 +160,8 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 						-- New to the cache: add only when there is room (never FIFO-evict a local
 						-- skill to make space — it might be the sole copy of a failed mirror).
 						if localCount < SkillCatalog.MAX_USER_SKILLS then
-							local _, ok = deps.skills:save(b.name, b.description, b.body, b.parameters)
+							local _, ok =
+								deps.skills:save(b.name, b.description, b.body, b.parameters)
 							if ok and name ~= nil then
 								localByName[name] = b
 								localCount += 1
@@ -179,9 +180,13 @@ function Main.run(ctx: Ctx): HotReload.Lifecycle
 					"[StudioAgent] skills hydration: "
 						.. tostring(hydrated)
 						.. " added from the durable store"
-						.. (if keptLocal > 0
-							then "; kept " .. tostring(keptLocal) .. " differing local copy(ies) (re-save to re-mirror)"
-							else "")
+						.. (
+							if keptLocal > 0
+								then "; kept "
+									.. tostring(keptLocal)
+									.. " differing local copy(ies) (re-save to re-mirror)"
+								else ""
+						)
 				)
 			end
 		end)

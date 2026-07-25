@@ -256,9 +256,9 @@ local function runBind(input: any, context: any): (any, boolean)
 	msg = msg
 		.. " NOTE: dev-loop playback is Studio-solo (RegisterKeyframeSequence); shipping needs a published "
 		.. "AnimationId + server-authoritative hit validation (later)."
-	msg ..= " ["
-		.. (if libOk then libNote else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")")
-		.. "]"
+	msg ..= " [" .. (if libOk
+		then libNote
+		else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")") .. "]"
 	return msg, false
 end
 

@@ -108,7 +108,10 @@ end
 -- full source (better a fat working script than a launcher that dead-ends on a missing module).
 -- The Version attribute is the install's COMMIT MARKER (set last): a folder without it is a
 -- partial/interrupted install and is never trusted while the sidecar is unreachable.
-function RuntimeInstaller.ensureInstalled(config: any, requiredModules: { string }?): (boolean, string)
+function RuntimeInstaller.ensureInstalled(
+	config: any,
+	requiredModules: { string }?
+): (boolean, string)
 	local existing = installedFolder()
 	local current = if existing ~= nil then existing:GetAttribute("Version") else nil
 
@@ -116,9 +119,11 @@ function RuntimeInstaller.ensureInstalled(config: any, requiredModules: { string
 	if payload == nil then
 		if existing ~= nil and current ~= nil and hasModules(existing, requiredModules) then
 			return true,
-				"runtime v" .. tostring(current) .. " already installed (sidecar unavailable: " .. tostring(
-					err
-				) .. ")"
+				"runtime v"
+					.. tostring(current)
+					.. " already installed (sidecar unavailable: "
+					.. tostring(err)
+					.. ")"
 		end
 		return false, "runtime library unavailable: " .. tostring(err)
 	end

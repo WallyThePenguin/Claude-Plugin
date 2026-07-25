@@ -109,7 +109,8 @@ local function runPull(input: any, context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	if playtestActive() then
 		return "game_pull: refused — a playtest is active, so sources could come from the wrong "
-			.. "DataModel state. Stop the test first.", true
+			.. "DataModel state. Stop the test first.",
+			true
 	end
 
 	-- Roots: an explicit path (a SCOPED pull — the sidecar merges the manifest outside the
@@ -191,7 +192,8 @@ local function runPull(input: any, context: any): (string, boolean)
 	if pulled == 0 then
 		return "game_pull: no authored scripts found (excluded "
 			.. tostring(#excludedNames)
-			.. " infrastructure/default scripts)", false
+			.. " infrastructure/default scripts)",
+			false
 	end
 
 	local collisions = GameSync.findCollisions(relpaths)
@@ -201,7 +203,9 @@ local function runPull(input: any, context: any): (string, boolean)
 			table.insert(lines, table.concat(group, "  <->  "))
 		end
 		return "game_pull: refused — case-insensitive filename collisions (rename one of each "
-			.. "pair):\n" .. table.concat(lines, "\n"), true
+			.. "pair):\n"
+			.. table.concat(lines, "\n"),
+			true
 	end
 
 	-- Ship to the sidecar (it refuses when game/ is git-dirty, and auto-commits).
@@ -228,7 +232,9 @@ local function runPull(input: any, context: any): (string, boolean)
 		return HttpService:JSONDecode(r.Body)
 	end)
 	if not r.Success then
-		local why = if okDec and type(payload) == "table" then tostring((payload :: any).error) else r.Body
+		local why = if okDec and type(payload) == "table"
+			then tostring((payload :: any).error)
+			else r.Body
 		return "game_pull: " .. tostring(why), true
 	end
 
@@ -237,22 +243,28 @@ local function runPull(input: any, context: any): (string, boolean)
 	local out = "game_pull OK: banked "
 		.. tostring(pulled)
 		.. " script(s) into game/ "
-		.. (if commit ~= nil then "(git commit " .. tostring(commit) .. ")" else "(no changes vs the last pull)")
+		.. (
+			if commit ~= nil
+				then "(git commit " .. tostring(commit) .. ")"
+				else "(no changes vs the last pull)"
+		)
 	if type(removedList) == "table" and #removedList > 0 then
-		out ..= "\npruned "
-			.. tostring(#removedList)
-			.. " orphaned file(s) (renamed/deleted in Studio): "
-			.. table.concat(removedList, ", ")
+		out ..= "\npruned " .. tostring(#removedList) .. " orphaned file(s) (renamed/deleted in Studio): " .. table.concat(
+			removedList,
+			", "
+		)
 	end
 	if #excludedNames > 0 then
-		out ..= "\nexcluded infrastructure/defaults ("
-			.. tostring(#excludedNames)
-			.. "): "
-			.. table.concat(excludedNames, ", ")
+		out ..= "\nexcluded infrastructure/defaults (" .. tostring(#excludedNames) .. "): " .. table.concat(
+			excludedNames,
+			", "
+		)
 	end
 	if #flagged > 0 then
-		out ..= "\nTEST SYMBOLS flagged (recorded in the manifest; the factory gate blocks on these): "
-			.. table.concat(flagged, "; ")
+		out ..= "\nTEST SYMBOLS flagged (recorded in the manifest; the factory gate blocks on these): " .. table.concat(
+			flagged,
+			"; "
+		)
 	end
 	if #unreadable > 0 then
 		out ..= "\nunreadable (skipped): " .. table.concat(unreadable, ", ")
@@ -322,14 +334,20 @@ local function runPush(input: any, context: any): (string, boolean)
 	-- Deterministic order.
 	local relpaths: { string } = {}
 	for rel in pairs(manifest :: { [string]: any }) do
-		if type(rel) == "string" and files[rel] ~= nil and (prefix == nil or string.sub(rel, 1, #prefix) == prefix) then
+		if
+			type(rel) == "string"
+			and files[rel] ~= nil
+			and (prefix == nil or string.sub(rel, 1, #prefix) == prefix)
+		then
 			table.insert(relpaths, rel)
 		end
 	end
 	table.sort(relpaths)
 	if #relpaths == 0 then
-		return "game_push: nothing to push"
-			.. (if prefix ~= nil then " under '" .. prefix .. "'" else " (run game_pull first)"), false
+		return "game_push: nothing to push" .. (if prefix ~= nil
+			then " under '" .. prefix .. "'"
+			else " (run game_pull first)"),
+			false
 	end
 
 	local lines: { string } = {}
@@ -363,7 +381,9 @@ local function runPush(input: any, context: any): (string, boolean)
 				lines,
 				"DIVERGED (Studio edited since the pull; not overwritten): "
 					.. rel
-					.. " — pass force=[\"" .. rel .. "\"] to overwrite (the displaced live source gets staged first), or game_pull to re-bank"
+					.. ' — pass force=["'
+					.. rel
+					.. '"] to overwrite (the displaced live source gets staged first), or game_pull to re-bank'
 			)
 		else
 			local okCompile, cerr = compileCheck(fileSource)
@@ -375,14 +395,19 @@ local function runPush(input: any, context: any): (string, boolean)
 			if decision == "create" then
 				-- Push-create only when the PARENT exists (the world is DataModel-owned).
 				local lastDot = string.find(string.reverse(instPath), ".", 1, true)
-				local parentPath = if lastDot ~= nil then string.sub(instPath, 1, #instPath - lastDot) else nil
-				local childName = if lastDot ~= nil then string.sub(instPath, #instPath - lastDot + 2) else instPath
+				local parentPath = if lastDot ~= nil
+					then string.sub(instPath, 1, #instPath - lastDot)
+					else nil
+				local childName = if lastDot ~= nil
+					then string.sub(instPath, #instPath - lastDot + 2)
+					else instPath
 				local parent = if parentPath ~= nil then Path.resolve(parentPath) else nil
 				if parent == nil then
 					counts.blocked += 1
 					table.insert(
 						lines,
-						"PARENT MISSING (world instances are not pushed — build it first): " .. rel
+						"PARENT MISSING (world instances are not pushed — build it first): "
+							.. rel
 					)
 					continue
 				end
@@ -424,7 +449,10 @@ local function runPush(input: any, context: any): (string, boolean)
 						continue
 					end
 					counts.forced += 1
-					table.insert(lines, "FORCED (displaced source staged as staging/" .. slug .. "): " .. rel)
+					table.insert(
+						lines,
+						"FORCED (displaced source staged as staging/" .. slug .. "): " .. rel
+					)
 				else
 					counts.update += 1
 				end

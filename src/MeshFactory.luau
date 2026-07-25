@@ -208,7 +208,11 @@ function MeshFactory.importReferenceMesh(
 	})
 	if not resp.Success then
 		error(
-			string.format("mesh route HTTP %d: %s", resp.StatusCode, string.sub(resp.Body or "", 1, 200))
+			string.format(
+				"mesh route HTTP %d: %s",
+				resp.StatusCode,
+				string.sub(resp.Body or "", 1, 200)
+			)
 		)
 	end
 	local data: any = HttpService:JSONDecode(resp.Body)
@@ -250,7 +254,9 @@ function MeshFactory.importReferenceMesh(
 	local texApplied = false
 	if atlasFile ~= nil and atlasFile ~= "" then
 		local tex = HttpService:RequestAsync({
-			Url = sidecarBase .. "/assets/texture?max=1024&file=" .. HttpService:UrlEncode(atlasFile),
+			Url = sidecarBase .. "/assets/texture?max=1024&file=" .. HttpService:UrlEncode(
+				atlasFile
+			),
 			Method = "GET",
 		})
 		if not tex.Success then
@@ -533,13 +539,21 @@ function MeshFactory.persistMeshPartLocal(mp: MeshPart): LocalPersistResult
 		return AssetService:CreateEditableMeshAsync(mp.MeshContent)
 	end)
 	if not okEx or em == nil then
-		return { stored = false, dataChars = 0, err = "could not extract EditableMesh: " .. tostring(em) }
+		return {
+			stored = false,
+			dataChars = 0,
+			err = "could not extract EditableMesh: " .. tostring(em),
+		}
 	end
 	local okData, encoded = pcall(function()
 		return MeshFactory.encodeMeshData(MeshFactory.extractGeometry(em :: EditableMesh))
 	end)
 	if not okData or type(encoded) ~= "string" then
-		return { stored = false, dataChars = 0, err = "extract/encode failed: " .. tostring(encoded) }
+		return {
+			stored = false,
+			dataChars = 0,
+			err = "extract/encode failed: " .. tostring(encoded),
+		}
 	end
 	local existing = mp:FindFirstChild(MeshFactory.DATA_NAME)
 	if existing then
@@ -657,7 +671,8 @@ end
 -- including the CreateAssetResult enum); assetId set with a non-nil err means the MESH uploaded but
 -- the texture step failed (geometry-only pending). Needs the "CreateAssetAsync Lua API" beta flag.
 function MeshFactory.uploadMeshPart(mp: MeshPart, name: string?): UploadResult
-	local assetName = "SA_" .. (if type(name) == "string" and name ~= "" then name :: string else mp.Name)
+	local assetName = "SA_"
+		.. (if type(name) == "string" and name ~= "" then name :: string else mp.Name)
 	local okEx, em = pcall(function()
 		return AssetService:CreateEditableMeshAsync(mp.MeshContent)
 	end)
@@ -688,8 +703,11 @@ function MeshFactory.uploadMeshPart(mp: MeshPart, name: string?): UploadResult
 	if srcName == "Opaque" or srcName == "Object" then
 		local okTex, terr = pcall(function()
 			local imgEm = AssetService:CreateEditableImageAsync(mp.TextureContent)
-			local tResult, tid =
-				AssetService:CreateAssetAsync(imgEm, Enum.AssetType.Image, { Name = assetName .. "_tex" })
+			local tResult, tid = AssetService:CreateAssetAsync(
+				imgEm,
+				Enum.AssetType.Image,
+				{ Name = assetName .. "_tex" }
+			)
 			if tResult ~= Enum.CreateAssetResult.Success or type(tid) ~= "number" then
 				error("image upload not successful (result=" .. tostring(tResult) .. ")")
 			end
@@ -766,7 +784,9 @@ function MeshFactory.finalizeMeshPart(mp: MeshPart): (boolean, string?)
 	end
 	mp:SetAttribute(MeshFactory.LOCAL_TAG, nil)
 	mp:SetAttribute(MeshFactory.ATTR_PENDING, false)
-	print("[SAMeshUpload] finalized " .. mp:GetFullName() .. " -> rbxassetid://" .. tostring(assetId))
+	print(
+		"[SAMeshUpload] finalized " .. mp:GetFullName() .. " -> rbxassetid://" .. tostring(assetId)
+	)
 	return true, nil
 end
 

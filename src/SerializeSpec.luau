@@ -315,8 +315,16 @@ local function buildSamples(): { Sample }
 	addDecodeOnly("malformed-vector2-string", { __t = "Vector2", x = "a", y = 2 }, isNil)
 	addDecodeOnly("malformed-color3-string", { __t = "Color3", r = "x", g = 0.5, b = 0.5 }, isNil)
 	addDecodeOnly("malformed-udim-string", { __t = "UDim", s = "scale", o = 0 }, isNil)
-	addDecodeOnly("malformed-udim2-string", { __t = "UDim2", xs = 0, xo = 0, ys = 0, yo = "off" }, isNil)
-	addDecodeOnly("malformed-cframe-string", { __t = "CFrame", c = { "x", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }, isNil)
+	addDecodeOnly(
+		"malformed-udim2-string",
+		{ __t = "UDim2", xs = 0, xo = 0, ys = 0, yo = "off" },
+		isNil
+	)
+	addDecodeOnly(
+		"malformed-cframe-string",
+		{ __t = "CFrame", c = { "x", 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } },
+		isNil
+	)
 	-- Missing fields refuse too (nil is not a number): no zero-filled phantom values.
 	addDecodeOnly("malformed-vector3-missing", { __t = "Vector3" }, isNil)
 	addDecodeOnly("malformed-udim2-partial", { __t = "UDim2", xs = 0.5 }, isNil)
@@ -328,7 +336,11 @@ local function buildSamples(): { Sample }
 	-- BrickColor's constructor quirk: BrickColor.new NEVER throws on an unknown name/number -- it
 	-- warns and silently returns Medium stone grey. Decode must echo-verify the produced entry and
 	-- yield nil on a miss, NOT commit the silently-wrong grey.
-	addDecodeOnly("malformed-brickcolor-unknown-name", { __t = "BrickColor", name = "Not A Color" }, isNil)
+	addDecodeOnly(
+		"malformed-brickcolor-unknown-name",
+		{ __t = "BrickColor", name = "Not A Color" },
+		isNil
+	)
 	addDecodeOnly("malformed-brickcolor-bad-number", { __t = "BrickColor", number = 424242 }, isNil)
 	addDecodeOnly("malformed-brickcolor-missing", { __t = "BrickColor" }, isNil)
 

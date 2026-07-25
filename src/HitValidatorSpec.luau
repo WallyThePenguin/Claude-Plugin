@@ -19,10 +19,13 @@ local function buildCases(): { Case }
 		return ok and reason == "ok" and nextHit == 100
 	end)
 
-	add("an immediate re-hit inside the cooldown is REJECTED and keeps the old timestamp", function()
-		local ok, reason, nextHit = HitValidator.check(100, 100.1, 0.4)
-		return (not ok) and reason == "cooldown" and nextHit == 100
-	end)
+	add(
+		"an immediate re-hit inside the cooldown is REJECTED and keeps the old timestamp",
+		function()
+			local ok, reason, nextHit = HitValidator.check(100, 100.1, 0.4)
+			return (not ok) and reason == "cooldown" and nextHit == 100
+		end
+	)
 
 	add("a hit exactly at the cooldown boundary is accepted (>=)", function()
 		local ok, _, nextHit = HitValidator.check(100, 100.4, 0.4)
@@ -34,13 +37,16 @@ local function buildCases(): { Case }
 		return ok and reason == "ok" and nextHit == 101
 	end)
 
-	add("a REJECTED spam request must not extend the window (so a later real swing isn't starved)", function()
-		-- accept at 100; spam at 100.1 (reject, keep 100); a legit swing at 100.45 must still be accepted
-		local _, _, afterAccept = HitValidator.check(nil, 100, 0.4)
-		local _, _, afterSpam = HitValidator.check(afterAccept, 100.1, 0.4)
-		local ok = HitValidator.check(afterSpam, 100.45, 0.4)
-		return afterAccept == 100 and afterSpam == 100 and ok
-	end)
+	add(
+		"a REJECTED spam request must not extend the window (so a later real swing isn't starved)",
+		function()
+			-- accept at 100; spam at 100.1 (reject, keep 100); a legit swing at 100.45 must still be accepted
+			local _, _, afterAccept = HitValidator.check(nil, 100, 0.4)
+			local _, _, afterSpam = HitValidator.check(afterAccept, 100.1, 0.4)
+			local ok = HitValidator.check(afterSpam, 100.45, 0.4)
+			return afterAccept == 100 and afterSpam == 100 and ok
+		end
+	)
 
 	add("coerceCooldown: nil/NaN -> default, negative -> 0, valid -> itself", function()
 		return HitValidator.coerceCooldown(nil) == HitValidator.DEFAULT_COOLDOWN

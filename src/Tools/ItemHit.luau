@@ -155,8 +155,8 @@ local function ensureChild(tool: Tool, name: string, className: string, src: str
 		old:Destroy()
 	end
 	local s = Instance.new(className)
-	s.Name = name
-	;(s :: any).Source = src
+	s.Name = name;
+	(s :: any).Source = src
 	s:SetAttribute("StudioAgentGenerated", true) -- identity marker: game_pull excludes on this
 	s.Parent = tool
 end
@@ -245,9 +245,9 @@ local function runBind(input: any, context: any): (any, boolean)
 		.. " NOTE: the server-authoritative COOLDOWN (anti-spam request validation) is now the first netcode "
 		.. "layer at this seam; lag-compensation rewind / per-limb hits / reconciliation are the later "
 		.. "dedicated netcode effort built on top of it."
-	msg ..= " ["
-		.. (if libOk then libNote else "runtime library unavailable — stamped the legacy full sources (" .. libNote .. ")")
-		.. "]"
+	msg ..= " [" .. (if libOk
+		then libNote
+		else "runtime library unavailable — stamped the legacy full sources (" .. libNote .. ")") .. "]"
 	return msg, false
 end
 

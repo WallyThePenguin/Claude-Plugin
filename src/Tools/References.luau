@@ -24,7 +24,9 @@ local function run(input: any, context: any): (any, boolean)
 	if query == "" then
 		return "get_references requires { query = <string> } (e.g. 'kilij sword hilt').", true
 	end
-	local count = if type(args.count) == "number" then math.clamp(math.floor(args.count), 1, 4) else 2
+	local count = if type(args.count) == "number"
+		then math.clamp(math.floor(args.count), 1, 4)
+		else 2
 	local config = if type(context) == "table" then context.config else nil
 	if config == nil then
 		return "get_references: internal error (no config available)", true

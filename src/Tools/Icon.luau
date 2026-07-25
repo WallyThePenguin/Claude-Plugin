@@ -69,9 +69,10 @@ local function runIcon(input: any, _context: any): (string, boolean)
 	local args = if type(input) == "table" then input else {}
 	local kind = args.kind
 	if not IconFactory.hasKind(kind) then
-		return "author_icon requires { kind = one of: "
-			.. table.concat(IconFactory.listKinds(), "|")
-			.. " , target?, tint?, name? }",
+		return "author_icon requires { kind = one of: " .. table.concat(
+			IconFactory.listKinds(),
+			"|"
+		) .. " , target?, tint?, name? }",
 			true
 	end
 	local target, terr = resolveTarget(args)
@@ -85,12 +86,15 @@ local function runIcon(input: any, _context: any): (string, boolean)
 		return "author_icon: authoring failed — " .. tostring(imgOrErr), true
 	end
 	local em = imgOrErr :: EditableImage
-	local nameArg = if type(args.name) == "string" and args.name ~= "" then args.name else "icon_" .. kind
+	local nameArg = if type(args.name) == "string" and args.name ~= ""
+		then args.name
+		else "icon_" .. kind
 	local imageId, perr = TextureFactory.persistImage(em, nameArg)
 	if imageId == nil then
 		return "author_icon: " .. tostring(perr), true
 	end
-	local applied = "(not applied — apply the returned id to an ImageLabel/ImageButton.Image + set ImageColor3)"
+	local applied =
+		"(not applied — apply the returned id to an ImageLabel/ImageButton.Image + set ImageColor3)"
 	if target ~= nil then
 		local okApply, mode = pcall(function()
 			if RunService:IsEdit() then
@@ -143,7 +147,11 @@ Icon.descriptors = {
 				tint = {
 					type = "object",
 					description = "ImageColor3 tint {r,g,b} 0-255 recoloring the white silhouette (default white).",
-					properties = { r = { type = "number" }, g = { type = "number" }, b = { type = "number" } },
+					properties = {
+						r = { type = "number" },
+						g = { type = "number" },
+						b = { type = "number" },
+					},
 				},
 				name = { type = "string", description = "Asset name (default 'icon_<kind>')." },
 			},

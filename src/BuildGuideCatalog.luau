@@ -89,17 +89,20 @@ function BuildGuideCatalog.validateGuide(raw: any): (Guide?, string?)
 	local tiers: { Tier } = {}
 	for ti, t in ipairs(raw.tiers :: { any }) do
 		if type(t) ~= "table" or type(t.tier) ~= "string" or not TIERS[t.tier] then
-			return nil, "build guide '" .. raw.module .. "' tier " .. tostring(ti) .. " is malformed"
+			return nil,
+				"build guide '" .. raw.module .. "' tier " .. tostring(ti) .. " is malformed"
 		end
 		if type(t.steps) ~= "table" then
-			return nil, "build guide '" .. raw.module .. "' tier '" .. t.tier .. "' needs a 'steps' array"
+			return nil,
+				"build guide '" .. raw.module .. "' tier '" .. t.tier .. "' needs a 'steps' array"
 		end
 		local steps: { Step } = {}
 		for si, s in ipairs(t.steps :: { any }) do
 			if type(s) ~= "table" or type(s.id) ~= "string" or type(s.instruction) ~= "string" then
 				return nil,
-					"build guide '" .. raw.module .. "' tier '" .. t.tier .. "' step " .. tostring(si)
-						.. " needs an id + instruction"
+					"build guide '" .. raw.module .. "' tier '" .. t.tier .. "' step " .. tostring(
+						si
+					) .. " needs an id + instruction"
 			end
 			table.insert(steps, {
 				id = s.id,
@@ -137,7 +140,9 @@ function BuildGuideCatalog.validateGuide(raw: any): (Guide?, string?)
 	return {
 		module = moduleLower,
 		version = if type(raw.version) == "string" then raw.version else "1",
-		system_module = if type(raw.system_module) == "string" then raw.system_module else moduleLower,
+		system_module = if type(raw.system_module) == "string"
+			then raw.system_module
+			else moduleLower,
 		rubric_version = str(raw.rubric_version),
 		overview = str(raw.overview),
 		killer_systems = killers,
@@ -163,7 +168,9 @@ function BuildGuideCatalog.saveInto(
 ): ({ Guide }, string, boolean)
 	if reserved[guide.module] then
 		return userGuides,
-			"save_build_guide failed: '" .. guide.module .. "' is a built-in guide category (pick another).",
+			"save_build_guide failed: '"
+				.. guide.module
+				.. "' is a built-in guide category (pick another).",
 			false
 	end
 	local out: { Guide } = {}
@@ -195,7 +202,10 @@ function BuildGuideCatalog.saveInto(
 end
 
 -- Remove a USER guide by module/category. PURE. Returns (newList, note, ok).
-function BuildGuideCatalog.deleteFrom(userGuides: { Guide }, module: any): ({ Guide }, string, boolean)
+function BuildGuideCatalog.deleteFrom(
+	userGuides: { Guide },
+	module: any
+): ({ Guide }, string, boolean)
 	local target = BuildGuideCatalog.normalizeCategory(module)
 	if target == nil then
 		return userGuides, "delete_build_guide: invalid category", false
@@ -317,11 +327,17 @@ function BuildGuideCatalog.catalogBlock(guides: { Guide }): string
 		"",
 	}
 	for _, g in ipairs(guides) do
-		local line = "- " .. g.module .. " — " .. tostring(stepCount(g)) .. " steps across "
-			.. tostring(#g.tiers) .. " tiers"
+		local line = "- "
+			.. g.module
+			.. " — "
+			.. tostring(stepCount(g))
+			.. " steps across "
+			.. tostring(#g.tiers)
+			.. " tiers"
 		if g.coverage ~= nil then
-			line ..= " (covers " .. tostring(g.coverage.addressed) .. "/" .. tostring(g.coverage.total)
-				.. " rubric criteria)"
+			line ..= " (covers " .. tostring(g.coverage.addressed) .. "/" .. tostring(
+				g.coverage.total
+			) .. " rubric criteria)"
 		end
 		table.insert(out, line)
 	end

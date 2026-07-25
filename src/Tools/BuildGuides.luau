@@ -62,7 +62,11 @@ local function rawFromInput(args: any): any?
 			end
 		end
 		raw.tiers = {
-			{ tier = "baseline", goal = if type(args.overview) == "string" then args.overview else "", steps = steps },
+			{
+				tier = "baseline",
+				goal = if type(args.overview) == "string" then args.overview else "",
+				steps = steps,
+			},
 		}
 		return raw
 	end
@@ -81,7 +85,8 @@ local function saveBuildGuide(input: any, context: any): (string, boolean)
 	end
 	local raw = rawFromInput(args)
 	if raw == nil then
-		return "save_build_guide requires either steps = [string|object] or a full tiers = [...] array", true
+		return "save_build_guide requires either steps = [string|object] or a full tiers = [...] array",
+			true
 	end
 	local note, ok = s:save(raw)
 	return note, not ok
@@ -135,7 +140,10 @@ BuildGuides.descriptors = {
 					type = "string",
 					description = "The guide's category/name. Must NOT match a built-in guide category.",
 				},
-				overview = { type = "string", description = "One-paragraph overview of the build approach." },
+				overview = {
+					type = "string",
+					description = "One-paragraph overview of the build approach.",
+				},
 				steps = {
 					type = "array",
 					description = "Simple form: an ordered list of step instruction strings (wrapped into a "
@@ -160,7 +168,10 @@ BuildGuides.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				category = { type = "string", description = "The user build-guide category to delete." },
+				category = {
+					type = "string",
+					description = "The user build-guide category to delete.",
+				},
 			},
 			required = { "category" },
 		},

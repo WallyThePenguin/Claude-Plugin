@@ -86,7 +86,8 @@ local function buildCases(): { Case }
 	end
 
 	add("encode/decode round-trips geometry (ints + floats)", function()
-		local data = { v = { 0, 0, 0, 2, 0, 0, 1, 2, 0, 0.5, -1.25, 3.333 }, t = { 0, 1, 2, 2, 3, 0 } }
+		local data =
+			{ v = { 0, 0, 0, 2, 0, 0, 1, 2, 0, 0.5, -1.25, 3.333 }, t = { 0, 1, 2, 2, 3, 0 } }
 		local back = MeshFactory.decodeMeshData(MeshFactory.encodeMeshData(data))
 		if back == nil then
 			return false, "decoded nil"

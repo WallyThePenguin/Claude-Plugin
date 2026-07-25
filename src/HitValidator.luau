@@ -31,7 +31,11 @@ end
 -- the minimum interval. Returns (accepted, reason, nextLastHit) where nextLastHit is the timestamp to
 -- store: advanced to `now` on accept, UNCHANGED on reject (a rejected spam request must not extend the
 -- window — otherwise spam could starve a legitimate later swing).
-function HitValidator.check(lastHit: number?, now: number, cooldown: number): (boolean, string, number)
+function HitValidator.check(
+	lastHit: number?,
+	now: number,
+	cooldown: number
+): (boolean, string, number)
 	local cd = HitValidator.coerceCooldown(cooldown)
 	if type(now) ~= "number" or now ~= now then
 		return false, "bad-timestamp", (lastHit or 0)

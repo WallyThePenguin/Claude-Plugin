@@ -116,15 +116,22 @@ end
 
 local function resolveRig(args: any): (Model?, string?)
 	if type(args.rig) ~= "string" or args.rig == "" then
-		return nil, "make_npc requires { rig = <path to a Model with a Humanoid> , damage?, detectRange?, attackRange?, attackCooldown?, speed? }"
+		return nil,
+			"make_npc requires { rig = <path to a Model with a Humanoid> , damage?, detectRange?, attackRange?, attackCooldown?, speed? }"
 	end
 	local inst = Path.resolve(args.rig)
 	if inst == nil or not inst:IsA("Model") then
 		return nil, "'" .. tostring(args.rig) .. "' is not a Model (spawn_rig first)"
 	end
 	local m = inst :: Model
-	if m:FindFirstChildOfClass("Humanoid") == nil or m:FindFirstChild("HumanoidRootPart") == nil then
-		return nil, "'" .. tostring(args.rig) .. "' needs a Humanoid + HumanoidRootPart (spawn_rig makes one)"
+	if
+		m:FindFirstChildOfClass("Humanoid") == nil
+		or m:FindFirstChild("HumanoidRootPart") == nil
+	then
+		return nil,
+			"'"
+				.. tostring(args.rig)
+				.. "' needs a Humanoid + HumanoidRootPart (spawn_rig makes one)"
 	end
 	return m, nil
 end
@@ -196,9 +203,9 @@ local function runMake(input: any, context: any): (any, boolean)
 	msg = msg
 		.. " NOTE: uses direct Humanoid:MoveTo (no obstacle pathfinding) + no swing animation yet -- "
 		.. "PathfindingService, patrol routes, and NPC animations are later upgrades."
-	msg ..= " ["
-		.. (if libOk then libNote else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")")
-		.. "]"
+	msg ..= " [" .. (if libOk
+		then libNote
+		else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")") .. "]"
 	return msg, false
 end
 
@@ -216,7 +223,10 @@ Npc.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				rig = { type = "string", description = "Path to the rig Model (Humanoid + HumanoidRootPart)." },
+				rig = {
+					type = "string",
+					description = "Path to the rig Model (Humanoid + HumanoidRootPart).",
+				},
 				damage = { type = "number", description = "Damage per attack (default 15)." },
 				detectRange = {
 					type = "number",

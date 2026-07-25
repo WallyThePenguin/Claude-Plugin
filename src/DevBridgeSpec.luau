@@ -57,13 +57,16 @@ local function buildCases(): { Case }
 		return DevBridge.contextBanner(true, false, false, true) == ""
 	end)
 
-	add("contextBanner: a running playtest warns + names the server role + the verify nudge", function()
-		local s = DevBridge.contextBanner(false, true, true, false)
-		return string.find(s, "WARN run-context", 1, true) ~= nil
-			and string.find(s, "PLAYTEST", 1, true) ~= nil
-			and string.find(s, "role=server", 1, true) ~= nil
-			and string.find(s, "VERIFY with a capture", 1, true) ~= nil
-	end)
+	add(
+		"contextBanner: a running playtest warns + names the server role + the verify nudge",
+		function()
+			local s = DevBridge.contextBanner(false, true, true, false)
+			return string.find(s, "WARN run-context", 1, true) ~= nil
+				and string.find(s, "PLAYTEST", 1, true) ~= nil
+				and string.find(s, "role=server", 1, true) ~= nil
+				and string.find(s, "VERIFY with a capture", 1, true) ~= nil
+		end
+	)
 
 	add("contextBanner: a play CLIENT (running, not edit) warns NOT-edit + client", function()
 		local s = DevBridge.contextBanner(false, true, false, true)

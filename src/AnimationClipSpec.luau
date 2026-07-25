@@ -244,23 +244,30 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("rotationDeltaDeg vs the 2deg verify tolerance: catches the live frozen-snapshot lie", function()
-		-- the live repro: requested RightShoulder (-160, 0, 25) but the stale hold pose (37, 0, 0)
-		-- was what got keyed — must be FAR outside tolerance
-		local want = CFrame.Angles(math.rad(-160), 0, math.rad(25))
-		local stale = CFrame.Angles(math.rad(37), 0, 0)
-		local d = AnimationClip.rotationDeltaDeg(want, stale)
-		if d <= 2 then
-			return false, "stale 37 deg hold vs requested -160 deg should exceed 2 deg, got " .. tostring(d)
+	add(
+		"rotationDeltaDeg vs the 2deg verify tolerance: catches the live frozen-snapshot lie",
+		function()
+			-- the live repro: requested RightShoulder (-160, 0, 25) but the stale hold pose (37, 0, 0)
+			-- was what got keyed — must be FAR outside tolerance
+			local want = CFrame.Angles(math.rad(-160), 0, math.rad(25))
+			local stale = CFrame.Angles(math.rad(37), 0, 0)
+			local d = AnimationClip.rotationDeltaDeg(want, stale)
+			if d <= 2 then
+				return false,
+					"stale 37 deg hold vs requested -160 deg should exceed 2 deg, got " .. tostring(
+						d
+					)
+			end
+			-- a near-exact apply must PASS the tolerance (no false alarms)
+			local near = CFrame.Angles(math.rad(-159.2), 0, math.rad(25.4))
+			local nd = AnimationClip.rotationDeltaDeg(want, near)
+			if nd > 2 then
+				return false,
+					"a ~1 deg apply error should be within tolerance, got " .. tostring(nd)
+			end
+			return true
 		end
-		-- a near-exact apply must PASS the tolerance (no false alarms)
-		local near = CFrame.Angles(math.rad(-159.2), 0, math.rad(25.4))
-		local nd = AnimationClip.rotationDeltaDeg(want, near)
-		if nd > 2 then
-			return false, "a ~1 deg apply error should be within tolerance, got " .. tostring(nd)
-		end
-		return true
-	end)
+	)
 
 	add("weaponChildNames finds AgentEditGrip Part1 names only", function()
 		local rig = branchedRig()

@@ -54,7 +54,12 @@ end
 
 -- POST one command to the sidecar /play channel and wait for its result.
 --   returns (resultText, isError)
-local function playCommand(context: any, cmd: string, arg: any, timeoutSec: number): (string, boolean)
+local function playCommand(
+	context: any,
+	cmd: string,
+	arg: any,
+	timeoutSec: number
+): (string, boolean)
 	local base, cfgErr = sidecarUrl(context)
 	if base == nil then
 		return tostring(cfgErr), true
@@ -76,7 +81,8 @@ local function playCommand(context: any, cmd: string, arg: any, timeoutSec: numb
 			.. base
 			.. " — is it running? ("
 			.. tostring(postRes)
-			.. ")", true
+			.. ")",
+			true
 	end
 	local response = postRes :: any
 	if not response.Success then
@@ -114,7 +120,8 @@ local function playCommand(context: any, cmd: string, arg: any, timeoutSec: numb
 		.. tostring(timeoutSec)
 		.. "s waiting for '"
 		.. cmd
-		.. "' (is a test running? playtest_status tells you)", true
+		.. "' (is a test running? playtest_status tells you)",
+		true
 end
 
 -- ---- playtest_start ----
@@ -143,24 +150,29 @@ local function runStart(input: any, context: any): (Content, boolean)
 		local diag, diagErr = playCommand(context, "sdiag", nil, 8)
 		if not diagErr then
 			if mode == "run" then
-				return "playtest RUNNING in RUN mode (" .. diag .. ") — server simulation only: "
+				return "playtest RUNNING in RUN mode ("
+					.. diag
+					.. ") — server simulation only: "
 					.. "real physics + Animators, NO player character; all edits revert on stop."
 					.. "\nDrive it with playtest_eval / playtest_logs (playtest_act/playtest_capture "
-					.. "need PLAY mode); ALWAYS playtest_stop when done.", false
+					.. "need PLAY mode); ALWAYS playtest_stop when done.",
+					false
 			end
 			if string.find(diag, "char=", 1, true) ~= nil then
-				return "playtest RUNNING in PLAY mode — " .. diag .. "\nDrive it with playtest_act "
+				return "playtest RUNNING in PLAY mode — "
+					.. diag
+					.. "\nDrive it with playtest_act "
 					.. "/ playtest_eval / playtest_logs / playtest_capture; ALWAYS playtest_stop "
-					.. "when done.", false
+					.. "when done.",
+					false
 			end
 		end
 		lastErr = diag
 	end
-	return "playtest_start: test acked but "
-		.. (if mode == "run" then "the run-mode server poller" else "the character")
-		.. " never reported ready ("
-		.. lastErr
-		.. ") — playtest_stop and retry, or check playtest_logs", true
+	return "playtest_start: test acked but " .. (if mode == "run"
+		then "the run-mode server poller"
+		else "the character") .. " never reported ready (" .. lastErr .. ") — playtest_stop and retry, or check playtest_logs",
+		true
 end
 
 -- ---- playtest_stop ----
@@ -180,7 +192,8 @@ local function runStop(_input: any, context: any): (Content, boolean)
 		if okStop then
 			return "playtest_stop: in-test poller unresponsive ("
 				.. out
-				.. ") — force-stopped via RunService:Stop(); cleanup ran", false
+				.. ") — force-stopped via RunService:Stop(); cleanup ran",
+				false
 		end
 		return "playtest_stop: " .. out, true
 	end
@@ -198,7 +211,11 @@ local function runAct(input: any, context: any): (Content, boolean)
 			table.insert(names, v)
 		end
 		table.sort(names)
-		return "playtest_act: unknown verb '" .. verb .. "' (use " .. table.concat(names, "|") .. ")",
+		return "playtest_act: unknown verb '"
+			.. verb
+			.. "' (use "
+			.. table.concat(names, "|")
+			.. ")",
 			true
 	end
 	local out, isErr = playCommand(context, "act", verb, 30)
@@ -215,10 +232,13 @@ local function runEval(input: any, context: any): (Content, boolean)
 	local out, isErr = playCommand(context, "seval", args.code, 30)
 	-- The in-test poller posts ok=true even for eval failures; surface those as tool errors so the
 	-- agent never mistakes an error/guidance string for the probe's return value.
-	if not isErr
-		and (string.find(out, "seval compile error", 1, true) ~= nil
+	if
+		not isErr
+		and (
+			string.find(out, "seval compile error", 1, true) ~= nil
 			or string.find(out, "seval runtime error", 1, true) ~= nil
-			or string.find(out, "seval: loadstring unavailable", 1, true) ~= nil)
+			or string.find(out, "seval: loadstring unavailable", 1, true) ~= nil
+		)
 	then
 		return out, true
 	end
@@ -324,7 +344,10 @@ Playtest.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				code = { type = "string", description = "Luau to run in the play-server DataModel." },
+				code = {
+					type = "string",
+					description = "Luau to run in the play-server DataModel.",
+				},
 			},
 			required = { "code" },
 		},
@@ -339,7 +362,10 @@ Playtest.descriptors = {
 		inputSchema = {
 			type = "object",
 			properties = {
-				since = { type = "number", description = "Return lines after this cursor (default 0)." },
+				since = {
+					type = "number",
+					description = "Return lines after this cursor (default 0).",
+				},
 			},
 		},
 		destructive = false,

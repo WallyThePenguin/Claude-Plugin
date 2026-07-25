@@ -186,7 +186,13 @@ function IconFactory.validateGlyphs(): string
 		local w = #rows[1]
 		for i, line in ipairs(rows) do
 			if #line ~= w then
-				return kind .. " row " .. tostring(i) .. ": got " .. tostring(#line) .. ", want " .. tostring(w)
+				return kind
+					.. " row "
+					.. tostring(i)
+					.. ": got "
+					.. tostring(#line)
+					.. ", want "
+					.. tostring(w)
 			end
 		end
 	end

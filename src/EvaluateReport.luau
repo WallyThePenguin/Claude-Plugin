@@ -65,13 +65,21 @@ function EvaluateReport.tierVerdict(rubric: Rubric, validated: Validated): TierV
 			local cleared = (passN[t] or 0) == totalN[t]
 			table.insert(
 				parts,
-				string.format("%s %d/%d%s", label, passN[t] or 0, totalN[t], if cleared then " CLEARED" else "")
+				string.format(
+					"%s %d/%d%s",
+					label,
+					passN[t] or 0,
+					totalN[t],
+					if cleared then " CLEARED" else ""
+				)
 			)
 		end
 	end
 	if nextTier == nil then
 		return {
-			line = "Tier progress: " .. table.concat(parts, " · ") .. " — BAR CLEARED (every criterion passes).",
+			line = "Tier progress: "
+				.. table.concat(parts, " · ")
+				.. " — BAR CLEARED (every criterion passes).",
 			nextTier = nil,
 			allPass = true,
 		}

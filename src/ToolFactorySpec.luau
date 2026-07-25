@@ -51,61 +51,67 @@ local function buildCases(): { Case }
 		return true
 	end)
 
-	add("gripFromFrame: full frame align -> blade out hand -Z, edge down -Y, grip at attachment", function()
-		local rig = Instance.new("Model")
-		rig.Name = "TFGripRig"
-		local hand = Instance.new("Part")
-		hand.Name = "RightHand"
-		hand.Anchored = true
-		hand.Parent = rig
-		local gAtt = Instance.new("Attachment")
-		gAtt.Name = "RightGripAttachment"
-		gAtt.CFrame = CFrame.new(0, -0.158, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
-		gAtt.Parent = hand
+	add(
+		"gripFromFrame: full frame align -> blade out hand -Z, edge down -Y, grip at attachment",
+		function()
+			local rig = Instance.new("Model")
+			rig.Name = "TFGripRig"
+			local hand = Instance.new("Part")
+			hand.Name = "RightHand"
+			hand.Anchored = true
+			hand.Parent = rig
+			local gAtt = Instance.new("Attachment")
+			gAtt.Name = "RightGripAttachment"
+			gAtt.CFrame = CFrame.new(0, -0.158, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+			gAtt.Parent = hand
 
-		local tool = Instance.new("Tool")
-		local handle = Instance.new("Part")
-		handle.Name = "Handle"
-		handle.Size = Vector3.new(1.6, 4.8, 0.7)
-		handle.Anchored = true
-		handle.Parent = tool
-		local sg = Instance.new("Attachment")
-		sg.Name = "Semantic_Grip"
-		sg.Position = Vector3.new(0, -1.8, 0)
-		sg.Parent = handle
-		handle:SetAttribute(
-			"SemanticFrame",
-			game:GetService("HttpService"):JSONEncode({
-				family = "melee-weapon",
-				dirs = { blade_dir = { x = 0, y = 1, z = 0 }, edge_dir = { x = 1, y = 0, z = 0 } },
-			})
-		)
+			local tool = Instance.new("Tool")
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1.6, 4.8, 0.7)
+			handle.Anchored = true
+			handle.Parent = tool
+			local sg = Instance.new("Attachment")
+			sg.Name = "Semantic_Grip"
+			sg.Position = Vector3.new(0, -1.8, 0)
+			sg.Parent = handle
+			handle:SetAttribute(
+				"SemanticFrame",
+				game:GetService("HttpService"):JSONEncode({
+					family = "melee-weapon",
+					dirs = {
+						blade_dir = { x = 0, y = 1, z = 0 },
+						edge_dir = { x = 1, y = 0, z = 0 },
+					},
+				})
+			)
 
-		local grip = ToolFactory.gripFromFrame(tool, rig)
-		local ok, err = (function(): (boolean, string?)
-			if grip == nil then
-				return false, "gripFromFrame returned nil"
-			end
-			-- equip convention: Handle-in-hand = RightGripAttachment.CFrame * Grip^-1
-			local hih = gAtt.CFrame * (grip :: CFrame):Inverse()
-			local bladeW = hih:VectorToWorldSpace(Vector3.new(0, 1, 0)) -- handle blade_dir -> hand space
-			local edgeW = hih:VectorToWorldSpace(Vector3.new(1, 0, 0)) -- handle edge_dir -> hand space
-			if (bladeW - Vector3.new(0, 0, -1)).Magnitude > 1e-3 then
-				return false, "blade not out hand -Z: " .. tostring(bladeW)
-			end
-			if (edgeW - Vector3.new(0, -1, 0)).Magnitude > 1e-3 then
-				return false, "edge not down -Y: " .. tostring(edgeW)
-			end
-			local gpW = hih:PointToWorldSpace(Vector3.new(0, -1.8, 0)) -- Semantic_Grip -> hand space
-			if (gpW - gAtt.CFrame.Position).Magnitude > 1e-3 then
-				return false, "grip point not seated at attachment: " .. tostring(gpW)
-			end
-			return true
-		end)()
-		rig:Destroy()
-		tool:Destroy()
-		return ok, err
-	end)
+			local grip = ToolFactory.gripFromFrame(tool, rig)
+			local ok, err = (function(): (boolean, string?)
+				if grip == nil then
+					return false, "gripFromFrame returned nil"
+				end
+				-- equip convention: Handle-in-hand = RightGripAttachment.CFrame * Grip^-1
+				local hih = gAtt.CFrame * (grip :: CFrame):Inverse()
+				local bladeW = hih:VectorToWorldSpace(Vector3.new(0, 1, 0)) -- handle blade_dir -> hand space
+				local edgeW = hih:VectorToWorldSpace(Vector3.new(1, 0, 0)) -- handle edge_dir -> hand space
+				if (bladeW - Vector3.new(0, 0, -1)).Magnitude > 1e-3 then
+					return false, "blade not out hand -Z: " .. tostring(bladeW)
+				end
+				if (edgeW - Vector3.new(0, -1, 0)).Magnitude > 1e-3 then
+					return false, "edge not down -Y: " .. tostring(edgeW)
+				end
+				local gpW = hih:PointToWorldSpace(Vector3.new(0, -1.8, 0)) -- Semantic_Grip -> hand space
+				if (gpW - gAtt.CFrame.Position).Magnitude > 1e-3 then
+					return false, "grip point not seated at attachment: " .. tostring(gpW)
+				end
+				return true
+			end)()
+			rig:Destroy()
+			tool:Destroy()
+			return ok, err
+		end
+	)
 
 	-- ---- articulated chain (weapon-as-limb, 2026-07-11) ----
 
@@ -142,35 +148,38 @@ local function buildCases(): { Case }
 		return holder, handle, seg, m
 	end
 
-	add("fitChain: freezes built geometry (rest pose exact) with the hinge at the segment base", function()
-		local holder, handle, seg, m = chainFixture()
-		local fitted, names = ToolFactory.fitChain(holder)
-		local ok, err = (function(): (boolean, string?)
-			if fitted ~= 1 or #names ~= 1 then
-				return false, "expected 1 fitted/1 name, got " .. fitted .. "/" .. #names
-			end
-			-- rest-pose kinematics: Part1.CFrame == Part0.CFrame * C0 * C1^-1 (Transform identity)
-			local rest = handle.CFrame * m.C0 * m.C1:Inverse()
-			if not cframesClose(rest, seg.CFrame, 1e-4) then
-				return false, "rest pose not preserved: " .. tostring(rest)
-			end
-			-- hinge at the segment's near face toward Part0: Part0 center (0,0,0) is 2 below the
-			-- segment center, clamped into the 1x2x1 half-box -> (0,-1,0) = the base face center
-			if (m.C1.Position - Vector3.new(0, -1, 0)).Magnitude > 1e-4 then
-				return false, "hinge not at segment base: " .. tostring(m.C1.Position)
-			end
-			-- default-named joint renamed after Part1 (pose channels address joints by name)
-			if m.Name ~= "SegA" then
-				return false, "joint not renamed after Part1: " .. m.Name
-			end
-			if m:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
-				return false, "SAChainFitted attribute missing"
-			end
-			return true
-		end)()
-		holder:Destroy()
-		return ok, err
-	end)
+	add(
+		"fitChain: freezes built geometry (rest pose exact) with the hinge at the segment base",
+		function()
+			local holder, handle, seg, m = chainFixture()
+			local fitted, names = ToolFactory.fitChain(holder)
+			local ok, err = (function(): (boolean, string?)
+				if fitted ~= 1 or #names ~= 1 then
+					return false, "expected 1 fitted/1 name, got " .. fitted .. "/" .. #names
+				end
+				-- rest-pose kinematics: Part1.CFrame == Part0.CFrame * C0 * C1^-1 (Transform identity)
+				local rest = handle.CFrame * m.C0 * m.C1:Inverse()
+				if not cframesClose(rest, seg.CFrame, 1e-4) then
+					return false, "rest pose not preserved: " .. tostring(rest)
+				end
+				-- hinge at the segment's near face toward Part0: Part0 center (0,0,0) is 2 below the
+				-- segment center, clamped into the 1x2x1 half-box -> (0,-1,0) = the base face center
+				if (m.C1.Position - Vector3.new(0, -1, 0)).Magnitude > 1e-4 then
+					return false, "hinge not at segment base: " .. tostring(m.C1.Position)
+				end
+				-- default-named joint renamed after Part1 (pose channels address joints by name)
+				if m.Name ~= "SegA" then
+					return false, "joint not renamed after Part1: " .. m.Name
+				end
+				if m:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
+					return false, "SAChainFitted attribute missing"
+				end
+				return true
+			end)()
+			holder:Destroy()
+			return ok, err
+		end
+	)
 
 	add("fitChain: idempotent (second call fits nothing, keeps the fit)", function()
 		local holder, _handle, _seg, m = chainFixture()
@@ -261,7 +270,12 @@ local function buildCases(): { Case }
 				return false, "internal reserved-name joint not healed: " .. internal.Name
 			end
 			if fitted ~= 1 or #names ~= 1 then
-				return false, string.format("expected the healed joint fit once, got fitted=%d names=%d", fitted, #names)
+				return false,
+					string.format(
+						"expected the healed joint fit once, got fitted=%d names=%d",
+						fitted,
+						#names
+					)
 			end
 			if internal:GetAttribute(ToolFactory.CHAIN_FITTED_ATTR) ~= true then
 				return false, "healed joint not stamped as fitted"
@@ -332,7 +346,8 @@ local function buildCases(): { Case }
 			end
 			local offset = (seg.CFrame.Position - (handlePart :: BasePart).CFrame.Position).Magnitude
 			if math.abs(offset - 2) > 0.05 then
-				return false, string.format("segment collapsed: %.2f studs from Handle (built at 2)", offset)
+				return false,
+					string.format("segment collapsed: %.2f studs from Handle (built at 2)", offset)
 			end
 			if (joint :: Motor6D).C0 == CFrame.identity then
 				return false, "chain joint C0 is identity — fit ran against collapsed geometry"
@@ -375,8 +390,10 @@ function M.run(): (boolean, string)
 		end
 	end
 	print(("[ToolFactorySpec] %d/%d passed"):format(passed, #cases))
-	return passed == #cases, ("%d/%d passed"):format(passed, #cases)
-		.. (if #failures > 0 then "; FAIL: " .. table.concat(failures, " | ") else "")
+	return passed == #cases,
+		("%d/%d passed"):format(passed, #cases) .. (if #failures > 0
+			then "; FAIL: " .. table.concat(failures, " | ")
+			else "")
 end
 
 return M

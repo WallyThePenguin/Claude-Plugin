@@ -124,9 +124,9 @@ local function runAdd(input: any, _context: any): (string, boolean)
 	if args.weapon == true then
 		local wnames = AnimationClip.weaponChildNames(rig :: Instance)
 		if #wnames == 0 then
-			return "add_keyframe: weapon=true but no AgentEditGrip Motor6D under "
-				.. (rig :: Instance).Name
-				.. " — equip a Tool with grip_tool first (the grip joint IS the weapon channel).",
+			return "add_keyframe: weapon=true but no AgentEditGrip Motor6D under " .. (
+				rig :: Instance
+			).Name .. " — equip a Tool with grip_tool first (the grip joint IS the weapon channel).",
 				true
 		end
 		if scopeNames ~= nil then
@@ -140,9 +140,13 @@ local function runAdd(input: any, _context: any): (string, boolean)
 				end
 			end
 		end
-		local wNote = "weapon channel: " .. table.concat(wnames, ", ") .. (if scopeNames ~= nil
-			then " added to scope."
-			else " (full-body snapshot keys it already).")
+		local wNote = "weapon channel: "
+			.. table.concat(wnames, ", ")
+			.. (
+				if scopeNames ~= nil
+					then " added to scope."
+					else " (full-body snapshot keys it already)."
+			)
 		scopeNote = if scopeNote ~= "" then scopeNote .. " " .. wNote else wNote
 	end
 	-- BATCH KEYPOSE: the optional `poses` map poses N joints THEN snapshots — ONE tool call per keypose

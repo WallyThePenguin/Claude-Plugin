@@ -86,7 +86,8 @@ local function buildCases(): { Case }
 	end)
 
 	add("rubric + guide catalog blocks are non-empty (ride the always-on preamble)", function()
-		return #RubricStore.new():catalogBlock() > 0 and #BuildGuideStore.new(nil):catalogBlock() > 0
+		return #RubricStore.new():catalogBlock() > 0
+			and #BuildGuideStore.new(nil):catalogBlock() > 0
 	end)
 
 	return cases

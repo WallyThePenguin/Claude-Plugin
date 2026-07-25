@@ -21,7 +21,7 @@ local function buildCases(): { Case }
 	end)
 
 	add("sanitizeSegment: illegal chars, trailing dots, reserved names, empty", function()
-		local a = GameSync.sanitizeSegment('My:Script*Name?')
+		local a = GameSync.sanitizeSegment("My:Script*Name?")
 		if a ~= "My_Script_Name_" then
 			return false, "got " .. tostring(a)
 		end
@@ -44,10 +44,8 @@ local function buildCases(): { Case }
 	end)
 
 	add("relpathFor: nested chain + suffix + changed flag", function()
-		local p, changed = GameSync.relpathFor(
-			{ "StarterPack", "UseSword", "ItemHitClient" },
-			"LocalScript"
-		)
+		local p, changed =
+			GameSync.relpathFor({ "StarterPack", "UseSword", "ItemHitClient" }, "LocalScript")
 		if p ~= "src/StarterPack/UseSword/ItemHitClient.client.luau" or changed then
 			return false, tostring(p)
 		end
@@ -63,11 +61,10 @@ local function buildCases(): { Case }
 	end)
 
 	add("findTestSymbols: reserved prefix + legacy denylist, deduped", function()
-		local src = 'x = GetAttribute("TestAutoKill") -- StudioAgentTest_Marker + StudioAgentTest_Marker'
+		local src =
+			'x = GetAttribute("TestAutoKill") -- StudioAgentTest_Marker + StudioAgentTest_Marker'
 		local syms = GameSync.findTestSymbols(src)
-		return #syms == 2
-			and syms[1] == "StudioAgentTest_Marker"
-			and syms[2] == "TestAutoKill"
+		return #syms == 2 and syms[1] == "StudioAgentTest_Marker" and syms[2] == "TestAutoKill"
 	end)
 
 	add("findTestSymbols: clean source -> {}", function()

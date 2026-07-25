@@ -45,7 +45,8 @@ end
 function M.stamp(target: Instance, frame: any): (any, boolean)
 	local schema = M.SCHEMAS[tostring(frame.family)]
 	if schema == nil then
-		return { error = "unknown family: " .. tostring(frame.family) .. " (known: melee-weapon)" }, false
+		return { error = "unknown family: " .. tostring(frame.family) .. " (known: melee-weapon)" },
+			false
 	end
 	local handle = M.handleOf(target)
 	if handle == nil then
@@ -93,7 +94,8 @@ function M.stamp(target: Instance, frame: any): (any, boolean)
 	end
 	if type(frame.roles) == "table" then
 		for role, entries in frame.roles :: { [string]: any } do
-			local known = table.find(schema.roles.required, role) or table.find(schema.roles.optional, role)
+			local known = table.find(schema.roles.required, role)
+				or table.find(schema.roles.optional, role)
 			if known == nil then
 				table.insert(errors, "unknown role: " .. tostring(role))
 			elseif type(entries) == "table" then
@@ -106,7 +108,10 @@ function M.stamp(target: Instance, frame: any): (any, boolean)
 						CollectionService:AddTag(inst, M.TAG_PREFIX .. role)
 						table.insert(stamped, "role:" .. role .. "/" .. inst.Name)
 					else
-						table.insert(errors, "role " .. role .. ": part not found: " .. tostring(entry))
+						table.insert(
+							errors,
+							"role " .. role .. ": part not found: " .. tostring(entry)
+						)
 					end
 				end
 			end
@@ -172,7 +177,9 @@ function M.read(target: Instance): (any, string?)
 			frame.dirs[name] = vec(d)
 		end
 	end
-	local parts: { Instance } = if target:IsA("Model") or target:IsA("Tool") then target:GetDescendants() else { handle :: Instance }
+	local parts: { Instance } = if target:IsA("Model") or target:IsA("Tool")
+		then target:GetDescendants()
+		else { handle :: Instance }
 	for _, part in parts do
 		if part:IsA("BasePart") then
 			for _, tag in CollectionService:GetTags(part) do

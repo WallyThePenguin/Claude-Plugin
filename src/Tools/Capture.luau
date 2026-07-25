@@ -411,12 +411,12 @@ Capture.descriptors = {
 					description = "Instance path; omit to use the selection.",
 				},
 				neutralLight = {
-				type = "boolean",
-				description = "true = capture under bright neutral shadow-free lighting (USE for "
-					.. "rigs/items so they never read as silhouettes; leave off for "
-					.. "environment/mood shots that must show real lighting).",
-			},
-			count = {
+					type = "boolean",
+					description = "true = capture under bright neutral shadow-free lighting (USE for "
+						.. "rigs/items so they never read as silhouettes; leave off for "
+						.. "environment/mood shots that must show real lighting).",
+				},
+				count = {
 					type = "number",
 					description = "Number of evenly-spaced angles (default 6).",
 				},

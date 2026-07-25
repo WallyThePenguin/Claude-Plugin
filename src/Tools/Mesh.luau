@@ -602,7 +602,9 @@ local function runConfirm(_input: any, context: any): (string, boolean)
 		if type(assetId) ~= "number" then
 			table.insert(
 				lines,
-				"BROKEN " .. mp:GetFullName() .. " — pending but no SAMeshAssetId; re-run save_mesh"
+				"BROKEN "
+					.. mp:GetFullName()
+					.. " — pending but no SAMeshAssetId; re-run save_mesh"
 			)
 		elseif mp:GetAttribute(MeshFactory.ATTR_REVIEW_FLAG) == true then
 			table.insert(
@@ -618,7 +620,9 @@ local function runConfirm(_input: any, context: any): (string, boolean)
 		elseif probed >= MAX_PROBES_PER_PASS then
 			table.insert(
 				lines,
-				"CAPPED " .. mp:GetFullName() .. " — probe cap (5/pass) reached; re-run confirm_mesh"
+				"CAPPED "
+					.. mp:GetFullName()
+					.. " — probe cap (5/pass) reached; re-run confirm_mesh"
 			)
 		elseif now - lastProbe < backoffWindow(probeCount) then
 			table.insert(
@@ -695,7 +699,9 @@ local function runConfirm(_input: any, context: any): (string, boolean)
 							mp:GetFullName(),
 							readySource,
 							tostring(ferr),
-							if moderation == "Approved" then " — CDN likely still propagating" else ""
+							if moderation == "Approved"
+								then " — CDN likely still propagating"
+								else ""
 						)
 					)
 				end
@@ -770,7 +776,9 @@ local function runImport(input: any, context: any): (string, boolean)
 	if sidecarBase == nil or sidecarBase == "" then
 		return "import_mesh: sidecar URL unavailable (the vision sidecar must be connected)", true
 	end
-	local atlas: string? = if type(args.atlas) == "string" and args.atlas ~= "" then args.atlas else nil
+	local atlas: string? = if type(args.atlas) == "string" and args.atlas ~= ""
+		then args.atlas
+		else nil
 	local ok, result = pcall(function(): MeshFactory.ImportResult
 		return MeshFactory.importReferenceMesh(sidecarBase :: string, args.file :: string, atlas)
 	end)
@@ -881,7 +889,10 @@ Mesh.descriptors = {
 					type = "string",
 					description = "Optional atlas filename in assets/reference (.png/.jpeg painted, or .glb embedded).",
 				},
-				name = { type = "string", description = "Name for the MeshPart (default 'ImportedMesh')." },
+				name = {
+					type = "string",
+					description = "Name for the MeshPart (default 'ImportedMesh').",
+				},
 				position = POS_SCHEMA,
 			},
 			required = { "file" },

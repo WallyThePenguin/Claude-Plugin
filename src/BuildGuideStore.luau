@@ -75,7 +75,11 @@ function BuildGuideStore.loadUser(self: BuildGuideStore): { Guide }
 		local seen: { [string]: boolean } = {}
 		for _, e in ipairs(raw :: { any }) do
 			local guide = BuildGuideCatalog.validateGuide(e)
-			if guide ~= nil and not self._builtinModules[guide.module] and not seen[guide.module] then
+			if
+				guide ~= nil
+				and not self._builtinModules[guide.module]
+				and not seen[guide.module]
+			then
 				seen[guide.module] = true
 				table.insert(out, guide)
 			end
@@ -154,7 +158,9 @@ function BuildGuideStore.delete(self: BuildGuideStore, category: any): (string, 
 	end
 	local target = BuildGuideCatalog.normalizeCategory(category)
 	if target ~= nil and self._builtinModules[target] then
-		return "delete_build_guide: '" .. target .. "' is a built-in build guide and can't be deleted.",
+		return "delete_build_guide: '"
+			.. target
+			.. "' is a built-in build guide and can't be deleted.",
 			false
 	end
 	local users = self:loadUser()

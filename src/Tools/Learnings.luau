@@ -47,12 +47,7 @@ local function loadArchive(config: any, slug: string): (any?, string?)
 end
 
 -- Append to the archive; returns a short status fragment for the tool note.
-local function archiveAppend(
-	config: any,
-	category: string,
-	localId: number,
-	text: string
-): string
+local function archiveAppend(config: any, category: string, localId: number, text: string): string
 	local slug = StoreClient.slug(category)
 	if slug == nil then
 		return "; archive skipped (category does not slug)"
@@ -179,11 +174,9 @@ local function recallLearnings(input: any, context: any): (string, boolean)
 		end
 	end
 	if #live == 0 then
-		return "no archived learnings for '"
-			.. args.category
-			.. "'"
-			.. (if query ~= nil then " matching the query" else "")
-			.. " (the archive holds everything ever learned; the preamble shows only the recent window)",
+		return "no archived learnings for '" .. args.category .. "'" .. (if query ~= nil
+			then " matching the query"
+			else "") .. " (the archive holds everything ever learned; the preamble shows only the recent window)",
 			false
 	end
 	-- Oldest -> newest reads as accumulated experience; over the cap, keep the NEWEST.
@@ -197,7 +190,11 @@ local function recallLearnings(input: any, context: any): (string, boolean)
 		.. " archived learning(s) for '"
 		.. args.category
 		.. "'"
-		.. (if from > 1 then " (newest " .. tostring(RECALL_MAX) .. " of " .. tostring(#live) .. ")" else "")
+		.. (
+			if from > 1
+				then " (newest " .. tostring(RECALL_MAX) .. " of " .. tostring(#live) .. ")"
+				else ""
+		)
 	return header .. "\n" .. table.concat(lines, "\n"), false
 end
 
@@ -254,7 +251,10 @@ Learnings.descriptors = {
 			type = "object",
 			properties = {
 				category = { type = "string", description = "Asset category (e.g. 'gui')." },
-				query = { type = "string", description = "Optional case-insensitive substring filter." },
+				query = {
+					type = "string",
+					description = "Optional case-insensitive substring filter.",
+				},
 			},
 			required = { "category" },
 		},

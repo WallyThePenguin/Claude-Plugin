@@ -124,7 +124,11 @@ end
 function NativeRig.findExisting(): { Model }
 	local out: { Model } = {}
 	for _, d in Workspace:GetChildren() do
-		if d:IsA("Model") and d.Name == "AgentRig" and d:FindFirstChildOfClass("Humanoid") ~= nil then
+		if
+			d:IsA("Model")
+			and d.Name == "AgentRig"
+			and d:FindFirstChildOfClass("Humanoid") ~= nil
+		then
 			table.insert(out, d :: Model)
 		end
 	end

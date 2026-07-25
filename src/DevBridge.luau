@@ -388,14 +388,20 @@ function DevBridge.start(deps: any, lifecycle: any)
 		end, function(why: string)
 			if streamActive then
 				streamActive = false
-				warn("[StudioAgent] bridge stream " .. why .. " — falling back to command polling")
+				warn(
+					"[StudioAgent] bridge stream " .. why .. " — falling back to command polling"
+				)
 			end
 		end)
 		streamActive = streamClient ~= nil
 		if streamActive then
-			print("[StudioAgent] dev bridge stream open (SSE push; command poll demoted to backstop)")
+			print(
+				"[StudioAgent] dev bridge stream open (SSE push; command poll demoted to backstop)"
+			)
 		else
-			warn("[StudioAgent] devBridgeStream is on but the stream failed to open — polling as usual")
+			warn(
+				"[StudioAgent] devBridgeStream is on but the stream failed to open — polling as usual"
+			)
 		end
 	end
 	task.spawn(function()

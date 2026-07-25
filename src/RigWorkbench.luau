@@ -291,7 +291,9 @@ function RigWorkbench.poseJoint(
 		ry,
 		rz,
 		if relative then " [relative]" else " [absolute]",
-		if purged > 0 then string.format(" — stopped %d stale playing track(s) first", purged) else ""
+		if purged > 0
+			then string.format(" — stopped %d stale playing track(s) first", purged)
+			else ""
 	),
 		true
 end
@@ -316,7 +318,9 @@ function RigWorkbench.resetPose(rig: Instance): (string, boolean)
 		"reset %d joints on %s%s",
 		#joints,
 		rig.Name,
-		if purged > 0 then string.format(" — stopped %d stale playing track(s) first", purged) else ""
+		if purged > 0
+			then string.format(" — stopped %d stale playing track(s) first", purged)
+			else ""
 	),
 		true
 end
