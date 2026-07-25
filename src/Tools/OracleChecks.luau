@@ -1277,7 +1277,7 @@ register(
 register(
 	"clip_self_intersect",
 	"EDIT_OK",
-	"Samples clip {clip} on rig {rig}; at each pose, blade-vs-torso/head AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default 0.3)} studs) FAIL with the offending time. TWO body modes: blade-role parts DISJOINT from hilt -> part-AABB penetration beyond {max_depth (default 0.2)}; single-part tools (blade==hilt==whole mesh) -> the DECLARED centerline embedded in body parts beyond {max_blade_in_body (default 0.3)} studs (whole-sword world-AABBs phantom-penetrate mid-swing — live-caught 2026-07-25). Magnitude `mode` names which ran.",
+	"Samples clip {clip} on rig {rig}; at each pose, blade-vs-torso/head AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default: max(0.3, 1.5 centerline-sample quanta of the declared blade) — one grazing sample passes at every blade length)} studs) FAIL with the offending time. TWO body modes: blade-role parts DISJOINT from hilt -> part-AABB penetration beyond {max_depth (default 0.2)}; single-part tools (blade==hilt==whole mesh) -> the DECLARED centerline embedded in body parts beyond {max_blade_in_body (default 0.3)} studs (whole-sword world-AABBs phantom-penetrate mid-swing — live-caught 2026-07-25). Magnitude `mode` names which ran.",
 	function(args)
 		local rig = if typeof(args.rig) == "Instance"
 			then args.rig
@@ -1326,10 +1326,17 @@ register(
 		local gripPt, tipPt = frame.points.Grip, frame.points.BladeTip
 		local hits = {}
 		local maxDepth = tonumber(args.max_depth) or 0.2
-		-- 0.3 = the same centerline instrument + gate as max_blade_in_body: ~one grazing
-		-- sample of a 3-stud blade passes, sustained overlap fails (the 1.0 default let a
-		-- capture-visible 0.44-stud forearm pass silently — audit-caught 2026-07-25).
-		local maxInArm = tonumber(args.max_blade_in_arm) or 0.3
+		-- Gate philosophy: ONE grazing centerline sample passes, sustained overlap fails
+		-- (the 1.0 default let a capture-visible 0.44-stud forearm pass silently —
+		-- audit-caught 2026-07-25). The embedded measure is LENGTH-weighted (one sample =
+		-- bladeLen·0.85/12 studs), so a fixed floor gives long blades ZERO tolerated
+		-- samples: the 4.3-stud rapier's single near-hilt sample at the raise (fist at the
+		-- shoulder, eyes-checked clean) read 0.3046 > 0.3. Default = 1.5 sample-quanta of
+		-- the DECLARED blade, floored at 0.3 — every original 2-sample flaw still fails.
+		local quantum = if gripPt ~= nil and tipPt ~= nil
+			then ((tipPt :: Vector3) - (gripPt :: Vector3)).Magnitude * 0.85 / 12
+			else 0.2
+		local maxInArm = tonumber(args.max_blade_in_arm) or math.max(0.3, 1.5 * quantum)
 		local armWorst = { studs = 0, t = 0, part = "" }
 		-- Single-part tools (blade role == hilt role): the whole-sword world-AABB is meaningless
 		-- mid-swing (a diagonal sword inflates into phantom torso "penetration" — live-caught 15
