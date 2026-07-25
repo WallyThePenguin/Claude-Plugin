@@ -32,8 +32,14 @@ local SUITES = {
 			return {
 				{ check = "frame_consistent", args = { target = target } },
 				{ check = "anchored_ok", args = { target = target } },
-				{ check = "scale_ratio", args = { target = target, expected = 4.5, tolerance_frac = 0.6 } },
+				{
+					check = "scale_ratio",
+					args = { target = target, expected = 4.5, tolerance_frac = 0.6 },
+				},
+				{ check = "extents_profile", args = { target = target } },
 				{ check = "mesh_persisted", args = { target = target } },
+				{ check = "texture_applied", args = { target = target } },
+				{ check = "texel_stretch", args = { target = target } },
 				{ check = "grip_sane", args = { tool = target, rig = rig } },
 				{ check = "tool_clip_current", args = { tool = target } },
 				{ check = "joint_census", args = { rig = rig } },
@@ -44,8 +50,11 @@ local SUITES = {
 			}
 		end,
 		notAsserted = {
-			"material/texture quality", "silhouette aesthetics vs references", "color palette",
-			"swing FEEL (weight/anticipation)", "damage numbers at runtime (playtest twin)",
+			"texture AESTHETICS — style/palette/theme match vs the reference (texel GEOMETRY is now asserted: texel_stretch/texture_applied; taste is not)",
+			"silhouette aesthetics vs references",
+			"color palette",
+			"swing FEEL (weight/anticipation)",
+			"damage numbers at runtime (playtest twin)",
 			"animation under the runtime Animator with locomotion blending (PLAY_ONLY twin)",
 			"edge_dir orientation (declared, not cross-validated)",
 			"clip channel coverage when rig_channel_check is UNKNOWN",
@@ -77,7 +86,10 @@ local SUITES = {
 -- Anti-Goodhart: an envelope only DISCHARGES a pending entry when it is the mapped twin name for
 -- that check, ran with context="run", PASSed, AND quoted non-empty magnitudes; a twin FAIL is a
 -- suite failure outright; UNKNOWN (and edit-context or magnitude-free results) discharge nothing.
-local function mergeTwins(twin_pending: { string }, twinResults: { any }): ({ string }, { [string]: any }, { any })
+local function mergeTwins(
+	twin_pending: { string },
+	twinResults: { any }
+): ({ string }, { [string]: any }, { any })
 	local discharged: { [string]: any } = {}
 	local failures: { any } = {}
 	for _, tr in twinResults do
@@ -87,7 +99,12 @@ local function mergeTwins(twin_pending: { string }, twinResults: { any }): ({ st
 				if want ~= nil and tr.check == want then
 					if tr.verdict == "FAIL" then
 						table.insert(failures, tr)
-					elseif tr.verdict == "PASS" and tr.context == "run" and type(tr.magnitudes) == "table" and next(tr.magnitudes) ~= nil then
+					elseif
+						tr.verdict == "PASS"
+						and tr.context == "run"
+						and type(tr.magnitudes) == "table"
+						and next(tr.magnitudes) ~= nil
+					then
 						discharged[pending] = tr
 					end
 				end
@@ -110,12 +127,22 @@ end
 -- twin_results are honest-agent evidence but FORGEABLE, so they are only the fail-open fallback.
 -- Pure table logic (selftest-covered); the merge RULES are identical for both sources.
 local function chooseTwinSource(sidecarBody: any, callerTwins: { any }?): ({ any }?, string)
-	if type(sidecarBody) == "table" and type(sidecarBody.twins) == "table" and #sidecarBody.twins > 0 then
-		return sidecarBody.twins, "twin source: sidecar-witnessed (session " .. tostring(sidecarBody.session) .. ")"
+	if
+		type(sidecarBody) == "table"
+		and type(sidecarBody.twins) == "table"
+		and #sidecarBody.twins > 0
+	then
+		return sidecarBody.twins,
+			"twin source: sidecar-witnessed (session " .. tostring(sidecarBody.session) .. ")"
 	end
 	if callerTwins ~= nil then
-		local why = if sidecarBody == nil then "sidecar /play/twins unreachable" else "sidecar /play/twins empty/malformed"
-		return callerTwins, "twin source: caller-supplied (" .. why .. "; fail-open — caller-supplied evidence is FORGEABLE, quote the play-channel output verbatim)"
+		local why = if sidecarBody == nil
+			then "sidecar /play/twins unreachable"
+			else "sidecar /play/twins empty/malformed"
+		return callerTwins,
+			"twin source: caller-supplied ("
+				.. why
+				.. "; fail-open — caller-supplied evidence is FORGEABLE, quote the play-channel output verbatim)"
 	end
 	return nil, "twin source: none (sidecar /play/twins unavailable, no caller twin_results)"
 end
@@ -138,7 +165,15 @@ local function fetchSidecarTwins(baseUrl: string?): any
 	return if okJ then body else "malformed body"
 end
 
-local function runSuite(family: string, target: string, rig: string?, clip: string?, twinResults: { any }?, sidecarBase: string?): any
+local function runSuite(
+	family: string,
+	target: string,
+	rig: string?,
+	clip: string?,
+	twinResults: { any }?,
+	sidecarBase: string?,
+	allowStaticGrip: boolean?
+): any
 	local clipName = clip or "SwordSwing"
 	local suite = SUITES[family]
 	if suite == nil then
@@ -146,13 +181,23 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 		for n in SUITES do
 			table.insert(names, n)
 		end
-		return { ok = false, error = "unknown suite family: " .. family .. " (available: " .. table.concat(names, ", ") .. ")" }
+		return {
+			ok = false,
+			error = "unknown suite family: " .. family .. " (available: " .. table.concat(
+				names,
+				", "
+			) .. ")",
+		}
 	end
 	local results = {}
 	local counts = { PASS = 0, FAIL = 0, UNKNOWN = 0 } :: { [string]: number }
 	local twin_pending: { string } = {}
 	local twin_plan: { any } = {}
 	for _, spec in suite.checks(target, rig, clipName) do
+		if spec.check == "weapon_channel_of" and allowStaticGrip == true then
+			-- retargeted held-weapon clips keep the grip channel static by design
+			spec.args.allow_static_grip = true
+		end
 		local r = OracleChecks.run(spec.check, spec.args)
 		table.insert(results, r)
 		counts[r.verdict] = (counts[r.verdict] or 0) + 1
@@ -163,7 +208,11 @@ local function runSuite(family: string, target: string, rig: string?, clip: stri
 			if twin ~= nil then
 				-- per-twin args: played_arc_of measures the rig+clip, the census twins the target
 				local argsJson = if twin == "played_arc_of"
-					then '{"rig":"' .. (rig or "game.Workspace.AgentRig") .. '","clip":"' .. clipName .. '"}'
+					then '{"rig":"'
+						.. (rig or "game.Workspace.AgentRig")
+						.. '","clip":"'
+						.. clipName
+						.. '"}'
 					else '{"target":"' .. target .. '"}'
 				table.insert(twin_plan, {
 					check = r.check,
@@ -254,11 +303,51 @@ local function selftest(): any
 	local blade = box("BladePart", Vector3.new(0.4, 4, 0.15), origin * CFrame.new(0, 2.6, 0))
 	local results = {}
 	local function expect(name: string, verdict: string, r: any)
-		table.insert(results, { name = name, expected = verdict, got = r.verdict, ok = r.verdict == verdict, reason = r.reason, magnitudes = r.magnitudes })
+		table.insert(results, {
+			name = name,
+			expected = verdict,
+			got = r.verdict,
+			ok = r.verdict == verdict,
+			reason = r.reason,
+			magnitudes = r.magnitudes,
+		})
 	end
-	expect("boxes intersect (overlapping)", "PASS", OracleChecks.run("intersects", { a = grip, b = box("Overlap", Vector3.new(1, 1, 1), origin) }))
-	expect("gap within limit", "PASS", OracleChecks.run("gap_between", { a = grip, b = blade, max_gap = 1.5 }))
-	expect("far boxes fail gap", "FAIL", OracleChecks.run("gap_between", { a = grip, b = box("Far", Vector3.new(1, 1, 1), origin * CFrame.new(20, 0, 0)), max_gap = 0.5 }))
+	expect(
+		"boxes intersect (overlapping)",
+		"PASS",
+		OracleChecks.run(
+			"intersects",
+			{ a = grip, b = box("Overlap", Vector3.new(1, 1, 1), origin) }
+		)
+	)
+	expect(
+		"gap within limit",
+		"PASS",
+		OracleChecks.run("gap_between", { a = grip, b = blade, max_gap = 1.5 })
+	)
+	expect(
+		"far boxes fail gap",
+		"FAIL",
+		OracleChecks.run("gap_between", {
+			a = grip,
+			b = box("Far", Vector3.new(1, 1, 1), origin * CFrame.new(20, 0, 0)),
+			max_gap = 0.5,
+		})
+	)
+	-- extents_profile: the toy blade is weapon-shaped (PASS); a photo-card slab FAILs (GIGO gate)
+	expect(
+		"blade-shaped extents pass profile",
+		"PASS",
+		OracleChecks.run("extents_profile", { target = blade })
+	)
+	expect(
+		"slab extents fail profile",
+		"FAIL",
+		OracleChecks.run(
+			"extents_profile",
+			{ target = box("Slab", Vector3.new(4, 3, 0.1), origin * CFrame.new(0, 0, 8)) }
+		)
+	)
 	-- mesh persistence: a naked MeshPart (empty MeshId, no local-rebuild data) FAILs; parts-only PASSes
 	do
 		local nakedHolder = Instance.new("Model")
@@ -268,12 +357,24 @@ local function selftest(): any
 		mp.Name = "NakedMesh"
 		mp.Anchored = true
 		mp.Parent = nakedHolder
-		expect("naked MeshPart fails persistence", "FAIL", OracleChecks.run("mesh_persisted", { target = nakedHolder }))
-		expect("parts-only target passes persistence", "PASS", OracleChecks.run("mesh_persisted", { target = grip }))
+		expect(
+			"naked MeshPart fails persistence",
+			"FAIL",
+			OracleChecks.run("mesh_persisted", { target = nakedHolder })
+		)
+		expect(
+			"parts-only target passes persistence",
+			"PASS",
+			OracleChecks.run("mesh_persisted", { target = grip })
+		)
 		-- upload-era arm (b): a recorded in-flight upload (pending attrs) passes without a MeshId
 		mp:SetAttribute("SAMeshAssetPending", true)
 		mp:SetAttribute("SAMeshAssetId", 125859573478095)
-		expect("pending-upload MeshPart passes persistence", "PASS", OracleChecks.run("mesh_persisted", { target = nakedHolder }))
+		expect(
+			"pending-upload MeshPart passes persistence",
+			"PASS",
+			OracleChecks.run("mesh_persisted", { target = nakedHolder })
+		)
 		mp:SetAttribute("SAMeshAssetPending", nil)
 		mp:SetAttribute("SAMeshAssetId", nil)
 	end
@@ -290,40 +391,126 @@ local function selftest(): any
 		dirs = { blade_dir = { x = 0, y = 1, z = 0 }, edge_dir = { x = 0, y = 0, z = 1 } },
 		roles = { hilt = { "GripPart" }, blade = { "BladePart" } },
 	})
-	table.insert(results, { name = "stamp accepts a valid frame", expected = true, got = stampOk, ok = stampOk == true })
-	expect("consistent frame passes", "PASS", OracleChecks.run("frame_consistent", { target = model }))
+	table.insert(results, {
+		name = "stamp accepts a valid frame",
+		expected = true,
+		got = stampOk,
+		ok = stampOk == true,
+	})
+	expect(
+		"consistent frame passes",
+		"PASS",
+		OracleChecks.run("frame_consistent", { target = model })
+	)
 	-- sabotage: declare blade_dir 90 degrees off -> the anti-lie layer must FAIL it
-	OracleFrames.stamp(model, { family = "melee-weapon", dirs = { blade_dir = { x = 1, y = 0, z = 0 } } })
-	expect("lying blade_dir is caught", "FAIL", OracleChecks.run("frame_consistent", { target = model }))
+	OracleFrames.stamp(
+		model,
+		{ family = "melee-weapon", dirs = { blade_dir = { x = 1, y = 0, z = 0 } } }
+	)
+	expect(
+		"lying blade_dir is caught",
+		"FAIL",
+		OracleChecks.run("frame_consistent", { target = model })
+	)
 	expect("unknown check reports UNKNOWN", "UNKNOWN", OracleChecks.run("no_such_check", {}))
 	-- twin-merge logic (pure; the twin IMPLEMENTATIONS live in the run-mode server and are
 	-- exercised live via `play oracle` — see liveVerify in the SP2 spec):
 	do
 		local pending = { "anchored_ok" }
-		local runPass = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = { anchored = 0, parts = 3 } }
+		local runPass = {
+			check = "anchored_weld_census",
+			verdict = "PASS",
+			context = "run",
+			magnitudes = { anchored = 0, parts = 3 },
+		}
 		local still1, disc1 = mergeTwins(pending, { runPass })
-		table.insert(results, { name = "run-context PASS twin discharges pending", expected = 0, got = #still1, ok = #still1 == 0 and disc1.anchored_ok ~= nil })
-		local editPass = { check = "anchored_weld_census", verdict = "PASS", context = "edit", magnitudes = { anchored = 0 } }
+		table.insert(results, {
+			name = "run-context PASS twin discharges pending",
+			expected = 0,
+			got = #still1,
+			ok = #still1 == 0 and disc1.anchored_ok ~= nil,
+		})
+		local editPass = {
+			check = "anchored_weld_census",
+			verdict = "PASS",
+			context = "edit",
+			magnitudes = { anchored = 0 },
+		}
 		local still2 = mergeTwins(pending, { editPass })
-		table.insert(results, { name = "edit-context twin does NOT discharge", expected = 1, got = #still2, ok = #still2 == 1 })
-		local noMag = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = {} }
+		table.insert(results, {
+			name = "edit-context twin does NOT discharge",
+			expected = 1,
+			got = #still2,
+			ok = #still2 == 1,
+		})
+		local noMag =
+			{ check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = {} }
 		local still3 = mergeTwins(pending, { noMag })
-		table.insert(results, { name = "magnitude-free twin does NOT discharge", expected = 1, got = #still3, ok = #still3 == 1 })
-		local runFail = { check = "anchored_weld_census", verdict = "FAIL", context = "run", magnitudes = { anchored = 2, parts = 3 } }
+		table.insert(results, {
+			name = "magnitude-free twin does NOT discharge",
+			expected = 1,
+			got = #still3,
+			ok = #still3 == 1,
+		})
+		local runFail = {
+			check = "anchored_weld_census",
+			verdict = "FAIL",
+			context = "run",
+			magnitudes = { anchored = 2, parts = 3 },
+		}
 		local still4, _, fails4 = mergeTwins(pending, { runFail })
-		table.insert(results, { name = "twin FAIL is a suite failure and does not discharge", expected = 1, got = #fails4, ok = #fails4 == 1 and #still4 == 1 })
+		table.insert(results, {
+			name = "twin FAIL is a suite failure and does not discharge",
+			expected = 1,
+			got = #fails4,
+			ok = #fails4 == 1 and #still4 == 1,
+		})
 		-- twin-source precedence (SP2e follow-up; pure — the /play/twins HTTP fetch is exercised live):
-		local witnessed = { check = "anchored_weld_census", verdict = "PASS", context = "run", magnitudes = { anchored = 0 } }
-		local callerForged = { check = "anchored_weld_census", verdict = "FAIL", context = "run", magnitudes = { anchored = 9 } }
-		local chosen5, note5 = chooseTwinSource({ session = 3, active = false, twins = { witnessed } }, { callerForged })
-		local sidecarWon = chosen5 ~= nil and chosen5[1] == witnessed and string.find(note5, "sidecar%-witnessed %(session 3%)") ~= nil
-		table.insert(results, { name = "sidecar-witnessed beats caller-supplied", expected = "sidecar", got = if sidecarWon then "sidecar" else "caller", ok = sidecarWon })
+		local witnessed = {
+			check = "anchored_weld_census",
+			verdict = "PASS",
+			context = "run",
+			magnitudes = { anchored = 0 },
+		}
+		local callerForged = {
+			check = "anchored_weld_census",
+			verdict = "FAIL",
+			context = "run",
+			magnitudes = { anchored = 9 },
+		}
+		local chosen5, note5 = chooseTwinSource(
+			{ session = 3, active = false, twins = { witnessed } },
+			{ callerForged }
+		)
+		local sidecarWon = chosen5 ~= nil
+			and chosen5[1] == witnessed
+			and string.find(note5, "sidecar%-witnessed %(session 3%)") ~= nil
+		table.insert(results, {
+			name = "sidecar-witnessed beats caller-supplied",
+			expected = "sidecar",
+			got = if sidecarWon then "sidecar" else "caller",
+			ok = sidecarWon,
+		})
 		local chosen6, note6 = chooseTwinSource("HTML error page, not JSON", { callerForged })
-		local fellOpen6 = chosen6 ~= nil and chosen6[1] == callerForged and string.find(note6, "caller%-supplied") ~= nil
-		table.insert(results, { name = "malformed sidecar body falls open to caller-supplied", expected = "caller", got = if fellOpen6 then "caller" else "other", ok = fellOpen6 })
+		local fellOpen6 = chosen6 ~= nil
+			and chosen6[1] == callerForged
+			and string.find(note6, "caller%-supplied") ~= nil
+		table.insert(results, {
+			name = "malformed sidecar body falls open to caller-supplied",
+			expected = "caller",
+			got = if fellOpen6 then "caller" else "other",
+			ok = fellOpen6,
+		})
 		local chosen7, note7 = chooseTwinSource(nil, { callerForged })
-		local fellOpen7 = chosen7 ~= nil and chosen7[1] == callerForged and string.find(note7, "unreachable") ~= nil
-		table.insert(results, { name = "unreachable sidecar (404 today) falls open to caller-supplied", expected = "caller", got = if fellOpen7 then "caller" else "other", ok = fellOpen7 })
+		local fellOpen7 = chosen7 ~= nil
+			and chosen7[1] == callerForged
+			and string.find(note7, "unreachable") ~= nil
+		table.insert(results, {
+			name = "unreachable sidecar (404 today) falls open to caller-supplied",
+			expected = "caller",
+			got = if fellOpen7 then "caller" else "other",
+			ok = fellOpen7,
+		})
 	end
 	-- tool_clip_current pure logic (grip-stamp staleness — the stale-clip saga check; the
 	-- Anims/* attribute plumbing is exercised live via stampToolClips on a real Tool):
@@ -331,11 +518,32 @@ local function selftest(): any
 		local OC: any = OracleChecks
 		local stampNow = OC.gripStampOf(CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(140), 0, 0))
 		local stampOld = OC.gripStampOf(CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(141), 0, 0))
-		table.insert(results, { name = "grip stamp is rotation-sensitive (1 deg changes it)", expected = true, got = stampNow ~= stampOld, ok = stampNow ~= stampOld })
-		expect("matching clip stamp passes", "PASS", OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampNow } }))
-		expect("mismatched clip stamp fails (stale clip)", "FAIL", OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampOld } }))
-		expect("unstamped clip is UNKNOWN (fail-open)", "UNKNOWN", OC.clipStampVerdict(stampNow, { { name = "use" } }))
-		expect("mismatch beats unstamped (a proven-stale clip FAILs)", "FAIL", OC.clipStampVerdict(stampNow, { { name = "idle" }, { name = "use", stamp = stampOld } }))
+		table.insert(results, {
+			name = "grip stamp is rotation-sensitive (1 deg changes it)",
+			expected = true,
+			got = stampNow ~= stampOld,
+			ok = stampNow ~= stampOld,
+		})
+		expect(
+			"matching clip stamp passes",
+			"PASS",
+			OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampNow } })
+		)
+		expect(
+			"mismatched clip stamp fails (stale clip)",
+			"FAIL",
+			OC.clipStampVerdict(stampNow, { { name = "use", stamp = stampOld } })
+		)
+		expect(
+			"unstamped clip is UNKNOWN (fail-open)",
+			"UNKNOWN",
+			OC.clipStampVerdict(stampNow, { { name = "use" } })
+		)
+		expect(
+			"mismatch beats unstamped (a proven-stale clip FAILs)",
+			"FAIL",
+			OC.clipStampVerdict(stampNow, { { name = "idle" }, { name = "use", stamp = stampOld } })
+		)
 		expect("no clips at all is UNKNOWN", "UNKNOWN", OC.clipStampVerdict(stampNow, {}))
 	end
 	-- weapon-chain first-class (weapon-as-limb, 2026-07-11; hardened same-day after the
@@ -376,13 +584,33 @@ local function selftest(): any
 		cjoint("SegA", handle, segA)
 		cjoint("SegB", segA, segB)
 		local jc = OracleChecks.run("joint_census", { rig = chainRig })
-		local jcOk = jc.verdict == "PASS" and jc.magnitudes.weapon_motor6d == 3 and jc.magnitudes.motor6d == 1
-		table.insert(results, { name = "census splits weapon-chain joints from body joints (3 weapon / 1 body)", expected = "PASS w=3 b=1", got = jc.verdict .. " w=" .. tostring(jc.magnitudes.weapon_motor6d) .. " b=" .. tostring(jc.magnitudes.motor6d), ok = jcOk, reason = jc.reason })
+		local jcOk = jc.verdict == "PASS"
+			and jc.magnitudes.weapon_motor6d == 3
+			and jc.magnitudes.motor6d == 1
+		table.insert(results, {
+			name = "census splits weapon-chain joints from body joints (3 weapon / 1 body)",
+			expected = "PASS w=3 b=1",
+			got = jc.verdict
+				.. " w="
+				.. tostring(jc.magnitudes.weapon_motor6d)
+				.. " b="
+				.. tostring(jc.magnitudes.motor6d),
+			ok = jcOk,
+			reason = jc.reason,
+		})
 		-- couple the selftest to the PRODUCTION chain walk (not just the oracle's own BFS):
 		-- add_keyframe {weapon=true} keys exactly what weaponChildNames returns
 		local wnames = AnimationClip.weaponChildNames(chainRig)
-		local wOk = #wnames == 3 and wnames[1] == "Handle" and wnames[2] == "SegA" and wnames[3] == "SegB"
-		table.insert(results, { name = "production weaponChildNames walks the depth-2 chain", expected = "Handle,SegA,SegB", got = table.concat(wnames, ","), ok = wOk })
+		local wOk = #wnames == 3
+			and wnames[1] == "Handle"
+			and wnames[2] == "SegA"
+			and wnames[3] == "SegB"
+		table.insert(results, {
+			name = "production weaponChildNames walks the depth-2 chain",
+			expected = "Handle,SegA,SegB",
+			got = table.concat(wnames, ","),
+			ok = wOk,
+		})
 		-- fabricated clip rooted at the rig root (Forearm): Forearm > RightHand > Handle > SegA > SegB
 		local saves = Instance.new("Folder")
 		saves.Name = "AnimSaves"
@@ -394,7 +622,10 @@ local function selftest(): any
 			p.Parent = parent
 			return p
 		end
-		local function mkclip(clipName: string, kfSpecs: { { handle: CFrame, segA: CFrame?, segB: CFrame?, strayA: CFrame? } }): KeyframeSequence
+		local function mkclip(
+			clipName: string,
+			kfSpecs: { { handle: CFrame, segA: CFrame?, segB: CFrame?, strayA: CFrame? } }
+		): KeyframeSequence
 			local ks = Instance.new("KeyframeSequence")
 			ks.Name = clipName
 			ks.Parent = saves
@@ -422,12 +653,31 @@ local function selftest(): any
 		end
 		local ks = mkclip("ChainClip", {
 			{ handle = CFrame.identity, segA = CFrame.identity, segB = CFrame.identity },
-			{ handle = CFrame.Angles(math.rad(40), 0, 0), segA = CFrame.Angles(0, 0, math.rad(30)), segB = CFrame.Angles(0, 0, math.rad(20)) },
+			{
+				handle = CFrame.Angles(math.rad(40), 0, 0),
+				segA = CFrame.Angles(0, 0, math.rad(30)),
+				segB = CFrame.Angles(0, 0, math.rad(20)),
+			},
 		})
-		expect("weapon_channel_of passes a fully-driven grip+chain (default)", "PASS", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" }))
-		local wc = OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip", require_chain = true })
-		local wcOk = wc.verdict == "PASS" and wc.magnitudes.chain_joints == 2 and math.abs((wc.magnitudes.chain_swept_deg or 0) - 30) < 1
-		table.insert(results, { name = "require_chain passes with EVERY channel keyed (chain_joints=2, swept ~30)", expected = "PASS chain 30", got = wc.verdict .. " chain " .. tostring(wc.magnitudes.chain_swept_deg), ok = wcOk, reason = wc.reason })
+		expect(
+			"weapon_channel_of passes a fully-driven grip+chain (default)",
+			"PASS",
+			OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" })
+		)
+		local wc = OracleChecks.run(
+			"weapon_channel_of",
+			{ rig = chainRig, clip = "ChainClip", require_chain = true }
+		)
+		local wcOk = wc.verdict == "PASS"
+			and wc.magnitudes.chain_joints == 2
+			and math.abs((wc.magnitudes.chain_swept_deg or 0) - 30) < 1
+		table.insert(results, {
+			name = "require_chain passes with EVERY channel keyed (chain_joints=2, swept ~30)",
+			expected = "PASS chain 30",
+			got = wc.verdict .. " chain " .. tostring(wc.magnitudes.chain_swept_deg),
+			ok = wcOk,
+			reason = wc.reason,
+		})
 		-- freeze the segments (keyed but identity): idle clips are legitimate -> default PASS;
 		-- require_chain (a strike contract) FAILs on zero sweep
 		for _, kf in ks:GetKeyframes() do
@@ -437,8 +687,19 @@ local function selftest(): any
 				end
 			end
 		end
-		expect("keyed-but-static chain passes the default contract (idle clips)", "PASS", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" }))
-		expect("require_chain fails a static (zero-sweep) chain", "FAIL", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip", require_chain = true }))
+		expect(
+			"keyed-but-static chain passes the default contract (idle clips)",
+			"PASS",
+			OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" })
+		)
+		expect(
+			"require_chain fails a static (zero-sweep) chain",
+			"FAIL",
+			OracleChecks.run(
+				"weapon_channel_of",
+				{ rig = chainRig, clip = "ChainClip", require_chain = true }
+			)
+		)
 		-- partial keying: drop SegB poses entirely -> require_chain fails 1/2 channels
 		for _, kf in ks:GetKeyframes() do
 			local pB = (kf :: Keyframe):FindFirstChild("SegB", true)
@@ -454,7 +715,14 @@ local function selftest(): any
 				pA.CFrame = CFrame.Angles(0, 0, math.rad(30))
 			end
 		end
-		expect("require_chain fails a partially-keyed chain (1/2 channels)", "FAIL", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip", require_chain = true }))
+		expect(
+			"require_chain fails a partially-keyed chain (1/2 channels)",
+			"FAIL",
+			OracleChecks.run(
+				"weapon_channel_of",
+				{ rig = chainRig, clip = "ChainClip", require_chain = true }
+			)
+		)
 		-- unkeyed chain: drop SegA too -> the DEFAULT contract escalates (articulated weapon,
 		-- chain never keyed = the forgot-weapon=true / regression defect class)
 		for _, kf in ks:GetKeyframes() do
@@ -463,24 +731,53 @@ local function selftest(): any
 				pA:Destroy()
 			end
 		end
-		expect("DEFAULT fails an articulated weapon whose chain is never keyed", "FAIL", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" }))
+		expect(
+			"DEFAULT fails an articulated weapon whose chain is never keyed",
+			"FAIL",
+			OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "ChainClip" })
+		)
 		-- root-connectivity: a stray unrooted subtree carrying big rotations must NOT satisfy
 		-- the chain sweep (the Animator would never play it)
 		mkclip("StrayClip", {
-			{ handle = CFrame.identity, segA = CFrame.identity, segB = CFrame.identity, strayA = CFrame.Angles(0, 0, math.rad(50)) },
-			{ handle = CFrame.Angles(math.rad(40), 0, 0), segA = CFrame.identity, segB = CFrame.identity, strayA = CFrame.Angles(0, 0, math.rad(-50)) },
+			{
+				handle = CFrame.identity,
+				segA = CFrame.identity,
+				segB = CFrame.identity,
+				strayA = CFrame.Angles(0, 0, math.rad(50)),
+			},
+			{
+				handle = CFrame.Angles(math.rad(40), 0, 0),
+				segA = CFrame.identity,
+				segB = CFrame.identity,
+				strayA = CFrame.Angles(0, 0, math.rad(-50)),
+			},
 		})
-		expect("an unrooted stray subtree cannot fake the chain sweep (require_chain)", "FAIL", OracleChecks.run("weapon_channel_of", { rig = chainRig, clip = "StrayClip", require_chain = true }))
+		expect(
+			"an unrooted stray subtree cannot fake the chain sweep (require_chain)",
+			"FAIL",
+			OracleChecks.run(
+				"weapon_channel_of",
+				{ rig = chainRig, clip = "StrayClip", require_chain = true }
+			)
+		)
 		-- MIXED arm: a weapon Motor6D chain + a body AnimationConstraint = the T-pose trap
 		local ac = Instance.new("AnimationConstraint")
 		ac.Parent = forearm
-		expect("census fails a MIXED weapon-Motor6D + AnimationConstraint rig", "FAIL", OracleChecks.run("joint_census", { rig = chainRig }))
+		expect(
+			"census fails a MIXED weapon-Motor6D + AnimationConstraint rig",
+			"FAIL",
+			OracleChecks.run("joint_census", { rig = chainRig })
+		)
 		ac:Destroy()
 		-- duplicate pose-channel name (a second SegA part): the Animator matches by part NAME,
 		-- so this silently clobbers a channel — census must FAIL loudly
 		local segDup = cpart("SegA", toolInst)
 		cjoint("SegADup", segA, segDup)
-		expect("census fails duplicate pose-channel names", "FAIL", OracleChecks.run("joint_census", { rig = chainRig }))
+		expect(
+			"census fails duplicate pose-channel names",
+			"FAIL",
+			OracleChecks.run("joint_census", { rig = chainRig })
+		)
 	end
 	folder:Destroy()
 	local failures = 0
@@ -495,14 +792,19 @@ end
 -- Register the selftest as a first-class check so it runs through OracleChecks.run (with the
 -- standard validity/context/cost_ms envelope). selftest() returns {ok, failures, results},
 -- so wrap it into the {verdict, reason, magnitudes} result shape the registry expects.
-OracleChecks.register("__selftest", "EDIT_OK", "Builds fixtures and asserts expected verdicts; cleans up.", function(_args)
-	local r = selftest()
-	return {
-		verdict = if r.ok then "PASS" else "FAIL",
-		reason = if r.ok then nil else (r.failures .. " selftest rows failed"),
-		magnitudes = r,
-	}
-end)
+OracleChecks.register(
+	"__selftest",
+	"EDIT_OK",
+	"Builds fixtures and asserts expected verdicts; cleans up.",
+	function(_args)
+		local r = selftest()
+		return {
+			verdict = if r.ok then "PASS" else "FAIL",
+			reason = if r.ok then nil else (r.failures .. " selftest rows failed"),
+			magnitudes = r,
+		}
+	end
+)
 
 Oracle.descriptors = {
 	{
@@ -522,7 +824,10 @@ Oracle.descriptors = {
 			type = "object",
 			properties = {
 				check = { type = "string", description = "check name from the registry" },
-				args = { type = "object", description = "check arguments (paths as dot-paths, e.g. game.StarterPack.Sword)" },
+				args = {
+					type = "object",
+					description = "check arguments (paths as dot-paths, e.g. game.StarterPack.Sword)",
+				},
 			},
 			required = { "check" },
 		},
@@ -544,8 +849,21 @@ Oracle.descriptors = {
 			properties = {
 				family = { type = "string" },
 				target = { type = "string", description = "dot-path to the Tool/Model under test" },
-				rig = { type = "string", description = "optional dot-path to the rig (default workspace.AgentRig)" },
-				clip = { type = "string", description = "clip name for the animation checks (default SwordSwing)" },
+				rig = {
+					type = "string",
+					description = "optional dot-path to the rig (default workspace.AgentRig)",
+				},
+				clip = {
+					type = "string",
+					description = "clip name for the animation checks (default SwordSwing)",
+				},
+				allow_static_grip = {
+					type = "boolean",
+					description = "true for RETARGETED full-body clips (Kimodo/SOMA): the grip "
+						.. "channel is legitimately static (the sword rides the arm) — "
+						.. "weapon_channel_of skips its sweep bound. Leave unset for authored "
+						.. "weapon-swing clips.",
+				},
 				twin_results = {
 					type = "array",
 					description = "run-mode twin envelopes: the VERBATIM JSON objects `play oracle` returned "
@@ -572,7 +890,8 @@ Oracle.descriptors = {
 				if args.rig ~= nil then tostring(args.rig) else nil,
 				if args.clip ~= nil then tostring(args.clip) else nil,
 				if type(args.twin_results) == "table" then args.twin_results else nil,
-				sidecarBase
+				sidecarBase,
+				args.allow_static_grip == true
 			)
 			return encode(r), r.ok ~= true
 		end,
@@ -611,7 +930,15 @@ Oracle.descriptors = {
 					table.insert(roles[role], p.Name)
 				end
 			end
-			return encode({ ok = true, family = frame.family, points = points, dirs = dirs, roles = roles, missing = frame.missing }), false
+			return encode({
+				ok = true,
+				family = frame.family,
+				points = points,
+				dirs = dirs,
+				roles = roles,
+				missing = frame.missing,
+			}),
+				false
 		end,
 	},
 	{
@@ -635,7 +962,8 @@ Oracle.descriptors = {
 			if inst == nil then
 				return encode({ ok = false, error = err or "not found" }), true
 			end
-			local summary, ok = OracleFrames.stamp(inst, if type(args.frame) == "table" then args.frame else {})
+			local summary, ok =
+				OracleFrames.stamp(inst, if type(args.frame) == "table" then args.frame else {})
 			summary.ok = ok
 			return encode(summary), not ok
 		end,

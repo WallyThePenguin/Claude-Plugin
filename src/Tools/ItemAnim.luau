@@ -14,6 +14,7 @@ local Selection = game:GetService("Selection")
 
 local AnimationClip = require(script.Parent.Parent.AnimationClip)
 local RuntimeInstaller = require(script.Parent.Parent.RuntimeInstaller)
+local OracleChecks = require(script.Parent.OracleChecks)
 local Path = require(script.Parent.Path)
 
 local ItemAnim = {}
@@ -170,6 +171,10 @@ local function storeClip(tool: Tool, event: string, source: KeyframeSequence): K
 	copy.Loop = cfg.loop
 	copy.Priority = cfg.priority
 	copy.Parent = anims
+	-- Stamp the copy against the CURRENT Tool.Grip (SAClipGripStamp) — the authoring tool owns
+	-- the stamp per tool_clip_current's contract; unstamped copies leave the oracle fail-open
+	-- UNKNOWN forever (live-caught on the ForgeLongsword suite, 2026-07-25).
+	OracleChecks.stampToolClips(tool)
 	return copy
 end
 
@@ -263,9 +268,9 @@ local function runBind(input: any, context: any): (any, boolean)
 	end
 	msg = msg
 		.. " NOTE: dev-loop playback is Studio-solo only (RegisterKeyframeSequence); shipping/multiplayer needs a published AnimationId (Open Cloud follow-up)."
-	msg ..= " ["
-		.. (if libOk then libNote else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")")
-		.. "]"
+	msg ..= " [" .. (if libOk
+		then libNote
+		else "runtime library unavailable — stamped the legacy full source (" .. libNote .. ")") .. "]"
 	return msg, false
 end
 
