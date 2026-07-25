@@ -30,19 +30,19 @@ ToolFactory.REST_CANT_DEG = 50
 -- must stay under grip_sane's 0.6-stud grip_offset bound.
 ToolFactory.REST_FORWARD_STUDS = 0.4
 
--- HOLD FRAME (user-validated 2026-07-25, "candidate B" — supersedes the 07-12 "candidate 2"
--- knuckles hold): when a mesh declares BOTH blade_dir and edge_dir, gripFromFrame aligns the FULL
--- handle frame — blade UP-FORWARD 45 deg out of the fist (the classic Roblox carry), cutting edge
--- forward-down, Semantic_Grip seated at the RightGripAttachment. WHY the change: the knuckles
--- hold was picked from STATIC candidates and read fine at rest, but under RETARGETED swing clips
--- the knuckles face BACKWARD in guard/cut phases, so the blade aimed behind the character (user:
--- "feels like the opposite direction" — confirmed on the side-view filmstrip comparison; the
--- animation-compatible hold keeps the blade forward through the arc). Method, again: render
--- candidates under the ACTUAL CLIP, let the user point. Constraining the edge still kills free
+-- HOLD FRAME (user-validated 2026-07-12 "candidate 2"; REAFFIRMED 2026-07-25 after a same-day
+-- experiment): when a mesh declares BOTH blade_dir and edge_dir, gripFromFrame aligns the FULL
+-- handle frame — blade out the hand's FRONT (-Z), cutting edge DOWN toward the palm,
+-- Semantic_Grip seated at the RightGripAttachment. HISTORY (don't re-litigate without NEW
+-- evidence): on 2026-07-25 the user felt the sword read "opposite" under the SwordSlash clip;
+-- a classic up-forward-45 hold (candidate B) was picked from side-view filmstrip montages,
+-- applied, then REVERTED the same day — the user disliked 45 live in Studio. The knuckles hold
+-- stands as the convention. Candidate renders ride grip_tool's holdBlade/holdEdge overrides;
+-- judge them IN STUDIO live, not only from montage tiles. Constraining the edge kills free
 -- roll (the "sword on its side" bug). Hand-local unit directions (one source of truth —
 -- grip_sane asserts THESE):
-ToolFactory.HOLD_BLADE_DIR = Vector3.new(0, 1, -1).Unit -- blade up-forward 45 out of the fist
-ToolFactory.HOLD_EDGE_DIR = Vector3.new(0, -1, -1).Unit -- edge forward-down (orthogonal to blade)
+ToolFactory.HOLD_BLADE_DIR = Vector3.new(0, 0, -1) -- blade out the hand's front (-Z)
+ToolFactory.HOLD_EDGE_DIR = Vector3.new(0, -1, 0) -- cutting edge down toward the palm
 
 export type Vec3ish = { x: number?, y: number?, z: number? }
 export type Rotish = { rx: number?, ry: number?, rz: number? }
