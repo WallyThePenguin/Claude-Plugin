@@ -79,11 +79,24 @@ def ensure_server(log_dir=None):
         os.makedirs(log_dir, exist_ok=True)
         out = open(os.path.join(log_dir, "trellis-out.log"), "ab")
         err = open(os.path.join(log_dir, "trellis-err.log"), "ab")
+    # Belt-and-suspenders device pin (2026-07-25, live-caught): GGML_VK_VISIBLE_DEVICES alone
+    # did NOT hold — ggml-vulkan's default picks the LARGEST-memory device, so the 48GB AMD UMA
+    # pool beats the 8GB NVIDIA card and every run lands on the falsified iGPU crawl lane
+    # ("using Vulkan1 (48784 MB)"). The server's native --gpu N is authoritative; always pass it
+    # when VULKAN_DEVICES names a single device. VERIFY via the "[trellis] using VulkanN" line.
+    args = [SERVER_EXE, "-m", MODELS_DIR, "--host", HOST, "--port", str(PORT)]
+    if VULKAN_DEVICES not in (None, "") and VULKAN_DEVICES.isdigit():
+        args += ["--gpu", VULKAN_DEVICES]
     _server_proc = subprocess.Popen(
-        [SERVER_EXE, "-m", MODELS_DIR, "--host", HOST, "--port", str(PORT)],
+        args,
         stdout=out,
         stderr=err,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        # env= was MISSING here since day one — the GGML_VK_VISIBLE_DEVICES pin above was
+        # built and silently discarded (2026-07-16 only held because the shell ALSO exported
+        # it). Without the filter, ggml-vulkan picks the largest-memory device: the 48GB AMD
+        # UMA pool wins over the 8GB NVIDIA card = the falsified crawl lane.
+        env=env,
     )
     deadline = time.time() + HEALTH_TIMEOUT_S
     while time.time() < deadline:
