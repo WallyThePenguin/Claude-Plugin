@@ -307,7 +307,8 @@
    ],
    "repro": "oracle_suite {family:melee-weapon, target:DivineRapier, clip:RapierThrust, allow_static_grip:true} - fleet re-grade 2026-07-25",
    "seenCount": 1,
-   "lastSeenAt": 1784975000
+   "lastSeenAt": 1784975000,
+   "resolution": "RESOLVED 2026-07-26 - the VOCABULARY gap was real and is fixed, but MY DIAGNOSIS OF THE CLIP WAS WRONG. clip_arc_of is now CLASS-AWARE: slash asserts angular sweep (min_sweep 60, unchanged); thrust asserts linear extension (min_extension 1.0 studs) AND axial_frac >= min_axial_frac (0.5) = the share of the tip's path running ALONG the blade axis. The class is DECLARED (arg, else the clip's SAClipMotionClass attribute, else slash) and NEVER inferred from the numbers - a check that picks its own bar can rubber-stamp anything by choosing whichever class it already passes. Anti-Goodhart property, live-proven: declaring the WRONG class FAILs (the longsword's slash declared thrust -> FAIL 'only 0.42 of the tip's path runs along the blade axis (min 0.5) - this reads as a CUT'). Instrument validated on synthetic paths through the identical formula: pure thrust 1.000, pure arc 0.105, arc+rise 0.051. THE CORRECTION: with a real thrust instrument in hand, RapierThrust FAILS THE THRUST BAR TOO (axial_frac 0.231, extension 1.50, sweep 30.8) - it is LESS axial than an actual slash (longsword 0.417), i.e. the clip is a salute/flourish (matching its own 07-12 filmstrip note 'vertical salute -> diagonal sweeps'), not a committed attack of either class. The suite was RIGHT to fail it; the filed premise ('a healthy thrust failing on the wrong axis') was inferred from reach/path magnitudes that do not discriminate class. Lesson: a magnitude that is merely LARGE is not evidence of a KIND. CALIBRATION NOTE: min_axial_frac 0.5 sits close above the one real slash measured (0.42) - provisional until a real thrust clip calibrates the ceiling."
   }
  ]
 }

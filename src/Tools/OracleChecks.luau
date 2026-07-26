@@ -95,8 +95,10 @@ end
 local function fail(reason: string, mag: any): any
 	return { verdict = "FAIL", reason = reason, magnitudes = mag }
 end
-local function unknown(reason: string): any
-	return { verdict = "UNKNOWN", reason = reason, magnitudes = {} }
+local function unknown(reason: string, mag: any?): any
+	-- magnitudes ride EVERY result (SP2 §2.1) — an UNKNOWN that already measured something
+	-- should still hand the numbers over rather than swallow them.
+	return { verdict = "UNKNOWN", reason = reason, magnitudes = mag or {} }
 end
 M.pass, M.fail, M.unknown = pass, fail, unknown
 
@@ -966,7 +968,7 @@ end
 register(
 	"clip_arc_of",
 	"EDIT_MISLEADS",
-	"Samples clip {clip} on rig {rig} kinematically and traces the DECLARED Semantic_BladeTip of {tool}. Magnitudes: sweep_deg, path_studs, max_reach. PASS if sweep >= {min_sweep (default 60)}. EDIT_MISLEADS: the StepAnimations(0) scrub bypasses the runtime Animator (fade/blend/priority/locomotion) — needs the played_arc_of run twin.",
+	"Samples clip {clip} on rig {rig} kinematically and traces the DECLARED Semantic_BladeTip of {tool}. CLASS-AWARE: a SLASH is asserted on angular sweep >= {min_sweep (default 60)}; a THRUST on linear extension >= {min_extension (default 1.0)} studs AND {min_axial_frac (default 0.5)} of the tip's path lying ALONG the blade axis (a thrust's payoff is reach, not sweep — a healthy fencing thrust failed the slash prior at 34 deg). Class = {motion_class} arg, else the clip's SAClipMotionClass attribute, else slash. Declaring the WRONG class FAILS (a slash's tip travels across its own axis, so it cannot pass the axial bar) — the declaration can never rescue a bad clip. All magnitudes ride every result regardless of class. EDIT_MISLEADS: the StepAnimations(0) scrub bypasses the runtime Animator (fade/blend/priority/locomotion) — needs the played_arc_of run twin.",
 	function(args)
 		local rig = if typeof(args.rig) == "Instance"
 			then args.rig
@@ -994,25 +996,46 @@ register(
 		if not tool:IsDescendantOf(rig) then
 			return unknown("tool is not equipped on the rig — grip_tool first")
 		end
+		local gripAtt = if handle ~= nil then handle:FindFirstChild("Semantic_Grip") else nil
 		local positions = {}
-		local errMsg = scrubClip(
-			rig :: Model,
-			tostring(args.clip or "SwordSwing"),
-			tonumber(args.samples) or 12,
-			function(_t)
-				table.insert(positions, (tipAtt :: Attachment).WorldPosition)
+		local gripPositions = {}
+		local clipName = tostring(args.clip or "SwordSwing")
+		local errMsg = scrubClip(rig :: Model, clipName, tonumber(args.samples) or 12, function(_t)
+			table.insert(positions, (tipAtt :: Attachment).WorldPosition)
+			if gripAtt ~= nil and gripAtt:IsA("Attachment") then
+				table.insert(gripPositions, (gripAtt :: Attachment).WorldPosition)
 			end
-		)
+		end)
 		if errMsg ~= nil then
 			return unknown(errMsg)
 		end
 		local pathLen, maxReach = 0, 0
+		local minReach = math.huge
 		for i, p in positions do
 			if i > 1 then
 				pathLen += (p - positions[i - 1]).Magnitude
 			end
-			maxReach = math.max(maxReach, (p - (root :: BasePart).Position).Magnitude)
+			local reach = (p - (root :: BasePart).Position).Magnitude
+			maxReach = math.max(maxReach, reach)
+			minReach = math.min(minReach, reach)
 		end
+		-- THRUST instruments. extension = how far the tip travels AWAY from the body over the
+		-- clip (a thrust's payoff); axial_frac = how much of the tip's path runs ALONG the
+		-- blade's own axis, which is what separates a stab from a cut — a slash's tip travels
+		-- ACROSS its axis, so a mis-declared slash cannot pass this bar.
+		local extension = if minReach < math.huge then maxReach - minReach else 0
+		local axialSum, pathSum = 0, 0
+		if #gripPositions == #positions then
+			for i = 1, #positions - 1 do
+				local blade = positions[i] - gripPositions[i]
+				local d = positions[i + 1] - positions[i]
+				if blade.Magnitude > 1e-3 and d.Magnitude > 1e-4 then
+					axialSum += math.abs(d:Dot(blade.Unit))
+					pathSum += d.Magnitude
+				end
+			end
+		end
+		local axialFrac = if pathSum > 0 then axialSum / pathSum else nil
 		local sweep = 0
 		local rootPos = (root :: BasePart).Position
 		for i = 1, #positions do
@@ -1027,12 +1050,64 @@ register(
 			end
 		end
 		local minSweep = tonumber(args.min_sweep) or 60
+		local minExtension = tonumber(args.min_extension) or 1.0
+		local minAxial = tonumber(args.min_axial_frac) or 0.5
+		-- The class is DECLARED (arg, else the clip's own attribute, else slash) — never
+		-- inferred from the numbers: a check that picks its own bar can rubber-stamp any
+		-- clip by choosing whichever class it already passes.
+		local saves = rig:FindFirstChild("AnimSaves")
+		local ks = if saves ~= nil then saves:FindFirstChild(clipName) else nil
+		local declared = args.motion_class
+			or (if ks ~= nil then ks:GetAttribute("SAClipMotionClass") else nil)
+		local class = string.lower(tostring(declared or "slash"))
+		if class ~= "slash" and class ~= "thrust" then
+			return unknown("unknown motion_class '" .. class .. "' (use slash|thrust)")
+		end
 		local mag = {
+			motion_class = class,
+			class_source = if args.motion_class ~= nil
+				then "arg"
+				elseif declared ~= nil then "clip attribute SAClipMotionClass"
+				else "default",
 			sweep_deg = sweep,
+			min_sweep = minSweep,
+			extension_studs = extension,
+			min_extension = minExtension,
+			axial_frac = axialFrac,
+			min_axial_frac = minAxial,
 			path_studs = pathLen,
 			max_reach_studs = maxReach,
 			samples = #positions,
 		}
+		if class == "thrust" then
+			if axialFrac == nil then
+				return unknown(
+					"thrust needs the Semantic_Grip attachment to measure axial travel — stamp_frame first",
+					mag
+				)
+			end
+			if extension < minExtension then
+				return fail(
+					"thrust extends the tip only "
+						.. string.format("%.2f", extension)
+						.. " studs (min "
+						.. minExtension
+						.. ")",
+					mag
+				)
+			end
+			if axialFrac < minAxial then
+				return fail(
+					"only "
+						.. string.format("%.2f", axialFrac)
+						.. " of the tip's path runs along the blade axis (min "
+						.. minAxial
+						.. ") — this reads as a CUT, not a thrust; check the declared class",
+					mag
+				)
+			end
+			return pass(mag)
+		end
 		return if sweep >= minSweep
 			then pass(mag)
 			else fail(
