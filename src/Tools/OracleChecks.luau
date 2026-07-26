@@ -1000,8 +1000,14 @@ register(
 		local positions = {}
 		local gripPositions = {}
 		local clipName = tostring(args.clip or "SwordSwing")
-		local errMsg = scrubClip(rig :: Model, clipName, tonumber(args.samples) or 12, function(_t)
+		local times = {}
+		-- 24 samples (not 12): axial travel is sampling-SENSITIVE — the chord between widely
+		-- spaced samples of a ROTATING blade understates axial travel, and the measured value
+		-- kept moving with density (0.374 @12 -> 0.247 @90 on one clip). Denser is truer; 24
+		-- is stable enough to compare clips and still inside the check's time budget.
+		local errMsg = scrubClip(rig :: Model, clipName, tonumber(args.samples) or 24, function(t)
 			table.insert(positions, (tipAtt :: Attachment).WorldPosition)
+			table.insert(times, t)
 			if gripAtt ~= nil and gripAtt:IsA("Attachment") then
 				table.insert(gripPositions, (gripAtt :: Attachment).WorldPosition)
 			end
@@ -1020,22 +1026,58 @@ register(
 			minReach = math.min(minReach, reach)
 		end
 		-- THRUST instruments. extension = how far the tip travels AWAY from the body over the
-		-- clip (a thrust's payoff); axial_frac = how much of the tip's path runs ALONG the
-		-- blade's own axis, which is what separates a stab from a cut — a slash's tip travels
-		-- ACROSS its axis, so a mis-declared slash cannot pass this bar.
+		-- clip (a thrust's payoff); axial travel = how much of the tip's path runs ALONG the
+		-- blade's own axis, which is what separates a stab from a cut (a slash's tip travels
+		-- ACROSS its axis, so a mis-declared slash cannot pass).
+		--
+		-- The verdict keys on the PEAK WINDOW, not the whole-clip average: an attack clip is
+		-- wind-up + committed beat + recovery, and the arcs on either side dilute the beat to
+		-- nothing (a purpose-generated fencing lunge averaged 0.25 whole-clip — indistinguishable
+		-- from a flourish — while its extension beat is the part that matters). Whole-clip stays
+		-- as a reported magnitude; it answers "is this clip ALL thrust", not "does it CONTAIN one".
 		local extension = if minReach < math.huge then maxReach - minReach else 0
-		local axialSum, pathSum = 0, 0
+		local axialSteps, lenSteps = {}, {}
 		if #gripPositions == #positions then
 			for i = 1, #positions - 1 do
 				local blade = positions[i] - gripPositions[i]
 				local d = positions[i + 1] - positions[i]
 				if blade.Magnitude > 1e-3 and d.Magnitude > 1e-4 then
-					axialSum += math.abs(d:Dot(blade.Unit))
-					pathSum += d.Magnitude
+					table.insert(axialSteps, math.abs(d:Dot(blade.Unit)))
+					table.insert(lenSteps, d.Magnitude)
+				else
+					table.insert(axialSteps, 0)
+					table.insert(lenSteps, 0)
 				end
 			end
 		end
+		local axialSum, pathSum = 0, 0
+		for i, a in axialSteps do
+			axialSum += a
+			pathSum += lenSteps[i]
+		end
 		local axialFrac = if pathSum > 0 then axialSum / pathSum else nil
+		-- Best contiguous window covering `axial_window_frac` of the clip (default 25%).
+		local windowFrac = math.clamp(tonumber(args.axial_window_frac) or 0.25, 0.05, 1)
+		local win = math.max(2, math.floor(#axialSteps * windowFrac + 0.5))
+		local peakFrac, peakAt = nil :: number?, 0
+		if #axialSteps >= win and pathSum > 0 then
+			for s = 1, #axialSteps - win + 1 do
+				local wa, wl = 0, 0
+				for i = s, s + win - 1 do
+					wa += axialSteps[i]
+					wl += lenSteps[i]
+				end
+				-- Ignore windows where the tip barely moves: a stationary hold is trivially
+				-- "axial" (0/0-ish) and would hand any clip a free pass.
+				if wl > 0.15 * pathSum * (win / #axialSteps) then
+					local f = wa / wl
+					if peakFrac == nil or f > peakFrac then
+						peakFrac = f
+						peakAt = times[s] or 0
+					end
+				end
+			end
+		end
 		local sweep = 0
 		local rootPos = (root :: BasePart).Position
 		for i = 1, #positions do
@@ -1073,16 +1115,19 @@ register(
 			min_sweep = minSweep,
 			extension_studs = extension,
 			min_extension = minExtension,
-			axial_frac = axialFrac,
+			axial_peak_frac = peakFrac, -- the verdict's instrument (best committed beat)
 			min_axial_frac = minAxial,
+			axial_peak_at = peakAt,
+			axial_window_frac = windowFrac,
+			axial_frac = axialFrac, -- whole-clip average (reported, NOT the bar)
 			path_studs = pathLen,
 			max_reach_studs = maxReach,
 			samples = #positions,
 		}
 		if class == "thrust" then
-			if axialFrac == nil then
+			if axialFrac == nil or peakFrac == nil then
 				return unknown(
-					"thrust needs the Semantic_Grip attachment to measure axial travel — stamp_frame first",
+					"thrust needs the Semantic_Grip attachment (and a moving tip) to measure axial travel — stamp_frame first",
 					mag
 				)
 			end
@@ -1096,11 +1141,13 @@ register(
 					mag
 				)
 			end
-			if axialFrac < minAxial then
+			if peakFrac < minAxial then
 				return fail(
-					"only "
-						.. string.format("%.2f", axialFrac)
-						.. " of the tip's path runs along the blade axis (min "
+					"no committed thrust beat: the most axial "
+						.. string.format("%.0f%%", windowFrac * 100)
+						.. " window runs only "
+						.. string.format("%.2f", peakFrac)
+						.. " along the blade axis (min "
 						.. minAxial
 						.. ") — this reads as a CUT, not a thrust; check the declared class",
 					mag
@@ -1550,6 +1597,85 @@ register(
 					.. string.format("%.2f", armWorst.t)
 					.. " (max "
 					.. maxInArm
+					.. ")",
+				mag
+			)
+		end
+		return pass(mag)
+	end,
+	20000
+)
+
+register(
+	"clip_posture_sane",
+	"EDIT_OK",
+	"Does the BODY stay a body while clip {clip} plays on {rig}? Samples the clip and measures the torso's tilt away from the rig root's own up-axis (rotation-invariant — the fixture may be anchored in any orientation) plus head-above-hips. FAILs past {max_tilt_deg (default 60)} or on any inverted sample (head below hips; allow with {allow_inverted=true} for rolls/flips). Exists because every OTHER clip check is joint-relative: a retarget can fold the character into a heap on the floor and still post healthy sweep/extension/axial numbers (live-caught 2026-07-26 on a generated fencing lunge that passed the thrust bar while lying folded).",
+	function(args)
+		local rig = if typeof(args.rig) == "Instance"
+			then args.rig
+			else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+		if rig == nil then
+			return unknown("rig not found")
+		end
+		local root = rig:FindFirstChild("HumanoidRootPart") or (rig :: Model).PrimaryPart
+		local torso = rig:FindFirstChild("UpperTorso", true) or rig:FindFirstChild("Torso", true)
+		local hips = rig:FindFirstChild("LowerTorso", true) or torso
+		local head = rig:FindFirstChild("Head", true)
+		if root == nil or torso == nil or head == nil or hips == nil then
+			return unknown("rig needs root/torso/hips/head parts")
+		end
+		local maxTilt = tonumber(args.max_tilt_deg) or 60
+		local allowInverted = args.allow_inverted == true
+		local worstTilt, worstAt, inverted, invertedAt = 0, 0, 0, -1
+		local errMsg = scrubClip(
+			rig :: Model,
+			tostring(args.clip or "SwordSwing"),
+			tonumber(args.samples) or 16,
+			function(t)
+				local up = (root :: BasePart).CFrame.UpVector
+				local tilt = math.deg(
+					math.acos(math.clamp((torso :: BasePart).CFrame.UpVector:Dot(up), -1, 1))
+				)
+				if tilt > worstTilt then
+					worstTilt, worstAt = tilt, t
+				end
+				local spine = (head :: BasePart).Position - (hips :: BasePart).Position
+				if spine:Dot(up) <= 0 then
+					inverted += 1
+					if invertedAt < 0 then
+						invertedAt = t
+					end
+				end
+			end
+		)
+		if errMsg ~= nil then
+			return unknown(errMsg)
+		end
+		local mag = {
+			max_torso_tilt_deg = worstTilt,
+			max_tilt_deg = maxTilt,
+			worst_tilt_at = worstAt,
+			inverted_samples = inverted,
+			inverted_first_at = if invertedAt >= 0 then invertedAt else nil,
+			allow_inverted = allowInverted,
+		}
+		if inverted > 0 and not allowInverted then
+			return fail(
+				inverted
+					.. " sample(s) with the head BELOW the hips (first at t="
+					.. string.format("%.2f", invertedAt)
+					.. ") — the character is folded/upside-down, not posed",
+				mag
+			)
+		end
+		if worstTilt > maxTilt then
+			return fail(
+				"torso tilts "
+					.. string.format("%.0f", worstTilt)
+					.. " deg off the rig's up-axis at t="
+					.. string.format("%.2f", worstAt)
+					.. " (max "
+					.. maxTilt
 					.. ")",
 				mag
 			)

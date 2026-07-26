@@ -65,7 +65,12 @@ def generate(prompt, out_stem, model=None, duration=3.0, seed=42, cfg_weight=Non
     t0 = time.time()
     try:
         proc = subprocess.run(
+            # encoding/errors are REQUIRED on Windows: text=True decodes with the ANSI
+            # codepage (cp1252), and kimodo's progress bars emit bytes it cannot map —
+            # the reader thread dies with UnicodeDecodeError and the tail is lost exactly
+            # when a failing run needs it most (live-caught 2026-07-26).
             cmd, cwd=KIMODO_DIR, env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
             timeout=timeout_s or GEN_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:

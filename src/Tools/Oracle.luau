@@ -48,6 +48,7 @@ local SUITES = {
 				{ check = "weapon_channel_of", args = { rig = rig, clip = clip } },
 				{ check = "clip_self_intersect", args = { rig = rig, tool = target, clip = clip } },
 				{ check = "capture_vantage", args = { rig = rig, tool = target } },
+				{ check = "clip_posture_sane", args = { rig = rig, clip = clip } },
 			}
 		end,
 		notAsserted = {
@@ -820,7 +821,8 @@ Oracle.descriptors = {
 			.. "weapon_channel_of{rig,clip,min_swept_deg,require_chain} (an articulated weapon's UNKEYED "
 			.. "chain FAILs by default; require_chain=true demands every channel keyed AND sweeping), "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth,max_blade_in_arm,max_blade_in_body}, "
-			.. "capture_vantage{rig,tool,angles,min_visible_frac} (does each sign-off angle SHOW the weapon), __selftest{}. "
+			.. "capture_vantage{rig,tool,angles,min_visible_frac} (does each sign-off angle SHOW the weapon), "
+			.. "clip_posture_sane{rig,clip,max_tilt_deg,allow_inverted} (does the BODY stay a body — every other clip check is joint-relative), __selftest{}. "
 			.. "Verdicts: PASS|FAIL|UNKNOWN (UNKNOWN never counts as pass). Prefer these over captures for anything measurable.",
 		inputSchema = {
 			type = "object",
