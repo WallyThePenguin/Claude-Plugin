@@ -781,6 +781,73 @@ local function selftest(): any
 			OracleChecks.run("joint_census", { rig = chainRig })
 		)
 	end
+	-- ---- axial travel (clip_arc_of's thrust instrument), pinned on synthetic paths ----
+	-- Pure math, no rig/clip needed. These fixtures ARE the calibration that set the 0.5 bar
+	-- (2026-07-26); the peak-window row is the one that killed the whole-clip-average design.
+	do
+		local V = Vector3.new
+		local function near(a: number?, b: number, tol: number): boolean
+			return a ~= nil and math.abs(a - b) <= tol
+		end
+		local function rowIs(name: string, got: any, expected: any)
+			table.insert(
+				results,
+				{ name = name, got = got, expected = expected, ok = got == expected }
+			)
+		end
+		-- pure thrust: the tip advances along the blade's own axis
+		local tTips, tGrips = {}, {}
+		for i = 0, 11 do
+			table.insert(tGrips, V(0, 5, i * 0.3))
+			table.insert(tTips, V(0, 5, i * 0.3 + 3))
+		end
+		local pureThrust = OracleChecks.axialProfile(tTips, tGrips, 0.25)
+		rowIs("axial: pure thrust reads ~1.0", near(pureThrust.whole, 1, 0.02), true)
+		-- pure arc: the tip sweeps AROUND a fixed grip — travel is across the axis
+		local aTips, aGrips = {}, {}
+		for i = 0, 11 do
+			local ang = math.rad(i * 12)
+			table.insert(aGrips, V(0, 5, 0))
+			table.insert(aTips, V(3 * math.sin(ang), 5, 3 * math.cos(ang)))
+		end
+		local pureArc = OracleChecks.axialProfile(aTips, aGrips, 0.25)
+		rowIs("axial: pure arc reads near 0", (pureArc.whole :: number) < 0.15, true)
+		rowIs("axial: a pure arc has no thrust beat either", (pureArc.peak :: number) < 0.2, true)
+		-- THE motivating case: an arcy clip that CONTAINS a committed thrust beat. The
+		-- whole-clip average buries it (< 0.5, reads like a flourish); the peak window finds it.
+		local mTips, mGrips = {}, {}
+		for i = 0, 8 do
+			local ang = math.rad(i * 12)
+			table.insert(mGrips, V(0, 5, 0))
+			table.insert(mTips, V(3 * math.sin(ang), 5, 3 * math.cos(ang)))
+		end
+		local lastAng = math.rad(8 * 12)
+		local dir = V(math.sin(lastAng), 0, math.cos(lastAng))
+		local baseGrip, baseTip = mGrips[#mGrips], mTips[#mTips]
+		for i = 1, 4 do
+			table.insert(mGrips, baseGrip + dir * (0.4 * i))
+			table.insert(mTips, baseTip + dir * (0.4 * i))
+		end
+		local mixed = OracleChecks.axialProfile(mTips, mGrips, 0.25)
+		rowIs(
+			"axial: whole-clip average BURIES a real thrust beat",
+			(mixed.whole :: number) < 0.5,
+			true
+		)
+		rowIs("axial: peak window FINDS the thrust beat", (mixed.peak :: number) > 0.9, true)
+		-- a stationary tip must not hand out a free 'perfectly axial' window
+		local sTips, sGrips = {}, {}
+		for _ = 1, 12 do
+			table.insert(sGrips, V(0, 5, 0))
+			table.insert(sTips, V(0, 5, 3))
+		end
+		local still = OracleChecks.axialProfile(sTips, sGrips, 0.25)
+		rowIs(
+			"axial: a stationary tip yields no peak (cannot fake a thrust)",
+			still.peak == nil,
+			true
+		)
+	end
 	folder:Destroy()
 	local failures = 0
 	for _, r in results do

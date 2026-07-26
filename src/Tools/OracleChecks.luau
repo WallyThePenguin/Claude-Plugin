@@ -95,6 +95,56 @@ end
 local function fail(reason: string, mag: any): any
 	return { verdict = "FAIL", reason = reason, magnitudes = mag }
 end
+-- Axial travel of a traced blade tip: how much of the tip's path runs ALONG the blade's own
+-- axis (a stab) rather than across it (a cut). PURE + selftest-pinned — the verdict logic in
+-- clip_arc_of is subtle enough to deserve a fixture that does not need Studio, a rig, or a clip.
+--   whole = the average over the entire path. Reported, NOT the bar: an attack is wind-up +
+--           committed beat + recovery, and the arcs either side dilute the beat to nothing.
+--   peak  = the best contiguous window covering `windowFrac` of the path — "does this clip
+--           CONTAIN a thrust", which is the question worth asking.
+function M.axialProfile(tips: { Vector3 }, grips: { Vector3 }, windowFrac: number): any
+	local axialSteps, lenSteps = {}, {}
+	if #grips == #tips then
+		for i = 1, #tips - 1 do
+			local blade = tips[i] - grips[i]
+			local d = tips[i + 1] - tips[i]
+			if blade.Magnitude > 1e-3 and d.Magnitude > 1e-4 then
+				table.insert(axialSteps, math.abs(d:Dot(blade.Unit)))
+				table.insert(lenSteps, d.Magnitude)
+			else
+				table.insert(axialSteps, 0)
+				table.insert(lenSteps, 0)
+			end
+		end
+	end
+	local axialSum, pathSum = 0, 0
+	for i, a in axialSteps do
+		axialSum += a
+		pathSum += lenSteps[i]
+	end
+	local whole = if pathSum > 0 then axialSum / pathSum else nil
+	local win = math.max(2, math.floor(#axialSteps * math.clamp(windowFrac, 0.05, 1) + 0.5))
+	local peak, peakIndex = nil :: number?, nil :: number?
+	if #axialSteps >= win and pathSum > 0 then
+		for s = 1, #axialSteps - win + 1 do
+			local wa, wl = 0, 0
+			for i = s, s + win - 1 do
+				wa += axialSteps[i]
+				wl += lenSteps[i]
+			end
+			-- Ignore windows where the tip barely moves: a stationary hold is trivially
+			-- "axial" and would hand any clip a free pass.
+			if wl > 0.15 * pathSum * (win / #axialSteps) then
+				local f = wa / wl
+				if peak == nil or f > peak then
+					peak, peakIndex = f, s
+				end
+			end
+		end
+	end
+	return { whole = whole, peak = peak, peakIndex = peakIndex }
+end
+
 local function unknown(reason: string, mag: any?): any
 	-- magnitudes ride EVERY result (SP2 §2.1) — an UNKNOWN that already measured something
 	-- should still hand the numbers over rather than swallow them.
@@ -922,6 +972,16 @@ local function scrubClip(
 			saved[d] = d.Transform
 		end
 	end
+	-- Save the ROOT PART's CFrame too, not just joint transforms: clips carrying ROOT MOTION
+	-- (every Kimodo/mocap landing does) make the Animator write the root part directly —
+	-- anchoring does NOT stop it. Without this, each scrub permanently relocates/reorients the
+	-- fixture: the rig ended up lying on its side (up = -X) three times, and captures then show
+	-- a "collapsed heap" that is the FIXTURE, not the clip (live-caught 2026-07-26 — it cost a
+	-- false conclusion about a generated clip before the cause was found).
+	local rootPart = rig:FindFirstChild("HumanoidRootPart") or rig.PrimaryPart
+	local savedRootCF = if rootPart ~= nil and rootPart:IsA("BasePart")
+		then (rootPart :: BasePart).CFrame
+		else nil
 	local id, rerr = AnimationClip.register(ks)
 	if id == nil then
 		return rerr or "clip registration failed"
@@ -953,6 +1013,9 @@ local function scrubClip(
 	animator:Destroy()
 	for motor, transform in saved do
 		motor.Transform = transform
+	end
+	if savedRootCF ~= nil and rootPart ~= nil then
+		(rootPart :: BasePart).CFrame = savedRootCF
 	end
 	-- Restoring Transforms alone does NOT move PART CFRAMES in edit (the applyPose fact) —
 	-- without a joint solve the rig stays frozen at the LAST SCRUBBED POSE for every check
@@ -1036,48 +1099,10 @@ register(
 		-- from a flourish — while its extension beat is the part that matters). Whole-clip stays
 		-- as a reported magnitude; it answers "is this clip ALL thrust", not "does it CONTAIN one".
 		local extension = if minReach < math.huge then maxReach - minReach else 0
-		local axialSteps, lenSteps = {}, {}
-		if #gripPositions == #positions then
-			for i = 1, #positions - 1 do
-				local blade = positions[i] - gripPositions[i]
-				local d = positions[i + 1] - positions[i]
-				if blade.Magnitude > 1e-3 and d.Magnitude > 1e-4 then
-					table.insert(axialSteps, math.abs(d:Dot(blade.Unit)))
-					table.insert(lenSteps, d.Magnitude)
-				else
-					table.insert(axialSteps, 0)
-					table.insert(lenSteps, 0)
-				end
-			end
-		end
-		local axialSum, pathSum = 0, 0
-		for i, a in axialSteps do
-			axialSum += a
-			pathSum += lenSteps[i]
-		end
-		local axialFrac = if pathSum > 0 then axialSum / pathSum else nil
-		-- Best contiguous window covering `axial_window_frac` of the clip (default 25%).
 		local windowFrac = math.clamp(tonumber(args.axial_window_frac) or 0.25, 0.05, 1)
-		local win = math.max(2, math.floor(#axialSteps * windowFrac + 0.5))
-		local peakFrac, peakAt = nil :: number?, 0
-		if #axialSteps >= win and pathSum > 0 then
-			for s = 1, #axialSteps - win + 1 do
-				local wa, wl = 0, 0
-				for i = s, s + win - 1 do
-					wa += axialSteps[i]
-					wl += lenSteps[i]
-				end
-				-- Ignore windows where the tip barely moves: a stationary hold is trivially
-				-- "axial" (0/0-ish) and would hand any clip a free pass.
-				if wl > 0.15 * pathSum * (win / #axialSteps) then
-					local f = wa / wl
-					if peakFrac == nil or f > peakFrac then
-						peakFrac = f
-						peakAt = times[s] or 0
-					end
-				end
-			end
-		end
+		local profile = M.axialProfile(positions, gripPositions, windowFrac)
+		local axialFrac, peakFrac = profile.whole, profile.peak
+		local peakAt = if profile.peakIndex ~= nil then (times[profile.peakIndex] or 0) else 0
 		local sweep = 0
 		local rootPos = (root :: BasePart).Position
 		for i = 1, #positions do
