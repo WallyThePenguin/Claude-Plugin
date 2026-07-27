@@ -1805,6 +1805,125 @@ register(
 	end
 )
 
+register(
+	"clip_handedness",
+	"EDIT_OK",
+	"Does the arm that actually HOLDS the weapon lead the attack in clip {clip}? Measures each arm's FORWARDNESS — dot((shoulder→hand) horizontal, the rig root's horizontal facing); +1 = reaching straight forward. At the clip's most COMMITTED instant (the sample where either arm reaches furthest forward) the WIELDING arm must be the leader; FAILs when the off arm leads by more than {max_off_lead (default 0.1)}. The wielding hand is DERIVED from the rig's own grip joint and is NEVER declared — a declared side would let a caller nominate whichever arm passes, the same self-grading hole clip_arc_of closed by refusing to infer its own motion class. Exists because text-to-motion handedness varies PER GENERATION: a prompt asking for a right-arm lunge landed with the OFF arm doing the thrust and the sword dragged backwards behind it, and nothing in the suite could see it — the clip posted 16 PASS / 0 FAIL while looking 90° wrong to the user (live-caught 2026-07-26).",
+	function(args)
+		local rig = if typeof(args.rig) == "Instance"
+			then args.rig
+			else select(1, Path.resolve(tostring(args.rig or "game.Workspace.AgentRig")))
+		local tool = if typeof(args.tool) == "Instance"
+			then args.tool
+			else select(1, Path.resolve(tostring(args.tool)))
+		if rig == nil or tool == nil then
+			return unknown("rig/tool not found")
+		end
+		local handle = OracleFrames.handleOf(tool)
+		if handle == nil then
+			return unknown("tool has no BasePart handle")
+		end
+		-- DERIVE the wielding hand from the rig's actual grip joint (the Motor6D/Weld attaching the
+		-- handle). Never an arg: see the description — a nominated side is self-grading.
+		local wieldHand: BasePart? = nil
+		for _, d in rig:GetDescendants() do
+			if d:IsA("Motor6D") or d:IsA("Weld") then
+				local j = d :: any
+				if j.Part1 == handle and j.Part0 ~= nil then
+					wieldHand = j.Part0
+				elseif j.Part0 == handle and j.Part1 ~= nil then
+					wieldHand = j.Part1
+				end
+			end
+		end
+		if wieldHand == nil then
+			return unknown(
+				"no grip joint attaches the tool's handle to the rig — equip it (grip_tool) first"
+			)
+		end
+		local side = if string.find((wieldHand :: BasePart).Name, "Left") ~= nil
+			then "Left"
+			else "Right"
+		local offSide = if side == "Left" then "Right" else "Left"
+		local function armOf(s: string): (BasePart?, BasePart?)
+			local sh = rig:FindFirstChild(s .. "UpperArm", true)
+			local hd = rig:FindFirstChild(s .. "Hand", true)
+			return (if sh ~= nil and sh:IsA("BasePart") then sh else nil),
+				(if hd ~= nil and hd:IsA("BasePart") then hd else nil)
+		end
+		local wSh, wHd = armOf(side)
+		local oSh, oHd = armOf(offSide)
+		-- NOT-ASSERTABLE rather than vacuously true: on an R6 rig the arm is ONE part, so
+		-- shoulder→hand has no direction and every clip would trivially "pass" (the same
+		-- vacuous-true trap hand_in_blade hit on single-part tools).
+		if wSh == nil or wHd == nil or oSh == nil or oHd == nil then
+			return unknown(
+				"needs an R15 UpperArm/Hand pair per side (an R6 arm is a single part — direction is not assertable)"
+			)
+		end
+		local root = rig:FindFirstChild("HumanoidRootPart") or (rig :: any).PrimaryPart
+		if root == nil or not root:IsA("BasePart") then
+			return unknown("rig has no root part to take a facing from")
+		end
+		local function forwardness(sh: BasePart, hd: BasePart, facing: Vector3): number
+			local v = Vector3.new(hd.Position.X - sh.Position.X, 0, hd.Position.Z - sh.Position.Z)
+			local f = Vector3.new(facing.X, 0, facing.Z)
+			if v.Magnitude < 1e-4 or f.Magnitude < 1e-4 then
+				return 0
+			end
+			return v.Unit:Dot(f.Unit)
+		end
+		local bestAny, wieldAt, offAt, atT = -2, 0, 0, 0
+		local errMsg = scrubClip(
+			rig :: Model,
+			tostring(args.clip or "SwordSwing"),
+			tonumber(args.samples) or 24,
+			function(t)
+				local facing = (root :: BasePart).CFrame.LookVector
+				local w = forwardness(wSh :: BasePart, wHd :: BasePart, facing)
+				local o = forwardness(oSh :: BasePart, oHd :: BasePart, facing)
+				-- "most committed instant" is chosen by the DATA (whichever arm reaches furthest),
+				-- not by the check picking a flattering moment.
+				local peak = math.max(w, o)
+				if peak > bestAny then
+					bestAny, wieldAt, offAt, atT = peak, w, o, t
+				end
+			end
+		)
+		if errMsg ~= nil then
+			return unknown(errMsg)
+		end
+		local maxOffLead = tonumber(args.max_off_lead) or 0.1
+		local lead = offAt - wieldAt
+		local mag = {
+			wielding_side = side,
+			wielding_hand = (wieldHand :: BasePart).Name,
+			wield_forwardness = wieldAt,
+			off_forwardness = offAt,
+			off_lead = lead,
+			max_off_lead = maxOffLead,
+			most_committed_at = atT,
+		}
+		if lead > maxOffLead then
+			return fail(
+				string.format(
+					"the OFF arm leads: at the most committed instant (t=%.2f) the %s (off) arm reaches %.2f forward while the wielding %s arm reaches only %.2f (off lead %.2f, max %.2f) — wrong handedness for this grip; re-land the clip mirrored",
+					atT,
+					offSide,
+					offAt,
+					side,
+					wieldAt,
+					lead,
+					maxOffLead
+				),
+				mag
+			)
+		end
+		return pass(mag)
+	end,
+	20000
+)
+
 -- ---- texture vocabulary (2026-07-25 sprint: the falchion/rapier texture failures, mechanized;
 -- the suite's "material/texture quality" blindspot narrows to AESTHETICS only) ----
 

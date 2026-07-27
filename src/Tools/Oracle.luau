@@ -49,6 +49,7 @@ local SUITES = {
 				{ check = "clip_self_intersect", args = { rig = rig, tool = target, clip = clip } },
 				{ check = "capture_vantage", args = { rig = rig, tool = target } },
 				{ check = "clip_posture_sane", args = { rig = rig, clip = clip } },
+				{ check = "clip_handedness", args = { rig = rig, tool = target, clip = clip } },
 			}
 		end,
 		notAsserted = {
@@ -889,7 +890,8 @@ Oracle.descriptors = {
 			.. "chain FAILs by default; require_chain=true demands every channel keyed AND sweeping), "
 			.. "clip_self_intersect{rig,tool,clip,samples,max_depth,max_blade_in_arm,max_blade_in_body}, "
 			.. "capture_vantage{rig,tool,angles,min_visible_frac} (does each sign-off angle SHOW the weapon), "
-			.. "clip_posture_sane{rig,clip,max_tilt_deg,allow_inverted} (does the BODY stay a body — every other clip check is joint-relative), __selftest{}. "
+			.. "clip_posture_sane{rig,clip,max_tilt_deg,allow_inverted} (does the BODY stay a body — every other clip check is joint-relative), "
+			.. "clip_handedness{rig,tool,clip,samples,max_off_lead} (does the arm HOLDING the weapon lead the attack — text-to-motion handedness varies per generation; the wielding hand is derived from the grip joint, never declared), __selftest{}. "
 			.. "Verdicts: PASS|FAIL|UNKNOWN (UNKNOWN never counts as pass). Prefer these over captures for anything measurable.",
 		inputSchema = {
 			type = "object",
