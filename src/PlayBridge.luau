@@ -1081,6 +1081,61 @@ local function doAct(verb)
 			tostring(tool:GetAttribute("BehaviorCooldown"))
 		)
 		return "ItemState " .. table.concat(samples, " -> ") .. cfg
+	elseif verb == "lunge" then
+		-- VERIFY the lunge stride NUMERICALLY (the visual-only gap from 2026-07-26b): equip +
+		-- activate, then sample the ROOT's displacement along the facing it had AT ACTIVATION,
+		-- bucketed by ItemState. Measures RENDERED movement, like sgrip's spin integration --
+		-- the stride is applied client-side by BehaviorRuntime across the ACTIVE window, and the
+		-- clip provably cannot carry it (Roblox's Animator discards root translation).
+		-- Client-side because seval is gated behind the manual LoadStringEnabled tick.
+		local backpack = plr:FindFirstChild("Backpack")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local tool = (char and char:FindFirstChildOfClass("Tool"))
+			or (backpack and backpack:FindFirstChildOfClass("Tool"))
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not (hum and tool and root) then
+			return "lunge: need a humanoid + tool + root"
+		end
+		if tool.Parent ~= char then
+			hum:EquipTool(tool)
+			task.wait(0.4)
+		end
+		local declared = tonumber(tool:GetAttribute("BehaviorLungeStuds")) or 0
+		local origin, facing = root.Position, root.CFrame.LookVector
+		tool:Activate()
+		local t0 = os.clock()
+		local states, last = {}, nil
+		local preActive, activeEnd, peak, lateral = 0, nil, 0, 0
+		while os.clock() - t0 < 3 do
+			local st = tostring(tool:GetAttribute("ItemState"))
+			local delta = root.Position - origin
+			local fwd = delta:Dot(facing)
+			peak = math.max(peak, fwd)
+			lateral = math.max(lateral, (delta - facing * fwd).Magnitude)
+			if st == "active" then
+				activeEnd = fwd
+			elseif activeEnd == nil then
+				preActive = fwd -- last reading BEFORE the window opened
+			end
+			if st ~= last then
+				table.insert(states, string.format("%.2f:%s", os.clock() - t0, st))
+				last = st
+			end
+			task.wait(0.03)
+		end
+		local stride = if activeEnd ~= nil then activeEnd - preActive else 0
+		return string.format(
+			"lunge: declared=%.2f studs | forward DURING ACTIVE=%.2f | peak forward=%.2f | "
+				.. "lateral drift=%.2f | states %s [tool=%s w=%s a=%s]",
+			declared,
+			stride,
+			peak,
+			lateral,
+			table.concat(states, " -> "),
+			tool.Name,
+			tostring(tool:GetAttribute("BehaviorWindup")),
+			tostring(tool:GetAttribute("BehaviorActive"))
+		)
 	end
 	return "unknown act: " .. tostring(verb)
 end
