@@ -1513,7 +1513,14 @@ register(
 		local errMsg = scrubClip(
 			rig :: Model,
 			tostring(args.clip or "SwordSwing"),
-			tonumber(args.samples) or 12,
+			-- 12 was OPTIMISTIC and shipped a false green: a real 2-sample blade-through-arm
+			-- (0.61 studs in RightUpperArm at t=0.43) reads 0.30 at 12 samples and PASSES, while
+			-- 16/24/40 all catch it. Same trap clip_arc_of fixed on 2026-07-26 by moving its own
+			-- default 12->24 ("denser is truer, so 12 was the optimistic number") -- the sweep just
+			-- never reached this sibling, so the SUITE (which passes no samples arg) was grading
+			-- every clip at the optimistic density. Live-caught 2026-07-26 on the rapier's own
+			-- lunge, which the suite called 17 PASS / 0 FAIL while the same check at 24 FAILed.
+			tonumber(args.samples) or 24,
 			function(t)
 				if bladeDisjoint then
 					for _, bp in frame.roleParts.blade do
