@@ -1424,7 +1424,7 @@ register(
 register(
 	"clip_self_intersect",
 	"EDIT_OK",
-	"Samples clip {clip} on rig {rig}; at each pose, blade-vs-torso/head AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default: max(0.3, 1.5 centerline-sample quanta of the declared blade) — one grazing sample passes at every blade length)} studs) FAIL with the offending time. TWO body modes: blade-role parts DISJOINT from hilt -> part-AABB penetration beyond {max_depth (default 0.2)}; single-part tools (blade==hilt==whole mesh) -> the DECLARED centerline embedded in body parts beyond {max_blade_in_body (default 0.3)} studs (whole-sword world-AABBs phantom-penetrate mid-swing — live-caught 2026-07-25). Magnitude `mode` names which ran.",
+	"Samples clip {clip} on rig {rig}; at each pose, blade-vs-torso/head AND the declared blade centerline vs the ARM parts (embedded length beyond {max_blade_in_arm (default: max(0.3, 1.5 centerline-sample quanta of the declared blade) — one grazing sample passes at every blade length)} studs) FAIL with the offending time. TWO body modes: blade-role parts DISJOINT from hilt -> part-AABB penetration beyond {max_depth (default 0.2)}; single-part tools (blade==hilt==whole mesh) -> the DECLARED centerline embedded in body parts beyond {max_blade_in_body (default: the SAME max(0.3, 1.5 quanta) as the arm gate — one grazing sample passes at every blade length)} studs (whole-sword world-AABBs phantom-penetrate mid-swing — live-caught 2026-07-25). Magnitude `mode` names which ran.",
 	function(args)
 		local rig = if typeof(args.rig) == "Instance"
 			then args.rig
@@ -1499,7 +1499,16 @@ register(
 				end
 			end
 		end
-		local maxInBody = tonumber(args.max_blade_in_body) or 0.3
+		-- SAME instrument as the arm branch above (12 centerline samples, point-in-OBB, the same
+		-- length-weighted `embedded`), so it gets the SAME length-aware gate. The 2026-07-25 arm
+		-- calibration was applied to only ONE of the two branches, and a bare 0.3 floor crosses the
+		-- one-sample line at len = 4.235 studs — an arbitrary cliff: the 4.30-stud rapier and the
+		-- 4.25-stud longsword tolerated ZERO grazing samples against the body while the 3.10-stud
+		-- sword tolerated one, on identical geometry (live-caught 2026-07-26 on RapierLunge: 12 of
+		-- its 13 "hits" were each exactly one sample = 0.3046 vs the 0.3 floor). 1.5 quanta sits
+		-- strictly between one sample and two at EVERY blade length, so "one graze passes,
+		-- sustained overlap fails" holds universally rather than by accident of length.
+		local maxInBody = tonumber(args.max_blade_in_body) or math.max(0.3, 1.5 * quantum)
 		local bodyWorst = { studs = 0, t = 0, part = "" }
 		local errMsg = scrubClip(
 			rig :: Model,
