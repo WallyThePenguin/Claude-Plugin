@@ -31,6 +31,39 @@ local function buildCases(): { Case }
 		return true
 	end)
 
+	add("lungeStuds defaults to 0 so bound weapons stay stationary", function()
+		local c = BehaviorFactory.validate({ active = 0.3 })
+		if not approx(c.lungeStuds, 0) then
+			return false, "lungeStuds should default to 0 (no stride)"
+		end
+		local kept = BehaviorFactory.validate({ lungeStuds = 2.5 })
+		if not approx(kept.lungeStuds, 2.5) then
+			return false, "lungeStuds not kept"
+		end
+		return true
+	end)
+
+	add(
+		"lungeStuds is a DISTANCE: negatives clamp, and it never rescues a zero timeline",
+		function()
+			local c = BehaviorFactory.validate({ lungeStuds = -3 })
+			if not approx(c.lungeStuds, 0) then
+				return false, "negative lungeStuds not clamped to 0"
+			end
+			-- a stride with no time to run in is still an invalid machine
+			local _, err = BehaviorFactory.validate({
+				windup = 0,
+				active = 0,
+				cooldown = 0,
+				lungeStuds = 5,
+			})
+			if err == nil then
+				return false, "lungeStuds must not count toward the duration total"
+			end
+			return true
+		end
+	)
+
 	add("validate clamps negatives to 0 and rejects an all-zero total", function()
 		local c = BehaviorFactory.validate({ windup = -5, active = 0.2, cooldown = "x" })
 		if not approx(c.windup, 0) then

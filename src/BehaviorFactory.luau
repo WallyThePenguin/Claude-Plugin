@@ -8,11 +8,17 @@
 
 local BehaviorFactory = {}
 
-export type Config = { windup: number, active: number, cooldown: number }
+export type Config = { windup: number, active: number, cooldown: number, lungeStuds: number }
 export type Phase = { state: string, at: number, duration: number }
 
 -- Defaults: a snappy melee feel (telegraph, brief hit window, recovery that gates spam).
-local DEFAULTS: Config = { windup = 0.15, active = 0.15, cooldown = 0.4 }
+-- lungeStuds defaults to 0 = NO stride, so every already-bound weapon behaves byte-identically;
+-- a committed attack (a fencing lunge) opts in. It is a DISTANCE, not a duration, so it never
+-- participates in the "durations sum to 0" check below. Why code and not animation: measured
+-- 2026-07-26 that Roblox's Animator applies JOINT transforms only — a root-Pose translation is
+-- discarded by the engine (positive control: the same clip's LowerTorso ramped 0->60 deg while
+-- rootZ never moved, anchored or not), so a stride CANNOT come from the clip.
+local DEFAULTS: Config = { windup = 0.15, active = 0.15, cooldown = 0.4, lungeStuds = 0 }
 
 BehaviorFactory.DEFAULTS = DEFAULTS
 
@@ -35,6 +41,7 @@ function BehaviorFactory.validate(cfg: any): (Config, string?)
 		windup = coerce(args.windup, DEFAULTS.windup),
 		active = coerce(args.active, DEFAULTS.active),
 		cooldown = coerce(args.cooldown, DEFAULTS.cooldown),
+		lungeStuds = coerce(args.lungeStuds, DEFAULTS.lungeStuds),
 	}
 	if clean.windup + clean.active + clean.cooldown <= 0 then
 		return clean, "behavior durations sum to 0 — give a positive windup/active/cooldown"

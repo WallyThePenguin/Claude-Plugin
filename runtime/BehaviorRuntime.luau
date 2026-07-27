@@ -12,6 +12,7 @@ local BehaviorRuntime = {}
 -- Wire the machine onto `Tool`. Non-blocking (connections only); per-tool state lives in this closure.
 function BehaviorRuntime.attach(Tool)
 	local KSP = game:GetService("KeyframeSequenceProvider")
+	local RunService = game:GetService("RunService")
 	local stateChanged = Tool:FindFirstChild("StateChanged")
 	local tracks = {}
 	local token = 0
@@ -166,7 +167,46 @@ function BehaviorRuntime.attach(Tool)
 			return
 		end
 		setState("active")
-		task.wait(active)
+		-- LUNGE STRIDE (BehaviorLungeStuds > 0): a committed attack travels. It has to be driven
+		-- HERE and not by the clip -- measured 2026-07-26 that Roblox's Animator applies JOINT
+		-- transforms only, so a root-Pose translation is discarded by the engine (positive control:
+		-- the same clip's LowerTorso ramped 0->60 deg while rootZ never moved, anchored OR not).
+		-- Spread across the active window so it reads as a drive rather than a teleport, and
+		-- raycast-gated ahead of the body so a lunge can never push through a wall.
+		local lungeStuds = tonumber(Tool:GetAttribute("BehaviorLungeStuds")) or 0
+		local root = if Tool.Parent ~= nil
+			then Tool.Parent:FindFirstChild("HumanoidRootPart")
+			else nil
+		if lungeStuds > 0 and active > 0 and root ~= nil then
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = { Tool.Parent }
+			local moved, started = 0, os.clock()
+			while moved < lungeStuds do
+				local dt = RunService.Heartbeat:Wait()
+				if my ~= token then
+					return
+				end
+				local elapsed = os.clock() - started
+				if elapsed >= active then
+					break
+				end
+				local step = math.min(lungeStuds * (dt / active), lungeStuds - moved)
+				local dir = root.CFrame.LookVector
+				-- probe past the step by roughly half a torso so we stop SHORT of geometry
+				if workspace:Raycast(root.Position, dir * (step + 1.5), params) ~= nil then
+					break
+				end
+				root.CFrame = root.CFrame + dir * step
+				moved += step
+			end
+			local remaining = active - (os.clock() - started)
+			if remaining > 0 then
+				task.wait(remaining)
+			end
+		else
+			task.wait(active)
+		end
 		if my ~= token then
 			return
 		end

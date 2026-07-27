@@ -34,6 +34,7 @@ local RUNTIME_SOURCE = [==[
 -- shipped/multiplayer item needs a published AnimationId + server-authoritative validation (later).
 local Tool = script.Parent
 local KSP = game:GetService("KeyframeSequenceProvider")
+local RunService = game:GetService("RunService")
 local stateChanged = Tool:FindFirstChild("StateChanged")
 local tracks = {}
 local token = 0
@@ -118,7 +119,40 @@ Tool.Activated:Connect(function()
 		return
 	end
 	setState("active")
-	task.wait(active)
+	-- LUNGE STRIDE (BehaviorLungeStuds > 0) -- kept in sync with runtime/BehaviorRuntime.luau.
+	-- Driven here, not by the clip: Roblox's Animator applies JOINT transforms only, so a
+	-- root-Pose translation is discarded by the engine (measured 2026-07-26).
+	local lungeStuds = tonumber(Tool:GetAttribute("BehaviorLungeStuds")) or 0
+	local root = if Tool.Parent ~= nil then Tool.Parent:FindFirstChild("HumanoidRootPart") else nil
+	if lungeStuds > 0 and active > 0 and root ~= nil then
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { Tool.Parent }
+		local moved, started = 0, os.clock()
+		while moved < lungeStuds do
+			local dt = RunService.Heartbeat:Wait()
+			if my ~= token then
+				return
+			end
+			local elapsed = os.clock() - started
+			if elapsed >= active then
+				break
+			end
+			local step = math.min(lungeStuds * (dt / active), lungeStuds - moved)
+			local dir = root.CFrame.LookVector
+			if workspace:Raycast(root.Position, dir * (step + 1.5), params) ~= nil then
+				break
+			end
+			root.CFrame = root.CFrame + dir * step
+			moved += step
+		end
+		local remaining = active - (os.clock() - started)
+		if remaining > 0 then
+			task.wait(remaining)
+		end
+	else
+		task.wait(active)
+	end
 	if my ~= token then
 		return
 	end
@@ -200,6 +234,7 @@ local function runBind(input: any, context: any): (any, boolean)
 		windup = args.windup,
 		active = args.active,
 		cooldown = args.cooldown,
+		lungeStuds = args.lungeStuds,
 	})
 	if cerr ~= nil then
 		return "bind_behavior: " .. cerr, true
@@ -220,6 +255,7 @@ local function runBind(input: any, context: any): (any, boolean)
 		theTool:SetAttribute("BehaviorWindup", cfg.windup)
 		theTool:SetAttribute("BehaviorActive", cfg.active)
 		theTool:SetAttribute("BehaviorCooldown", cfg.cooldown)
+		theTool:SetAttribute("BehaviorLungeStuds", cfg.lungeStuds)
 		theTool:SetAttribute("ItemState", "idle")
 		ensureStateEvent(theTool)
 		writeRuntime(theTool, libOk)
@@ -248,6 +284,15 @@ local function runBind(input: any, context: any): (any, boolean)
 		aStart,
 		aEnd
 	)
+	if cfg.lungeStuds > 0 then
+		msg = msg
+			.. string.format(
+				" LUNGE: the character drives %.2f studs forward across the active window "
+					.. "(raycast-gated, stops short of geometry). The clip itself CANNOT carry this — "
+					.. "Roblox's Animator applies joint transforms only and discards root translation.",
+				cfg.lungeStuds
+			)
+	end
 	if not hasUse then
 		msg = msg
 			.. " WARNING: the Tool has no Anims/use clip yet -- the swing won't animate until "
@@ -289,6 +334,14 @@ ItemBehavior.descriptors = {
 				cooldown = {
 					type = "number",
 					description = "Recovery seconds before idle accepts activate again (default 0.40).",
+				},
+				lungeStuds = {
+					type = "number",
+					description = "Studs the character DRIVES FORWARD across the active window (default 0 "
+						.. "= stationary). For committed attacks (a fencing lunge) whose stride is part of "
+						.. "the read. Must be code, not animation: Roblox's Animator applies JOINT "
+						.. "transforms only and DISCARDS a root-Pose translation. Raycast-gated, so it "
+						.. "stops short of geometry instead of clipping through it.",
 				},
 			},
 			required = { "tool" },
