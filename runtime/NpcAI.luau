@@ -32,9 +32,21 @@ function NpcAI.attach(NPC)
 		if saves then
 			local spec = {
 				idle = { clip = "huskIdle", looped = true, priority = Enum.AnimationPriority.Idle },
-				chase = { clip = "huskChase", looped = true, priority = Enum.AnimationPriority.Movement },
-				attack = { clip = "huskAttack", looped = false, priority = Enum.AnimationPriority.Action },
-				death = { clip = "huskDeath", looped = false, priority = Enum.AnimationPriority.Action4 },
+				chase = {
+					clip = "huskChase",
+					looped = true,
+					priority = Enum.AnimationPriority.Movement,
+				},
+				attack = {
+					clip = "huskAttack",
+					looped = false,
+					priority = Enum.AnimationPriority.Action,
+				},
+				death = {
+					clip = "huskDeath",
+					looped = false,
+					priority = Enum.AnimationPriority.Action4,
+				},
 			}
 			for key, s in spec do
 				local ks = saves:FindFirstChild(s.clip)

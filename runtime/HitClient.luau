@@ -18,7 +18,10 @@ function HitClient.attach(Tool)
 		if sc and remote then
 			sc.Event:Connect(function(state)
 				local markerDriven = Tool:GetAttribute("MarkerDriven") == true
-				if (markerDriven and state == "contact") or (not markerDriven and state == "active") then
+				if
+					(markerDriven and state == "contact")
+					or (not markerDriven and state == "active")
+				then
 					remote:FireServer(Tool)
 				end
 			end)
