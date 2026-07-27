@@ -256,6 +256,16 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	-- Snapshot the working pose + camera BEFORE loading/playing anything, so we can fully restore them
 	-- afterward (playback + StepAnimations would otherwise overwrite the joints' Transforms).
 	local savedTransforms = saveTransforms(rig)
+	-- The ROOT PART's CFrame is part of the working pose too: a clip carrying ROOT MOTION (every
+	-- mocap/Kimodo landing) makes the Animator write the root part DIRECTLY, and anchoring does
+	-- NOT stop it. Restoring only Motor6D transforms leaves the rig permanently relocated —
+	-- filmstrips then quietly grade a MOVED fixture, and repeated shots walked the rig onto its
+	-- side (live-caught 2026-07-26; same defect fixed in OracleChecks.scrubClip, commit 2bf4280).
+	local rootPart = rig:FindFirstChild("HumanoidRootPart")
+		or (if rig:IsA("Model") then (rig :: Model).PrimaryPart else nil)
+	local savedRootCF = if rootPart ~= nil and rootPart:IsA("BasePart")
+		then (rootPart :: BasePart).CFrame
+		else nil
 	local savedCam = CaptureCore.saveCamera()
 
 	-- A parentless Animation is fine for LoadAnimation (verified live).
@@ -355,6 +365,9 @@ local function runAnimation(input: any, context: any): (any, boolean)
 	animator:Destroy()
 	anim:Destroy()
 	restoreTransforms(savedTransforms)
+	if savedRootCF ~= nil and rootPart ~= nil then
+		(rootPart :: BasePart).CFrame = savedRootCF
+	end
 	RigWorkbench.applyPose(rig)
 	CaptureCore.restoreCamera(savedCam)
 
