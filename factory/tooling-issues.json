@@ -110,7 +110,7 @@
    "suspectFiles": [
     "src/playtest_eval"
    ],
-   "repro": "With ServerScriptService.LoadStringEnabled=false, playtest_start then call playtest_eval with any code \u2014 it cannot execute, forcing verification to fall back to captures/logs.",
+   "repro": "With ServerScriptService.LoadStringEnabled=false, playtest_start then call playtest_eval with any code — it cannot execute, forcing verification to fall back to captures/logs.",
    "seenCount": 1,
    "lastSeenAt": 1783173659
   },
@@ -147,7 +147,7 @@
   },
   {
    "title": "save_mesh restore-stash exceeds 200k-char engine limit and consumes the mesh handle",
-   "symptom": "save_mesh failed (tool's restore-stash exceeds a 200k-char engine limit; EditableMesh handle already consumed so manual re-persist impossible) \u2014 Handle.MeshId is empty and it has zero mesh children",
+   "symptom": "save_mesh failed (tool's restore-stash exceeds a 200k-char engine limit; EditableMesh handle already consumed so manual re-persist impossible) — Handle.MeshId is empty and it has zero mesh children",
    "suspectFiles": [
     "src/tools/save_mesh.luau"
    ],
@@ -162,13 +162,13 @@
     "src/tools/save_mesh.luau",
     "src/tools/add_keyframe.luau"
    ],
-   "repro": "In EDIT mode, trigger a save_mesh failure (see above), then call add_keyframe on any rig \u2014 it fails because the prior recording was never closed.",
+   "repro": "In EDIT mode, trigger a save_mesh failure (see above), then call add_keyframe on any rig — it fails because the prior recording was never closed.",
    "seenCount": 1,
    "lastSeenAt": 1783677988
   },
   {
    "title": "ORACLE BUG: scale_ratio - suite vs capture disagree (weapon-sword)",
-   "symptom": "suite said: PASS longest_studs=3.600 (real blade geometry) | capture showed: Play renders a featureless bar, not a sculpted blade \u2014 mesh not persisted (MeshId empty); suite has no MeshId-non-empty/persistence check so it green-lit a non-persisted mesh",
+   "symptom": "suite said: PASS longest_studs=3.600 (real blade geometry) | capture showed: Play renders a featureless bar, not a sculpted blade — mesh not persisted (MeshId empty); suite has no MeshId-non-empty/persistence check so it green-lit a non-persisted mesh",
    "suspectFiles": [
     "src/Tools/OracleChecks.luau",
     "src/Tools/Oracle.luau"
@@ -190,7 +190,7 @@
   },
   {
    "title": "save_mesh local-serialize path leaves Handle.MeshId empty",
-   "symptom": "Handle MeshPart MeshId=\"\" in edit \u2014 session-only EditableMesh never truly persisted; equipped tool renders as only a floating red marker with zero blade geometry in play",
+   "symptom": "Handle MeshPart MeshId=\"\" in edit — session-only EditableMesh never truly persisted; equipped tool renders as only a floating red marker with zero blade geometry in play",
    "suspectFiles": [
     "src/tools/save_mesh"
    ],
@@ -200,7 +200,7 @@
   },
   {
    "title": "Build produced no FACTORY_BUILD_JSON before iteration cap",
-   "symptom": "build produced no FACTORY_BUILD_JSON; iteration cap reached \u2014 the work so far is applied; run again to continue",
+   "symptom": "build produced no FACTORY_BUILD_JSON; iteration cap reached — the work so far is applied; run again to continue",
    "suspectFiles": [
     "src/factory"
    ],
@@ -210,12 +210,12 @@
   },
   {
    "title": "Playtest character unsteerable / walk no-op",
-   "symptom": "The scene is completely static across 4 walk commands \u2014 the play character is not steerable in this session (walk is a no-op, likely stuck against the checker prop; and teleport is unavailable since loadstring/eval is off).",
+   "symptom": "The scene is completely static across 4 walk commands — the play character is not steerable in this session (walk is a no-op, likely stuck against the checker prop; and teleport is unavailable since loadstring/eval is off).",
    "suspectFiles": [
     "src/playtest/act.luau",
     "src/playtest/eval.luau"
    ],
-   "repro": "playtest_start with a prop (e.g. the checker fixture) overlapping the spawn point, then playtest_act('walk') and capture \u2014 the character never moves; playtest_eval is also unavailable to teleport it out.",
+   "repro": "playtest_start with a prop (e.g. the checker fixture) overlapping the spawn point, then playtest_act('walk') and capture — the character never moves; playtest_eval is also unavailable to teleport it out.",
    "seenCount": 1,
    "lastSeenAt": 1783750578
   },
@@ -233,7 +233,7 @@
   {
    "id": "add-keyframe-batch-frozen-snapshot",
    "tool": "add_keyframe",
-   "summary": "poses-map batch authoring produced FOUR IDENTICAL keyframes (the rig's pre-existing 37/31deg pose) across four different requested keyposes while reporting \"3 joint(s) posed\" \u2014 an honesty bug: posing silently failed but the tool claimed success. Two confirmed aggravators: (1) STALE PLAYING AnimationTracks hijack every StepAnimations call and re-stamp their pose over the batch's (fixed by stopping tracks \u2014 but the tool must detect/refuse this itself); (2) even after stopping tracks + resetting Transforms on a grip_tool-held rig the snapshot still captured the old pose \u2014 suspect the batch applies rotations to a channel (Transform) the snapshot does not read on held rigs (C0-based arm-hold), or the apply is undone before snapshot.",
+   "summary": "poses-map batch authoring produced FOUR IDENTICAL keyframes (the rig's pre-existing 37/31deg pose) across four different requested keyposes while reporting \"3 joint(s) posed\" — an honesty bug: posing silently failed but the tool claimed success. Two confirmed aggravators: (1) STALE PLAYING AnimationTracks hijack every StepAnimations call and re-stamp their pose over the batch's (fixed by stopping tracks — but the tool must detect/refuse this itself); (2) even after stopping tracks + resetting Transforms on a grip_tool-held rig the snapshot still captured the old pose — suspect the batch applies rotations to a channel (Transform) the snapshot does not read on held rigs (C0-based arm-hold), or the apply is undone before snapshot.",
    "repro": "workspace.AgentRig with grip_tool-equipped Sword (AgentEditGrip present) after several Animator preview tracks were played: add_keyframe {clip:\"SwordUse\", poses:{RightShoulder:{x:-160,z:25},RightElbow:{x:40},AgentEditGrip:{x:30}}} x4 with different values -> dump keyframe poses -> all identical RightUpperArm=37 RightLowerArm=31. Reproduced post-reload and post-track-stop+Transform-reset.",
    "severity": "high",
    "status": "OPEN",
@@ -309,6 +309,20 @@
    "seenCount": 1,
    "lastSeenAt": 1784975000,
    "resolution": "RESOLVED 2026-07-26 - the VOCABULARY gap was real and is fixed, but MY DIAGNOSIS OF THE CLIP WAS WRONG. clip_arc_of is now CLASS-AWARE: slash asserts angular sweep (min_sweep 60, unchanged); thrust asserts linear extension (min_extension 1.0 studs) AND axial_frac >= min_axial_frac (0.5) = the share of the tip's path running ALONG the blade axis. The class is DECLARED (arg, else the clip's SAClipMotionClass attribute, else slash) and NEVER inferred from the numbers - a check that picks its own bar can rubber-stamp anything by choosing whichever class it already passes. Anti-Goodhart property, live-proven: declaring the WRONG class FAILs (the longsword's slash declared thrust -> FAIL 'only 0.42 of the tip's path runs along the blade axis (min 0.5) - this reads as a CUT'). Instrument validated on synthetic paths through the identical formula: pure thrust 1.000, pure arc 0.105, arc+rise 0.051. THE CORRECTION: with a real thrust instrument in hand, RapierThrust FAILS THE THRUST BAR TOO (axial_frac 0.231, extension 1.50, sweep 30.8) - it is LESS axial than an actual slash (longsword 0.417), i.e. the clip is a salute/flourish (matching its own 07-12 filmstrip note 'vertical salute -> diagonal sweeps'), not a committed attack of either class. The suite was RIGHT to fail it; the filed premise ('a healthy thrust failing on the wrong axis') was inferred from reach/path magnitudes that do not discriminate class. Lesson: a magnitude that is merely LARGE is not evidence of a KIND. CALIBRATION NOTE: min_axial_frac 0.5 sits close above the one real slash measured (0.42) - provisional until a real thrust clip calibrates the ceiling."
+  },
+  {
+   "id": "self-intersect-blind-to-blade-position",
+   "status": "OPEN",
+   "severity": "medium",
+   "title": "ORACLE GAP: clip_self_intersect counts centerline samples but is blind to WHERE along the blade they sit - a hand-at-the-face salute and a through-the-skull skewer are the same number",
+   "symptom": "The instrument scores `embedded = (samples_inside/12) * len * 0.85`, which treats a sample at frac 0.15 (a fingerbreadth from the grip) exactly like one at frac 0.5 (mid-blade). Those mean opposite things: a near-hilt sample says the HAND/guard is close to a body part - a fencing salute, a fist at the shoulder, a guard pose, all repeatedly eyes-checked CLEAN on this project (2026-07-25 rapier residual, 2026-07-25 sword graze) - while a mid-blade sample says the BLADE is through the body, always a defect. Measured on RapierLunge (40 samples, DivineRapier len 4.30): t=1.750/2.130/2.891 are f0.15-ONLY in Head with the right hand 0.82-0.84 studs from the head CENTRE (head is a 1.16-stud cube, so the hand is touching the box) = a salute, visually fine; but t=1.293 has f0.15 CLEAN and f0.23-f0.38 inside Head - the blade enters and exits the skull - and t=0.685 has f0.54-f0.69 inside LeftLowerArm. The quantum calibration (max(0.3, 1.5 quanta), now on both branches) buys tolerance in the wrong currency: it grants every clip one free sample ANYWHERE, so it pardons one mid-blade skewer sample while still charging for a harmless salute the moment a second near-hilt sample lands.",
+   "suspectFiles": [
+    "src/Tools/OracleChecks.luau"
+   ],
+   "repro": "oracle_check clip_self_intersect {rig:Workspace.AgentRig, tool:Workspace.AgentRig.DivineRapier, clip:RapierLunge, samples:24} - then re-measure per-frac (scratchpad frac_probe) and compare t=1.750 (f0.15 only) against t=1.293 (f0.23-0.38, f0.15 clean): identical 1-vs-3 sample arithmetic, opposite meanings.",
+   "proposal": "Weight or gate by blade position rather than raw sample count: treat fracs below a hilt-zone threshold (~0.25, i.e. the guard/ricasso region) as a separate, far more tolerant magnitude (`hilt_zone_samples`) and assert the verdict on MID-BLADE samples (`blade_body_samples`), which should tolerate ZERO. Anti-Goodhart property to preserve and prove before shipping: RapierLunge must STILL FAIL under the new rule (it does - t=0.609 f0.15-0.38, t=1.293 f0.23-0.38, t=0.685 f0.54-0.69 are all mid-blade), and every historical 2-sample flaw must still fail. Needs a fleet re-measure (all three weapons equipped) before the default moves - that is why this is FILED, not fixed.",
+   "seenCount": 1,
+   "lastSeenAt": 1785123626
   }
  ]
 }
