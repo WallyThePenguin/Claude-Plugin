@@ -323,6 +323,21 @@
    "proposal": "Weight or gate by blade position rather than raw sample count: treat fracs below a hilt-zone threshold (~0.25, i.e. the guard/ricasso region) as a separate, far more tolerant magnitude (`hilt_zone_samples`) and assert the verdict on MID-BLADE samples (`blade_body_samples`), which should tolerate ZERO. Anti-Goodhart property to preserve and prove before shipping: RapierLunge must STILL FAIL under the new rule (it does - t=0.609 f0.15-0.38, t=1.293 f0.23-0.38, t=0.685 f0.54-0.69 are all mid-blade), and every historical 2-sample flaw must still fail. Needs a fleet re-measure (all three weapons equipped) before the default moves - that is why this is FILED, not fixed.",
    "seenCount": 1,
    "lastSeenAt": 1785123626
+  },
+  {
+   "id": "retarget-drops-root-translation",
+   "status": "OPEN",
+   "severity": "high",
+   "title": "RETARGET CAP: the landing path is rotation-only, so every text-to-motion clip is in-place - a LUNGE cannot survive it, and no prompt or seed can fix that",
+   "symptom": "retarget.py:19 states it outright: 'Root translation is NOT emitted (v1: in-place clips)'. land_kimodo's LAND_LUAU confirms it - every pose is built as CFrame.new(0,0,0, q1,q2,q3,q4), a pure rotation with zero position. But the Kimodo npz DOES carry the translation: keys root_positions (N,3), smooth_root_pos (N,3), foot_contacts (N,6), global_root_heading (N,2). Measured discarded forward travel - s101 0.463m max horizontal displacement (1.037m path), s7 0.823m (1.396m), the original kimodo-rapier-lunge 0.663m, kimodo-rapier 0.659m. A lunge IS its stride, so the defining feature is exactly what gets dropped; what survives is joint rotation, which is why every landed 'attack' to date reads as a salute / flourish / standing waggle (the 2026-07-26 correction that RapierThrust is a salute was right about the clip, but the deeper cause is that a salute is the motion class that survives an in-place transfer INTACT). Eyes-confirmed on the new RapierLunge (ex-s101): iso filmstrip shows an upright figure waving the blade vertical -> over-the-shoulder with no stride and no point-first drive, while the suite posts 16 PASS / 0 FAIL.",
+   "suspectFiles": [
+    "sidecar/retarget.py",
+    "sidecar/land_kimodo.py"
+   ],
+   "repro": "python -c to np.load any assets/reference/kimodo-*.npz and print smooth_root_pos - the translation is present; then read land_kimodo.LAND_LUAU and see CFrame.new(0,0,0, q...) discard it. Visually: capture_animation {clip:'RapierLunge', angle:'iso'} - the figure never leaves its spot.",
+   "proposal": "v2: emit root translation as a HumanoidRootPart position channel (the npz already has smooth_root_pos AND foot_contacts to gate foot-sliding). Two consumers must be checked first: (a) scrubClip / capture_animation now SAVE-AND-RESTORE the root CFrame (2bf4280 / 6c2cfb7) so edit-mode measurement is already translation-safe; (b) a bound use-clip that translates the character will fight locomotion at runtime - decide whether attack clips ship in-place (translation baked out deliberately) or drive the character. NOTE the related instrument gap: clip_arc_of measures the TIP's path, which joint rotation alone satisfies, and clip_posture_sane only checks tilt/inversion - so a standing waggle posts a PASSING thrust (axial_peak_frac 0.532). Any body-commitment bar (root travel, front-foot displacement) would need the translation channel to exist first, so this issue gates that one.",
+   "seenCount": 1,
+   "lastSeenAt": 1785124203
   }
  ]
 }
