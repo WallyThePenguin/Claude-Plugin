@@ -1,0 +1,13 @@
+{
+  "name": "roblox-forge-marketplace",
+  "owner": {
+    "name": "WallyThePenguin"
+  },
+  "plugins": [
+    {
+      "name": "roblox-forge",
+      "description": "Production Roblox development with the Forest package manager: use and author Forest packages, build server-authoritative game systems, test Luau outside Studio, and ship a real game.",
+      "source": "./"
+    }
+  ]
+}

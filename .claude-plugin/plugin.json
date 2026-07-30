@@ -1,0 +1,18 @@
+{
+  "name": "roblox-forge",
+  "description": "Production Roblox development with the Forest package manager: use and author Forest packages, build server-authoritative game systems, test Luau outside Studio, and ship a real game.",
+  "version": "0.1.0",
+  "author": {
+    "name": "WallyThePenguin"
+  },
+  "keywords": [
+    "roblox",
+    "luau",
+    "forest",
+    "forestpm",
+    "package-manager",
+    "rojo",
+    "lune",
+    "game-development"
+  ]
+}

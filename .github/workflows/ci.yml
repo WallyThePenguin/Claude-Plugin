@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The offline audit needs nothing but Python: manifest schema, lockfile and
+      # receipt agreement, require discipline, publish readiness. It is the cheapest
+      # gate we have, so it runs first and fails fast.
+      - name: Workspace audit (offline)
+        run: python scripts/forge.py audit
+
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: |
+          selene packages/ game/
+          stylua --check packages/ game/
+
+      - name: Test
+        run: lune run scripts/test.luau
+
+      # Rojo must be able to build both the plugin and the game.
+      - name: Build
+        run: |
+          rojo build default.project.json -o /tmp/StudioAgent.rbxm
+          if [ -f game/default.project.json ]; then
+            rojo build game/default.project.json -o /tmp/ForgeArena.rbxl
+          fi
+
+  # Registry-side checks need the network and can be flaky; keep them off the
+  # critical path so a registry hiccup never fails a PR.
+  registry-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Forest CLI
+        run: curl -fsSL https://releases.forest.dev/install.sh | sh
+      - name: Dependency updates and license considerations
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          forest --version
+          for manifest in $(find . -name forest.json -not -path '*/Packages/*'); do
+            echo "== $(dirname "$manifest")"
+            (cd "$(dirname "$manifest")" && forest audit) || true
+          done

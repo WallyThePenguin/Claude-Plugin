@@ -8,8 +8,19 @@
 
 # Dependencies
 /node_modules/
-/Packages/
 /DevPackages/
+
+# Forest-installed trees. Never commit them: forest.json + forest-lock.json
+# reproduce the exact tree, integrity-hash for integrity-hash, via `forest install`.
+#
+# These MUST be anchored paths, not a bare `Packages/`. This repo has
+# core.ignorecase=true (Windows), so a bare `Packages/` also matches the
+# `packages/` SOURCE directory and silently ignores the entire workspace.
+/game/Packages/
+/game/*/Packages/
+/packages/*/Packages/
+/packages/*/src/Packages/
+/spike/Packages/
 
 # Secrets — never commit proxy keys or OAuth tokens
 .env

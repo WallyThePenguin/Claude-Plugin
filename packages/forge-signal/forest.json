@@ -1,0 +1,10 @@
+{
+  "name": "forge-signal",
+  "author": "",
+  "version": "0.1.0",
+  "description": "Signal, promise and cleanup primitives for Luau",
+  "platform": "roblox",
+  "license": "MIT",
+  "root": "src/init.luau",
+  "dependencies": {}
+}
