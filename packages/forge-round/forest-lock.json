@@ -1,0 +1,25 @@
+{
+  "file_version": 2,
+  "packages": {
+    "sleitnick/trove": [
+      {
+        "version": "1.8.0",
+        "integrity": "0e68f339cff4697faf090b7d31fb457707f3777444e241001baa734dfbb952dd",
+        "public": true,
+        "root": "init.luau",
+        "location": "~",
+        "dependencies": {}
+      }
+    ],
+    "sleitnick/signal": [
+      {
+        "version": "2.0.3",
+        "integrity": "3bd41c1da06398ff98753efc9e588ada05117b7cd0ec165b9af0e1d23cf5f7b9",
+        "public": true,
+        "root": "init.luau",
+        "location": "~",
+        "dependencies": {}
+      }
+    ]
+  }
+}
