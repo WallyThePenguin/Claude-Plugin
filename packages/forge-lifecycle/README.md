@@ -5,7 +5,7 @@ A service registry with two explicit lifecycle phases and dependency-ordered boo
 ## Install
 
 ```sh
-forest i @<scope>/forge-lifecycle
+forest i @Valid/forge-lifecycle
 ```
 
 ## The problem it solves

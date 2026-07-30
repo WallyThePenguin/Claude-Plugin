@@ -1,6 +1,6 @@
 {
   "name": "forge-guard",
-  "author": "",
+  "author": "Valid",
   "version": "0.1.0",
   "description": "Server-side anti-exploit: argument validation, token-bucket rate limits, abuse scoring",
   "platform": "roblox",

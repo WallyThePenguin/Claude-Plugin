@@ -1,6 +1,6 @@
 {
   "name": "forge-net",
-  "author": "",
+  "author": "Valid",
   "version": "0.1.0",
   "description": "Typed, schema-validated, rate-limited remotes for Roblox",
   "platform": "roblox",

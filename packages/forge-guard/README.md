@@ -9,7 +9,7 @@ pattern. A guard enforced somewhere the attacker controls is not a guard.
 ## Install
 
 ```sh
-forest i @<scope>/forge-guard
+forest i @Valid/forge-guard
 ```
 
 ## Why this exists

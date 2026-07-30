@@ -1,6 +1,6 @@
 {
   "name": "forge-testkit",
-  "author": "",
+  "author": "Valid",
   "version": "0.1.0",
   "description": "Roblox API fakes so Luau packages can be unit-tested under Lune",
   "platform": "roblox",

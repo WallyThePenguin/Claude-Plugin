@@ -8,7 +8,7 @@ Roblox API fakes so Luau packages can be unit-tested in a terminal, under
 ## Install
 
 ```sh
-forest i @<scope>/forge-testkit
+forest i @Valid/forge-testkit
 ```
 
 ## Why fakes rather than a Roblox emulator

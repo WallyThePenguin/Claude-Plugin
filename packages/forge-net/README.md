@@ -6,7 +6,7 @@ then validate, then handle, then contain.**
 ## Install
 
 ```sh
-forest i @<scope>/forge-net
+forest i @Valid/forge-net
 ```
 
 ## Why the order matters

@@ -1,6 +1,6 @@
 {
   "name": "forge-lifecycle",
-  "author": "",
+  "author": "Valid",
   "version": "0.1.0",
   "description": "Service registry with dependency-ordered Init and Start phases",
   "platform": "roblox",
