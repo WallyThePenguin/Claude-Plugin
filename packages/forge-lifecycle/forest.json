@@ -1,0 +1,10 @@
+{
+  "name": "forge-lifecycle",
+  "author": "",
+  "version": "0.1.0",
+  "description": "Service registry with dependency-ordered Init and Start phases",
+  "platform": "roblox",
+  "license": "MIT",
+  "root": "src/init.luau",
+  "dependencies": {}
+}

@@ -1,8 +1,8 @@
 {
-  "name": "forge-signal",
+  "name": "forge-net",
   "author": "",
   "version": "0.1.0",
-  "description": "Signal, promise and cleanup primitives for Luau",
+  "description": "Typed, schema-validated, rate-limited remotes for Roblox",
   "platform": "roblox",
   "license": "MIT",
   "root": "src/init.luau",

@@ -1,0 +1,5 @@
+# Files kept out of the published archive.
+# `Packages/`, `forest-lock.json` and dotfiles are excluded by forest already.
+tests/
+*.spec.luau
+*.spec.lua
