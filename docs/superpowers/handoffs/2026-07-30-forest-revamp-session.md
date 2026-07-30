@@ -1,4 +1,4 @@
-# 2026-07-30 — Forest revamp: M0–M2 shipped, M3 next
+# 2026-07-30 — Forest revamp: M0–M2 shipped, forge-combat done, forge-round + forge-economy next
 
 Plan: `docs/superpowers/plans/2026-07-30-forest-forge-arena-plan.md`
 Mirror decision: `docs/superpowers/notes/2026-07-30-mirror-vs-ours-decision.md`
@@ -81,16 +81,33 @@ provenance; 2 errors + 28 warnings of noise). `game/src` is clean.
 9. **`AbuseScore` decays before each report**, so N weight-1 reports never reach a score of
    N. Size thresholds against the arithmetic (this cost one wrong spec).
 
-## M3 — next up
+## M3 — `forge-combat` DONE, two to go
 
-`forge-combat`, `forge-round`, `forge-economy`. Design notes already settled:
+**`forge-combat` shipped** (`80f1877`): `History` (bounded ring buffer, interpolated lookup,
+three distinct miss reasons) + `Claim` (cooldown → equipped → alive → team → timestamp →
+origin → range → sight, cheapest-and-most-certain first). 34 specs.
 
-- **forge-combat** — client reports *intent* ("swung at time T, aiming here"); server
-  re-simulates against its own recorded position history within a **bounded** rewind window
-  (~200–250 ms; beyond that, reject). Unbounded rewind lets a client claim a hit on someone
-  who moved away seconds ago. The fixed-step position buffer lives here — that's why
-  `forge-sched` was dropped. Server checks cooldown, equipped weapon, target alive, range
-  plausible *given recorded positions*, line of sight, team.
+Two things worth remembering from writing it:
+
+- I put `require(script.Parent.History)` in `Claim.luau` — the exact mistake the workspace
+  rule exists to prevent. One Roblox-syntax line would have made the module that decides
+  whether damage lands untestable outside Studio. It now takes a structural `HistoryLike`
+  through its `Context`. **Watch for this in every remaining tier-2 package.**
+- **A claim slightly ahead of the newest sample is NOT a lie.** History samples at a fixed
+  rate, so an honest attack routinely lands 20–40 ms between two ticks. My first version
+  rejected those, which would have discarded a large share of legitimate hits. It now clamps
+  to the newest record inside `futureToleranceSeconds`.
+- The **origin check** is the one people forget: a client can name any attack origin, so
+  without validating it against history every range test measures from an invented point.
+
+The `expired` branch is an explicit `Policy` with a conservative shipped default (`reject`).
+**Open decision for the user:** `game/src/ReplicatedStorage/CombatPolicy.luau` carries a
+marked TODO — `reject` (safe, but a laggy player's real hits vanish) vs
+`acceptWithTightRange` (kind, but an attacker can fake latency and aim at the window). The
+default keeps the game shippable while it stays open; it just isn't a decision yet.
+
+Remaining:
+
 - **forge-round** — round/match state machine + matchmaking queue + intermission + results.
   Data-driven so `game/` supplies wave counts and durations.
 - **forge-economy** — idempotent ledger. Server-generated transaction ids, recorded applied
