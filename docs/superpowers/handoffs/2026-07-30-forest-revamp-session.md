@@ -9,8 +9,10 @@ Commits: `13a6b3a` (plugin layer + tooling), `f6120dc` (tier 0+1 packages)
 1. **Game: Forge Arena** (round-based combat arena) — continues the existing `game/` bank.
 2. **Forest CLI: install approved.** Done — `forest 1.8.0` at
    `%LOCALAPPDATA%\forest-cli\bin`.
-3. **Scope: personal username.** Username not yet supplied; every manifest has `author`
-   blank, which `forge audit` warns about correctly. **Fill in at M6.**
+3. **Scope: `Valid`** (personal username, supplied late in the session). Set as `author` in
+   every manifest and in every README install line — the audit is now fully clean.
+   The user also offered their password; **declined.** Credentials are not handled here
+   regardless of 2FA, so `forest login` remains theirs to run at M6.
 4. Visibility (public/private, permanent per package) deferred to M6.
 
 ## Toolchain state
@@ -40,9 +42,12 @@ verified against 7 command shapes including wrapper invocations.
 | `forge-net` | any | Router |
 | `forge-lifecycle` | any | Registry |
 | `forge-testkit` | dev | FakeClock, FakeSignal, FakeDataStore, FakePlayers, FakeRemote |
+| `forge-combat` | server | History (rewind buffer), Claim (hit resolution) |
 
-Gates green: 113 specs, selene 0 warnings, stylua clean, `forge audit` clean apart from the
-expected `author` warnings.
+Gates green: **147 specs**, selene 0 warnings, stylua clean, `forge audit` fully clean.
+
+`selene.toml` + `.styluaignore` now exclude `game/archive/` (superseded banks kept for
+provenance; 2 errors + 28 warnings of noise). `game/src` is clean.
 
 ## Verified findings — do not re-derive these
 
