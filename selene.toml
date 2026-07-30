@@ -1,1 +1,6 @@
 std = "roblox"
+
+# game/archive/ holds superseded game banks (place1 wave-survival, NEON GAUNTLET), kept for
+# provenance only. It is not built, not shipped, and not maintained -- linting it produces
+# noise that would train us to ignore lint output.
+exclude = ["game/archive/**"]

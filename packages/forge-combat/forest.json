@@ -1,0 +1,10 @@
+{
+  "name": "forge-combat",
+  "author": "Valid",
+  "version": "0.1.0",
+  "description": "Server-authoritative hit resolution with a bounded lag-compensation rewind window",
+  "platform": "roblox",
+  "license": "MIT",
+  "root": "src/init.luau",
+  "dependencies": {}
+}

@@ -53,7 +53,8 @@ local function spawnWave(wave: { [string]: number }): { Model }
 	local count = wave.enemyCount
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2
-		local offset = Vector3.new(math.cos(angle) * SPAWN_RADIUS, 0, math.sin(angle) * SPAWN_RADIUS)
+		local offset =
+			Vector3.new(math.cos(angle) * SPAWN_RADIUS, 0, math.sin(angle) * SPAWN_RADIUS)
 		enemies[i] = spawnEnemy(wave, ARENA_CENTER + offset)
 	end
 	return enemies
@@ -119,8 +120,15 @@ local function runRound()
 		horn.Parent = Workspace
 		horn:Play()
 		game:GetService("Debris"):AddItem(horn, 4)
-		print(string.format("[RoundLoop] Wave %d starting: %d enemies (hp %d, ws %d)",
-			waveIndex, wave.enemyCount, wave.health, wave.walkSpeed))
+		print(
+			string.format(
+				"[RoundLoop] Wave %d starting: %d enemies (hp %d, ws %d)",
+				waveIndex,
+				wave.enemyCount,
+				wave.health,
+				wave.walkSpeed
+			)
+		)
 
 		local enemies = spawnWave(wave)
 		waitForWaveCleared(enemies)
