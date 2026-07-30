@@ -1,0 +1,30 @@
+{
+  "file_version": 2,
+  "packages": {
+    "evaera/promise": [
+      {
+        "version": "4.0.0",
+        "integrity": "b7ee0f4d28ba123bcb8beb29404521ce39d61533e5490212be31adefdbadcd9e",
+        "public": true,
+        "root": "lib/init.lua",
+        "location": "~/lapis",
+        "dependencies": {}
+      }
+    ],
+    "nezuo/lapis": [
+      {
+        "version": "0.3.4",
+        "integrity": "211a20cacd3bcec3e0983dea5a09aaf8446555c7b15333e8c14d3f23464c95a2",
+        "public": true,
+        "root": "lapis/init.lua",
+        "location": "~",
+        "dependencies": {
+          "evaera/promise": {
+            "alias": "Promise",
+            "version": "4.0.0"
+          }
+        }
+      }
+    ]
+  }
+}

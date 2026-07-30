@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "evaera/promise": "^4.0.0",
+    "littensy/reflex": "^4.3.1",
+    "sleitnick/signal": "^2.0.3",
+    "sleitnick/trove": "^1.8.0"
+  },
+  "platform": "roblox"
+}

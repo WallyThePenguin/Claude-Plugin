@@ -1,0 +1,16 @@
+{
+  "name": "ForgeArena",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Packages": { "$path": "Packages" },
+      "Shared": { "$path": "src/ReplicatedStorage" }
+    },
+
+    "ServerScriptService": {
+      "Packages": { "$path": "Server/Packages" },
+      "Server": { "$path": "src/ServerScriptService" }
+    }
+  }
+}
