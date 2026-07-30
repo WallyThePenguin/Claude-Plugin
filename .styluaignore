@@ -1,3 +1,9 @@
-# Superseded game banks, kept for provenance. Not built, not shipped, not reformatted --
-# rewriting them would destroy the record of what was actually banked.
+# Forest-installed dependency trees. NEVER format these: they are vendored third-party code
+# downloaded at a known integrity hash, and reformatting them silently makes the working tree
+# diverge from what `forest install` produced -- including the generated pointer files. If a
+# vendored file looks wrong, the fix is `forest install -f`, not a formatter.
+Packages/
+
+# Superseded game banks, kept for provenance. Reformatting them would destroy the record of
+# what was actually banked.
 game/archive/

@@ -15,9 +15,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      # The offline audit needs nothing but Python: manifest schema, lockfile and
-      # receipt agreement, require discipline, publish readiness. It is the cheapest
-      # gate we have, so it runs first and fails fast.
+      # The offline audit needs nothing but Python -- no toolchain, no network, no installed
+      # trees. It is the cheapest gate we have, so it runs first and fails fast. At this
+      # point Packages/ does not exist yet, which is fine: the audit only cross-checks
+      # receipts against lockfiles when a tree is actually present.
       - name: Workspace audit (offline)
         run: python scripts/forge.py audit
 
@@ -25,6 +26,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Lint and test BEFORE installing dependencies. Nothing we lint or test lives in a
+      # Packages/ tree -- selene.toml and .styluaignore both exclude them -- so doing this
+      # first means a lint failure cannot be blamed on vendored code.
       - name: Lint
         run: |
           selene packages/ game/
@@ -33,26 +37,46 @@ jobs:
       - name: Test
         run: lune run scripts/test.luau
 
-      # Rojo must be able to build both the plugin and the game.
+      - name: Install Forest CLI
+        run: |
+          curl -fsSL https://releases.forest.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Every manifest owns an independent tree, so each needs its own install run from its
+      # own directory. Public packages only -- a private dependency would need `forest login`,
+      # which CI does not have.
+      - name: Install dependencies (all manifests)
+        run: |
+          for manifest in $(find . -name forest.json -not -path '*/Packages/*'); do
+            dir="$(dirname "$manifest")"
+            echo "== $dir"
+            (cd "$dir" && forest install)
+          done
+
+      # Re-run the audit now that the trees exist: this pass additionally cross-checks every
+      # installed .forest-receipt against its lockfile, which is what catches a lockfile
+      # committed out of sync with what it resolves to.
+      - name: Workspace audit (with installed trees)
+        run: python scripts/forge.py audit
+
       - name: Build
         run: |
           rojo build default.project.json -o /tmp/StudioAgent.rbxm
-          if [ -f game/default.project.json ]; then
-            rojo build game/default.project.json -o /tmp/ForgeArena.rbxl
-          fi
+          rojo build game/default.project.json -o /tmp/ForgeArena.rbxl
 
-  # Registry-side checks need the network and can be flaky; keep them off the
-  # critical path so a registry hiccup never fails a PR.
+  # Registry-side checks need the network and can be flaky; keep them off the critical path
+  # so a registry hiccup never fails a PR.
   registry-audit:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install Forest CLI
-        run: curl -fsSL https://releases.forest.dev/install.sh | sh
+        run: |
+          curl -fsSL https://releases.forest.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Dependency updates and license considerations
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           forest --version
           for manifest in $(find . -name forest.json -not -path '*/Packages/*'); do
             echo "== $(dirname "$manifest")"
